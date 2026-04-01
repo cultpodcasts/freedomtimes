@@ -3,6 +3,12 @@ variable "auth0_domain" {
   type        = string
 }
 
+variable "create_shared_resources" {
+  description = "Whether to create tenant-wide resources (resource server, roles, action). Set false for non-production environments."
+  type        = bool
+  default     = true
+}
+
 variable "app_name" {
   description = "Auth0 application name"
   type        = string

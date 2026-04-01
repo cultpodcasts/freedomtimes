@@ -17,15 +17,17 @@ resource "auth0_client" "admin_ui" {
   }
 }
 
-# Auth0 Resource Server (API)
+# Auth0 Resource Server (API) — tenant-wide, production only
 resource "auth0_resource_server" "api" {
+  count      = var.create_shared_resources ? 1 : 0
   identifier = var.api_identifier
   name       = "freedomtimes-api"
 }
 
 # Define scopes for the API
 resource "auth0_resource_server_scopes" "api_scopes" {
-  resource_server_identifier = auth0_resource_server.api.identifier
+  count                      = var.create_shared_resources ? 1 : 0
+  resource_server_identifier = auth0_resource_server.api[0].identifier
 
   scopes {
     name        = "story:create"
@@ -48,21 +50,24 @@ resource "auth0_resource_server_scopes" "api_scopes" {
   }
 }
 
-# Editor Role
+# Editor Role — tenant-wide, production only
 resource "auth0_role" "editor" {
+  count       = var.create_shared_resources ? 1 : 0
   name        = "editor"
   description = "Can create and update stories, upload media"
 }
 
-# Admin Role
+# Admin Role — tenant-wide, production only
 resource "auth0_role" "admin" {
+  count       = var.create_shared_resources ? 1 : 0
   name        = "admin"
   description = "Can manage all content, delete stories, manage subscribers"
 }
 
 # Editor role permissions
 resource "auth0_role_permissions" "editor_permissions" {
-  role_id = auth0_role.editor.id
+  count   = var.create_shared_resources ? 1 : 0
+  role_id = auth0_role.editor[0].id
 
   dynamic "permissions" {
     for_each = [
@@ -71,7 +76,7 @@ resource "auth0_role_permissions" "editor_permissions" {
     ]
     content {
       name                       = permissions.value
-      resource_server_identifier = auth0_resource_server.api.identifier
+      resource_server_identifier = auth0_resource_server.api[0].identifier
     }
   }
 
@@ -80,7 +85,8 @@ resource "auth0_role_permissions" "editor_permissions" {
 
 # Admin role permissions (includes all)
 resource "auth0_role_permissions" "admin_permissions" {
-  role_id = auth0_role.admin.id
+  count   = var.create_shared_resources ? 1 : 0
+  role_id = auth0_role.admin[0].id
 
   dynamic "permissions" {
     for_each = [
@@ -91,7 +97,7 @@ resource "auth0_role_permissions" "admin_permissions" {
     ]
     content {
       name                       = permissions.value
-      resource_server_identifier = auth0_resource_server.api.identifier
+      resource_server_identifier = auth0_resource_server.api[0].identifier
     }
   }
 
@@ -100,7 +106,7 @@ resource "auth0_role_permissions" "admin_permissions" {
 
 # Grant the Action M2M app access to the Management API with read:users + read:roles
 resource "auth0_client_grant" "action_management_api" {
-  count     = var.auth0_action_client_id != "" ? 1 : 0
+  count     = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
   client_id = var.auth0_action_client_id
   audience  = "https://${var.auth0_domain}/api/v2/"
   scopes    = ["read:users", "read:roles"]
@@ -108,7 +114,7 @@ resource "auth0_client_grant" "action_management_api" {
 
 # Auth0 Action: Add roles to ID token on login
 resource "auth0_action" "add_roles_to_token" {
-  count   = var.auth0_action_client_id != "" ? 1 : 0
+  count   = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
   name    = "Add Roles to Token"
   runtime = "node18"
   deploy  = true
@@ -163,7 +169,7 @@ resource "auth0_action" "add_roles_to_token" {
 
 # Bind the action to the Post-Login trigger
 resource "auth0_trigger_actions" "login_flow" {
-  count   = var.auth0_action_client_id != "" ? 1 : 0
+  count   = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
   trigger = "post-login"
 
   actions {
