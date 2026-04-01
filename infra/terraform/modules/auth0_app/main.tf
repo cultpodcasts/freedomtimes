@@ -11,7 +11,7 @@ resource "auth0_client" "admin_ui" {
   allowed_logout_urls   = local.base_urls
   allowed_origins       = local.base_urls
   web_origins           = local.base_urls
-  
+
   custom_login_page_on = false
   is_first_party       = true
 
@@ -128,12 +128,12 @@ resource "auth0_action" "add_roles_to_token" {
   name    = "Add Roles to Token"
   runtime = "node18"
   deploy  = true
-  
+
   supported_triggers {
     id      = "post-login"
     version = "v3"
   }
-  
+
   code = <<-EOT
     const ManagementClient = require('auth0').ManagementClient;
 
@@ -148,10 +148,10 @@ resource "auth0_action" "add_roles_to_token" {
       try {
         const roles = await management.users.getRoles({ id: event.user.user_id });
         const roleNames = roles.map(role => role.name);
-        
+
         // Add roles to ID token
         api.idToken.setCustomClaim('roles', roleNames);
-        
+
         // Also add to access token for API validation
         api.accessToken.setCustomClaim('roles', roleNames);
       } catch (error) {
@@ -160,17 +160,56 @@ resource "auth0_action" "add_roles_to_token" {
       }
     };
   EOT
-  
+
+  dependencies {
+    name    = "auth0"
+    version = "4.15.0"
+  }
+
   secrets {
     name  = "AUTH0_DOMAIN"
     value = var.auth0_domain
   }
-  
+
   secrets {
     name  = "AUTH0_ACTION_CLIENT_ID"
     value = var.auth0_action_client_id
   }
-  
+
+  secrets {
+    name  = "AUTH0_ACTION_CLIENT_SECRET"
+    value = var.auth0_action_client_secret
+  }
+}
+
+# Bind the action to the Post-Login trigger
+resource "auth0_trigger_actions" "login_flow" {
+  count   = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
+  trigger = "post-login"
+
+  actions {
+    id           = auth0_action.add_roles_to_token[0].id
+    display_name = auth0_action.add_roles_to_token[0].name
+  }
+
+  depends_on = [auth0_action.add_roles_to_token]
+}
+
+  dependencies {
+    name    = "auth0"
+    version = "4.15.0"
+  }
+
+  secrets {
+    name  = "AUTH0_DOMAIN"
+    value = var.auth0_domain
+  }
+
+  secrets {
+    name  = "AUTH0_ACTION_CLIENT_ID"
+    value = var.auth0_action_client_id
+  }
+
   secrets {
     name  = "AUTH0_ACTION_CLIENT_SECRET"
     value = var.auth0_action_client_secret
