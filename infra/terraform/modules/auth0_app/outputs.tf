@@ -5,7 +5,7 @@ output "application_id" {
 
 output "application_secret" {
   description = "Auth0 application client secret"
-  value       = auth0_client.admin_ui.client_secret
+  value       = auth0_client_credentials.admin_ui.client_secret
   sensitive   = true
 }
 

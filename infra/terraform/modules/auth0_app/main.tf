@@ -17,6 +17,12 @@ resource "auth0_client" "admin_ui" {
   }
 }
 
+# Manage credentials so we can read the client_secret back out
+resource "auth0_client_credentials" "admin_ui" {
+  client_id             = auth0_client.admin_ui.id
+  authentication_method = "client_secret_post"
+}
+
 # Auth0 Resource Server (API) — tenant-wide, production only
 resource "auth0_resource_server" "api" {
   count      = var.create_shared_resources ? 1 : 0
