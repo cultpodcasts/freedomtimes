@@ -1,9 +1,9 @@
-# Auth0 Client (SPA for Admin UI)
+# Auth0 Client (Regular Web App for server-side code exchange)
 resource "auth0_client" "admin_ui" {
   name            = var.app_name
-  app_type        = "spa"
-  
-  callbacks             = ["${var.workspace_url}/callback"]
+  app_type        = "regular_web"
+
+  callbacks             = ["${var.workspace_url}/auth/callback"]
   allowed_logout_urls   = [var.workspace_url]
   allowed_origins       = [var.workspace_url]
   web_origins           = [var.workspace_url]
