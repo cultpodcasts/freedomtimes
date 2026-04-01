@@ -26,9 +26,16 @@ if (-not (Test-Path $envFile)) {
 
 # Parse .env.dev into a hashtable
 $env = @{}
-Get-Content $envFile | Where-Object { $_ -match '^\s*TF_VAR_' } | ForEach-Object {
-    $parts = $_ -split '=', 2
-    $env[$parts[0].Trim()] = $parts[1].Trim()
+Get-Content $envFile | ForEach-Object {
+    $line = $_.Trim()
+    if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) {
+        return
+    }
+
+    if ($line -match '^[A-Za-z_][A-Za-z0-9_]*=') {
+        $parts = $line -split '=', 2
+        $env[$parts[0].Trim()] = $parts[1].Trim()
+    }
 }
 
 $repo = "cultpodcasts/freedomtimes"
@@ -64,6 +71,7 @@ $secrets = [ordered]@{
     TF_VAR_AUTH0_CLIENT_SECRET    = $env["TF_VAR_auth0_client_secret"]
     TF_VAR_AUTH0_ACTION_CLIENT_ID     = $env["TF_VAR_auth0_action_client_id"]
     TF_VAR_AUTH0_ACTION_CLIENT_SECRET = $env["TF_VAR_auth0_action_client_secret"]
+    AUTH0_APP_CLIENT_SECRET_STAGING   = $env["AUTH0_APP_CLIENT_SECRET_STAGING"]
 }
 
 Write-Host "`nSetting secrets..." -ForegroundColor Cyan
