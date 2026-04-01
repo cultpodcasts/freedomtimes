@@ -98,6 +98,14 @@ resource "auth0_role_permissions" "admin_permissions" {
   depends_on = [auth0_resource_server_scopes.api_scopes]
 }
 
+# Grant the Action M2M app access to the Management API with read:users + read:roles
+resource "auth0_client_grant" "action_management_api" {
+  count     = var.auth0_action_client_id != "" ? 1 : 0
+  client_id = var.auth0_action_client_id
+  audience  = "https://${var.auth0_domain}/api/v2/"
+  scopes    = ["read:users", "read:roles"]
+}
+
 # Auth0 Action: Add roles to ID token on login
 resource "auth0_action" "add_roles_to_token" {
   count   = var.auth0_action_client_id != "" ? 1 : 0
