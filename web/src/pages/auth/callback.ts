@@ -9,7 +9,7 @@ import {
 } from '../../lib/auth';
 
 export const GET: APIRoute = async (ctx) => {
-  const config = getAuthConfig(ctx);
+  const config = getAuthConfig();
   const stateParam = ctx.url.searchParams.get('state');
   const code = ctx.url.searchParams.get('code');
   const expectedState = ctx.cookies.get(getStateCookieName())?.value;

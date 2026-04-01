@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { getAuthConfig, getStateCookieName, makeState } from '../../lib/auth';
 
 export const GET: APIRoute = async (ctx) => {
-  const config = getAuthConfig(ctx);
+  const config = getAuthConfig();
   const state = makeState();
   const redirectUri = `${ctx.url.origin}/auth/callback`;
 

@@ -1,18 +1,9 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { env as cfEnv } from 'cloudflare:workers';
 
 export const SESSION_COOKIE = 'ft_session';
 const STATE_COOKIE = 'ft_state';
 const ROLE_CLAIMS = ['https://freedomtimes.news/roles', 'roles'];
-
-type RuntimeEnv = Record<string, string | undefined>;
-
-type RuntimeContext = {
-  locals?: {
-    runtime?: {
-      env?: RuntimeEnv;
-    };
-  };
-};
 
 export type AuthConfig = {
   domain: string;
@@ -20,10 +11,11 @@ export type AuthConfig = {
   clientSecret: string;
 };
 
-export function readEnv(ctx: RuntimeContext, key: string): string {
-  const runtimeValue = ctx.locals?.runtime?.env?.[key];
-  const buildValue = (import.meta.env as Record<string, string | undefined>)[key];
-  const value = runtimeValue ?? buildValue;
+export function readEnv(key: string): string {
+  const runtimeEnv = cfEnv as Record<string, string | undefined>;
+  const value =
+    runtimeEnv[key] ??
+    (import.meta.env as Record<string, string | undefined>)[key];
 
   if (!value) {
     throw new Error(`Missing required env var: ${key}`);
@@ -32,11 +24,11 @@ export function readEnv(ctx: RuntimeContext, key: string): string {
   return value;
 }
 
-export function getAuthConfig(ctx: RuntimeContext): AuthConfig {
+export function getAuthConfig(): AuthConfig {
   return {
-    domain: readEnv(ctx, 'AUTH0_DOMAIN'),
-    clientId: readEnv(ctx, 'AUTH0_CLIENT_ID'),
-    clientSecret: readEnv(ctx, 'AUTH0_CLIENT_SECRET'),
+    domain: readEnv('AUTH0_DOMAIN'),
+    clientId: readEnv('AUTH0_CLIENT_ID'),
+    clientSecret: readEnv('AUTH0_CLIENT_SECRET'),
   };
 }
 

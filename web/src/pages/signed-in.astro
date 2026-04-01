@@ -10,7 +10,7 @@ if (!token) {
 let name = '';
 
 try {
-  const payload = await verifyIdToken(token, getAuthConfig(Astro));
+  const payload = await verifyIdToken(token, getAuthConfig());
   if (!hasAdminRole(payload)) {
     Astro.cookies.delete(SESSION_COOKIE, { path: '/' });
     return Astro.redirect('/');

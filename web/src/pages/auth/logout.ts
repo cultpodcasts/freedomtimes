@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { SESSION_COOKIE, getAuthConfig } from '../../lib/auth';
 
 export const GET: APIRoute = async (ctx) => {
-  const config = getAuthConfig(ctx);
+  const config = getAuthConfig();
   const returnTo = `${ctx.url.origin}/`;
 
   ctx.cookies.delete(SESSION_COOKIE, { path: '/' });
