@@ -5,5 +5,5 @@ output "worker_name" {
 
 output "route_pattern" {
   description = "Worker route pattern"
-  value       = cloudflare_workers_route.holding_page.pattern
+  value       = var.route_pattern
 }

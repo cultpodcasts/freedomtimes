@@ -32,7 +32,7 @@ resource "cloudflare_workers_route" "holding_page" {
 }
 
 # Subdomain: use Custom Domain binding — Cloudflare manages DNS automatically
-resource "cloudflare_worker_domain" "holding_page" {
+resource "cloudflare_workers_domain" "holding_page" {
   count = local.is_subdomain ? 1 : 0
 
   account_id = var.account_id
