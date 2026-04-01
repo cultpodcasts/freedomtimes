@@ -58,7 +58,7 @@ Do not grant unrelated permissions (DNS edit, cache purge, account settings, bil
 
 Recommended route examples:
 - production: `example.com/*`
-- staging: `staging.example.com/*`
+- staging: `staging.freedomtimes.news/*`
 
 ## Delivery Plan Note
 
