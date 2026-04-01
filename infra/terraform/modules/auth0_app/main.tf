@@ -17,10 +17,20 @@ resource "auth0_client" "admin_ui" {
   }
 }
 
+# Generate a stable client secret we control (avoids needing read:client_keys scope)
+resource "random_password" "client_secret" {
+  length  = 64
+  special = false
+  keepers = {
+    app_name = var.app_name
+  }
+}
+
 # Manage credentials so we can read the client_secret back out
 resource "auth0_client_credentials" "admin_ui" {
   client_id             = auth0_client.admin_ui.id
   authentication_method = "client_secret_post"
+  client_secret         = random_password.client_secret.result
 }
 
 # Auth0 Resource Server (API) — tenant-wide, production only
