@@ -71,6 +71,11 @@ $secrets = [ordered]@{
     TF_VAR_AUTH0_CLIENT_SECRET    = $env["TF_VAR_auth0_client_secret"]
     TF_VAR_AUTH0_ACTION_CLIENT_ID     = $env["TF_VAR_auth0_action_client_id"]
     TF_VAR_AUTH0_ACTION_CLIENT_SECRET = $env["TF_VAR_auth0_action_client_secret"]
+    TF_VAR_AUTH0_DOMAIN_STAGING           = $env["TF_VAR_auth0_domain_staging"]
+    TF_VAR_AUTH0_CLIENT_ID_STAGING        = $env["TF_VAR_auth0_client_id_staging"]
+    TF_VAR_AUTH0_CLIENT_SECRET_STAGING    = $env["TF_VAR_auth0_client_secret_staging"]
+    TF_VAR_AUTH0_ACTION_CLIENT_ID_STAGING     = $env["TF_VAR_auth0_action_client_id_staging"]
+    TF_VAR_AUTH0_ACTION_CLIENT_SECRET_STAGING = $env["TF_VAR_auth0_action_client_secret_staging"]
     AUTH0_APP_CLIENT_ID_STAGING       = $env["AUTH0_APP_CLIENT_ID_STAGING"]
     AUTH0_APP_CLIENT_SECRET_STAGING   = $env["AUTH0_APP_CLIENT_SECRET_STAGING"]
 }
