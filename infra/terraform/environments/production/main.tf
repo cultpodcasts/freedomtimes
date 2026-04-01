@@ -2,6 +2,12 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
+provider "auth0" {
+  domain        = var.auth0_domain
+  client_id     = var.auth0_client_id
+  client_secret = var.auth0_client_secret
+}
+
 module "cloudflare_holding_page" {
   source = "../../modules/cloudflare_holding_page"
 
@@ -19,4 +25,12 @@ module "cloudflare_holding_page" {
   holding_message = var.holding_message
   build_revision  = var.build_revision
   contact_email   = var.contact_email
+}
+
+module "auth0_app" {
+  source = "../../modules/auth0_app"
+
+  auth0_domain                 = var.auth0_domain
+  auth0_action_client_id       = var.auth0_action_client_id
+  auth0_action_client_secret   = var.auth0_action_client_secret
 }

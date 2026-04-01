@@ -37,6 +37,11 @@ jobs:
       TF_VAR_contact_email: ${{ vars.TF_VAR_CONTACT_EMAIL }}
       TF_VAR_manage_apex_dns_record: "true"
       TF_VAR_apex_dns_record_content: "192.0.2.1"
+      TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
+      TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
+      TF_VAR_auth0_client_secret: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
+      TF_VAR_auth0_action_client_id: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_ID }}
+      TF_VAR_auth0_action_client_secret: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_SECRET }}
 
     steps:
       - uses: actions/checkout@v4
