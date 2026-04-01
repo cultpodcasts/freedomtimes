@@ -3,6 +3,12 @@ output "application_id" {
   value       = auth0_client.admin_ui.client_id
 }
 
+output "application_secret" {
+  description = "Auth0 application client secret"
+  value       = auth0_client.admin_ui.client_secret
+  sensitive   = true
+}
+
 output "domain" {
   description = "Auth0 tenant domain"
   value       = var.auth0_domain
