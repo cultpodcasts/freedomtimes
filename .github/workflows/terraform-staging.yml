@@ -53,7 +53,16 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        run: terraform plan -lock-timeout=5m -no-color -out=tfplan
+        run: |
+          set +e
+          terraform plan -lock-timeout=5m -no-color -out=tfplan
+          PLAN_EXIT=$?
+          set -e
+          if [ "$PLAN_EXIT" -eq 1 ]; then
+            echo "terraform plan failed with exit code 1"
+            exit 1
+          fi
+          echo "terraform plan exit code: $PLAN_EXIT"
         continue-on-error: false
 
       - name: Post plan to PR
