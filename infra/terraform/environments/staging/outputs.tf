@@ -12,9 +12,3 @@ output "auth0_app_client_id" {
   description = "Auth0 app client ID for the staging application"
   value       = module.auth0_app.application_id
 }
-
-output "auth0_app_client_secret" {
-  description = "Auth0 app client secret for the staging application"
-  value       = module.auth0_app.application_secret
-  sensitive   = true
-}

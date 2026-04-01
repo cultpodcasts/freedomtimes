@@ -75,15 +75,12 @@ jobs:
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: terraform apply tfplan
 
-      - name: Read Auth0 App Credentials
+      - name: Read Auth0 App Client ID
         id: auth0_creds
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: |
           CLIENT_ID=$(terraform output -raw auth0_app_client_id)
-          CLIENT_SECRET=$(terraform output -raw auth0_app_client_secret)
-          echo "::add-mask::$CLIENT_SECRET"
           echo "client_id=$CLIENT_ID" >> $GITHUB_OUTPUT
-          echo "client_secret=$CLIENT_SECRET" >> $GITHUB_OUTPUT
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -117,6 +114,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-          AUTH0_CLIENT_SECRET: ${{ steps.auth0_creds.outputs.client_secret }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.AUTH0_APP_CLIENT_SECRET_STAGING }}
         run: |
           echo "$AUTH0_CLIENT_SECRET" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.staging.toml
