@@ -10,9 +10,11 @@ locals {
     contact_markup  = local.contact_markup
   })
 
-  # Extract subdomain from route pattern, e.g., "staging.freedomtimes.news/*" → "staging"
-  route_subdomain = split(".", split("/", var.route_pattern)[0])[0]
-  is_subdomain    = local.route_subdomain != var.zone_id
+  # Extract hostname and determine if it's a subdomain
+  # e.g. "staging.freedomtimes.news/*" → hostname "staging.freedomtimes.news", is_subdomain true
+  # e.g. "freedomtimes.news/*" → hostname "freedomtimes.news", is_subdomain false
+  route_hostname = split("/", var.route_pattern)[0]
+  is_subdomain   = length(split(".", local.route_hostname)) > 2
 }
 
 resource "cloudflare_workers_script" "holding_page" {
@@ -22,9 +24,21 @@ resource "cloudflare_workers_script" "holding_page" {
 }
 
 resource "cloudflare_workers_route" "holding_page" {
+  count = local.is_subdomain ? 0 : 1
+
   zone_id     = var.zone_id
   pattern     = var.route_pattern
   script_name = cloudflare_workers_script.holding_page.name
+}
+
+# Subdomain: use Custom Domain binding — Cloudflare manages DNS automatically
+resource "cloudflare_worker_domain" "holding_page" {
+  count = local.is_subdomain ? 1 : 0
+
+  account_id = var.account_id
+  zone_id    = var.zone_id
+  hostname   = local.route_hostname
+  service    = cloudflare_workers_script.holding_page.name
 }
 
 resource "cloudflare_record" "apex" {
@@ -38,13 +52,3 @@ resource "cloudflare_record" "apex" {
   ttl     = 1
 }
 
-resource "cloudflare_record" "subdomain" {
-  count = local.is_subdomain ? 1 : 0
-
-  zone_id = var.zone_id
-  name    = local.route_subdomain
-  type    = "CNAME"
-  content = "${var.account_id}.workers.dev"
-  proxied = true
-  ttl     = 1
-}
