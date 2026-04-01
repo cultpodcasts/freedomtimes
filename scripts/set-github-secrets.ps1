@@ -32,6 +32,25 @@ Get-Content $envFile | Where-Object { $_ -match '^\s*TF_VAR_' } | ForEach-Object
 }
 
 $repo = "cultpodcasts/freedomtimes"
+$tfcCredsFile = Join-Path $env:APPDATA "terraform.d\credentials.tfrc.json"
+
+function Get-TfcTokenFromCredentials {
+    param(
+        [string]$FilePath
+    )
+
+    if (-not (Test-Path $FilePath)) {
+        return ""
+    }
+
+    try {
+        $json = Get-Content $FilePath -Raw | ConvertFrom-Json
+        return [string]$json.credentials."app.terraform.io".token
+    }
+    catch {
+        return ""
+    }
+}
 
 # ---------------------------------------------------------------------------
 # Secrets  (sensitive — stored encrypted, never visible after setting)
@@ -54,9 +73,23 @@ foreach ($name in $secrets.Keys) {
 }
 
 # ---------------------------------------------------------------------------
+# Terraform Cloud auth secret
+# ---------------------------------------------------------------------------
+$tfcToken = Get-TfcTokenFromCredentials -FilePath $tfcCredsFile
+if ([string]::IsNullOrWhiteSpace($tfcToken)) {
+    Write-Warning "Terraform Cloud token not found in $tfcCredsFile. Skipping TF_TOKEN_app_terraform_io."
+}
+else {
+    $tfcToken | gh secret set TF_TOKEN_app_terraform_io --repo $repo
+    Write-Host "  ✓ TF_TOKEN_app_terraform_io" -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
 # Variables (non-sensitive — visible in workflow logs)
 # ---------------------------------------------------------------------------
 $variables = [ordered]@{
+    TFC_ORGANIZATION      = "freedomtimes"
+    TFC_WORKSPACE_PRODUCTION = "freedomtimes-production"
     TF_VAR_ROUTE_PATTERN   = $env["TF_VAR_route_pattern"]
     TF_VAR_WORKER_NAME     = $env["TF_VAR_worker_name"]
     TF_VAR_HOLDING_TITLE   = $env["TF_VAR_holding_title"]

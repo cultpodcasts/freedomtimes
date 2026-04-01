@@ -24,6 +24,7 @@ jobs:
         working-directory: infra/terraform/environments/production
 
     env:
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_app_terraform_io }}
       TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
       TF_VAR_cloudflare_account_id: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.TF_VAR_CLOUDFLARE_ZONE_ID }}
@@ -45,30 +46,7 @@ jobs:
           terraform_version: "1.14.8"
 
       - name: Terraform Init
-        run: terraform init
-
-      - name: Reconcile Existing Cloudflare Resources
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          set +e
-
-          script_id=$(terraform state show module.cloudflare_holding_page.cloudflare_workers_script.holding_page >/dev/null 2>&1; echo $?)
-          if [ "$script_id" -ne 0 ]; then
-            terraform import -no-color module.cloudflare_holding_page.cloudflare_workers_script.holding_page "$TF_VAR_cloudflare_account_id/$TF_VAR_worker_name" || true
-          fi
-
-          route_id=$(terraform state show module.cloudflare_holding_page.cloudflare_workers_route.holding_page >/dev/null 2>&1; echo $?)
-          if [ "$route_id" -ne 0 ]; then
-            terraform import -no-color module.cloudflare_holding_page.cloudflare_workers_route.holding_page "$TF_VAR_cloudflare_zone_id/$TF_VAR_route_pattern" || true
-          fi
-
-          apex_id=$(terraform state show 'module.cloudflare_holding_page.cloudflare_record.apex[0]' >/dev/null 2>&1; echo $?)
-          if [ "$apex_id" -ne 0 ]; then
-            terraform import -no-color 'module.cloudflare_holding_page.cloudflare_record.apex[0]' "$TF_VAR_cloudflare_zone_id/freedomtimes.news/A" || true
-          fi
-
-          set -e
+        run: terraform init -input=false
 
       - name: Terraform Validate
         run: terraform validate
