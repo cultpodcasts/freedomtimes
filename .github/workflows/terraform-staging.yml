@@ -30,11 +30,11 @@ jobs:
       TF_VAR_worker_name: "freedomtimes-holding-staging"
       TF_VAR_manage_apex_dns_record: "false"
       TF_VAR_apex_dns_record_content: "192.0.2.1"
-      TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN_STAGING }}
-      TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID_STAGING }}
-      TF_VAR_auth0_client_secret: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET_STAGING }}
-      TF_VAR_auth0_action_client_id: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_ID_STAGING }}
-      TF_VAR_auth0_action_client_secret: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_SECRET_STAGING }}
+      TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
+      TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
+      TF_VAR_auth0_client_secret: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
+      TF_VAR_auth0_action_client_id: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_ID }}
+      TF_VAR_auth0_action_client_secret: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_SECRET }}
       TF_VAR_auth0_app_client_secret: ${{ secrets.AUTH0_APP_CLIENT_SECRET_STAGING }}
 
     steps:
@@ -96,7 +96,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-          AUTH0_DOMAIN: ${{ secrets.TF_VAR_AUTH0_DOMAIN_STAGING }}
+          AUTH0_DOMAIN: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
           AUTH0_CLIENT_ID: ${{ secrets.AUTH0_APP_CLIENT_ID_STAGING }}
         run: >
           npx wrangler deploy --config wrangler.staging.toml
