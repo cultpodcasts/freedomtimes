@@ -9,6 +9,10 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+
 jobs:
   terraform:
     name: "Apply to Staging"
@@ -18,7 +22,7 @@ jobs:
         working-directory: infra/terraform/environments/staging
 
     env:
-      TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_app_terraform_io }}
+      TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
       TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
       TF_VAR_cloudflare_account_id: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.TF_VAR_CLOUDFLARE_ZONE_ID }}
@@ -65,3 +69,32 @@ jobs:
       - name: Terraform Apply
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: terraform apply tfplan
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Web Dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build Astro Worker
+        working-directory: web
+        run: npm run build
+
+      - name: Deploy Astro Worker to Staging
+        working-directory: web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          AUTH0_DOMAIN: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
+          AUTH0_CLIENT_ID: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
+          AUTH0_CLIENT_SECRET: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
+        run: >
+          npx wrangler deploy --config wrangler.staging.toml
+          --var AUTH0_DOMAIN:$AUTH0_DOMAIN
+          --var AUTH0_CLIENT_ID:$AUTH0_CLIENT_ID
+          --var AUTH0_CLIENT_SECRET:$AUTH0_CLIENT_SECRET
