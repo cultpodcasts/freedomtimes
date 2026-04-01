@@ -41,6 +41,16 @@ Get-Content $envFile | ForEach-Object {
 $repo = "cultpodcasts/freedomtimes"
 $tfcCredsFile = Join-Path $env:APPDATA "terraform.d\credentials.tfrc.json"
 
+$auth0AppClientId = $env["AUTH0_APP_CLIENT_ID"]
+if ([string]::IsNullOrWhiteSpace($auth0AppClientId)) {
+    $auth0AppClientId = $env["TF_VAR_auth0_client_id"]
+}
+
+$auth0AppClientSecret = $env["AUTH0_APP_CLIENT_SECRET"]
+if ([string]::IsNullOrWhiteSpace($auth0AppClientSecret)) {
+    $auth0AppClientSecret = $env["TF_VAR_auth0_client_secret"]
+}
+
 function Get-TfcTokenFromCredentials {
     param(
         [string]$FilePath
@@ -71,8 +81,8 @@ $secrets = [ordered]@{
     TF_VAR_AUTH0_CLIENT_SECRET    = $env["TF_VAR_auth0_client_secret"]
     TF_VAR_AUTH0_ACTION_CLIENT_ID     = $env["TF_VAR_auth0_action_client_id"]
     TF_VAR_AUTH0_ACTION_CLIENT_SECRET = $env["TF_VAR_auth0_action_client_secret"]
-    AUTH0_APP_CLIENT_ID               = $env["AUTH0_APP_CLIENT_ID"]
-    AUTH0_APP_CLIENT_SECRET           = $env["AUTH0_APP_CLIENT_SECRET"]
+    AUTH0_APP_CLIENT_ID               = $auth0AppClientId
+    AUTH0_APP_CLIENT_SECRET           = $auth0AppClientSecret
 }
 
 Write-Host "`nSetting secrets..." -ForegroundColor Cyan

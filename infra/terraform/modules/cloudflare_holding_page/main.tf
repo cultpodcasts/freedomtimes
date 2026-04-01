@@ -23,6 +23,15 @@ resource "cloudflare_workers_script" "holding_page" {
   content    = local.worker_script
 }
 
+resource "cloudflare_workers_secret" "script_secrets" {
+  for_each = toset(nonsensitive(keys(var.worker_secrets)))
+
+  account_id  = var.account_id
+  script_name = cloudflare_workers_script.holding_page.name
+  name        = each.value
+  secret_text = var.worker_secrets[each.value]
+}
+
 resource "cloudflare_workers_route" "holding_page" {
   count = local.is_subdomain ? 0 : 1
 

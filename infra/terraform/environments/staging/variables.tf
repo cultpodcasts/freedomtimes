@@ -98,3 +98,9 @@ variable "auth0_action_client_secret" {
   sensitive   = true
   default     = ""
 }
+
+variable "auth0_app_client_secret" {
+  description = "Auth0 application client secret used by Worker runtime"
+  type        = string
+  sensitive   = true
+}

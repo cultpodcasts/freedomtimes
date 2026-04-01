@@ -59,3 +59,10 @@ variable "contact_email" {
   type        = string
   default     = ""
 }
+
+variable "worker_secrets" {
+  description = "Map of Worker secret name to secret value for this script"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
