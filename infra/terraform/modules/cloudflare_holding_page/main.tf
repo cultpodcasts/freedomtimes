@@ -11,7 +11,7 @@ locals {
   })
 
   # Extract subdomain from route pattern, e.g., "staging.freedomtimes.news/*" → "staging"
-  route_subdomain = split(".", split(var.route_pattern, "/")[0])[0]
+  route_subdomain = split(".", split("/", var.route_pattern)[0])[0]
   is_subdomain    = local.route_subdomain != var.zone_id
 }
 
