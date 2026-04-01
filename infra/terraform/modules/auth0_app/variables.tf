@@ -27,6 +27,12 @@ variable "workspace_url" {
   default     = "https://freedomtimes.news"
 }
 
+variable "extra_workspace_urls" {
+  description = "Additional workspace base URLs to allow for callbacks/logout/origins (e.g., staging)"
+  type        = list(string)
+  default     = []
+}
+
 variable "auth0_action_client_id" {
   description = "Auth0 M2M app client ID for Actions (with read:users and read:roles scopes)"
   type        = string

@@ -31,6 +31,7 @@ module "auth0_app" {
   source = "../../modules/auth0_app"
 
   auth0_domain                 = var.auth0_domain
+  extra_workspace_urls         = ["https://staging.freedomtimes.news"]
   auth0_action_client_id       = var.auth0_action_client_id
   auth0_action_client_secret   = var.auth0_action_client_secret
 }

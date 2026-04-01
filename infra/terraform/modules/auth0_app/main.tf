@@ -1,12 +1,16 @@
+locals {
+  base_urls = distinct(concat([var.workspace_url], var.extra_workspace_urls))
+}
+
 # Auth0 Client (Regular Web App for server-side code exchange)
 resource "auth0_client" "admin_ui" {
   name            = var.app_name
   app_type        = "regular_web"
 
-  callbacks             = ["${var.workspace_url}/auth/callback"]
-  allowed_logout_urls   = [var.workspace_url]
-  allowed_origins       = [var.workspace_url]
-  web_origins           = [var.workspace_url]
+  callbacks             = [for url in local.base_urls : "${url}/auth/callback"]
+  allowed_logout_urls   = local.base_urls
+  allowed_origins       = local.base_urls
+  web_origins           = local.base_urls
   
   custom_login_page_on = false
   is_first_party       = true
