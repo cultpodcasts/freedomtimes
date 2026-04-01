@@ -114,17 +114,9 @@ resource "auth0_role_permissions" "admin_permissions" {
   depends_on = [auth0_resource_server_scopes.api_scopes]
 }
 
-# Grant the Action M2M app access to the Management API with read:users + read:roles
-resource "auth0_client_grant" "action_management_api" {
-  count     = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
-  client_id = var.auth0_action_client_id
-  audience  = "https://${var.auth0_domain}/api/v2/"
-  scopes    = ["read:users", "read:roles"]
-}
-
-# Auth0 Action: Add roles to ID token on login
+# Auth0 Action: Add roles to ID and access token on login
 resource "auth0_action" "add_roles_to_token" {
-  count   = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
+  count   = var.create_shared_resources ? 1 : 0
   name    = "Add Roles to Token"
   runtime = "node18"
   deploy  = true
@@ -135,90 +127,23 @@ resource "auth0_action" "add_roles_to_token" {
   }
 
   code = <<-EOT
-    const ManagementClient = require('auth0').ManagementClient;
-
+    /**
+    * @param {Event} event - Details about the user and the context in which they are logging in.
+    * @param {PostLoginAPI} api - Interface whose methods can be used to change the behavior of the login.
+    */
     exports.onExecutePostLogin = async (event, api) => {
-      // Get user's roles
-      const management = new ManagementClient({
-        domain: event.secrets.AUTH0_DOMAIN,
-        clientId: event.secrets.AUTH0_ACTION_CLIENT_ID,
-        clientSecret: event.secrets.AUTH0_ACTION_CLIENT_SECRET,
-      });
-
-      try {
-        const roles = await management.users.getRoles({ id: event.user.user_id });
-        const roleNames = roles.map(role => role.name);
-
-        // Add roles to ID token
-        api.idToken.setCustomClaim('roles', roleNames);
-
-        // Also add to access token for API validation
-        api.accessToken.setCustomClaim('roles', roleNames);
-      } catch (error) {
-        console.log('Error fetching roles:', error.message);
-        // Don't fail login - just log the error
+      const namespace = 'https://api.cultpodcasts.com';
+      if (event.authorization) {
+        api.idToken.setCustomClaim(`$${namespace}/roles`, event.authorization.roles);
+        api.accessToken.setCustomClaim(`$${namespace}/roles`, event.authorization.roles);
       }
-    };
+    }
   EOT
-
-  dependencies {
-    name    = "auth0"
-    version = "4.15.0"
-  }
-
-  secrets {
-    name  = "AUTH0_DOMAIN"
-    value = var.auth0_domain
-  }
-
-  secrets {
-    name  = "AUTH0_ACTION_CLIENT_ID"
-    value = var.auth0_action_client_id
-  }
-
-  secrets {
-    name  = "AUTH0_ACTION_CLIENT_SECRET"
-    value = var.auth0_action_client_secret
-  }
 }
 
 # Bind the action to the Post-Login trigger
 resource "auth0_trigger_actions" "login_flow" {
-  count   = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
-  trigger = "post-login"
-
-  actions {
-    id           = auth0_action.add_roles_to_token[0].id
-    display_name = auth0_action.add_roles_to_token[0].name
-  }
-
-  depends_on = [auth0_action.add_roles_to_token]
-}
-
-  dependencies {
-    name    = "auth0"
-    version = "4.15.0"
-  }
-
-  secrets {
-    name  = "AUTH0_DOMAIN"
-    value = var.auth0_domain
-  }
-
-  secrets {
-    name  = "AUTH0_ACTION_CLIENT_ID"
-    value = var.auth0_action_client_id
-  }
-
-  secrets {
-    name  = "AUTH0_ACTION_CLIENT_SECRET"
-    value = var.auth0_action_client_secret
-  }
-}
-
-# Bind the action to the Post-Login trigger
-resource "auth0_trigger_actions" "login_flow" {
-  count   = var.create_shared_resources && var.auth0_action_client_id != "" ? 1 : 0
+  count   = var.create_shared_resources ? 1 : 0
   trigger = "post-login"
 
   actions {
