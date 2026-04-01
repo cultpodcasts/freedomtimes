@@ -71,7 +71,8 @@ $secrets = [ordered]@{
     TF_VAR_AUTH0_CLIENT_SECRET    = $env["TF_VAR_auth0_client_secret"]
     TF_VAR_AUTH0_ACTION_CLIENT_ID     = $env["TF_VAR_auth0_action_client_id"]
     TF_VAR_AUTH0_ACTION_CLIENT_SECRET = $env["TF_VAR_auth0_action_client_secret"]
-    AUTH0_APP_CLIENT_SECRET_STAGING   = $env["AUTH0_APP_CLIENT_SECRET_STAGING"]
+    AUTH0_APP_CLIENT_ID               = $env["AUTH0_APP_CLIENT_ID"]
+    AUTH0_APP_CLIENT_SECRET           = $env["AUTH0_APP_CLIENT_SECRET"]
 }
 
 Write-Host "`nSetting secrets..." -ForegroundColor Cyan
