@@ -31,6 +31,10 @@ resource "auth0_client_credentials" "admin_ui" {
   client_id             = auth0_client.admin_ui.id
   authentication_method = "client_secret_post"
   client_secret         = random_password.client_secret.result
+
+  lifecycle {
+    replace_triggered_by = [random_password.client_secret]
+  }
 }
 
 # Auth0 Resource Server (API) — tenant-wide, production only
