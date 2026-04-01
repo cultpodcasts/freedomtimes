@@ -1,10 +1,12 @@
 locals {
+  build_markup   = var.build_revision != "" ? "<p class=\"meta\">Build: ${var.build_revision}</p>" : ""
   contact_markup = var.contact_email != "" ? "<p class=\"meta\">Contact: ${var.contact_email}</p>" : ""
 
   worker_script = templatefile("${path.module}/worker.js.tftpl", {
     holding_title   = var.holding_title
     holding_heading = var.holding_heading
     holding_message = var.holding_message
+    build_markup    = local.build_markup
     contact_markup  = local.contact_markup
   })
 }

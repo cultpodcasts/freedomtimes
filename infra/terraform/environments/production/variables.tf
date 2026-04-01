@@ -55,6 +55,12 @@ variable "holding_message" {
   default     = "We are preparing the site. Please check back soon."
 }
 
+variable "build_revision" {
+  description = "Optional build revision shown on the holding page"
+  type        = string
+  default     = ""
+}
+
 variable "contact_email" {
   description = "Optional contact email shown on the holding page"
   type        = string

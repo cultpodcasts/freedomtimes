@@ -33,6 +33,7 @@ jobs:
       TF_VAR_holding_title: ${{ vars.TF_VAR_HOLDING_TITLE }}
       TF_VAR_holding_heading: ${{ vars.TF_VAR_HOLDING_HEADING }}
       TF_VAR_holding_message: ${{ vars.TF_VAR_HOLDING_MESSAGE }}
+      TF_VAR_build_revision: ${{ github.sha }}
       TF_VAR_contact_email: ${{ vars.TF_VAR_CONTACT_EMAIL }}
       TF_VAR_manage_apex_dns_record: "true"
       TF_VAR_apex_dns_record_content: "192.0.2.1"

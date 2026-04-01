@@ -17,5 +17,6 @@ module "cloudflare_holding_page" {
   holding_title   = var.holding_title
   holding_heading = var.holding_heading
   holding_message = var.holding_message
+  build_revision  = var.build_revision
   contact_email   = var.contact_email
 }
