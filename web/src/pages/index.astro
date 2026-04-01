@@ -1,0 +1,55 @@
+import Layout from '../layouts/Layout.astro';
+
+const denied = Astro.url.searchParams.get('denied') === '1';
+---
+
+<Layout>
+	<section class="card">
+		<h1>Freedom Times</h1>
+		<p class="lead">A secure holding page for early access.</p>
+		{denied && <p class="warn">You must have the admin role to continue.</p>}
+		<a class="button" href="/auth/login">Log in with Google</a>
+	</section>
+</Layout>
+
+<style>
+	.card {
+		width: min(640px, 94vw);
+		padding: 2.5rem 2rem;
+		border: 1px solid #c6bfae;
+		border-radius: 16px;
+		background: rgba(255, 255, 255, 0.85);
+		box-shadow: 0 18px 40px rgba(45, 39, 25, 0.14);
+		text-align: center;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: clamp(2rem, 6vw, 3rem);
+	}
+
+	.lead {
+		margin: 0.9rem 0 1.4rem;
+		font-size: 1.05rem;
+	}
+
+	.warn {
+		margin: 0.7rem 0 1.3rem;
+		color: #7b1f1f;
+		font-weight: 600;
+	}
+
+	.button {
+		display: inline-block;
+		padding: 0.78rem 1.2rem;
+		border-radius: 999px;
+		background: #1d4b3e;
+		color: #ffffff;
+		text-decoration: none;
+		font-weight: 700;
+	}
+
+	.button:hover {
+		background: #13372d;
+	}
+</style>

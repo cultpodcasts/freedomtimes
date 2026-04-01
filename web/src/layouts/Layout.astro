@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="icon" href="/favicon.ico" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Freedom Times</title>
+	</head>
+	<body>
+		<main class="shell">
+			<slot />
+		</main>
+	</body>
+</html>
+
+<style>
+	:root {
+		color-scheme: light;
+	}
+
+	html,
+	body {
+		margin: 0;
+		min-height: 100%;
+		font-family: Georgia, 'Times New Roman', serif;
+		background: radial-gradient(circle at 12% 10%, #f8f3e7 0%, #ece6d9 40%, #ded7c8 100%);
+		color: #1b1b1a;
+	}
+
+	.shell {
+		min-height: 100vh;
+		display: grid;
+		place-items: center;
+		padding: 1.25rem;
+	}
+</style>
