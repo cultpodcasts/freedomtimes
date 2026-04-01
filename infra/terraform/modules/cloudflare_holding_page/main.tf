@@ -9,6 +9,10 @@ locals {
     build_markup    = local.build_markup
     contact_markup  = local.contact_markup
   })
+
+  # Extract subdomain from route pattern, e.g., "staging.freedomtimes.news/*" → "staging"
+  route_subdomain = split(".", split(var.route_pattern, "/")[0])[0]
+  is_subdomain    = local.route_subdomain != var.zone_id
 }
 
 resource "cloudflare_workers_script" "holding_page" {
@@ -30,6 +34,17 @@ resource "cloudflare_record" "apex" {
   name    = "@"
   type    = "A"
   content = var.apex_dns_record_content
+  proxied = true
+  ttl     = 1
+}
+
+resource "cloudflare_record" "subdomain" {
+  count = local.is_subdomain ? 1 : 0
+
+  zone_id = var.zone_id
+  name    = local.route_subdomain
+  type    = "CNAME"
+  content = "${var.account_id}.workers.dev"
   proxied = true
   ttl     = 1
 }

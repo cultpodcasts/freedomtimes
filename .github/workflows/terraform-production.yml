@@ -1,10 +1,6 @@
 name: Terraform – Production
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "infra/terraform/**"
   push:
     branches: [main]
     paths:
