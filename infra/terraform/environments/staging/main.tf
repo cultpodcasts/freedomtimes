@@ -2,6 +2,10 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
+provider "azurerm" {
+  features {}
+}
+
 provider "auth0" {
   domain        = var.auth0_domain
   client_id     = var.auth0_client_id
@@ -17,7 +21,7 @@ module "cloudflare_holding_page" {
   worker_name   = var.worker_name
   route_pattern = var.route_pattern
 
-  manage_apex_dns_record = var.manage_apex_dns_record
+  manage_apex_dns_record  = var.manage_apex_dns_record
   apex_dns_record_content = var.apex_dns_record_content
 
   holding_title   = var.holding_title
@@ -30,8 +34,22 @@ module "cloudflare_holding_page" {
 module "auth0_app" {
   source = "../../modules/auth0_app"
 
-  auth0_domain               = var.auth0_domain
-  workspace_url              = "https://staging.freedomtimes.news"
-  app_name                   = "freedomtimes-admin-staging"
-  create_shared_resources    = false
+  auth0_domain            = var.auth0_domain
+  workspace_url           = "https://staging.freedomtimes.news"
+  app_name                = "freedomtimes-admin-staging"
+  create_shared_resources = false
+}
+
+module "azure_editorial_api" {
+  source = "../../modules/azure_editorial_api"
+
+  project_name = "freedomtimes"
+  environment  = "staging"
+  location     = var.azure_location
+
+  tags = {
+    project     = "freedomtimes"
+    environment = "staging"
+    managed_by  = "terraform"
+  }
 }

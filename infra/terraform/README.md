@@ -8,13 +8,28 @@ Terraform is not required for local application development. Local work can run 
 
 - Cloudflare holding page worker
 - Worker route attachment to a configured zone pattern
+- Auth0 application and RBAC resources
+- Azure editorial API foundation (Resource Group, Function App, Cosmos DB)
 - Environment entrypoints for `production` and `staging`
+
+## Environment Separation Rule
+
+Terraform must maintain strict separation between staging and production for all providers (Cloudflare, Auth0, Azure).
+
+- Use separate environment entrypoints:
+   - `environments/staging`
+   - `environments/production`
+- Keep distinct Terraform Cloud workspaces per environment.
+- Keep environment-specific resource names and settings so staging and production do not collide.
+- Do not deploy feature work directly to production first; staging remains the validation path before production promotion.
 
 ## Layout
 
 - environments/production: production environment entrypoint and variables
 - environments/staging: staging environment entrypoint and variables
 - modules/cloudflare_holding_page: reusable module for holding page worker and route
+- modules/auth0_app: reusable module for Auth0 app and shared auth resources
+- modules/azure_editorial_api: reusable module for Azure editorial API resources
 
 ## Security
 

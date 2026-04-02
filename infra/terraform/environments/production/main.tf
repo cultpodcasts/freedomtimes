@@ -2,6 +2,10 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
+provider "azurerm" {
+  features {}
+}
+
 provider "auth0" {
   domain        = var.auth0_domain
   client_id     = var.auth0_client_id
@@ -34,4 +38,18 @@ module "auth0_app" {
   workspace_url                = "https://freedomtimes.news"
   auth0_domain                 = var.auth0_domain
   extra_workspace_urls         = ["https://staging.freedomtimes.news"]
+}
+
+module "azure_editorial_api" {
+  source = "../../modules/azure_editorial_api"
+
+  project_name = "freedomtimes"
+  environment  = "production"
+  location     = var.azure_location
+
+  tags = {
+    project     = "freedomtimes"
+    environment = "production"
+    managed_by  = "terraform"
+  }
 }

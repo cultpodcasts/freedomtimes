@@ -14,6 +14,12 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "azure_location" {
+  description = "Azure region for editorial API resources"
+  type        = string
+  default     = "uksouth"
+}
+
 variable "worker_name" {
   description = "Worker name for the holding page"
   type        = string

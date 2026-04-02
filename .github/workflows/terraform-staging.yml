@@ -1,6 +1,12 @@
 name: Terraform - Staging
 
 on:
+  push:
+    branches: [feat/11-editorial-api-cosmos]
+    paths:
+      - "infra/terraform/**"
+      - "web/**"
+      - ".github/workflows/terraform-staging.yml"
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -23,9 +29,14 @@ jobs:
 
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
       TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
       TF_VAR_cloudflare_account_id: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.TF_VAR_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_azure_location: "uksouth"
       TF_VAR_route_pattern: "staging.freedomtimes.news/*"
       TF_VAR_worker_name: "freedomtimes-holding-staging"
       TF_VAR_manage_apex_dns_record: "false"

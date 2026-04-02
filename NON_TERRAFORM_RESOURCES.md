@@ -59,3 +59,74 @@ Once the Terraform provider M2M app is created and credentials are set:
 ## Why These Cannot Be in Terraform
 
 The Auth0 Terraform provider uses client credentials from `TF_VAR_auth0_client_id` / `TF_VAR_auth0_client_secret` to authenticate against the Management API. Those credentials must already exist and be authorized before Terraform can run — so they cannot be resources that Terraform itself creates.
+
+---
+
+## Azure
+
+Azure resources for the editorial API are managed by Terraform, but the Azure credentials used by the `azurerm` Terraform provider must be created manually first.
+
+---
+
+### 2. `freedomtimes-terraform` — Azure Service Principal
+
+This service principal authenticates the Terraform `azurerm` provider so Terraform can create and manage:
+
+- Resource Groups
+- Storage Accounts
+- Function Apps
+- Cosmos DB accounts, databases, and containers
+
+**Corresponds to `.env.dev` vars:**
+- `ARM_CLIENT_ID`
+- `ARM_CLIENT_SECRET`
+- `ARM_SUBSCRIPTION_ID`
+- `ARM_TENANT_ID`
+- `TF_VAR_azure_location`
+
+#### Steps
+
+1. Open Azure Cloud Shell or a terminal with Azure CLI installed
+2. Get the current subscription and tenant IDs:
+
+   ```bash
+   az account show --query "{subscriptionId:id, tenantId:tenantId, name:name}" -o table
+   ```
+
+3. Create a service principal for Terraform at subscription scope:
+
+   ```bash
+   az ad sp create-for-rbac \
+     --name "freedomtimes-terraform" \
+     --role Contributor \
+     --scopes /subscriptions/<SUBSCRIPTION_ID>
+   ```
+
+4. Copy values from the command output:
+   - `appId` -> `ARM_CLIENT_ID`
+   - `password` -> `ARM_CLIENT_SECRET`
+   - `tenant` -> `ARM_TENANT_ID`
+   - Subscription ID from step 2 -> `ARM_SUBSCRIPTION_ID`
+5. Set `TF_VAR_azure_location` in `.env.dev` (recommended: `uksouth`)
+6. Run `./scripts/set-github-secrets.ps1` to push updated Azure credentials and variables to GitHub Actions
+
+#### Notes
+
+- `password` is only shown once when the service principal is created. Save it immediately.
+- `Contributor` is acceptable for bootstrap speed. If needed later, replace with a more restrictive role model once required Azure permissions are fully known.
+
+---
+
+## After Azure Credentials Are Created
+
+Once the Azure service principal is created and credentials are set:
+
+1. Update `.env.dev` with `ARM_*` values and `TF_VAR_azure_location`
+2. Run `./scripts/set-github-secrets.ps1`
+3. Terraform will be able to provision Azure resources on the next apply
+
+---
+
+## Why These Cannot Be in Terraform
+
+The Azure Terraform provider (`azurerm`) needs pre-existing credentials to authenticate against Azure Resource Manager. Those credentials must already exist before Terraform can create any Azure resources, so the service principal bootstrap cannot itself be created by the same Terraform configuration it is intended to authorize.

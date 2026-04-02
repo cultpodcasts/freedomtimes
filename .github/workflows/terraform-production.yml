@@ -23,9 +23,14 @@ jobs:
 
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_app_terraform_io }}
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
       TF_VAR_cloudflare_api_token: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
       TF_VAR_cloudflare_account_id: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.TF_VAR_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_azure_location: ${{ vars.TF_VAR_AZURE_LOCATION }}
       TF_VAR_route_pattern: ${{ vars.TF_VAR_ROUTE_PATTERN }}
       TF_VAR_worker_name: ${{ vars.TF_VAR_WORKER_NAME }}
       TF_VAR_holding_title: ${{ vars.TF_VAR_HOLDING_TITLE }}

@@ -78,6 +78,10 @@ function Get-EnvValue {
 # Secrets  (sensitive — stored encrypted, never visible after setting)
 # ---------------------------------------------------------------------------
 $secrets = [ordered]@{
+    ARM_CLIENT_ID              = $env["ARM_CLIENT_ID"]
+    ARM_CLIENT_SECRET          = $env["ARM_CLIENT_SECRET"]
+    ARM_SUBSCRIPTION_ID        = $env["ARM_SUBSCRIPTION_ID"]
+    ARM_TENANT_ID              = $env["ARM_TENANT_ID"]
     TF_VAR_CLOUDFLARE_API_TOKEN  = $env["TF_VAR_cloudflare_api_token"]
     TF_VAR_CLOUDFLARE_ACCOUNT_ID = $env["TF_VAR_cloudflare_account_id"]
     TF_VAR_CLOUDFLARE_ZONE_ID    = $env["TF_VAR_cloudflare_zone_id"]
@@ -119,6 +123,7 @@ else {
 $variables = [ordered]@{
     TFC_ORGANIZATION      = "freedomtimes"
     TFC_WORKSPACE_PRODUCTION = "freedomtimes-production"
+    TF_VAR_AZURE_LOCATION  = $env["TF_VAR_azure_location"]
     TF_VAR_ROUTE_PATTERN   = $env["TF_VAR_route_pattern"]
     TF_VAR_WORKER_NAME     = $env["TF_VAR_worker_name"]
     TF_VAR_HOLDING_TITLE   = $env["TF_VAR_holding_title"]

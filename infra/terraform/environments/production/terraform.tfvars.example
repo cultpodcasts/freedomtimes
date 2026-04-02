@@ -1,5 +1,6 @@
 cloudflare_account_id = "<cloudflare-account-id>"
 cloudflare_zone_id    = "<cloudflare-zone-id>"
+azure_location        = "uksouth"
 route_pattern         = "example.com/*"
 
 worker_name     = "freedomtimes-holding"
