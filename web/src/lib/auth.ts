@@ -86,7 +86,7 @@ export async function verifyIdToken(idToken: string, config: AuthConfig): Promis
   };
 
   if (alg === 'HS256') {
-    const sharedSecret = new TextEncoder().encode(config.clientSecret);
+    const sharedSecret = decodeAuth0ClientSecret(config.clientSecret);
     const { payload } = await jwtVerify(idToken, sharedSecret, {
       ...verifyOptions,
       algorithms: ['HS256'],
@@ -101,6 +101,13 @@ export async function verifyIdToken(idToken: string, config: AuthConfig): Promis
   });
 
   return payload;
+}
+
+function decodeAuth0ClientSecret(secret: string): Uint8Array {
+  const normalized = secret.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+  const decoded = atob(padded);
+  return Uint8Array.from(decoded, (char) => char.charCodeAt(0));
 }
 
 export function hasAdminRole(payload: JWTPayload): boolean {
