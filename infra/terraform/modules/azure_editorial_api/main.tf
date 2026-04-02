@@ -11,9 +11,7 @@ locals {
   storage_connection_string = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.function.name};AccountKey=${azurerm_storage_account.function.primary_access_key};EndpointSuffix=core.windows.net"
 
   base_app_settings = {
-    FUNCTIONS_WORKER_RUNTIME        = "node"
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
-    WEBSITE_NODE_DEFAULT_VERSION    = "~${var.node_version}"
     COSMOSDB_DATABASE_NAME          = azurerm_cosmosdb_sql_database.editorial.name
     COSMOSDB_STORIES_CONTAINER      = azurerm_cosmosdb_sql_container.stories.name
     COSMOSDB_MEDIA_CONTAINER        = azurerm_cosmosdb_sql_container.media.name
