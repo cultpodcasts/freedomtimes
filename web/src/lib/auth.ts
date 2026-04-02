@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
 import { env as cfEnv } from 'cloudflare:workers';
 
 export const SESSION_COOKIE = 'ft_session';
@@ -78,10 +78,26 @@ export async function exchangeCodeForIdToken(params: {
 }
 
 export async function verifyIdToken(idToken: string, config: AuthConfig): Promise<JWTPayload> {
-  const jwks = createRemoteJWKSet(new URL(`https://${config.domain}/.well-known/jwks.json`));
-  const { payload } = await jwtVerify(idToken, jwks, {
+  const { alg } = decodeProtectedHeader(idToken);
+
+  const verifyOptions = {
     issuer: `https://${config.domain}/`,
     audience: config.clientId,
+  };
+
+  if (alg === 'HS256') {
+    const sharedSecret = new TextEncoder().encode(config.clientSecret);
+    const { payload } = await jwtVerify(idToken, sharedSecret, {
+      ...verifyOptions,
+      algorithms: ['HS256'],
+    });
+    return payload;
+  }
+
+  const jwks = createRemoteJWKSet(new URL(`https://${config.domain}/.well-known/jwks.json`));
+  const { payload } = await jwtVerify(idToken, jwks, {
+    ...verifyOptions,
+    algorithms: ['RS256'],
   });
 
   return payload;
