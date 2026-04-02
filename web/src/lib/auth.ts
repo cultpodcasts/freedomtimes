@@ -73,6 +73,11 @@ export function getCookieDomainForHost(hostname: string): string | undefined {
   return undefined;
 }
 
+export function getCookieDeleteOptionsForHost(hostname: string): Array<{ path: '/'; domain?: string }> {
+  const cookieDomain = getCookieDomainForHost(hostname);
+  return cookieDomain ? [{ path: '/' }, { path: '/', domain: cookieDomain }] : [{ path: '/' }];
+}
+
 export async function exchangeCodeForTokens(params: {
   code: string;
   redirectUri: string;

@@ -4,6 +4,7 @@ import {
   CSRF_COOKIE,
   SESSION_COOKIE,
   exchangeCodeForTokens,
+  getCookieDeleteOptionsForHost,
   getCookieDomainForHost,
   getRoleClaimDebug,
   getAuthConfig,
@@ -17,7 +18,7 @@ export const GET: APIRoute = async (ctx) => {
   const requestId = ctx.request.headers.get('cf-ray') ?? crypto.randomUUID();
   const config = getAuthConfig();
   const cookieDomain = getCookieDomainForHost(ctx.url.hostname);
-  const deleteOptions = cookieDomain ? { path: '/', domain: cookieDomain } : { path: '/' };
+  const deleteOptionsList = getCookieDeleteOptionsForHost(ctx.url.hostname);
   const stateParam = ctx.url.searchParams.get('state');
   const code = ctx.url.searchParams.get('code');
   const expectedState = ctx.cookies.get(getStateCookieName())?.value;
@@ -29,7 +30,9 @@ export const GET: APIRoute = async (ctx) => {
     hasStateCookie: Boolean(expectedState),
   });
 
-  ctx.cookies.delete(getStateCookieName(), { path: '/' });
+  for (const deleteOptions of deleteOptionsList) {
+    ctx.cookies.delete(getStateCookieName(), deleteOptions);
+  }
 
   if (!code || !stateParam || !expectedState || stateParam !== expectedState) {
     console.warn('[auth.callback] invalid callback payload/state mismatch', {
@@ -52,13 +55,22 @@ export const GET: APIRoute = async (ctx) => {
         requestId,
         roleDebug: getRoleClaimDebug(payload),
       });
-      ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
-      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-      ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
+      for (const deleteOptions of deleteOptionsList) {
+        ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
+        ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+        ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
+      }
       return ctx.redirect('/?denied=1');
     }
 
     const csrfToken = makeState();
+
+    // Clear any older host-only/domain-scoped auth cookies before issuing a fresh session.
+    for (const deleteOptions of deleteOptionsList) {
+      ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
+      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+      ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
+    }
 
 
     // Set session cookie (id token)
@@ -100,9 +112,11 @@ export const GET: APIRoute = async (ctx) => {
       requestId,
       message,
     });
-    ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
-    ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-    ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
+    for (const deleteOptions of deleteOptionsList) {
+      ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
+      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+      ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
+    }
     return ctx.redirect('/?denied=1');
   }
 };

@@ -1,14 +1,15 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { SESSION_COOKIE, getAuthConfig, getCookieDomainForHost, getDisplayName, hasEditorialRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
+import { SESSION_COOKIE, getAuthConfig, getCookieDeleteOptionsForHost, getDisplayName, getRoleClaimDebug, hasEditorialRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
 
 const token = Astro.cookies.get(SESSION_COOKIE)?.value;
+const requestId = Astro.request.headers.get('cf-ray') ?? crypto.randomUUID();
 if (!token) {
+  console.warn('[signed-in] missing session cookie', { requestId });
   return Astro.redirect('/');
 }
 
-const cookieDomain = getCookieDomainForHost(Astro.url.hostname);
-const deleteOptions = cookieDomain ? { path: '/', domain: cookieDomain } : { path: '/' };
+const deleteOptionsList = getCookieDeleteOptionsForHost(Astro.url.hostname);
 
 let name = '';
 const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
@@ -16,13 +17,30 @@ const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
 try {
   const payload = await verifyIdToken(token, getAuthConfig());
   if (!hasEditorialRole(payload)) {
-    Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
+    console.warn('[signed-in] token verified but role check failed', {
+      requestId,
+      roleDebug: getRoleClaimDebug(payload),
+    });
+    for (const deleteOptions of deleteOptionsList) {
+      Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
+    }
     return Astro.redirect('/');
   }
 
   name = getDisplayName(payload);
-} catch {
-  Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
+  console.info('[signed-in] token verified and page render allowed', {
+    requestId,
+    sessionCookieLength: token.length,
+  });
+} catch (error) {
+  console.warn('[signed-in] token verification failed', {
+    requestId,
+    sessionCookieLength: token.length,
+    error: error instanceof Error ? error.message : String(error),
+  });
+  for (const deleteOptions of deleteOptionsList) {
+    Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
+  }
   return Astro.redirect('/');
 }
 ---
