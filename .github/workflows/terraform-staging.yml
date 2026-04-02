@@ -68,6 +68,32 @@ jobs:
           terraform_version: "1.14.8"
           terraform_wrapper: false
 
+      - name: Preflight Unlock Stale TFC Lock
+        env:
+          TFC_ORG: freedomtimes
+          TFC_WORKSPACE: freedomtimes-staging
+        run: |
+          set -euo pipefail
+          API_BASE="https://app.terraform.io/api/v2"
+          AUTH_HEADER="Authorization: Bearer $TF_TOKEN_app_terraform_io"
+          CT_HEADER="Content-Type: application/vnd.api+json"
+
+          WS_JSON=$(curl -sS -H "$AUTH_HEADER" "$API_BASE/organizations/$TFC_ORG/workspaces/$TFC_WORKSPACE")
+          WS_ID=$(echo "$WS_JSON" | jq -r '.data.id')
+          LOCKED=$(echo "$WS_JSON" | jq -r '.data.attributes.locked')
+
+          echo "workspace_id=$WS_ID locked=$LOCKED"
+
+          if [ "$LOCKED" = "true" ]; then
+            echo "Stale lock detected, submitting unlock before terraform init"
+            curl -sS -X POST \
+              -H "$AUTH_HEADER" \
+              -H "$CT_HEADER" \
+              --data '{"reason":"Auto-unlock stale lock before staging workflow run"}' \
+              "$API_BASE/workspaces/$WS_ID/actions/unlock" >/dev/null
+            sleep 3
+          fi
+
       - name: Terraform Init
         run: terraform init -input=false
 
@@ -204,3 +230,29 @@ jobs:
           printf '%s' "$AUTH0_DOMAIN_VALUE" | npx wrangler secret put AUTH0_DOMAIN --config wrangler.staging.jsonc
           printf '%s' "$AUTH0_CLIENT_ID_VALUE" | npx wrangler secret put AUTH0_CLIENT_ID --config wrangler.staging.jsonc
           printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.staging.jsonc
+
+      - name: Cleanup Unlock TFC Workspace
+        if: always()
+        env:
+          TFC_ORG: freedomtimes
+          TFC_WORKSPACE: freedomtimes-staging
+        run: |
+          set -euo pipefail
+          API_BASE="https://app.terraform.io/api/v2"
+          AUTH_HEADER="Authorization: Bearer $TF_TOKEN_app_terraform_io"
+          CT_HEADER="Content-Type: application/vnd.api+json"
+
+          WS_JSON=$(curl -sS -H "$AUTH_HEADER" "$API_BASE/organizations/$TFC_ORG/workspaces/$TFC_WORKSPACE")
+          WS_ID=$(echo "$WS_JSON" | jq -r '.data.id')
+          LOCKED=$(echo "$WS_JSON" | jq -r '.data.attributes.locked')
+
+          if [ "$LOCKED" = "true" ]; then
+            echo "Workspace lock still present at job end, submitting cleanup unlock"
+            curl -sS -X POST \
+              -H "$AUTH_HEADER" \
+              -H "$CT_HEADER" \
+              --data '{"reason":"Auto-unlock cleanup after staging workflow run"}' \
+              "$API_BASE/workspaces/$WS_ID/actions/unlock" >/dev/null || true
+          else
+            echo "Workspace already unlocked"
+          fi
