@@ -13,6 +13,11 @@ output "auth0_app_client_id" {
   value       = module.auth0_app.application_id
 }
 
+output "auth0_api_identifier" {
+  description = "Auth0 API audience/identifier for staging tokens"
+  value       = module.auth0_app.api_identifier
+}
+
 output "azure_resource_group_name" {
   description = "Resource Group name for staging editorial API resources"
   value       = module.azure_editorial_api.resource_group_name
