@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { SESSION_COOKIE, getAuthConfig, getCookieDomainForHost, getDisplayName, hasAdminRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
+import { SESSION_COOKIE, getAuthConfig, getCookieDomainForHost, getDisplayName, hasEditorialRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
 
 const token = Astro.cookies.get(SESSION_COOKIE)?.value;
 if (!token) {
@@ -15,7 +15,7 @@ const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
 
 try {
   const payload = await verifyIdToken(token, getAuthConfig());
-  if (!hasAdminRole(payload)) {
+  if (!hasEditorialRole(payload)) {
     Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
     return Astro.redirect('/');
   }

@@ -8,7 +8,7 @@ const denied = Astro.url.searchParams.get('denied') === '1';
 	<section class="card">
 		<h1>Freedom Times</h1>
 		<p class="lead">A secure holding page for early access.</p>
-		{denied && <p class="warn">You must have the admin role to continue.</p>}
+		{denied && <p class="warn">You must have an admin or editor role to continue.</p>}
 		<a class="button" href="/auth/login">Log in with Google</a>
 	</section>
 </Layout>

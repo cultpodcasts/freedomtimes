@@ -159,6 +159,19 @@ export function hasAdminRole(payload: JWTPayload): boolean {
   return false;
 }
 
+export function hasEditorialRole(payload: JWTPayload): boolean {
+  const allowed = new Set(['admin', 'editor']);
+
+  for (const claim of ROLE_CLAIMS) {
+    const value = payload[claim];
+    if (Array.isArray(value) && value.some((r) => allowed.has(String(r).toLowerCase()))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function getRoleClaimDebug(payload: JWTPayload): Record<string, unknown> {
   const roleClaimValues: Record<string, unknown> = {};
   for (const claim of ROLE_CLAIMS) {

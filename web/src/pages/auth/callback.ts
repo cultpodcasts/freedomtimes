@@ -9,7 +9,7 @@ import {
   getAuthConfig,
   makeState,
   getStateCookieName,
-  hasAdminRole,
+  hasEditorialRole,
   verifyIdToken,
 } from '../../lib/auth';
 
@@ -47,8 +47,8 @@ export const GET: APIRoute = async (ctx) => {
     const { idToken, accessToken } = await exchangeCodeForTokens({ code, redirectUri, config });
     const payload = await verifyIdToken(idToken, config);
 
-    if (!hasAdminRole(payload)) {
-      console.warn('[auth.callback] user denied: missing admin role claim', {
+    if (!hasEditorialRole(payload)) {
+      console.warn('[auth.callback] user denied: missing required editorial role claim', {
         requestId,
         roleDebug: getRoleClaimDebug(payload),
       });
