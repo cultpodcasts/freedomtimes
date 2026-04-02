@@ -18,6 +18,7 @@ locals {
   api_gateway_diagnostics_enabled   = local.api_gateway_policy_enabled && var.enable_api_management_diagnostics
   apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
   apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
+  apim_allowed_origins_condition    = length(var.api_management_allowed_origins) > 0 ? join(" || ", [for origin in var.api_management_allowed_origins : "context.Request.Headers.GetValueOrDefault(\"Origin\", \"\") == \"${origin}\""]) : "false"
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
   apim_gateway_custom_domain_enabled = local.api_gateway_policy_enabled && length(trimspace(var.api_management_gateway_custom_domain)) > 0 && length(trimspace(var.api_management_gateway_certificate_base64)) > 0 && length(trimspace(var.api_management_gateway_certificate_password)) > 0
 
@@ -339,6 +340,22 @@ ${local.apim_required_claims_xml}
       <outbound>
         <base />
         <choose>
+          <when condition="@(${local.apim_allowed_origins_condition})">
+            <set-header name="Access-Control-Allow-Origin" exists-action="override">
+              <value>@(context.Request.Headers.GetValueOrDefault(&quot;Origin&quot;, &quot;&quot;))</value>
+            </set-header>
+            <set-header name="Access-Control-Allow-Credentials" exists-action="override">
+              <value>true</value>
+            </set-header>
+            <set-header name="Access-Control-Expose-Headers" exists-action="override">
+              <value>Content-Type, X-Correlation-ID</value>
+            </set-header>
+            <set-header name="Vary" exists-action="append">
+              <value>Origin</value>
+            </set-header>
+          </when>
+        </choose>
+        <choose>
           <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
             <set-header name="X-Correlation-ID" exists-action="override">
               <value>@((string)context.Variables[&quot;correlationId&quot;])</value>
@@ -348,6 +365,22 @@ ${local.apim_required_claims_xml}
       </outbound>
       <on-error>
         <base />
+        <choose>
+          <when condition="@(${local.apim_allowed_origins_condition})">
+            <set-header name="Access-Control-Allow-Origin" exists-action="override">
+              <value>@(context.Request.Headers.GetValueOrDefault(&quot;Origin&quot;, &quot;&quot;))</value>
+            </set-header>
+            <set-header name="Access-Control-Allow-Credentials" exists-action="override">
+              <value>true</value>
+            </set-header>
+            <set-header name="Access-Control-Expose-Headers" exists-action="override">
+              <value>Content-Type, X-Correlation-ID</value>
+            </set-header>
+            <set-header name="Vary" exists-action="append">
+              <value>Origin</value>
+            </set-header>
+          </when>
+        </choose>
         <choose>
           <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
             <set-header name="X-Correlation-ID" exists-action="override">

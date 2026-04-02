@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { SESSION_COOKIE, getAuthConfig, getCookieDomainForHost, getDisplayName, hasAdminRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
+import { SESSION_COOKIE, getAuthConfig, getCookieDomainForHost, getDisplayName, hasAdminRole, verifyIdToken } from '../lib/auth';
 
 const token = Astro.cookies.get(SESSION_COOKIE)?.value;
 if (!token) {
@@ -11,7 +11,6 @@ const cookieDomain = getCookieDomainForHost(Astro.url.hostname);
 const deleteOptions = cookieDomain ? { path: '/', domain: cookieDomain } : { path: '/' };
 
 let name = '';
-const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
 
 try {
   const payload = await verifyIdToken(token, getAuthConfig());
@@ -43,8 +42,8 @@ try {
     <a class="button" href="/auth/logout">Log out</a>
   </section>
 
-  <script is:inline define:vars={{ editorialApiBaseUrl }}>
-    const baseUrl = editorialApiBaseUrl;
+  <script is:inline>
+    const proxyPath = '/api/editorial-proxy';
     const endpointInput = document.getElementById('endpoint');
     const testButton = document.getElementById('test-api');
     const resultEl = document.getElementById('api-result');
@@ -67,17 +66,12 @@ try {
     }
 
     async function testApi() {
-      if (!baseUrl) {
-        resultEl.textContent = 'API_BASE_URL is not configured in worker runtime vars.';
-        return;
-      }
-
       const endpointPath = endpointInput.value.trim() || '/stories';
       const normalizedPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
-      const url = `${baseUrl}${normalizedPath}`;
+      const url = `${proxyPath}?path=${encodeURIComponent(normalizedPath)}`;
       const correlationId = createCorrelationId();
 
-      resultEl.textContent = `Calling ${url}...\nCorrelation ID: ${correlationId}`;
+      resultEl.textContent = `Calling ${normalizedPath} via same-origin proxy...\nCorrelation ID: ${correlationId}`;
 
       try {
         const csrfToken = readCookie('ft_csrf');
@@ -88,7 +82,7 @@ try {
 
         const response = await fetch(url, {
           method: 'GET',
-          credentials: 'include',
+          credentials: 'same-origin',
           headers,
         });
 
