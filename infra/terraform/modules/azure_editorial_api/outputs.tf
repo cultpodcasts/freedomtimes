@@ -18,6 +18,11 @@ output "api_management_name" {
   value       = length(azurerm_api_management.editorial) > 0 ? azurerm_api_management.editorial[0].name : null
 }
 
+output "api_management_id" {
+  description = "API Management resource ID when gateway policy is enabled"
+  value       = length(azurerm_api_management.editorial) > 0 ? azurerm_api_management.editorial[0].id : null
+}
+
 output "api_gateway_url" {
   description = "API Management gateway URL when gateway policy is enabled"
   value       = length(azurerm_api_management.editorial) > 0 ? azurerm_api_management.editorial[0].gateway_url : null

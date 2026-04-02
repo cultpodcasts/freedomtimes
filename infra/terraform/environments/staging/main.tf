@@ -87,8 +87,7 @@ resource "cloudflare_record" "api_custom_hostname" {
 resource "azurerm_api_management_custom_domain" "editorial" {
   count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 && module.azure_editorial_api.api_management_name != null ? 1 : 0
 
-  resource_group_name = module.azure_editorial_api.resource_group_name
-  api_management_name = module.azure_editorial_api.api_management_name
+  api_management_id = module.azure_editorial_api.api_management_id
 
   gateway {
     host_name            = trimspace(var.api_custom_hostname)
