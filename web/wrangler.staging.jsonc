@@ -1,0 +1,18 @@
+{
+  // Worker configuration for staging environment
+  "name": "freedomtimes-holding-staging",
+  "main": "dist/server/entry.mjs",
+  "compatibility_date": "2026-03-29",
+  "logpush": true,
+
+  // Observability settings
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+
+  // Static assets configuration
+  "assets": {
+    "directory": "dist/client"
+  }
+}
