@@ -15,6 +15,7 @@ locals {
   auth0_openid_configuration_url    = "${local.auth0_issuer_url}/.well-known/openid-configuration"
   easy_auth_enabled                 = var.enable_easy_auth && length(trimspace(var.auth0_domain)) > 0 && length(trimspace(var.auth0_editorial_client_id)) > 0
   api_gateway_policy_enabled        = var.enable_api_gateway_policy && local.easy_auth_enabled && length(trimspace(var.auth0_api_audience)) > 0
+  api_gateway_diagnostics_enabled   = local.api_gateway_policy_enabled && var.enable_api_management_diagnostics
   apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
   apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
@@ -58,6 +59,24 @@ resource "azurerm_service_plan" "function" {
   tags                = var.tags
 }
 
+resource "azurerm_log_analytics_workspace" "editorial" {
+  name                = "${var.project_name}-${var.environment}-law-${local.hash}"
+  location            = azurerm_resource_group.editorial.location
+  resource_group_name = azurerm_resource_group.editorial.name
+  sku                 = "PerGB2018"
+  retention_in_days   = var.log_analytics_retention_in_days
+  tags                = var.tags
+}
+
+resource "azurerm_application_insights" "editorial" {
+  name                = "${var.project_name}-${var.environment}-appi-${local.hash}"
+  location            = azurerm_resource_group.editorial.location
+  resource_group_name = azurerm_resource_group.editorial.name
+  workspace_id        = azurerm_log_analytics_workspace.editorial.id
+  application_type    = "web"
+  tags                = var.tags
+}
+
 resource "azurerm_storage_container" "function_code" {
   name                  = "function-code"
   storage_account_id    = azurerm_storage_account.function.id
@@ -78,7 +97,10 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   runtime_name    = "node"
   runtime_version = var.node_version
 
-  site_config {}
+  site_config {
+    application_insights_connection_string = azurerm_application_insights.editorial.connection_string
+    application_insights_key               = azurerm_application_insights.editorial.instrumentation_key
+  }
 
   dynamic "auth_settings_v2" {
     for_each = local.easy_auth_enabled ? [1] : []
@@ -106,7 +128,9 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   # Azure API/provider returns this value differently for Flex Consumption,
   # causing perpetual non-functional plan churn.
   lifecycle {
-    ignore_changes = [storage_access_key]
+    ignore_changes = [
+      storage_access_key,
+    ]
   }
 }
 
@@ -149,6 +173,64 @@ resource "azurerm_api_management_custom_domain" "editorial" {
   }
 }
 
+resource "azurerm_api_management_logger" "application_insights" {
+  count = local.api_gateway_diagnostics_enabled ? 1 : 0
+
+  name                = "appinsights"
+  resource_group_name = azurerm_resource_group.editorial.name
+  api_management_name = azurerm_api_management.editorial[0].name
+
+  application_insights {
+    instrumentation_key = azurerm_application_insights.editorial.instrumentation_key
+  }
+}
+
+resource "azurerm_api_management_api_diagnostic" "editorial" {
+  count = local.api_gateway_diagnostics_enabled ? 1 : 0
+
+  resource_group_name      = azurerm_resource_group.editorial.name
+  api_management_name      = azurerm_api_management.editorial[0].name
+  api_name                 = azurerm_api_management_api.editorial[0].name
+  identifier               = "applicationinsights"
+  api_management_logger_id = azurerm_api_management_logger.application_insights[0].id
+
+  sampling_percentage       = 100.0
+  always_log_errors         = true
+  log_client_ip             = true
+  verbosity                 = "information"
+  http_correlation_protocol = "W3C"
+
+  frontend_request {
+    body_bytes = 0
+    headers_to_log = [
+      "x-correlation-id",
+      "x-forwarded-for",
+      "user-agent",
+    ]
+  }
+
+  frontend_response {
+    body_bytes = 0
+    headers_to_log = [
+      "x-correlation-id",
+    ]
+  }
+
+  backend_request {
+    body_bytes = 0
+    headers_to_log = [
+      "x-correlation-id",
+    ]
+  }
+
+  backend_response {
+    body_bytes = 0
+    headers_to_log = [
+      "x-correlation-id",
+    ]
+  }
+}
+
 resource "azurerm_api_management_api_policy" "editorial" {
   count = local.api_gateway_policy_enabled ? 1 : 0
 
@@ -177,11 +259,23 @@ ${local.apim_allowed_origins_xml}
             <header>Authorization</header>
             <header>Content-Type</header>
             <header>X-CSRF-Token</header>
+            <header>X-Correlation-ID</header>
           </allowed-headers>
           <expose-headers>
             <header>Content-Type</header>
+            <header>X-Correlation-ID</header>
           </expose-headers>
         </cors>
+
+        <!-- Propagate client-supplied correlation id end to end -->
+        <set-variable name="correlationId" value="@(context.Request.Headers.GetValueOrDefault(&quot;X-Correlation-ID&quot;, &quot;&quot;))" />
+        <choose>
+          <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
+            <set-header name="X-Correlation-ID" exists-action="override">
+              <value>@((string)context.Variables[&quot;correlationId&quot;])</value>
+            </set-header>
+          </when>
+        </choose>
 
         <!-- Remove any inbound Authorization header from client -->
         <set-header name="Authorization" exists-action="delete" />
@@ -244,9 +338,23 @@ ${local.apim_required_claims_xml}
       </backend>
       <outbound>
         <base />
+        <choose>
+          <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
+            <set-header name="X-Correlation-ID" exists-action="override">
+              <value>@((string)context.Variables[&quot;correlationId&quot;])</value>
+            </set-header>
+          </when>
+        </choose>
       </outbound>
       <on-error>
         <base />
+        <choose>
+          <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
+            <set-header name="X-Correlation-ID" exists-action="override">
+              <value>@((string)context.Variables[&quot;correlationId&quot;])</value>
+            </set-header>
+          </when>
+        </choose>
       </on-error>
     </policies>
   XML

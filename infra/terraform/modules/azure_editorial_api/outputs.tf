@@ -28,6 +28,22 @@ output "api_gateway_hostname" {
   value       = length(azurerm_api_management.editorial) > 0 ? trimsuffix(trimprefix(azurerm_api_management.editorial[0].gateway_url, "https://"), "/") : null
 }
 
+output "application_insights_name" {
+  description = "Application Insights resource name for editorial API telemetry"
+  value       = azurerm_application_insights.editorial.name
+}
+
+output "application_insights_connection_string" {
+  description = "Application Insights connection string for editorial API telemetry"
+  value       = azurerm_application_insights.editorial.connection_string
+  sensitive   = true
+}
+
+output "log_analytics_workspace_name" {
+  description = "Log Analytics workspace name for editorial API telemetry"
+  value       = azurerm_log_analytics_workspace.editorial.name
+}
+
 output "editorial_api_public_base_url" {
   description = "Public base URL for editorial API through API Management"
   value = length(azurerm_api_management.editorial) > 0 ? format(

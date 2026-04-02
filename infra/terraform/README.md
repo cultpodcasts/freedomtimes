@@ -212,7 +212,7 @@ Notes:
 Browser fetches to APIM host must include credentials:
 
 ```ts
-await fetch("https://api-staging.freedomtimes.news/editorial/health", {
+await fetch("https://api-staging.freedomtimes.news/editorial/stories", {
    method: "GET",
    credentials: "include",
 });
@@ -279,3 +279,45 @@ Certificate handling safety rules:
 - Never upload certificate material as GitHub Actions artifacts.
 - Keep certificate material only in GitHub Secrets (or equivalent secret store).
 - Terraform plan files (`tfplan`) may contain sensitive values; CI should delete them after use.
+
+## Observability: Application Insights + Correlation ID
+
+Editorial API infrastructure now includes:
+
+- Log Analytics workspace
+- Workspace-based Application Insights
+- APIM API diagnostics configured to send telemetry to Application Insights
+
+Correlation ID behavior at APIM:
+
+- Accepts incoming `X-Correlation-ID` from client when present
+- Generates one from APIM request id when missing
+- Forwards `X-Correlation-ID` to backend
+- Echoes `X-Correlation-ID` on outbound and error responses
+
+This enables end-to-end request tracing from browser to APIM and backend telemetry.
+
+### Query by correlation id (KQL)
+
+In Application Insights, use a query like:
+
+```kusto
+let cid = "<correlation-id-from-response-header>";
+union isfuzzy=true requests, traces, exceptions, dependencies
+| where tostring(customDimensions["x-correlation-id"]) == cid
+   or operation_Id == cid
+   or tostring(customDimensions["CorrelationId"]) == cid
+| project timestamp, itemType, operation_Id, cloud_RoleName, name, resultCode, message, customDimensions
+| order by timestamp asc
+```
+
+For APIM request diagnostics specifically:
+
+```kusto
+let cid = "<correlation-id-from-response-header>";
+requests
+| where cloud_RoleName has "apim" or name has "/editorial/"
+| where tostring(customDimensions["x-correlation-id"]) == cid or operation_Id == cid
+| project timestamp, name, resultCode, duration, operation_Id, customDimensions
+| order by timestamp asc
+```

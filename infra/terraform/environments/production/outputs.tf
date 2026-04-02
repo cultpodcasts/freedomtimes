@@ -33,6 +33,16 @@ output "azure_api_management_name" {
   value       = module.azure_editorial_api.api_management_name
 }
 
+output "azure_application_insights_name" {
+  description = "Application Insights name for production editorial API telemetry"
+  value       = module.azure_editorial_api.application_insights_name
+}
+
+output "azure_log_analytics_workspace_name" {
+  description = "Log Analytics workspace name for production editorial API telemetry"
+  value       = module.azure_editorial_api.log_analytics_workspace_name
+}
+
 output "azure_editorial_api_public_base_url" {
   description = "Public API base URL through APIM for production editorial API"
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)

@@ -179,6 +179,18 @@ variable "api_management_allowed_origins" {
   default     = ["https://staging.freedomtimes.news", "https://freedomtimes.news"]
 }
 
+variable "enable_api_management_diagnostics" {
+  description = "Enable API Management diagnostics and App Insights logger for the editorial API"
+  type        = bool
+  default     = true
+}
+
+variable "log_analytics_retention_in_days" {
+  description = "Retention period in days for Log Analytics workspace data"
+  type        = number
+  default     = 30
+}
+
 variable "tags" {
   description = "Tags applied to supported Azure resources"
   type        = map(string)

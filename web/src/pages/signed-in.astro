@@ -35,7 +35,7 @@ try {
 
     <div class="tester">
       <label for="endpoint">API endpoint path</label>
-      <input id="endpoint" type="text" value="/health" />
+      <input id="endpoint" type="text" value="/stories" />
       <button id="test-api" class="button" type="button">Test API (Cookie Auth)</button>
       <pre id="api-result" aria-live="polite">Waiting for test request...</pre>
     </div>
@@ -58,21 +58,33 @@ try {
       return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : '';
     }
 
+    function createCorrelationId() {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+
+      return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
     async function testApi() {
       if (!baseUrl) {
         resultEl.textContent = 'API_BASE_URL is not configured in worker runtime vars.';
         return;
       }
 
-      const endpointPath = endpointInput.value.trim() || '/health';
+      const endpointPath = endpointInput.value.trim() || '/stories';
       const normalizedPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
       const url = `${baseUrl}${normalizedPath}`;
+      const correlationId = createCorrelationId();
 
-      resultEl.textContent = `Calling ${url}...`;
+      resultEl.textContent = `Calling ${url}...\nCorrelation ID: ${correlationId}`;
 
       try {
         const csrfToken = readCookie('ft_csrf');
-        const headers = csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined;
+        const headers = {
+          'X-Correlation-ID': correlationId,
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+        };
 
         const response = await fetch(url, {
           method: 'GET',
@@ -81,7 +93,13 @@ try {
         });
 
         const bodyText = await response.text();
-        resultEl.textContent = `Status: ${response.status}\n\n${bodyText}`;
+        const responseCorrelationId = response.headers.get('X-Correlation-ID') || correlationId;
+        if (response.status === 404) {
+          resultEl.textContent = `Status: 404\nCorrelation ID: ${responseCorrelationId}\n\nEndpoint not found at this path. Try a documented route such as /stories or /stories/search.`;
+          return;
+        }
+
+        resultEl.textContent = `Status: ${response.status}\nCorrelation ID: ${responseCorrelationId}\n\n${bodyText}`;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         resultEl.textContent = `Request failed: ${message}`;
