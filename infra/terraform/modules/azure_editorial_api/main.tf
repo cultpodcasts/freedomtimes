@@ -17,7 +17,7 @@ locals {
   api_gateway_policy_enabled        = var.enable_api_gateway_policy && local.easy_auth_enabled && length(trimspace(var.auth0_api_audience)) > 0
   api_gateway_diagnostics_enabled   = local.api_gateway_policy_enabled && var.enable_api_management_diagnostics
   apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
-  apim_allowed_audiences            = distinct(compact([var.auth0_api_audience, var.auth0_editorial_client_id]))
+  apim_allowed_audiences            = distinct(compact([var.auth0_api_audience, var.auth0_editorial_client_id, "${local.auth0_issuer_url}/userinfo"]))
   apim_allowed_audiences_xml        = join("\n", [for audience in local.apim_allowed_audiences : "            <audience>${audience}</audience>"])
   apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
   apim_allowed_origins_condition    = length(var.api_management_allowed_origins) > 0 ? join(" || ", [for origin in var.api_management_allowed_origins : "context.Request.Headers.GetValueOrDefault(\"Origin\", \"\") == \"${origin}\""]) : "false"
