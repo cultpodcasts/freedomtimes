@@ -57,6 +57,6 @@ Security requirements for this model:
 - strict cookie attributes (`HttpOnly`, `Secure`, domain/path scope, short expiry)
 - APIM header sanitization so client-provided auth header is not trusted
 
-Interim note:
+Current implementation note:
 
-- If a temporary JS-readable token path exists for testing, treat it as transitional and remove it once APIM cookie-to-header flow is fully deployed.
+- The signed-in API test page now calls APIM with `credentials: include` and does not read or attach bearer tokens in browser JavaScript.

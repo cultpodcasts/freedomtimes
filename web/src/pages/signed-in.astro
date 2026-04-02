@@ -1,11 +1,14 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { SESSION_COOKIE, getAuthConfig, getDisplayName, hasAdminRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
+import { SESSION_COOKIE, getAuthConfig, getCookieDomainForHost, getDisplayName, hasAdminRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
 
 const token = Astro.cookies.get(SESSION_COOKIE)?.value;
 if (!token) {
   return Astro.redirect('/');
 }
+
+const cookieDomain = getCookieDomainForHost(Astro.url.hostname);
+const deleteOptions = cookieDomain ? { path: '/', domain: cookieDomain } : { path: '/' };
 
 let name = '';
 const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
@@ -13,13 +16,13 @@ const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
 try {
   const payload = await verifyIdToken(token, getAuthConfig());
   if (!hasAdminRole(payload)) {
-    Astro.cookies.delete(SESSION_COOKIE, { path: '/' });
+    Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
     return Astro.redirect('/');
   }
 
   name = getDisplayName(payload);
 } catch {
-  Astro.cookies.delete(SESSION_COOKIE, { path: '/' });
+  Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
   return Astro.redirect('/');
 }
 ---
@@ -28,12 +31,12 @@ try {
   <section class="card">
     <h1>Signed in!</h1>
     <p class="lead">Welcome, {name}.</p>
-    <p class="hint">Direct API token test is enabled for now. This stores an access token in a JS-readable cookie and increases XSS risk.</p>
+    <p class="hint">API test uses cookie-based auth through APIM. No bearer token is read in browser JavaScript.</p>
 
     <div class="tester">
       <label for="endpoint">API endpoint path</label>
       <input id="endpoint" type="text" value="/health" />
-      <button id="test-api" class="button" type="button">Test API With JWT</button>
+      <button id="test-api" class="button" type="button">Test API (Cookie Auth)</button>
       <pre id="api-result" aria-live="polite">Waiting for test request...</pre>
     </div>
 
@@ -61,12 +64,6 @@ try {
         return;
       }
 
-      const accessToken = readCookie('ft_access_token');
-      if (!accessToken) {
-        resultEl.textContent = 'No access token cookie found. Log out and log in again.';
-        return;
-      }
-
       const endpointPath = endpointInput.value.trim() || '/health';
       const normalizedPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
       const url = `${baseUrl}${normalizedPath}`;
@@ -74,11 +71,13 @@ try {
       resultEl.textContent = `Calling ${url}...`;
 
       try {
+        const csrfToken = readCookie('ft_csrf');
+        const headers = csrfToken ? { 'X-CSRF-Token': csrfToken } : undefined;
+
         const response = await fetch(url, {
           method: 'GET',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+          credentials: 'include',
+          headers,
         });
 
         const bodyText = await response.text();

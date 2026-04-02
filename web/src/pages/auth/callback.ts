@@ -1,10 +1,13 @@
 import type { APIRoute } from 'astro';
 import {
   ACCESS_TOKEN_COOKIE,
+  CSRF_COOKIE,
   SESSION_COOKIE,
   exchangeCodeForTokens,
+  getCookieDomainForHost,
   getRoleClaimDebug,
   getAuthConfig,
+  makeState,
   getStateCookieName,
   hasAdminRole,
   verifyIdToken,
@@ -13,6 +16,8 @@ import {
 export const GET: APIRoute = async (ctx) => {
   const requestId = ctx.request.headers.get('cf-ray') ?? crypto.randomUUID();
   const config = getAuthConfig();
+  const cookieDomain = getCookieDomainForHost(ctx.url.hostname);
+  const deleteOptions = cookieDomain ? { path: '/', domain: cookieDomain } : { path: '/' };
   const stateParam = ctx.url.searchParams.get('state');
   const code = ctx.url.searchParams.get('code');
   const expectedState = ctx.cookies.get(getStateCookieName())?.value;
@@ -47,27 +52,43 @@ export const GET: APIRoute = async (ctx) => {
         requestId,
         roleDebug: getRoleClaimDebug(payload),
       });
-      ctx.cookies.delete(SESSION_COOKIE, { path: '/' });
-      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, { path: '/' });
+      ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
+      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+      ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
       return ctx.redirect('/?denied=1');
     }
 
+    const csrfToken = makeState();
+
+
+    // Set session cookie (id token)
     ctx.cookies.set(SESSION_COOKIE, idToken, {
       httpOnly: true,
       secure: true,
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 8,
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
     });
 
-    // Access token is intentionally readable by browser JS for direct APIM calls.
-    // This increases XSS risk and should be replaced by a BFF flow long-term.
+    // Set access token as HttpOnly cookie for API calls (not JS-readable)
     ctx.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, {
-      httpOnly: false,
+      httpOnly: true,
       secure: true,
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 30,
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
+    });
+
+    // CSRF token is JS-readable by design for double-submit protection on mutation requests.
+    ctx.cookies.set(CSRF_COOKIE, csrfToken, {
+      httpOnly: false,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 8,
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
     });
 
     console.info('[auth.callback] login successful', { requestId });
@@ -79,8 +100,9 @@ export const GET: APIRoute = async (ctx) => {
       requestId,
       message,
     });
-    ctx.cookies.delete(SESSION_COOKIE, { path: '/' });
-    ctx.cookies.delete(ACCESS_TOKEN_COOKIE, { path: '/' });
+    ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
+    ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+    ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
     return ctx.redirect('/?denied=1');
   }
 };

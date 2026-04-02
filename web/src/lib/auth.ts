@@ -3,6 +3,7 @@ import { env as cfEnv } from 'cloudflare:workers';
 
 export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
+export const CSRF_COOKIE = 'ft_csrf';
 const STATE_COOKIE = 'ft_state';
 const ROLE_CLAIMS = [
   'https://freedomtimes.news/roles',
@@ -51,6 +52,25 @@ export function makeState(): string {
 
 export function getStateCookieName(): string {
   return STATE_COOKIE;
+}
+
+export function getCookieDomainForHost(hostname: string): string | undefined {
+  const normalized = hostname.trim().toLowerCase();
+
+  if (!normalized || normalized === 'localhost') {
+    return undefined;
+  }
+
+  // Avoid setting Domain for IP/unknown hosts; host-only cookies are safer there.
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(normalized)) {
+    return undefined;
+  }
+
+  if (normalized === 'freedomtimes.news' || normalized.endsWith('.freedomtimes.news')) {
+    return '.freedomtimes.news';
+  }
+
+  return undefined;
 }
 
 export async function exchangeCodeForTokens(params: {
