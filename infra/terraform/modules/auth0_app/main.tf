@@ -132,7 +132,7 @@ resource "auth0_action" "add_roles_to_token" {
     * @param {PostLoginAPI} api - Interface whose methods can be used to change the behavior of the login.
     */
     exports.onExecutePostLogin = async (event, api) => {
-      const namespace = 'https://api.cultpodcasts.com';
+      const namespace = 'https://freedomtimes.news';
       if (event.authorization) {
         api.idToken.setCustomClaim(`$${namespace}/roles`, event.authorization.roles);
         api.accessToken.setCustomClaim(`$${namespace}/roles`, event.authorization.roles);

@@ -4,7 +4,6 @@ import { env as cfEnv } from 'cloudflare:workers';
 export const SESSION_COOKIE = 'ft_session';
 const STATE_COOKIE = 'ft_state';
 const ROLE_CLAIMS = [
-  'https://api.cultpodcasts.com/roles',
   'https://freedomtimes.news/roles',
   'roles',
 ];
