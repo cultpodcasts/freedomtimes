@@ -32,3 +32,9 @@ variable "extra_workspace_urls" {
   type        = list(string)
   default     = []
 }
+
+variable "jwt_signing_alg" {
+  description = "JWT signing algorithm for Auth0 application tokens"
+  type        = string
+  default     = "HS256"
+}

@@ -17,6 +17,8 @@ locals {
   api_gateway_policy_enabled        = var.enable_api_gateway_policy && local.easy_auth_enabled && length(trimspace(var.auth0_api_audience)) > 0
   api_gateway_diagnostics_enabled   = local.api_gateway_policy_enabled && var.enable_api_management_diagnostics
   apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
+  apim_allowed_audiences            = distinct(compact([var.auth0_api_audience, var.auth0_editorial_client_id]))
+  apim_allowed_audiences_xml        = join("\n", [for audience in local.apim_allowed_audiences : "            <audience>${audience}</audience>"])
   apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
   apim_allowed_origins_condition    = length(var.api_management_allowed_origins) > 0 ? join(" || ", [for origin in var.api_management_allowed_origins : "context.Request.Headers.GetValueOrDefault(\"Origin\", \"\") == \"${origin}\""]) : "false"
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
@@ -162,6 +164,61 @@ resource "azurerm_api_management_api" "editorial" {
   service_url           = "https://${azurerm_function_app_flex_consumption.editorial.default_hostname}/api"
 }
 
+resource "azurerm_api_management_api_operation" "stories_get" {
+  count = local.api_gateway_policy_enabled ? 1 : 0
+
+  operation_id        = "stories-get"
+  api_name            = azurerm_api_management_api.editorial[0].name
+  api_management_name = azurerm_api_management.editorial[0].name
+  resource_group_name = azurerm_resource_group.editorial.name
+  method              = "GET"
+  url_template        = "/stories"
+  display_name        = "Get Stories"
+}
+
+resource "azurerm_api_management_api_operation" "stories_search_get" {
+  count = local.api_gateway_policy_enabled ? 1 : 0
+
+  operation_id        = "stories-search-get"
+  api_name            = azurerm_api_management_api.editorial[0].name
+  api_management_name = azurerm_api_management.editorial[0].name
+  resource_group_name = azurerm_resource_group.editorial.name
+  method              = "GET"
+  url_template        = "/stories/search"
+  display_name        = "Search Stories"
+}
+
+resource "azurerm_api_management_api_operation" "story_by_id_get" {
+  count = local.api_gateway_policy_enabled ? 1 : 0
+
+  operation_id        = "story-by-id-get"
+  api_name            = azurerm_api_management_api.editorial[0].name
+  api_management_name = azurerm_api_management.editorial[0].name
+  resource_group_name = azurerm_resource_group.editorial.name
+  method              = "GET"
+  url_template        = "/stories/{id}"
+  display_name        = "Get Story By ID"
+
+  template_parameter {
+    name        = "id"
+    required    = true
+    type        = "string"
+    description = "Story identifier"
+  }
+}
+
+resource "azurerm_api_management_api_operation" "health_get" {
+  count = local.api_gateway_policy_enabled ? 1 : 0
+
+  operation_id        = "health-get"
+  api_name            = azurerm_api_management_api.editorial[0].name
+  api_management_name = azurerm_api_management.editorial[0].name
+  resource_group_name = azurerm_resource_group.editorial.name
+  method              = "GET"
+  url_template        = "/health"
+  display_name        = "Health"
+}
+
 resource "azurerm_api_management_custom_domain" "editorial" {
   count = local.apim_gateway_custom_domain_enabled ? 1 : 0
 
@@ -239,6 +296,13 @@ resource "azurerm_api_management_api_policy" "editorial" {
   api_management_name = azurerm_api_management.editorial[0].name
   api_name            = azurerm_api_management_api.editorial[0].name
 
+  depends_on = [
+    azurerm_api_management_api_operation.stories_get,
+    azurerm_api_management_api_operation.stories_search_get,
+    azurerm_api_management_api_operation.story_by_id_get,
+    azurerm_api_management_api_operation.health_get,
+  ]
+
   xml_content = <<-XML
     <policies>
       <inbound>
@@ -270,6 +334,7 @@ ${local.apim_allowed_origins_xml}
 
         <!-- Propagate client-supplied correlation id end to end -->
         <set-variable name="correlationId" value="@(context.Request.Headers.GetValueOrDefault(&quot;X-Correlation-ID&quot;, &quot;&quot;))" />
+        <set-variable name="isWorkerProxyRequest" value="@(context.Request.Headers.GetValueOrDefault(&quot;X-FT-Proxy&quot;, &quot;&quot;) == &quot;1&quot;)" />
         <choose>
           <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
             <set-header name="X-Correlation-ID" exists-action="override">
@@ -278,61 +343,69 @@ ${local.apim_allowed_origins_xml}
           </when>
         </choose>
 
-        <!-- Remove any inbound Authorization header from client -->
-        <set-header name="Authorization" exists-action="delete" />
-
-        <!-- Parse cookie values in APIM expression-safe form -->
-        <set-variable name="cookieHeader" value="@(context.Request.Headers.GetValueOrDefault(&quot;Cookie&quot;, &quot;&quot;))" />
-        <set-variable name="accessTokenFromCookie" value="@{
-          var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
-          var marker = &quot;ft_access_token=&quot;;
-          var start = cookie.IndexOf(marker);
-          if (start < 0) { return &quot;&quot;; }
-          start += marker.Length;
-          var end = cookie.IndexOf(&quot;;&quot;, start);
-          return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
-        }" />
-        <set-variable name="csrfTokenFromCookie" value="@{
-          var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
-          var marker = &quot;ft_csrf=&quot;;
-          var start = cookie.IndexOf(marker);
-          if (start < 0) { return &quot;&quot;; }
-          start += marker.Length;
-          var end = cookie.IndexOf(&quot;;&quot;, start);
-          return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
-        }" />
-        <set-variable name="csrfTokenFromHeader" value="@(context.Request.Headers.GetValueOrDefault(&quot;X-CSRF-Token&quot;, &quot;&quot;))" />
-
-        <!-- Extract JWT from cookie and set Authorization header for upstream -->
+        <!-- Remove inbound Authorization only for browser-originated, non-proxy requests. -->
         <choose>
-          <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;accessTokenFromCookie&quot;]))">
-            <set-header name="Authorization" exists-action="override">
-              <value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;accessTokenFromCookie&quot;])</value>
-            </set-header>
+          <when condition="@(!(bool)context.Variables[&quot;isWorkerProxyRequest&quot;] &amp;&amp; !string.IsNullOrEmpty(context.Request.Headers.GetValueOrDefault(&quot;Origin&quot;, &quot;&quot;)))">
+            <set-header name="Authorization" exists-action="delete" />
           </when>
         </choose>
 
-        <!-- Enforce CSRF for state-changing methods when using cookie auth -->
         <choose>
-          <when condition="@(context.Request.Method == &quot;POST&quot; || context.Request.Method == &quot;PUT&quot; || context.Request.Method == &quot;PATCH&quot; || context.Request.Method == &quot;DELETE&quot;)">
+          <when condition="@(!(bool)context.Variables[&quot;isWorkerProxyRequest&quot;])">
+            <!-- Parse cookie values in APIM expression-safe form -->
+            <set-variable name="cookieHeader" value="@(context.Request.Headers.GetValueOrDefault(&quot;Cookie&quot;, &quot;&quot;))" />
+            <set-variable name="accessTokenFromCookie" value="@{
+              var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
+              var marker = &quot;ft_access_token=&quot;;
+              var start = cookie.IndexOf(marker);
+              if (start < 0) { return &quot;&quot;; }
+              start += marker.Length;
+              var end = cookie.IndexOf(&quot;;&quot;, start);
+              return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
+            }" />
+            <set-variable name="csrfTokenFromCookie" value="@{
+              var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
+              var marker = &quot;ft_csrf=&quot;;
+              var start = cookie.IndexOf(marker);
+              if (start < 0) { return &quot;&quot;; }
+              start += marker.Length;
+              var end = cookie.IndexOf(&quot;;&quot;, start);
+              return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
+            }" />
+            <set-variable name="csrfTokenFromHeader" value="@(context.Request.Headers.GetValueOrDefault(&quot;X-CSRF-Token&quot;, &quot;&quot;))" />
+
+            <!-- Extract JWT from cookie and set Authorization header for upstream -->
             <choose>
-              <when condition="@(string.IsNullOrEmpty((string)context.Variables[&quot;csrfTokenFromCookie&quot;]) || string.IsNullOrEmpty((string)context.Variables[&quot;csrfTokenFromHeader&quot;]) || (string)context.Variables[&quot;csrfTokenFromCookie&quot;] != (string)context.Variables[&quot;csrfTokenFromHeader&quot;])">
-                <return-response>
-                  <set-status code="403" reason="Forbidden" />
-                  <set-body>CSRF token missing or invalid.</set-body>
-                </return-response>
+              <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;accessTokenFromCookie&quot;]))">
+                <set-header name="Authorization" exists-action="override">
+                  <value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;accessTokenFromCookie&quot;])</value>
+                </set-header>
               </when>
             </choose>
+
+            <!-- Enforce CSRF for state-changing methods when using cookie auth -->
+            <choose>
+              <when condition="@(context.Request.Method == &quot;POST&quot; || context.Request.Method == &quot;PUT&quot; || context.Request.Method == &quot;PATCH&quot; || context.Request.Method == &quot;DELETE&quot;)">
+                <choose>
+                  <when condition="@(string.IsNullOrEmpty((string)context.Variables[&quot;csrfTokenFromCookie&quot;]) || string.IsNullOrEmpty((string)context.Variables[&quot;csrfTokenFromHeader&quot;]) || (string)context.Variables[&quot;csrfTokenFromCookie&quot;] != (string)context.Variables[&quot;csrfTokenFromHeader&quot;])">
+                    <return-response>
+                      <set-status code="403" reason="Forbidden" />
+                      <set-body>CSRF token missing or invalid.</set-body>
+                    </return-response>
+                  </when>
+                </choose>
+              </when>
+            </choose>
+
+            <validate-jwt header-name="Authorization" require-scheme="Bearer" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
+              <openid-config url="${local.auth0_openid_configuration_url}" />
+              <audiences>
+${local.apim_allowed_audiences_xml}
+              </audiences>
+${local.apim_required_claims_xml}
+            </validate-jwt>
           </when>
         </choose>
-
-        <validate-jwt header-name="Authorization" require-scheme="Bearer" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
-          <openid-config url="${local.auth0_openid_configuration_url}" />
-          <audiences>
-            <audience>${var.auth0_api_audience}</audience>
-          </audiences>
-${local.apim_required_claims_xml}
-        </validate-jwt>
       </inbound>
       <backend>
         <base />
@@ -356,9 +429,9 @@ ${local.apim_required_claims_xml}
           </when>
         </choose>
         <choose>
-          <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
+          <when condition="@(!string.IsNullOrEmpty(context.Request.Headers.GetValueOrDefault(&quot;X-Correlation-ID&quot;, &quot;&quot;)))">
             <set-header name="X-Correlation-ID" exists-action="override">
-              <value>@((string)context.Variables[&quot;correlationId&quot;])</value>
+              <value>@(context.Request.Headers.GetValueOrDefault(&quot;X-Correlation-ID&quot;, &quot;&quot;))</value>
             </set-header>
           </when>
         </choose>
@@ -382,9 +455,9 @@ ${local.apim_required_claims_xml}
           </when>
         </choose>
         <choose>
-          <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;correlationId&quot;]))">
+          <when condition="@(!string.IsNullOrEmpty(context.Request.Headers.GetValueOrDefault(&quot;X-Correlation-ID&quot;, &quot;&quot;)))">
             <set-header name="X-Correlation-ID" exists-action="override">
-              <value>@((string)context.Variables[&quot;correlationId&quot;])</value>
+              <value>@(context.Request.Headers.GetValueOrDefault(&quot;X-Correlation-ID&quot;, &quot;&quot;))</value>
             </set-header>
           </when>
         </choose>

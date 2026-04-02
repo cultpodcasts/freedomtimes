@@ -2,6 +2,17 @@
 import Layout from '../layouts/Layout.astro';
 import { ACCESS_TOKEN_COOKIE, CSRF_COOKIE, SESSION_COOKIE, getAuthConfig, getCookieDeleteOptionsForHost, getDisplayName, getRoleClaimDebug, hasEditorialRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
 
+function readCookieValuesFromHeader(cookieHeader: string, name: string): string[] {
+  const prefix = `${name}=`;
+
+  return cookieHeader
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => part.startsWith(prefix))
+    .map((part) => part.slice(prefix.length))
+    .filter((value) => value.length > 0);
+}
+
 const token = Astro.cookies.get(SESSION_COOKIE)?.value;
 const requestId = Astro.request.headers.get('cf-ray') ?? crypto.randomUUID();
 if (!token) {
@@ -10,6 +21,25 @@ if (!token) {
 }
 
 const deleteOptionsList = getCookieDeleteOptionsForHost(Astro.url.hostname);
+const rawCookieHeader = Astro.request.headers.get('cookie') ?? '';
+const sessionCookieValues = readCookieValuesFromHeader(rawCookieHeader, SESSION_COOKIE);
+
+if (sessionCookieValues.length > 1) {
+  const uniqueSessionCookieCount = new Set(sessionCookieValues).size;
+  console.warn('[signed-in] duplicate session cookies detected; forcing clean login', {
+    requestId,
+    duplicateCount: sessionCookieValues.length,
+    uniqueCount: uniqueSessionCookieCount,
+  });
+
+  for (const deleteOptions of deleteOptionsList) {
+    Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
+    Astro.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+    Astro.cookies.delete(CSRF_COOKIE, deleteOptions);
+  }
+
+  return Astro.redirect('/auth/login');
+}
 
 let name = '';
 const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
@@ -104,10 +134,10 @@ try {
 
       const endpointPath = endpointInput.value.trim() || '/stories';
       const normalizedPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
-      const url = `${baseUrl}${normalizedPath}`;
+      const url = `/api/editorial${normalizedPath}`;
       const correlationId = createCorrelationId();
 
-      resultEl.textContent = `Calling ${url}...\nCorrelation ID: ${correlationId}`;
+      resultEl.textContent = `Calling ${url} (upstream ${baseUrl}${normalizedPath})...\nCorrelation ID: ${correlationId}`;
 
       try {
         const csrfToken = readCookie('ft_csrf');

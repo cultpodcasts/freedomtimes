@@ -38,6 +38,7 @@ module "auth0_app" {
   workspace_url           = "https://staging.freedomtimes.news"
   app_name                = "freedomtimes-admin-staging"
   create_shared_resources = false
+  jwt_signing_alg         = "RS256"
 }
 
 module "azure_editorial_api" {

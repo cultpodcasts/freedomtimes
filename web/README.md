@@ -41,6 +41,57 @@ Run all commands from `web/`:
 - `/auth/logout` clears app session + logs out at Auth0
 - `/signed-in` protected admin page
 
+## Staging Login Flow Runbook
+
+Expected end-to-end behavior on `https://staging.freedomtimes.news`:
+
+1. `GET /auth/login`
+2. Redirect to Auth0 authorize endpoint
+3. `GET /auth/callback?code=...&state=...`
+4. Role check passes for `admin` or `editor`
+5. Redirect to `GET /signed-in`
+6. Token verifies and page renders
+
+Primary cookie names used by web auth:
+
+- `ft_session` (HttpOnly id token)
+- `ft_access_token` (HttpOnly API access token)
+- `ft_csrf` (JS-readable CSRF token)
+
+Stale-cookie protections:
+
+- Callback and logout clear both host-only and domain-scoped cookie variants before setting or deleting auth cookies.
+- Signed-in clears auth cookies and redirects to `/auth/login` when token verification fails with expired token.
+- Signed-in detects duplicate `ft_session` values in the incoming `Cookie` header, clears auth cookies, and forces clean login.
+
+Role denial behavior:
+
+- If callback token verifies but required role is missing, auth cookies are cleared and user is redirected to `/?denied=1`.
+
+### Live Tail Verification
+
+Use Cloudflare live tail during each auth test:
+
+```powershell
+cd web
+npx wrangler tail freedomtimes-holding-staging --format pretty
+```
+
+Report each attempt using this format:
+
+- `auth/login outcome`
+- `auth/callback outcome`
+- `signed-in outcome`
+- `final redirect/result`
+- `any token verification or role-check errors`
+
+Example success signal sequence:
+
+- `[auth.login] starting login redirect`
+- `[auth.callback] callback received`
+- `[auth.callback] login successful`
+- `[signed-in] token verified and page render allowed`
+
 ## API Auth Model (Target)
 
 The target model for editorial API access is cookie-forwarded auth through APIM:

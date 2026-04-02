@@ -18,6 +18,6 @@
 
   "vars": {
     "AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
-    "API_BASE_URL": "https://api-staging.freedomtimes.news/editorial"
+    "API_BASE_URL": "https://freedomtimes-staging-apim-1ff9a3.azure-api.net/editorial"
   }
 }

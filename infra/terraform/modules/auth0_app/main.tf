@@ -16,6 +16,7 @@ resource "auth0_client" "admin_ui" {
   is_first_party       = true
 
   jwt_configuration {
+    alg                 = var.jwt_signing_alg
     lifetime_in_seconds = 3600
     secret_encoded      = true
   }
