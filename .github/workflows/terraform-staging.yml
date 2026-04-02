@@ -10,6 +10,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      staging_terraform_apply:
+        description: "Run Terraform apply (true) or plan-only (false)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -18,6 +24,9 @@ permissions:
 concurrency:
   group: staging-deploy
   cancel-in-progress: true
+
+env:
+  STAGING_TERRAFORM_APPLY: "false"
 
 jobs:
   terraform:
@@ -91,7 +100,7 @@ jobs:
             });
 
       - name: Terraform Apply
-        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        if: (env.STAGING_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.staging_terraform_apply == 'true')
         run: terraform apply -lock-timeout=5m tfplan
 
       - name: Setup Node
