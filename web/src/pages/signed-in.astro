@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { SESSION_COOKIE, getAuthConfig, getCookieDeleteOptionsForHost, getDisplayName, getRoleClaimDebug, hasEditorialRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
+import { ACCESS_TOKEN_COOKIE, CSRF_COOKIE, SESSION_COOKIE, getAuthConfig, getCookieDeleteOptionsForHost, getDisplayName, getRoleClaimDebug, hasEditorialRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
 
 const token = Astro.cookies.get(SESSION_COOKIE)?.value;
 const requestId = Astro.request.headers.get('cf-ray') ?? crypto.randomUUID();
@@ -33,14 +33,26 @@ try {
     sessionCookieLength: token.length,
   });
 } catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const isExpired = message.includes('"exp" claim timestamp check failed');
+
   console.warn('[signed-in] token verification failed', {
     requestId,
     sessionCookieLength: token.length,
-    error: error instanceof Error ? error.message : String(error),
+    error: message,
+    isExpired,
   });
+
   for (const deleteOptions of deleteOptionsList) {
     Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
+    Astro.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+    Astro.cookies.delete(CSRF_COOKIE, deleteOptions);
   }
+
+  if (isExpired) {
+    return Astro.redirect('/auth/login');
+  }
+
   return Astro.redirect('/');
 }
 ---
