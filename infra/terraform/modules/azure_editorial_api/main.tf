@@ -8,6 +8,7 @@ locals {
 
   normalized_storage_name = lower(replace("${var.project_name}${var.environment}${local.hash}", "-", ""))
   storage_account_name    = coalesce(var.storage_account_name, substr(local.normalized_storage_name, 0, 24))
+  storage_connection_string = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.function.name};AccountKey=${azurerm_storage_account.function.primary_access_key};EndpointSuffix=core.windows.net"
 
   base_app_settings = {
     FUNCTIONS_WORKER_RUNTIME        = "node"
@@ -43,24 +44,31 @@ resource "azurerm_service_plan" "function" {
   resource_group_name = azurerm_resource_group.editorial.name
   location            = azurerm_resource_group.editorial.location
   os_type             = "Linux"
-  sku_name            = "Y1"
+  sku_name            = "FC1"
   tags                = var.tags
 }
 
-resource "azurerm_linux_function_app" "editorial" {
+resource "azurerm_storage_container" "function_code" {
+  name                  = "function-code"
+  storage_account_id    = azurerm_storage_account.function.id
+  container_access_type = "private"
+}
+
+resource "azurerm_function_app_flex_consumption" "editorial" {
   name                = local.function_app_name
   resource_group_name = azurerm_resource_group.editorial.name
   location            = azurerm_resource_group.editorial.location
 
   service_plan_id            = azurerm_service_plan.function.id
-  storage_account_name       = azurerm_storage_account.function.name
-  storage_account_access_key = azurerm_storage_account.function.primary_access_key
+  storage_container_type     = "blobContainer"
+  storage_container_endpoint = "${azurerm_storage_account.function.primary_blob_endpoint}${azurerm_storage_container.function_code.name}"
+  storage_authentication_type = "StorageAccountConnectionString"
+  storage_access_key          = local.storage_connection_string
 
-  site_config {
-    application_stack {
-      node_version = var.node_version
-    }
-  }
+  runtime_name    = "node"
+  runtime_version = var.node_version
+
+  site_config {}
 
   app_settings = local.base_app_settings
   https_only   = true

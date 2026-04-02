@@ -5,12 +5,12 @@ output "resource_group_name" {
 
 output "function_app_name" {
   description = "Azure Linux Function App name"
-  value       = azurerm_linux_function_app.editorial.name
+  value       = azurerm_function_app_flex_consumption.editorial.name
 }
 
 output "function_default_hostname" {
   description = "Default hostname for the Azure Function App"
-  value       = azurerm_linux_function_app.editorial.default_hostname
+  value       = azurerm_function_app_flex_consumption.editorial.default_hostname
 }
 
 output "cosmos_account_name" {
