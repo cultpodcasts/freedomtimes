@@ -27,3 +27,13 @@ output "azure_cosmos_account_name" {
   description = "Cosmos DB account name for production editorial API"
   value       = module.azure_editorial_api.cosmos_account_name
 }
+
+output "azure_api_management_name" {
+  description = "API Management service name for production editorial API"
+  value       = module.azure_editorial_api.api_management_name
+}
+
+output "azure_editorial_api_public_base_url" {
+  description = "Public API base URL through APIM for production editorial API"
+  value       = module.azure_editorial_api.editorial_api_public_base_url
+}

@@ -10,6 +10,8 @@ Terraform is not required for local application development. Local work can run 
 - Worker route attachment to a configured zone pattern
 - Auth0 application and RBAC resources
 - Azure editorial API foundation (Resource Group, Function App, Cosmos DB)
+- Azure Function EasyAuth with Auth0 OIDC
+- Azure API Management gateway policy for JWT validation and role claim enforcement
 - Environment entrypoints for `production` and `staging`
 
 ## Environment Separation Rule

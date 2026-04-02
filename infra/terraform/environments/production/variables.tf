@@ -20,6 +20,54 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
+variable "enable_editorial_easy_auth" {
+  description = "Enable EasyAuth on production editorial Function App"
+  type        = bool
+  default     = true
+}
+
+variable "enable_editorial_gateway_policy" {
+  description = "Enable APIM gateway JWT/role policy for production editorial API"
+  type        = bool
+  default     = true
+}
+
+variable "editorial_roles_claim" {
+  description = "JWT claim name that carries editorial roles"
+  type        = string
+  default     = "https://freedomtimes.news/roles"
+}
+
+variable "editorial_allowed_roles" {
+  description = "Allowed roles for production editorial API"
+  type        = list(string)
+  default     = ["admin", "editor"]
+}
+
+variable "api_management_publisher_name" {
+  description = "Publisher name required by API Management"
+  type        = string
+  default     = "Freedom Times"
+}
+
+variable "api_management_publisher_email" {
+  description = "Publisher email required by API Management"
+  type        = string
+  default     = "platform@freedomtimes.news"
+}
+
+variable "api_management_sku_name" {
+  description = "API Management SKU name"
+  type        = string
+  default     = "Consumption_0"
+}
+
+variable "api_management_api_path" {
+  description = "Public APIM path segment for editorial API"
+  type        = string
+  default     = "editorial"
+}
+
 variable "worker_name" {
   description = "Worker name for the holding page"
   type        = string

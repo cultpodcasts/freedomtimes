@@ -75,6 +75,84 @@ variable "node_version" {
   default     = "20"
 }
 
+variable "enable_easy_auth" {
+  description = "Enable Function App EasyAuth with Auth0 OIDC"
+  type        = bool
+  default     = true
+}
+
+variable "enable_api_gateway_policy" {
+  description = "Enable API Management gateway and JWT/role policy in front of the Function App"
+  type        = bool
+  default     = true
+}
+
+variable "auth0_domain" {
+  description = "Auth0 tenant domain used for OIDC discovery (for example: tenant.uk.auth0.com)"
+  type        = string
+  default     = ""
+}
+
+variable "auth0_editorial_client_id" {
+  description = "Auth0 application client ID used by EasyAuth custom OIDC provider"
+  type        = string
+  default     = ""
+}
+
+variable "auth0_api_audience" {
+  description = "Expected audience in JWT tokens for editorial API"
+  type        = string
+  default     = ""
+}
+
+variable "roles_claim" {
+  description = "JWT claim name that contains application roles"
+  type        = string
+  default     = "https://freedomtimes.news/roles"
+}
+
+variable "allowed_roles" {
+  description = "Allowed roles for editorial API requests"
+  type        = list(string)
+  default     = ["admin", "editor"]
+}
+
+variable "api_management_name" {
+  description = "Optional override for API Management service name"
+  type        = string
+  default     = null
+}
+
+variable "api_management_sku_name" {
+  description = "SKU for API Management service (for example: Consumption_0)"
+  type        = string
+  default     = "Consumption_0"
+}
+
+variable "api_management_publisher_name" {
+  description = "Publisher display name required by API Management"
+  type        = string
+  default     = "Freedom Times"
+}
+
+variable "api_management_publisher_email" {
+  description = "Publisher email required by API Management"
+  type        = string
+  default     = "platform@freedomtimes.news"
+}
+
+variable "api_management_api_name" {
+  description = "API name within API Management"
+  type        = string
+  default     = "editorial-api"
+}
+
+variable "api_management_api_path" {
+  description = "Public API path segment within API Management"
+  type        = string
+  default     = "editorial"
+}
+
 variable "tags" {
   description = "Tags applied to supported Azure resources"
   type        = map(string)

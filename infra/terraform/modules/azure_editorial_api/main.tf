@@ -5,10 +5,18 @@ locals {
   function_app_name   = coalesce(var.function_app_name, "${var.project_name}-editorial-api-${var.environment}")
   cosmos_account_name = coalesce(var.cosmos_account_name, "${var.project_name}-${var.environment}-${local.hash}")
   service_plan_name   = coalesce(var.service_plan_name, "${var.project_name}-func-${var.environment}")
+  api_management_name = coalesce(var.api_management_name, "${var.project_name}-${var.environment}-apim-${local.hash}")
 
   normalized_storage_name = lower(replace("${var.project_name}${var.environment}${local.hash}", "-", ""))
   storage_account_name    = coalesce(var.storage_account_name, substr(local.normalized_storage_name, 0, 24))
   storage_connection_string = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.function.name};AccountKey=${azurerm_storage_account.function.primary_access_key};EndpointSuffix=core.windows.net"
+
+  auth0_issuer_url                  = startswith(var.auth0_domain, "https://") ? trimsuffix(var.auth0_domain, "/") : "https://${trimspace(var.auth0_domain)}"
+  auth0_openid_configuration_url    = "${local.auth0_issuer_url}/.well-known/openid-configuration"
+  easy_auth_enabled                 = var.enable_easy_auth && length(trimspace(var.auth0_domain)) > 0 && length(trimspace(var.auth0_editorial_client_id)) > 0
+  api_gateway_policy_enabled        = var.enable_api_gateway_policy && local.easy_auth_enabled && length(trimspace(var.auth0_api_audience)) > 0
+  apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
+  apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
 
   base_app_settings = {
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
@@ -19,6 +27,8 @@ locals {
     COSMOSDB_ENDPOINT               = azurerm_cosmosdb_account.editorial.endpoint
     COSMOSDB_CONNECTION_STRING      = azurerm_cosmosdb_account.editorial.primary_sql_connection_string
   }
+
+  function_app_settings = local.base_app_settings
 }
 
 resource "azurerm_resource_group" "editorial" {
@@ -68,9 +78,87 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
 
   site_config {}
 
-  app_settings = local.base_app_settings
+  dynamic "auth_settings_v2" {
+    for_each = local.easy_auth_enabled ? [1] : []
+    content {
+      auth_enabled           = true
+      require_authentication = true
+      require_https          = true
+      unauthenticated_action = "Return401"
+
+      custom_oidc_v2 {
+        name                          = "auth0"
+        client_id                     = var.auth0_editorial_client_id
+        openid_configuration_endpoint = local.auth0_openid_configuration_url
+        name_claim_type               = "name"
+      }
+
+      login {}
+    }
+  }
+
+  app_settings = local.function_app_settings
   https_only   = true
   tags         = var.tags
+}
+
+resource "azurerm_api_management" "editorial" {
+  count = local.api_gateway_policy_enabled ? 1 : 0
+
+  name                = local.api_management_name
+  location            = azurerm_resource_group.editorial.location
+  resource_group_name = azurerm_resource_group.editorial.name
+  publisher_name      = var.api_management_publisher_name
+  publisher_email     = var.api_management_publisher_email
+  sku_name            = var.api_management_sku_name
+  tags                = var.tags
+}
+
+resource "azurerm_api_management_api" "editorial" {
+  count = local.api_gateway_policy_enabled ? 1 : 0
+
+  name                = var.api_management_api_name
+  resource_group_name = azurerm_resource_group.editorial.name
+  api_management_name = azurerm_api_management.editorial[0].name
+  revision            = "1"
+
+  display_name          = "Freedom Times Editorial API"
+  path                  = var.api_management_api_path
+  protocols             = ["https"]
+  subscription_required = false
+  service_url           = "https://${azurerm_function_app_flex_consumption.editorial.default_hostname}/api"
+}
+
+resource "azurerm_api_management_api_policy" "editorial" {
+  count = local.api_gateway_policy_enabled ? 1 : 0
+
+  resource_group_name = azurerm_resource_group.editorial.name
+  api_management_name = azurerm_api_management.editorial[0].name
+  api_name            = azurerm_api_management_api.editorial[0].name
+
+  xml_content = <<-XML
+    <policies>
+      <inbound>
+        <base />
+        <validate-jwt header-name="Authorization" require-scheme="Bearer" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
+          <openid-config url="${local.auth0_openid_configuration_url}" />
+          <audiences>
+            <audience>${var.auth0_api_audience}</audience>
+          </audiences>
+${local.apim_required_claims_xml}
+        </validate-jwt>
+      </inbound>
+      <backend>
+        <base />
+      </backend>
+      <outbound>
+        <base />
+      </outbound>
+      <on-error>
+        <base />
+      </on-error>
+    </policies>
+  XML
 }
 
 resource "azurerm_cosmosdb_account" "editorial" {

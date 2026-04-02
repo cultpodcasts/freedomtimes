@@ -8,3 +8,10 @@ holding_title   = "Freedom Times (Staging)"
 holding_heading = "Freedom Times"
 holding_message = "This is the staging environment."
 contact_email   = ""
+
+enable_editorial_easy_auth      = true
+enable_editorial_gateway_policy = true
+editorial_roles_claim           = "https://freedomtimes.news/roles"
+editorial_allowed_roles         = ["admin", "editor"]
+api_management_sku_name         = "Consumption_0"
+api_management_api_path         = "editorial"
