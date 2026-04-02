@@ -77,7 +77,7 @@ module "azure_editorial_api" {
 }
 
 resource "cloudflare_record" "api_custom_hostname" {
-  count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 && module.azure_editorial_api.api_gateway_hostname != null ? 1 : 0
+  count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 ? 1 : 0
 
   zone_id = var.cloudflare_zone_id
   name    = var.api_custom_hostname
@@ -86,6 +86,7 @@ resource "cloudflare_record" "api_custom_hostname" {
   proxied = true
   ttl     = 1
   allow_overwrite = true
+  depends_on = [module.azure_editorial_api]
 }
 
 resource "azurerm_api_management_custom_domain" "editorial" {
