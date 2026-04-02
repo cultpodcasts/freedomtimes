@@ -227,6 +227,22 @@ jobs:
           echo "function_app_name=$(terraform output -raw azure_function_app_name)" >> $GITHUB_OUTPUT
           echo "auth0_api_audience=$(terraform output -raw auth0_api_identifier)" >> $GITHUB_OUTPUT
 
+      - name: Validate Worker Runtime Vars
+        run: |
+          set -euo pipefail
+          API_BASE_URL="${{ steps.tf_outputs.outputs.api_base_url }}"
+          AUTH0_API_AUDIENCE="${{ steps.tf_outputs.outputs.auth0_api_audience }}"
+
+          if [ -z "$API_BASE_URL" ] || [ "$API_BASE_URL" = "null" ]; then
+            echo "Missing required Terraform output: azure_editorial_api_public_base_url"
+            exit 1
+          fi
+
+          if [ -z "$AUTH0_API_AUDIENCE" ] || [ "$AUTH0_API_AUDIENCE" = "null" ]; then
+            echo "Missing required Terraform output: auth0_api_identifier"
+            exit 1
+          fi
+
       - name: Cleanup Terraform Plan File
         if: always()
         run: rm -f tfplan
