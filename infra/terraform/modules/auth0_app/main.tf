@@ -134,8 +134,8 @@ resource "auth0_action" "add_roles_to_token" {
     exports.onExecutePostLogin = async (event, api) => {
       const namespace = 'https://freedomtimes.news';
       if (event.authorization) {
-        api.idToken.setCustomClaim(`$${namespace}/roles`, event.authorization.roles);
-        api.accessToken.setCustomClaim(`$${namespace}/roles`, event.authorization.roles);
+        api.idToken.setCustomClaim(`${namespace}/roles`, event.authorization.roles);
+        api.accessToken.setCustomClaim(`${namespace}/roles`, event.authorization.roles);
       }
     }
   EOT
