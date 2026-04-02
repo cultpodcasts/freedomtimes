@@ -106,7 +106,10 @@ jobs:
         run: |
           echo "Starting terraform plan (non-interactive) with heartbeat logging..."
           set +e
-          timeout 12m terraform plan -input=false -lock-timeout=5m -no-color -detailed-exitcode -out=tfplan > plan.log 2>&1 &
+          timeout 12m terraform plan -input=false -lock-timeout=5m -no-color -detailed-exitcode -out=tfplan \
+            -target=module.azure_editorial_api \
+            -target=module.cloudflare_holding_page \
+            -target=cloudflare_record.api_custom_hostname > plan.log 2>&1 &
           PLAN_PID=$!
 
           while kill -0 "$PLAN_PID" 2>/dev/null; do

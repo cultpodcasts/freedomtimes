@@ -34,7 +34,9 @@ Get-Content $envFile | ForEach-Object {
 
     if ($line -match '^[A-Za-z_][A-Za-z0-9_]*=') {
         $parts = $line -split '=', 2
-        $envValues[$parts[0].Trim()] = $parts[1].Trim()
+        $key = $parts[0].Trim().Trim([char]0xFEFF)
+        $value = $parts[1].Trim().Trim([char]0xFEFF)
+        $envValues[$key] = $value
     }
 }
 
@@ -103,7 +105,7 @@ foreach ($name in $secrets.Keys) {
         Write-Warning "Skipping secret $name - value is empty in .env.dev"
         continue
     }
-    $value | gh secret set $name --repo $repo
+    gh secret set $name --repo $repo --body $value
     Write-Host "  [ok] $name" -ForegroundColor Green
 }
 
@@ -115,7 +117,7 @@ if ([string]::IsNullOrWhiteSpace($tfcToken)) {
     Write-Warning "Terraform Cloud token not found in $tfcCredsFile. Skipping TF_TOKEN_app_terraform_io."
 }
 else {
-    $tfcToken | gh secret set TF_TOKEN_app_terraform_io --repo $repo
+    gh secret set TF_TOKEN_app_terraform_io --repo $repo --body $tfcToken
     Write-Host "  [ok] TF_TOKEN_app_terraform_io" -ForegroundColor Green
 }
 
