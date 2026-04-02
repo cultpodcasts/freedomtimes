@@ -22,7 +22,7 @@ locals {
   apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
   apim_allowed_origins_condition    = length(var.api_management_allowed_origins) > 0 ? join(" || ", [for origin in var.api_management_allowed_origins : "context.Request.Headers.GetValueOrDefault(\"Origin\", \"\") == \"${origin}\""]) : "false"
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
-  apim_gateway_custom_domain_enabled = local.api_gateway_policy_enabled && length(trimspace(var.api_management_gateway_custom_domain)) > 0 && length(trimspace(var.api_management_gateway_certificate_base64)) > 0 && length(trimspace(var.api_management_gateway_certificate_password)) > 0
+  apim_gateway_custom_domain_enabled = var.manage_api_management_gateway_custom_domain && local.api_gateway_policy_enabled && length(trimspace(var.api_management_gateway_custom_domain)) > 0 && length(trimspace(var.api_management_gateway_certificate_base64)) > 0 && length(trimspace(var.api_management_gateway_certificate_password)) > 0
 
   base_app_settings = {
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"

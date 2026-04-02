@@ -173,6 +173,12 @@ variable "api_management_gateway_certificate_password" {
   sensitive   = true
 }
 
+variable "manage_api_management_gateway_custom_domain" {
+  description = "Whether this module should manage APIM custom gateway hostname binding"
+  type        = bool
+  default     = true
+}
+
 variable "api_management_allowed_origins" {
   description = "Allowed browser origins for APIM CORS policy"
   type        = list(string)

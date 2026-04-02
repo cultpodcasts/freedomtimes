@@ -63,6 +63,7 @@ module "azure_editorial_api" {
   api_management_gateway_custom_domain         = var.api_custom_hostname
   api_management_gateway_certificate_base64    = var.api_custom_hostname_certificate_base64
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
+  manage_api_management_gateway_custom_domain  = false
 
   tags = {
     project     = "freedomtimes"
@@ -78,6 +79,22 @@ resource "cloudflare_record" "api_custom_hostname" {
   name    = var.api_custom_hostname
   type    = "CNAME"
   content = module.azure_editorial_api.api_gateway_hostname
-  proxied = true
+  proxied = false
   ttl     = 1
+  allow_overwrite = true
+}
+
+resource "azurerm_api_management_custom_domain" "editorial" {
+  count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 && module.azure_editorial_api.api_management_name != null ? 1 : 0
+
+  resource_group_name = module.azure_editorial_api.resource_group_name
+  api_management_name = module.azure_editorial_api.api_management_name
+
+  gateway {
+    host_name            = trimspace(var.api_custom_hostname)
+    certificate          = trimspace(var.api_custom_hostname_certificate_base64)
+    certificate_password = trimspace(var.api_custom_hostname_certificate_password)
+  }
+
+  depends_on = [cloudflare_record.api_custom_hostname]
 }

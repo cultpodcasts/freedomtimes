@@ -110,7 +110,8 @@ jobs:
             -refresh=false \
             -target=module.azure_editorial_api \
             -target=module.cloudflare_holding_page \
-            -target=cloudflare_record.api_custom_hostname > plan.log 2>&1 &
+            -target=cloudflare_record.api_custom_hostname \
+            -target=azurerm_api_management_custom_domain.editorial > plan.log 2>&1 &
           PLAN_PID=$!
 
           while kill -0 "$PLAN_PID" 2>/dev/null; do
