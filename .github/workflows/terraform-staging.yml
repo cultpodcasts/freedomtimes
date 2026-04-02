@@ -5,6 +5,7 @@ on:
     branches: [feat/11-editorial-api-cosmos]
     paths:
       - "infra/terraform/**"
+      - "functions/editorial-api/**"
       - "web/**"
       - ".github/workflows/terraform-staging.yml"
   pull_request:
@@ -111,6 +112,7 @@ jobs:
         id: tf_outputs
         run: |
           echo "api_base_url=$(terraform output -raw azure_editorial_api_public_base_url)" >> $GITHUB_OUTPUT
+          echo "function_app_name=$(terraform output -raw azure_function_app_name)" >> $GITHUB_OUTPUT
 
       - name: Cleanup Terraform Plan File
         if: always()
@@ -121,7 +123,27 @@ jobs:
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: web/package-lock.json
+          cache-dependency-path: |
+            web/package-lock.json
+            functions/editorial-api/package-lock.json
+
+      - name: Install Function App Dependencies
+        working-directory: functions/editorial-api
+        run: npm ci
+
+      - name: Azure Login for Function Deploy
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}
+
+      - name: Deploy Stub Azure Function App to Staging
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ steps.tf_outputs.outputs.function_app_name }}
+          package: ./functions/editorial-api
+          remote-build: true
+          respect-funcignore: true
 
       - name: Install Web Dependencies
         working-directory: web

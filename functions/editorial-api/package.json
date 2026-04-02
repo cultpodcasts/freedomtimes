@@ -1,0 +1,17 @@
+{
+  "name": "editorial-api",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Stub Azure Functions backend for Freedom Times editorial API",
+  "main": "src/functions/*.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "func start",
+    "test": "node -e \"process.exit(0)\""
+  },
+  "dependencies": {
+    "@azure/functions": "^4.7.3"
+  }
+}
