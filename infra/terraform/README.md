@@ -79,16 +79,23 @@ Do not grant unrelated permissions (DNS edit, cache purge, account settings, bil
 1. Choose an environment directory:
    - `environments/production`
    - `environments/staging`
-2. (Optional) copy values from `terraform.tfvars.example` as non-secret defaults only
-3. Export required variables in shell (PowerShell):
+2. Ensure HCP Terraform token is exported:
+   - `$env:TF_TOKEN_app_terraform_io = "<terraform-cloud-user-token>"`
+3. (Optional) copy values from `terraform.tfvars.example` as non-secret defaults only
+4. Export required variables in shell (PowerShell):
    - `$env:TF_VAR_cloudflare_api_token = "<token>"`
    - `$env:TF_VAR_cloudflare_account_id = "<account-id>"`
    - `$env:TF_VAR_cloudflare_zone_id = "<zone-id>"`
    - `$env:TF_VAR_route_pattern = "example.com/*"`
-4. Run:
+5. Run:
    - terraform init
    - terraform plan
    - terraform apply
+
+Important for this repository:
+
+- Do not use `terraform init -backend-config=...` in these environment folders.
+- These folders use the `terraform { cloud { ... } }` block, so workspace selection is already defined in `versions.tf`.
 
 Recommended route examples:
 - production: `example.com/*`
@@ -228,3 +235,47 @@ EasyAuth continues to validate the forwarded bearer token from APIM.
 - Keep `require_authentication=true`.
 - Keep direct Function URL non-public wherever possible.
 - Treat APIM as policy and role gate; EasyAuth as second auth gate.
+
+### 6. Custom API hostnames
+
+Configured hostnames:
+
+- Staging: `api-staging.freedomtimes.news`
+- Production: `api.freedomtimes.news`
+
+Terraform wiring now supports APIM gateway custom domains plus Cloudflare DNS records. To enable each hostname, provide:
+
+- `api_custom_hostname_certificate_base64` (base64-encoded PFX)
+- `api_custom_hostname_certificate_password`
+
+Suggested GitHub Actions secrets:
+
+- Staging: `TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING`
+- Staging: `TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING`
+- Production: `TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION`
+- Production: `TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION`
+
+Example setup commands (PowerShell, from repo root):
+
+```powershell
+# Staging certificate
+$stgPfxBase64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\api-staging.freedomtimes.news.pfx"))
+$stgPfxPassword = "<staging-pfx-password>"
+gh secret set TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING --repo cultpodcasts/freedomtimes --body "$stgPfxBase64"
+gh secret set TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING --repo cultpodcasts/freedomtimes --body "$stgPfxPassword"
+
+# Production certificate
+$prodPfxBase64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\api.freedomtimes.news.pfx"))
+$prodPfxPassword = "<production-pfx-password>"
+gh secret set TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION --repo cultpodcasts/freedomtimes --body "$prodPfxBase64"
+gh secret set TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION --repo cultpodcasts/freedomtimes --body "$prodPfxPassword"
+```
+
+When certificate inputs are not provided, Terraform keeps the default APIM hostname and does not create the custom API DNS record.
+
+Certificate handling safety rules:
+
+- Never commit certificate/key files (`.pfx`, `.pem`, `.key`, `.crt`, etc.) to the repository.
+- Never upload certificate material as GitHub Actions artifacts.
+- Keep certificate material only in GitHub Secrets (or equivalent secret store).
+- Terraform plan files (`tfplan`) may contain sensitive values; CI should delete them after use.

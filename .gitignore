@@ -8,5 +8,14 @@ crash.log
 *.tfvars.json
 !*.tfvars.example
 
+# Certificates and private keys
+*.pfx
+*.p12
+*.pem
+*.key
+*.crt
+*.cer
+*.csr
+
 # Local env files
 .env.dev

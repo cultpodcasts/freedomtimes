@@ -50,6 +50,10 @@ jobs:
       TF_VAR_worker_name: "freedomtimes-holding-staging"
       TF_VAR_manage_apex_dns_record: "false"
       TF_VAR_apex_dns_record_content: "192.0.2.1"
+      TF_VAR_api_custom_hostname: "api-staging.freedomtimes.news"
+      TF_VAR_api_custom_hostname_certificate_base64: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING }}
+      TF_VAR_api_custom_hostname_certificate_password: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING }}
+      CERT_SECRETS_CONFIGURED: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING != '' && secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING != '' }}
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
       TF_VAR_auth0_client_secret: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
@@ -84,7 +88,7 @@ jobs:
         continue-on-error: false
 
       - name: Post plan to PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && env.CERT_SECRETS_CONFIGURED != 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -102,6 +106,15 @@ jobs:
       - name: Terraform Apply
         if: (env.STAGING_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.staging_terraform_apply == 'true')
         run: terraform apply -lock-timeout=5m tfplan
+
+      - name: Capture Terraform Outputs
+        id: tf_outputs
+        run: |
+          echo "api_base_url=$(terraform output -raw azure_editorial_api_public_base_url)" >> $GITHUB_OUTPUT
+
+      - name: Cleanup Terraform Plan File
+        if: always()
+        run: rm -f tfplan
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -126,7 +139,7 @@ jobs:
           AUTH0_DOMAIN: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
           AUTH0_CLIENT_ID: ${{ secrets.AUTH0_LOGIN_APP_CLIENT_ID_STAGING }}
           AUTH0_API_AUDIENCE: "https://api.freedomtimes.news"
-          API_BASE_URL: "https://freedomtimes-staging-apim-1ff9a3.azure-api.net/editorial"
+          API_BASE_URL: ${{ steps.tf_outputs.outputs.api_base_url }}
         run: >
           npx wrangler deploy --config wrangler.staging.jsonc
           --var AUTH0_DOMAIN:$AUTH0_DOMAIN
