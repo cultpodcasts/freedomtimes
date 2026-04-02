@@ -190,7 +190,35 @@ jobs:
 
       - name: Terraform Apply
         if: (env.STAGING_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.staging_terraform_apply == 'true')
-        run: terraform apply -lock-timeout=5m tfplan
+        timeout-minutes: 30
+        run: |
+          echo "Starting terraform apply with heartbeat logging..."
+          set +e
+          timeout 20m terraform apply -input=false -lock-timeout=5m -no-color tfplan > apply.log 2>&1 &
+          APPLY_PID=$!
+
+          while kill -0 "$APPLY_PID" 2>/dev/null; do
+            echo "[apply-heartbeat] $(date -u +"%Y-%m-%dT%H:%M:%SZ") terraform apply still running"
+            tail -n 20 apply.log || true
+            sleep 30
+          done
+
+          wait "$APPLY_PID"
+          APPLY_EXIT=$?
+          set -e
+
+          echo "--- terraform apply output ---"
+          cat apply.log
+
+          if [ "$APPLY_EXIT" -eq 124 ]; then
+            echo "terraform apply timed out after 20 minutes"
+            exit 1
+          fi
+
+          if [ "$APPLY_EXIT" -ne 0 ]; then
+            echo "terraform apply failed with exit code $APPLY_EXIT"
+            exit "$APPLY_EXIT"
+          fi
 
       - name: Capture Terraform Outputs
         id: tf_outputs
