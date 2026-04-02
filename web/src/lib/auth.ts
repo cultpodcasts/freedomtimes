@@ -3,7 +3,11 @@ import { env as cfEnv } from 'cloudflare:workers';
 
 export const SESSION_COOKIE = 'ft_session';
 const STATE_COOKIE = 'ft_state';
-const ROLE_CLAIMS = ['https://freedomtimes.news/roles', 'roles'];
+const ROLE_CLAIMS = [
+  'https://api.cultpodcasts.com/roles',
+  'https://freedomtimes.news/roles',
+  'roles',
+];
 
 export type AuthConfig = {
   domain: string;
@@ -119,6 +123,24 @@ export function hasAdminRole(payload: JWTPayload): boolean {
   }
 
   return false;
+}
+
+export function getRoleClaimDebug(payload: JWTPayload): Record<string, unknown> {
+  const roleClaimValues: Record<string, unknown> = {};
+  for (const claim of ROLE_CLAIMS) {
+    roleClaimValues[claim] = payload[claim] ?? null;
+  }
+
+  const availableRoleLikeClaims = Object.keys(payload).filter((k) =>
+    k.toLowerCase().endsWith('/roles') || k.toLowerCase() === 'roles',
+  );
+
+  return {
+    configuredRoleClaims: ROLE_CLAIMS,
+    roleClaimValues,
+    availableRoleLikeClaims,
+    sub: payload.sub ?? null,
+  };
 }
 
 export function getDisplayName(payload: JWTPayload): string {

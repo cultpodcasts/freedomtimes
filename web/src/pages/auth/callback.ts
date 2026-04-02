@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import {
   SESSION_COOKIE,
   exchangeCodeForIdToken,
+  getRoleClaimDebug,
   getAuthConfig,
   getStateCookieName,
   hasAdminRole,
@@ -43,6 +44,7 @@ export const GET: APIRoute = async (ctx) => {
     if (!hasAdminRole(payload)) {
       console.warn('[auth.callback] user denied: missing admin role claim', {
         requestId,
+        roleDebug: getRoleClaimDebug(payload),
       });
       ctx.cookies.delete(SESSION_COOKIE, { path: '/' });
       return ctx.redirect('/?denied=1');
