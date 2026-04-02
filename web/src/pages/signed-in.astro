@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { SESSION_COOKIE, getAuthConfig, getDisplayName, hasAdminRole, verifyIdToken } from '../lib/auth';
+import { SESSION_COOKIE, getAuthConfig, getDisplayName, hasAdminRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
 
 const token = Astro.cookies.get(SESSION_COOKIE)?.value;
 if (!token) {
@@ -8,6 +8,7 @@ if (!token) {
 }
 
 let name = '';
+const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
 
 try {
   const payload = await verifyIdToken(token, getAuthConfig());
@@ -27,8 +28,69 @@ try {
   <section class="card">
     <h1>Signed in!</h1>
     <p class="lead">Welcome, {name}.</p>
+    <p class="hint">Direct API token test is enabled for now. This stores an access token in a JS-readable cookie and increases XSS risk.</p>
+
+    <div class="tester">
+      <label for="endpoint">API endpoint path</label>
+      <input id="endpoint" type="text" value="/health" />
+      <button id="test-api" class="button" type="button">Test API With JWT</button>
+      <pre id="api-result" aria-live="polite">Waiting for test request...</pre>
+    </div>
+
     <a class="button" href="/auth/logout">Log out</a>
   </section>
+
+  <script is:inline define:vars={{ editorialApiBaseUrl }}>
+    const baseUrl = editorialApiBaseUrl;
+    const endpointInput = document.getElementById('endpoint');
+    const testButton = document.getElementById('test-api');
+    const resultEl = document.getElementById('api-result');
+
+    function readCookie(name) {
+      const prefix = `${name}=`;
+      const cookie = document.cookie
+        .split(';')
+        .map((c) => c.trim())
+        .find((c) => c.startsWith(prefix));
+      return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : '';
+    }
+
+    async function testApi() {
+      if (!baseUrl) {
+        resultEl.textContent = 'API_BASE_URL is not configured in worker runtime vars.';
+        return;
+      }
+
+      const accessToken = readCookie('ft_access_token');
+      if (!accessToken) {
+        resultEl.textContent = 'No access token cookie found. Log out and log in again.';
+        return;
+      }
+
+      const endpointPath = endpointInput.value.trim() || '/health';
+      const normalizedPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
+      const url = `${baseUrl}${normalizedPath}`;
+
+      resultEl.textContent = `Calling ${url}...`;
+
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        const bodyText = await response.text();
+        resultEl.textContent = `Status: ${response.status}\n\n${bodyText}`;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        resultEl.textContent = `Request failed: ${message}`;
+      }
+    }
+
+    testButton?.addEventListener('click', testApi);
+  </script>
 </Layout>
 
 <style>
@@ -50,6 +112,45 @@ try {
   .lead {
     margin: 0.9rem 0 1.4rem;
     font-size: 1.05rem;
+  }
+
+  .hint {
+    margin: 0 0 1rem;
+    color: #7b1f1f;
+    font-size: 0.95rem;
+  }
+
+  .tester {
+    display: grid;
+    gap: 0.6rem;
+    margin-bottom: 1.2rem;
+    text-align: left;
+  }
+
+  label {
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+
+  input {
+    border: 1px solid #c6bfae;
+    border-radius: 8px;
+    padding: 0.6rem 0.7rem;
+    font-size: 0.95rem;
+  }
+
+  pre {
+    margin: 0;
+    min-height: 88px;
+    max-height: 220px;
+    overflow: auto;
+    border-radius: 8px;
+    padding: 0.75rem;
+    background: #f7f4ec;
+    border: 1px solid #ddd5c4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.85rem;
   }
 
   .button {

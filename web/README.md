@@ -40,3 +40,23 @@ Run all commands from `web/`:
 - `/auth/callback` handles code exchange + role check
 - `/auth/logout` clears app session + logs out at Auth0
 - `/signed-in` protected admin page
+
+## API Auth Model (Target)
+
+The target model for editorial API access is cookie-forwarded auth through APIM:
+
+1. App issues API token in an HttpOnly cookie scoped for the parent domain.
+2. Browser calls API host on subdomain with credentialed requests.
+3. APIM extracts token from cookie, sets upstream Authorization header, and validates roles.
+4. EasyAuth validates bearer token at Function boundary.
+
+Security requirements for this model:
+
+- explicit credentialed CORS policy on APIM
+- CSRF protection on state-changing endpoints
+- strict cookie attributes (`HttpOnly`, `Secure`, domain/path scope, short expiry)
+- APIM header sanitization so client-provided auth header is not trusted
+
+Interim note:
+
+- If a temporary JS-readable token path exists for testing, treat it as transitional and remove it once APIM cookie-to-header flow is fully deployed.

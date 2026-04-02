@@ -2,6 +2,7 @@ import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload }
 import { env as cfEnv } from 'cloudflare:workers';
 
 export const SESSION_COOKIE = 'ft_session';
+export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
 const STATE_COOKIE = 'ft_state';
 const ROLE_CLAIMS = [
   'https://freedomtimes.news/roles',
@@ -12,6 +13,7 @@ export type AuthConfig = {
   domain: string;
   clientId: string;
   clientSecret: string;
+  apiAudience: string;
 };
 
 export function readEnv(key: string): string {
@@ -27,11 +29,17 @@ export function readEnv(key: string): string {
   return value;
 }
 
+export function readOptionalEnv(key: string): string {
+  const runtimeEnv = cfEnv as Record<string, string | undefined>;
+  return runtimeEnv[key] ?? (import.meta.env as Record<string, string | undefined>)[key] ?? '';
+}
+
 export function getAuthConfig(): AuthConfig {
   return {
     domain: readEnv('AUTH0_DOMAIN'),
     clientId: readEnv('AUTH0_CLIENT_ID'),
     clientSecret: readEnv('AUTH0_CLIENT_SECRET'),
+    apiAudience: readEnv('AUTH0_API_AUDIENCE'),
   };
 }
 
@@ -45,11 +53,11 @@ export function getStateCookieName(): string {
   return STATE_COOKIE;
 }
 
-export async function exchangeCodeForIdToken(params: {
+export async function exchangeCodeForTokens(params: {
   code: string;
   redirectUri: string;
   config: AuthConfig;
-}): Promise<string> {
+}): Promise<{ idToken: string; accessToken: string }> {
   const { code, redirectUri, config } = params;
   const tokenEndpoint = `https://${config.domain}/oauth/token`;
 
@@ -72,12 +80,19 @@ export async function exchangeCodeForIdToken(params: {
     throw new Error(`Auth0 token exchange failed: ${response.status} ${text}`);
   }
 
-  const tokenResponse = (await response.json()) as { id_token?: string };
+  const tokenResponse = (await response.json()) as { id_token?: string; access_token?: string };
   if (!tokenResponse.id_token) {
     throw new Error('Auth0 token exchange did not return id_token');
   }
 
-  return tokenResponse.id_token;
+  if (!tokenResponse.access_token) {
+    throw new Error('Auth0 token exchange did not return access_token');
+  }
+
+  return {
+    idToken: tokenResponse.id_token,
+    accessToken: tokenResponse.access_token,
+  };
 }
 
 export async function verifyIdToken(idToken: string, config: AuthConfig): Promise<JWTPayload> {

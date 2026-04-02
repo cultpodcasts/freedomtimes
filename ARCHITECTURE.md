@@ -318,6 +318,47 @@ Use Terraform as the default because it can manage all three providers in one gr
 - Cloudflare: Workers routes, KV namespace bindings, R2 buckets, DNS, cache-related zone settings.
 - Auth0: tenant resources, applications, APIs, RBAC roles, role-to-permission mappings.
 
+---
+
+### 4.11 API Auth Pattern (Agreed)
+
+The agreed direction for editorial API authentication is:
+
+1. Astro issues an API access token into an HttpOnly cookie on the parent domain (for example `.freedomtimes.news`).
+2. Browser calls the API host on a subdomain (for example `api-staging.freedomtimes.news`) with `credentials: include`.
+3. APIM reads token from the cookie, sets `Authorization: Bearer <token>` for upstream, and enforces JWT + role policy.
+4. EasyAuth on Azure Function validates the upstream authorization header as a second gate.
+5. Function executes business logic only after gateway + EasyAuth checks pass.
+
+This keeps API tokens out of browser JavaScript while preserving gateway-level RBAC and Function-level token verification.
+
+#### Implementation checklist (status)
+
+Status is tracked for the agreed pattern above.
+
+- [x] APIM JWT validation and role claim enforcement.
+- [x] EasyAuth enabled on Azure Function.
+- [ ] Astro issues API token as `HttpOnly` cookie (domain-scoped for subdomain API host).
+- [ ] Browser calls API host with cookie credentials (`credentials: include`) and no JS bearer token.
+- [ ] APIM policy extracts token from cookie and sets upstream `Authorization` header.
+- [ ] APIM policy drops/overrides inbound client `Authorization` header.
+- [ ] APIM credentialed CORS (`allow-credentials=true`, explicit origins, no wildcard).
+- [ ] CSRF protection for state-changing endpoints in cookie-auth model.
+- [ ] Custom API hostname on Freedom Times domain (for example `api-staging.freedomtimes.news`).
+
+Current state:
+
+- The repository contains partial implementation pieces, but the full cookie -> APIM header bridge -> EasyAuth end-to-end path is not complete yet.
+- Any JS-readable access token path should be treated as transitional and removed once the cookie-to-header policy path is fully deployed.
+
+#### Required controls for this pattern
+
+- Cookie settings: `HttpOnly`, `Secure`, explicit `Domain`, explicit `Path`, short `Max-Age`.
+- CORS with credentials on APIM: explicit allowed origins (no wildcard), `Access-Control-Allow-Credentials: true`.
+- CSRF controls for cookie-authenticated API calls.
+- APIM should overwrite or drop any inbound client `Authorization` header before setting upstream auth header from cookie token.
+- Function direct hostname access should be treated as non-public and restricted over time.
+
 This gives one plan/apply workflow, explicit dependencies, and auditable change history for the whole platform.
 
 **Fallback approach when provider gaps exist:**

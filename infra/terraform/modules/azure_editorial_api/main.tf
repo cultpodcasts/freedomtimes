@@ -16,6 +16,7 @@ locals {
   easy_auth_enabled                 = var.enable_easy_auth && length(trimspace(var.auth0_domain)) > 0 && length(trimspace(var.auth0_editorial_client_id)) > 0
   api_gateway_policy_enabled        = var.enable_api_gateway_policy && local.easy_auth_enabled && length(trimspace(var.auth0_api_audience)) > 0
   apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
+  apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
 
   base_app_settings = {
@@ -140,6 +141,26 @@ resource "azurerm_api_management_api_policy" "editorial" {
     <policies>
       <inbound>
         <base />
+        <cors allow-credentials="false">
+          <allowed-origins>
+${local.apim_allowed_origins_xml}
+          </allowed-origins>
+          <allowed-methods>
+            <method>GET</method>
+            <method>POST</method>
+            <method>PUT</method>
+            <method>PATCH</method>
+            <method>DELETE</method>
+            <method>OPTIONS</method>
+          </allowed-methods>
+          <allowed-headers>
+            <header>Authorization</header>
+            <header>Content-Type</header>
+          </allowed-headers>
+          <expose-headers>
+            <header>Content-Type</header>
+          </expose-headers>
+        </cors>
         <validate-jwt header-name="Authorization" require-scheme="Bearer" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
           <openid-config url="${local.auth0_openid_configuration_url}" />
           <audiences>

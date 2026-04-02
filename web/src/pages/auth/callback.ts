@@ -1,7 +1,8 @@
 import type { APIRoute } from 'astro';
 import {
+  ACCESS_TOKEN_COOKIE,
   SESSION_COOKIE,
-  exchangeCodeForIdToken,
+  exchangeCodeForTokens,
   getRoleClaimDebug,
   getAuthConfig,
   getStateCookieName,
@@ -38,7 +39,7 @@ export const GET: APIRoute = async (ctx) => {
 
   try {
     const redirectUri = `${ctx.url.origin}/auth/callback`;
-    const idToken = await exchangeCodeForIdToken({ code, redirectUri, config });
+    const { idToken, accessToken } = await exchangeCodeForTokens({ code, redirectUri, config });
     const payload = await verifyIdToken(idToken, config);
 
     if (!hasAdminRole(payload)) {
@@ -47,6 +48,7 @@ export const GET: APIRoute = async (ctx) => {
         roleDebug: getRoleClaimDebug(payload),
       });
       ctx.cookies.delete(SESSION_COOKIE, { path: '/' });
+      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, { path: '/' });
       return ctx.redirect('/?denied=1');
     }
 
@@ -56,6 +58,16 @@ export const GET: APIRoute = async (ctx) => {
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 8,
+    });
+
+    // Access token is intentionally readable by browser JS for direct APIM calls.
+    // This increases XSS risk and should be replaced by a BFF flow long-term.
+    ctx.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, {
+      httpOnly: false,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 30,
     });
 
     console.info('[auth.callback] login successful', { requestId });
@@ -68,6 +80,7 @@ export const GET: APIRoute = async (ctx) => {
       message,
     });
     ctx.cookies.delete(SESSION_COOKIE, { path: '/' });
+    ctx.cookies.delete(ACCESS_TOKEN_COOKIE, { path: '/' });
     return ctx.redirect('/?denied=1');
   }
 };

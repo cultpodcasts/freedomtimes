@@ -14,6 +14,23 @@ Terraform is not required for local application development. Local work can run 
 - Azure API Management gateway policy for JWT validation and role claim enforcement
 - Environment entrypoints for `production` and `staging`
 
+## API Auth Topology
+
+The intended topology for editorial API requests is:
+
+1. Browser sends HttpOnly auth cookie to APIM host (subdomain under the same parent domain).
+2. APIM policy extracts JWT from cookie and sets upstream `Authorization` header.
+3. APIM validates JWT audience and role claims.
+4. Azure Function EasyAuth validates the forwarded bearer token.
+
+This combines gateway policy control with EasyAuth defense in depth while avoiding JS-readable access tokens in the browser.
+
+Operational notes:
+
+- APIM CORS must be configured for credentialed requests with explicit origins.
+- APIM policy should sanitize inbound auth headers and only trust cookie-derived token input.
+- Keep EasyAuth enabled unless Function ingress is otherwise strongly restricted.
+
 ## Environment Separation Rule
 
 Terraform must maintain strict separation between staging and production for all providers (Cloudflare, Auth0, Azure).
@@ -87,3 +104,127 @@ Recommended route examples:
 
 - This is intentionally minimal for first deployment of a holding page.
 - Next steps can add remote state backend, staging/prod environments, and additional Cloudflare resources under IaC.
+
+## Runbook: Cookie To APIM To EasyAuth
+
+This runbook captures the target flow where browser requests carry an HttpOnly cookie, APIM converts cookie token to bearer header, APIM validates roles, and EasyAuth performs a second validation at the Function boundary.
+
+### 1. APIM policy skeleton
+
+Use policy logic that:
+
+- reads token from a dedicated cookie name
+- rejects missing token with `401`
+- replaces any client-supplied `Authorization` header
+- validates JWT audience and role claim
+
+Example (conceptual policy fragment):
+
+```xml
+<inbound>
+   <base />
+
+   <cors allow-credentials="true">
+      <allowed-origins>
+         <origin>https://staging.freedomtimes.news</origin>
+         <origin>https://freedomtimes.news</origin>
+      </allowed-origins>
+      <allowed-methods>
+         <method>GET</method>
+         <method>POST</method>
+         <method>PUT</method>
+         <method>PATCH</method>
+         <method>DELETE</method>
+         <method>OPTIONS</method>
+      </allowed-methods>
+      <allowed-headers>
+         <header>Content-Type</header>
+         <header>X-CSRF-Token</header>
+      </allowed-headers>
+   </cors>
+
+   <set-variable name="jwtCookie" value="@{
+      var cookie = context.Request.Headers.GetValueOrDefault("Cookie", "");
+      var marker = "ft_api_token=";
+      var start = cookie.IndexOf(marker, StringComparison.Ordinal);
+      if (start < 0) return "";
+      start += marker.Length;
+      var end = cookie.IndexOf(";", start, StringComparison.Ordinal);
+      return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
+   }" />
+
+   <choose>
+      <when condition="@(!string.IsNullOrEmpty((string)context.Variables["jwtCookie"]))">
+         <set-header name="Authorization" exists-action="override">
+            <value>@($"Bearer {(string)context.Variables["jwtCookie"]}")</value>
+         </set-header>
+      </when>
+      <otherwise>
+         <return-response>
+            <set-status code="401" reason="Unauthorized" />
+         </return-response>
+      </otherwise>
+   </choose>
+
+   <validate-jwt header-name="Authorization" require-scheme="Bearer">
+      <openid-config url="https://freedomtimes.uk.auth0.com/.well-known/openid-configuration" />
+      <audiences>
+         <audience>https://api.freedomtimes.news</audience>
+      </audiences>
+      <required-claims>
+         <claim name="https://freedomtimes.news/roles" match="any">
+            <value>admin</value>
+            <value>editor</value>
+         </claim>
+      </required-claims>
+   </validate-jwt>
+</inbound>
+```
+
+### 2. Cookie settings matrix
+
+Use separate cookie names per environment and explicit settings:
+
+| Setting | Staging | Production |
+|---|---|---|
+| Cookie name | `ft_api_token_stg` | `ft_api_token` |
+| Domain | `.freedomtimes.news` | `.freedomtimes.news` |
+| Path | `/` | `/` |
+| HttpOnly | `true` | `true` |
+| Secure | `true` | `true` |
+| SameSite | `Lax` | `Lax` |
+| Max-Age | 15-30 min | 15-30 min |
+
+Notes:
+
+- Separate names reduce accidental cross-environment collisions.
+- `SameSite=Lax` generally works for same-site subdomain requests. Re-evaluate if request patterns change.
+
+### 3. Frontend request requirements
+
+Browser fetches to APIM host must include credentials:
+
+```ts
+await fetch("https://api-staging.freedomtimes.news/editorial/health", {
+   method: "GET",
+   credentials: "include",
+});
+```
+
+Do not attach bearer tokens from JavaScript when using this model.
+
+### 4. CSRF baseline
+
+Because auth is cookie-based, apply CSRF controls for state-changing routes:
+
+- Require `X-CSRF-Token` for `POST/PUT/PATCH/DELETE`.
+- Validate token server-side against per-session value.
+- Reject missing or invalid tokens with `403`.
+
+### 5. EasyAuth expectations
+
+EasyAuth continues to validate the forwarded bearer token from APIM.
+
+- Keep `require_authentication=true`.
+- Keep direct Function URL non-public wherever possible.
+- Treat APIM as policy and role gate; EasyAuth as second auth gate.

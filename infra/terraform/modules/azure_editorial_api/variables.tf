@@ -153,6 +153,12 @@ variable "api_management_api_path" {
   default     = "editorial"
 }
 
+variable "api_management_allowed_origins" {
+  description = "Allowed browser origins for APIM CORS policy"
+  type        = list(string)
+  default     = ["https://staging.freedomtimes.news", "https://freedomtimes.news"]
+}
+
 variable "tags" {
   description = "Tags applied to supported Azure resources"
   type        = map(string)

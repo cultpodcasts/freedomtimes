@@ -26,6 +26,7 @@ export const GET: APIRoute = async (ctx) => {
   authorizeUrl.searchParams.set('client_id', config.clientId);
   authorizeUrl.searchParams.set('redirect_uri', redirectUri);
   authorizeUrl.searchParams.set('scope', 'openid profile email');
+  authorizeUrl.searchParams.set('audience', config.apiAudience);
   authorizeUrl.searchParams.set('connection', 'google-oauth2');
   authorizeUrl.searchParams.set('state', state);
 
