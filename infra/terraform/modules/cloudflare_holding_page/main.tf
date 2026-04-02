@@ -21,6 +21,7 @@ resource "cloudflare_workers_script" "holding_page" {
   account_id = var.account_id
   name       = var.worker_name
   content    = local.worker_script
+  logpush    = true
 }
 
 resource "cloudflare_workers_secret" "script_secrets" {
