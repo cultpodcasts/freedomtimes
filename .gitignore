@@ -22,3 +22,4 @@ crash.log
 # Local env files
 .env.dev
 *.har
+certs/*

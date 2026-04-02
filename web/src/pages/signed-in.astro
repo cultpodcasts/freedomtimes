@@ -134,10 +134,10 @@ try {
 
       const endpointPath = endpointInput.value.trim() || '/stories';
       const normalizedPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
-      const url = `/api/editorial${normalizedPath}`;
+      const url = `${baseUrl}${normalizedPath}`;
       const correlationId = createCorrelationId();
 
-      resultEl.textContent = `Calling ${url} (upstream ${baseUrl}${normalizedPath})...\nCorrelation ID: ${correlationId}`;
+      resultEl.textContent = `Calling ${url}...\nCorrelation ID: ${correlationId}`;
 
       try {
         const csrfToken = readCookie('ft_csrf');
