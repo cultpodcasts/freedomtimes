@@ -76,16 +76,38 @@ jobs:
 
       - name: Terraform Plan
         id: plan
+        timeout-minutes: 15
         run: |
+          echo "Starting terraform plan (non-interactive) with heartbeat logging..."
           set +e
-          terraform plan -lock-timeout=5m -no-color -out=tfplan
+          terraform plan -input=false -lock-timeout=5m -no-color -detailed-exitcode -out=tfplan > plan.log 2>&1 &
+          PLAN_PID=$!
+
+          while kill -0 "$PLAN_PID" 2>/dev/null; do
+            echo "[plan-heartbeat] $(date -u +"%Y-%m-%dT%H:%M:%SZ") terraform plan still running"
+            tail -n 20 plan.log || true
+            sleep 30
+          done
+
+          wait "$PLAN_PID"
           PLAN_EXIT=$?
           set -e
+
+          echo "--- terraform plan output ---"
+          cat plan.log
+
           if [ "$PLAN_EXIT" -eq 1 ]; then
             echo "terraform plan failed with exit code 1"
             exit 1
           fi
-          echo "terraform plan exit code: $PLAN_EXIT"
+          if [ "$PLAN_EXIT" -eq 0 ]; then
+            echo "terraform plan completed: no changes"
+          elif [ "$PLAN_EXIT" -eq 2 ]; then
+            echo "terraform plan completed: changes detected"
+          else
+            echo "terraform plan returned unexpected exit code: $PLAN_EXIT"
+            exit "$PLAN_EXIT"
+          fi
         continue-on-error: false
 
       - name: Post plan to PR
