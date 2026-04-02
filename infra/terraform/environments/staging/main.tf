@@ -25,10 +25,6 @@ module "cloudflare_holding_page" {
   holding_message = var.holding_message
   build_revision  = var.build_revision
   contact_email   = var.contact_email
-
-  worker_secrets = {
-    AUTH0_CLIENT_SECRET = var.auth0_app_client_secret
-  }
 }
 
 module "auth0_app" {

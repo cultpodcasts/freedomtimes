@@ -59,6 +59,21 @@ function Get-TfcTokenFromCredentials {
     }
 }
 
+function Get-EnvValue {
+    param(
+        [hashtable]$Values,
+        [string[]]$Keys
+    )
+
+    foreach ($key in $Keys) {
+        if ($Values.ContainsKey($key) -and -not [string]::IsNullOrWhiteSpace($Values[$key])) {
+            return $Values[$key]
+        }
+    }
+
+    return ""
+}
+
 # ---------------------------------------------------------------------------
 # Secrets  (sensitive — stored encrypted, never visible after setting)
 # ---------------------------------------------------------------------------
@@ -71,8 +86,8 @@ $secrets = [ordered]@{
     TF_VAR_AUTH0_CLIENT_SECRET    = $env["TF_VAR_auth0_client_secret"]
     TF_VAR_AUTH0_ACTION_CLIENT_ID     = $env["TF_VAR_auth0_action_client_id"]
     TF_VAR_AUTH0_ACTION_CLIENT_SECRET = $env["TF_VAR_auth0_action_client_secret"]
-    AUTH0_APP_CLIENT_ID_STAGING       = $env["AUTH0_APP_CLIENT_ID_STAGING"]
-    AUTH0_APP_CLIENT_SECRET_STAGING   = $env["AUTH0_APP_CLIENT_SECRET_STAGING"]
+    AUTH0_STAGING_APP_CLIENT_SECRET    = Get-EnvValue -Values $env -Keys @("AUTH0_STAGING_APP_CLIENT_SECRET", "AUTH0_APP_CLIENT_SECRET_STAGING")
+    AUTH0_PRODUCTION_APP_CLIENT_SECRET = Get-EnvValue -Values $env -Keys @("AUTH0_PRODUCTION_APP_CLIENT_SECRET", "AUTH0_APP_CLIENT_SECRET_PRODUCTION")
 }
 
 Write-Host "`nSetting secrets..." -ForegroundColor Cyan

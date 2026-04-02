@@ -30,6 +30,8 @@ module "cloudflare_holding_page" {
 module "auth0_app" {
   source = "../../modules/auth0_app"
 
+  app_name                     = "freedomtimes-admin"
+  workspace_url                = "https://freedomtimes.news"
   auth0_domain                 = var.auth0_domain
   extra_workspace_urls         = ["https://staging.freedomtimes.news"]
   auth0_action_client_id       = var.auth0_action_client_id
