@@ -38,8 +38,6 @@ jobs:
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
       TF_VAR_auth0_client_secret: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
-      TF_VAR_auth0_action_client_id: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_ID }}
-      TF_VAR_auth0_action_client_secret: ${{ secrets.TF_VAR_AUTH0_ACTION_CLIENT_SECRET }}
 
     steps:
       - uses: actions/checkout@v4
@@ -116,7 +114,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
           AUTH0_DOMAIN: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
-          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION || secrets.AUTH0_PRODUCTION_APP_CLIENT_ID }}
+          AUTH0_CLIENT_ID: ${{ secrets.AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION }}
         run: >
           npx wrangler deploy --config wrangler.production.toml
           --var AUTH0_DOMAIN:$AUTH0_DOMAIN
@@ -128,6 +126,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-          AUTH0_CLIENT_SECRET_VALUE: ${{ secrets.AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION || secrets.AUTH0_PRODUCTION_APP_CLIENT_SECRET }}
+          AUTH0_CLIENT_SECRET_VALUE: ${{ secrets.AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION }}
         run: |
           printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.production.toml

@@ -83,17 +83,3 @@ variable "auth0_client_secret" {
   type        = string
   sensitive   = true
 }
-
-variable "auth0_action_client_id" {
-  description = "Auth0 M2M client ID for Actions (with read:users and read:roles scopes)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "auth0_action_client_secret" {
-  description = "Auth0 M2M client secret for Actions"
-  type        = string
-  sensitive   = true
-  default     = ""
-}

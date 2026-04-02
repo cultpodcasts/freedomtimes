@@ -32,17 +32,3 @@ variable "extra_workspace_urls" {
   type        = list(string)
   default     = []
 }
-
-variable "auth0_action_client_id" {
-  description = "Auth0 M2M app client ID for Actions (with read:users and read:roles scopes)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "auth0_action_client_secret" {
-  description = "Auth0 M2M app client secret for Actions"
-  type        = string
-  sensitive   = true
-  default     = ""
-}

@@ -34,6 +34,4 @@ module "auth0_app" {
   workspace_url              = "https://staging.freedomtimes.news"
   app_name                   = "freedomtimes-admin-staging"
   create_shared_resources    = false
-  auth0_action_client_id     = var.auth0_action_client_id
-  auth0_action_client_secret = var.auth0_action_client_secret
 }
