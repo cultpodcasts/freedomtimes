@@ -107,6 +107,7 @@ jobs:
           echo "Starting terraform plan (non-interactive) with heartbeat logging..."
           set +e
           timeout 12m terraform plan -input=false -lock-timeout=5m -no-color -detailed-exitcode -out=tfplan \
+            -refresh=false \
             -target=module.azure_editorial_api \
             -target=module.cloudflare_holding_page \
             -target=cloudflare_record.api_custom_hostname > plan.log 2>&1 &
