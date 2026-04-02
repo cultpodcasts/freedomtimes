@@ -60,6 +60,10 @@ module "azure_editorial_api" {
   api_management_publisher_email = var.api_management_publisher_email
   api_management_sku_name        = var.api_management_sku_name
   api_management_api_path        = var.api_management_api_path
+  api_management_allowed_origins = [
+    "https://staging.freedomtimes.news",
+    "https://freedomtimes.news",
+  ]
   api_management_gateway_custom_domain         = var.api_custom_hostname
   api_management_gateway_certificate_base64    = var.api_custom_hostname_certificate_base64
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
