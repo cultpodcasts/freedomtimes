@@ -22,6 +22,14 @@ resource "cloudflare_workers_script" "holding_page" {
   name       = var.worker_name
   content    = local.worker_script
   logpush    = true
+
+  # Wrangler owns deployed Worker bundle content; Terraform manages routing/domain bindings.
+  lifecycle {
+    ignore_changes = [
+      content,
+      plain_text_binding,
+    ]
+  }
 }
 
 resource "cloudflare_workers_secret" "script_secrets" {

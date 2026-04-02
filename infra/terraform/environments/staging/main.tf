@@ -59,10 +59,24 @@ module "azure_editorial_api" {
   api_management_publisher_email = var.api_management_publisher_email
   api_management_sku_name        = var.api_management_sku_name
   api_management_api_path        = var.api_management_api_path
+  api_management_gateway_custom_domain         = var.api_custom_hostname
+  api_management_gateway_certificate_base64    = var.api_custom_hostname_certificate_base64
+  api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
 
   tags = {
     project     = "freedomtimes"
     environment = "staging"
     managed_by  = "terraform"
   }
+}
+
+resource "cloudflare_record" "api_custom_hostname" {
+  count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 && module.azure_editorial_api.api_gateway_hostname != null ? 1 : 0
+
+  zone_id = var.cloudflare_zone_id
+  name    = var.api_custom_hostname
+  type    = "CNAME"
+  content = module.azure_editorial_api.api_gateway_hostname
+  proxied = true
+  ttl     = 1
 }

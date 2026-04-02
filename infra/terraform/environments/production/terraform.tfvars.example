@@ -15,3 +15,9 @@ editorial_roles_claim           = "https://freedomtimes.news/roles"
 editorial_allowed_roles         = ["admin", "editor"]
 api_management_sku_name         = "Consumption_0"
 api_management_api_path         = "editorial"
+api_custom_hostname             = "api.freedomtimes.news"
+
+# APIM custom hostname certificate (PFX) material for gateway TLS
+# Provide these via environment variables or secure workspace vars in CI/Terraform Cloud.
+# api_custom_hostname_certificate_base64 = "<base64-pfx>"
+# api_custom_hostname_certificate_password = "<pfx-password>"

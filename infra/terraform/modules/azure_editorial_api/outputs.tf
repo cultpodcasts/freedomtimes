@@ -23,9 +23,18 @@ output "api_gateway_url" {
   value       = length(azurerm_api_management.editorial) > 0 ? azurerm_api_management.editorial[0].gateway_url : null
 }
 
+output "api_gateway_hostname" {
+  description = "API Management default gateway hostname when gateway policy is enabled"
+  value       = length(azurerm_api_management.editorial) > 0 ? trimsuffix(trimprefix(azurerm_api_management.editorial[0].gateway_url, "https://"), "/") : null
+}
+
 output "editorial_api_public_base_url" {
   description = "Public base URL for editorial API through API Management"
-  value       = length(azurerm_api_management.editorial) > 0 ? "${azurerm_api_management.editorial[0].gateway_url}/${azurerm_api_management_api.editorial[0].path}" : null
+  value = length(azurerm_api_management.editorial) > 0 ? format(
+    "https://%s/%s",
+    length(trimspace(var.api_management_gateway_custom_domain)) > 0 && length(trimspace(var.api_management_gateway_certificate_base64)) > 0 && length(trimspace(var.api_management_gateway_certificate_password)) > 0 ? trimspace(var.api_management_gateway_custom_domain) : trimsuffix(trimprefix(azurerm_api_management.editorial[0].gateway_url, "https://"), "/"),
+    azurerm_api_management_api.editorial[0].path,
+  ) : null
 }
 
 output "cosmos_account_name" {

@@ -18,6 +18,7 @@ locals {
   apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
   apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
+  apim_gateway_custom_domain_enabled = local.api_gateway_policy_enabled && length(trimspace(var.api_management_gateway_custom_domain)) > 0 && length(trimspace(var.api_management_gateway_certificate_base64)) > 0 && length(trimspace(var.api_management_gateway_certificate_password)) > 0
 
   base_app_settings = {
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
@@ -101,6 +102,12 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   app_settings = local.function_app_settings
   https_only   = true
   tags         = var.tags
+
+  # Azure API/provider returns this value differently for Flex Consumption,
+  # causing perpetual non-functional plan churn.
+  lifecycle {
+    ignore_changes = [storage_access_key]
+  }
 }
 
 resource "azurerm_api_management" "editorial" {
@@ -130,6 +137,18 @@ resource "azurerm_api_management_api" "editorial" {
   service_url           = "https://${azurerm_function_app_flex_consumption.editorial.default_hostname}/api"
 }
 
+resource "azurerm_api_management_custom_domain" "editorial" {
+  count = local.apim_gateway_custom_domain_enabled ? 1 : 0
+
+  api_management_id = azurerm_api_management.editorial[0].id
+
+  gateway {
+    host_name            = trimspace(var.api_management_gateway_custom_domain)
+    certificate          = trimspace(var.api_management_gateway_certificate_base64)
+    certificate_password = trimspace(var.api_management_gateway_certificate_password)
+  }
+}
+
 resource "azurerm_api_management_api_policy" "editorial" {
   count = local.api_gateway_policy_enabled ? 1 : 0
 
@@ -141,7 +160,8 @@ resource "azurerm_api_management_api_policy" "editorial" {
     <policies>
       <inbound>
         <base />
-        <cors allow-credentials="false">
+        <!-- Enable credentialed CORS -->
+        <cors allow-credentials="true">
           <allowed-origins>
 ${local.apim_allowed_origins_xml}
           </allowed-origins>
@@ -156,11 +176,61 @@ ${local.apim_allowed_origins_xml}
           <allowed-headers>
             <header>Authorization</header>
             <header>Content-Type</header>
+            <header>X-CSRF-Token</header>
           </allowed-headers>
           <expose-headers>
             <header>Content-Type</header>
           </expose-headers>
         </cors>
+
+        <!-- Remove any inbound Authorization header from client -->
+        <set-header name="Authorization" exists-action="delete" />
+
+        <!-- Parse cookie values in APIM expression-safe form -->
+        <set-variable name="cookieHeader" value="@(context.Request.Headers.GetValueOrDefault(&quot;Cookie&quot;, &quot;&quot;))" />
+        <set-variable name="accessTokenFromCookie" value="@{
+          var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
+          var marker = &quot;ft_access_token=&quot;;
+          var start = cookie.IndexOf(marker);
+          if (start < 0) { return &quot;&quot;; }
+          start += marker.Length;
+          var end = cookie.IndexOf(&quot;;&quot;, start);
+          return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
+        }" />
+        <set-variable name="csrfTokenFromCookie" value="@{
+          var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
+          var marker = &quot;ft_csrf=&quot;;
+          var start = cookie.IndexOf(marker);
+          if (start < 0) { return &quot;&quot;; }
+          start += marker.Length;
+          var end = cookie.IndexOf(&quot;;&quot;, start);
+          return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
+        }" />
+        <set-variable name="csrfTokenFromHeader" value="@(context.Request.Headers.GetValueOrDefault(&quot;X-CSRF-Token&quot;, &quot;&quot;))" />
+
+        <!-- Extract JWT from cookie and set Authorization header for upstream -->
+        <choose>
+          <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;accessTokenFromCookie&quot;]))">
+            <set-header name="Authorization" exists-action="override">
+              <value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;accessTokenFromCookie&quot;])</value>
+            </set-header>
+          </when>
+        </choose>
+
+        <!-- Enforce CSRF for state-changing methods when using cookie auth -->
+        <choose>
+          <when condition="@(context.Request.Method == &quot;POST&quot; || context.Request.Method == &quot;PUT&quot; || context.Request.Method == &quot;PATCH&quot; || context.Request.Method == &quot;DELETE&quot;)">
+            <choose>
+              <when condition="@(string.IsNullOrEmpty((string)context.Variables[&quot;csrfTokenFromCookie&quot;]) || string.IsNullOrEmpty((string)context.Variables[&quot;csrfTokenFromHeader&quot;]) || (string)context.Variables[&quot;csrfTokenFromCookie&quot;] != (string)context.Variables[&quot;csrfTokenFromHeader&quot;])">
+                <return-response>
+                  <set-status code="403" reason="Forbidden" />
+                  <set-body>CSRF token missing or invalid.</set-body>
+                </return-response>
+              </when>
+            </choose>
+          </when>
+        </choose>
+
         <validate-jwt header-name="Authorization" require-scheme="Bearer" failed-validation-httpcode="401" failed-validation-error-message="Unauthorized">
           <openid-config url="${local.auth0_openid_configuration_url}" />
           <audiences>

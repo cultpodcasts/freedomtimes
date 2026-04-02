@@ -153,6 +153,26 @@ variable "api_management_api_path" {
   default     = "editorial"
 }
 
+variable "api_management_gateway_custom_domain" {
+  description = "Optional custom hostname for APIM gateway (for example: api-staging.freedomtimes.news)"
+  type        = string
+  default     = ""
+}
+
+variable "api_management_gateway_certificate_base64" {
+  description = "Base64-encoded PFX certificate for APIM custom gateway hostname"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "api_management_gateway_certificate_password" {
+  description = "Password for APIM custom gateway hostname certificate"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "api_management_allowed_origins" {
   description = "Allowed browser origins for APIM CORS policy"
   type        = list(string)

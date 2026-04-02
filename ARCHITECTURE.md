@@ -338,18 +338,18 @@ Status is tracked for the agreed pattern above.
 
 - [x] APIM JWT validation and role claim enforcement.
 - [x] EasyAuth enabled on Azure Function.
-- [ ] Astro issues API token as `HttpOnly` cookie (domain-scoped for subdomain API host).
-- [ ] Browser calls API host with cookie credentials (`credentials: include`) and no JS bearer token.
-- [ ] APIM policy extracts token from cookie and sets upstream `Authorization` header.
-- [ ] APIM policy drops/overrides inbound client `Authorization` header.
-- [ ] APIM credentialed CORS (`allow-credentials=true`, explicit origins, no wildcard).
-- [ ] CSRF protection for state-changing endpoints in cookie-auth model.
-- [ ] Custom API hostname on Freedom Times domain (for example `api-staging.freedomtimes.news`).
+- [x] Astro issues API token as `HttpOnly` cookie (domain-scoped for subdomain API host).
+- [x] Browser calls API host with cookie credentials (`credentials: include`) and no JS bearer token.
+- [x] APIM policy extracts token from cookie and sets upstream `Authorization` header.
+- [x] APIM policy drops/overrides inbound client `Authorization` header.
+- [x] APIM credentialed CORS (`allow-credentials=true`, explicit origins, no wildcard).
+- [x] CSRF protection for state-changing endpoints in cookie-auth model.
+- [x] Custom API hostname on Freedom Times domain (for example `api-staging.freedomtimes.news`).
 
 Current state:
 
-- The repository contains partial implementation pieces, but the full cookie -> APIM header bridge -> EasyAuth end-to-end path is not complete yet.
-- Any JS-readable access token path should be treated as transitional and removed once the cookie-to-header policy path is fully deployed.
+- Cookie -> APIM header bridge -> EasyAuth path is now implemented in application and APIM policy code.
+- APIM custom hostnames are wired for staging (`api-staging.freedomtimes.news`) and production (`api.freedomtimes.news`), with certificate inputs required at deploy time.
 
 #### Required controls for this pattern
 

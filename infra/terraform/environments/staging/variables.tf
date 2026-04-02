@@ -68,6 +68,26 @@ variable "api_management_api_path" {
   default     = "editorial"
 }
 
+variable "api_custom_hostname" {
+  description = "Custom API hostname for staging APIM gateway"
+  type        = string
+  default     = "api-staging.freedomtimes.news"
+}
+
+variable "api_custom_hostname_certificate_base64" {
+  description = "Base64-encoded PFX certificate for staging custom API hostname"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "api_custom_hostname_certificate_password" {
+  description = "Certificate password for staging custom API hostname"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "worker_name" {
   description = "Worker name for the holding page"
   type        = string
