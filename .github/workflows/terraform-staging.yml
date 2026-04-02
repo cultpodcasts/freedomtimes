@@ -100,6 +100,32 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      - name: Adopt Existing API CNAME Record
+        if: env.CERT_SECRETS_CONFIGURED == 'true'
+        run: |
+          set -euo pipefail
+
+          RESOURCE_ADDR='cloudflare_record.api_custom_hostname[0]'
+          HOSTNAME='api-staging.freedomtimes.news'
+
+          if terraform state show "$RESOURCE_ADDR" >/dev/null 2>&1; then
+            echo "Cloudflare API hostname record already tracked in Terraform state"
+            exit 0
+          fi
+
+          RECORD_ID=$(curl -sS \
+            -H "Authorization: Bearer $TF_VAR_cloudflare_api_token" \
+            "https://api.cloudflare.com/client/v4/zones/$TF_VAR_cloudflare_zone_id/dns_records?type=CNAME&name=$HOSTNAME" \
+            | jq -r '.result[0].id // empty')
+
+          if [ -z "$RECORD_ID" ]; then
+            echo "No existing Cloudflare CNAME for $HOSTNAME found; Terraform will create it"
+            exit 0
+          fi
+
+          echo "Importing existing Cloudflare DNS record into Terraform state"
+          terraform import -input=false "$RESOURCE_ADDR" "$TF_VAR_cloudflare_zone_id/$RECORD_ID"
+
       - name: Terraform Plan
         id: plan
         timeout-minutes: 20
