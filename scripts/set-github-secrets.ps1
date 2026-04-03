@@ -3,6 +3,20 @@
     Syncs GitHub Actions secrets/variables (and optionally Cloudflare Worker secrets)
     from layered local env files.
 
+.DESCRIPTION
+    This script is the synchronization bridge between local environment configuration and remote systems.
+    
+    CANONICAL SOURCE HIERARCHY:
+      .env.dev (base) + .env.staging/.env.production (overlays)
+        ↓ (script reads)
+      GitHub secrets & variables
+        ↓ (workflows read)
+      Cloudflare Worker secrets (optional, via -SyncCloudflareWorkerSecrets)
+    
+    The workflows (terraform-staging.yml, terraform-production.yml) read from GitHub secrets
+    and deploy Cloudflare Worker secrets during Terraform apply. The script ensures that
+    GitHub secrets stay in sync with your local env files.
+
 .EXAMPLE
     .\scripts\set-github-secrets.ps1
 
@@ -297,6 +311,10 @@ foreach ($name in $variables.Keys) {
 
 if ($SyncCloudflareWorkerSecrets) {
     Write-Host "`nSyncing Cloudflare Worker secrets..." -ForegroundColor Cyan
+    Write-Host "Reading credentials from local env: .env.staging + .env.production" -ForegroundColor Gray
+    Write-Host "These are synced to Cloudflare directly by the script, independent of GitHub." -ForegroundColor Gray
+    Write-Host "For CI/CD automation: the workflows read GitHub secrets and sync to Cloudflare during Terraform apply." -ForegroundColor Gray
+
 
     if (-not (Test-Path $stagingWranglerConfig) -or -not (Test-Path $productionWranglerConfig)) {
         Write-Warning "Wrangler config file missing, skipping Cloudflare Worker secret sync."

@@ -144,6 +144,9 @@ jobs:
       - name: Set Worker Secrets for Production
         if: false
         working-directory: web
+        # Cloudflare Worker secrets are synced here from GitHub secrets.
+        # GitHub secrets are populated by scripts/set-github-secrets.ps1, which reads from .env.production.
+        # Canonical source: .env.production → (script syncs to) → GitHub secrets → (workflow reads) → Cloudflare Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
