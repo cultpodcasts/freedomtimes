@@ -14,10 +14,5 @@
   // Static assets configuration
   "assets": {
     "directory": "dist/client"
-  },
-
-  "vars": {
-    "AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
-    "API_BASE_URL": "https://api.freedomtimes.news/editorial"
   }
 }

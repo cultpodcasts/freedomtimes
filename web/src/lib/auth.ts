@@ -5,10 +5,17 @@ export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
 export const CSRF_COOKIE = 'ft_csrf';
 const STATE_COOKIE = 'ft_state';
-const ROLE_CLAIMS = [
-  'https://freedomtimes.news/roles',
-  'roles',
-];
+
+function getRoleClaims(): string[] {
+  const namespace = readOptionalEnv('AUTH0_ROLES_CLAIM_NAMESPACE').trim().replace(/\/$/, '');
+  const claims = ['roles'];
+
+  if (namespace.length > 0) {
+    claims.unshift(`${namespace}/roles`);
+  }
+
+  return claims;
+}
 
 export type AuthConfig = {
   domain: string;
@@ -56,6 +63,7 @@ export function getStateCookieName(): string {
 
 export function getCookieDomainForHost(hostname: string): string | undefined {
   const normalized = hostname.trim().toLowerCase();
+  const baseDomain = readOptionalEnv('COOKIE_BASE_DOMAIN').trim().toLowerCase().replace(/^\./, '');
 
   if (!normalized || normalized === 'localhost') {
     return undefined;
@@ -66,8 +74,8 @@ export function getCookieDomainForHost(hostname: string): string | undefined {
     return undefined;
   }
 
-  if (normalized === 'freedomtimes.news' || normalized.endsWith('.freedomtimes.news')) {
-    return '.freedomtimes.news';
+  if (baseDomain && (normalized === baseDomain || normalized.endsWith(`.${baseDomain}`))) {
+    return `.${baseDomain}`;
   }
 
   return undefined;
@@ -154,7 +162,7 @@ function decodeAuth0ClientSecret(secret: string): Uint8Array {
 }
 
 export function hasAdminRole(payload: JWTPayload): boolean {
-  for (const claim of ROLE_CLAIMS) {
+  for (const claim of getRoleClaims()) {
     const value = payload[claim];
     if (Array.isArray(value) && value.some((r) => String(r).toLowerCase() === 'admin')) {
       return true;
@@ -167,7 +175,7 @@ export function hasAdminRole(payload: JWTPayload): boolean {
 export function hasEditorialRole(payload: JWTPayload): boolean {
   const allowed = new Set(['admin', 'editor']);
 
-  for (const claim of ROLE_CLAIMS) {
+  for (const claim of getRoleClaims()) {
     const value = payload[claim];
     if (Array.isArray(value) && value.some((r) => allowed.has(String(r).toLowerCase()))) {
       return true;
@@ -178,8 +186,9 @@ export function hasEditorialRole(payload: JWTPayload): boolean {
 }
 
 export function getRoleClaimDebug(payload: JWTPayload): Record<string, unknown> {
+  const roleClaims = getRoleClaims();
   const roleClaimValues: Record<string, unknown> = {};
-  for (const claim of ROLE_CLAIMS) {
+  for (const claim of roleClaims) {
     roleClaimValues[claim] = payload[claim] ?? null;
   }
 
@@ -188,7 +197,7 @@ export function getRoleClaimDebug(payload: JWTPayload): Record<string, unknown> 
   );
 
   return {
-    configuredRoleClaims: ROLE_CLAIMS,
+    configuredRoleClaims: roleClaims,
     roleClaimValues,
     availableRoleLikeClaims,
     sub: payload.sub ?? null,

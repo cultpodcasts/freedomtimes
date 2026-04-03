@@ -38,9 +38,9 @@ jobs:
       TF_VAR_holding_message: ${{ vars.TF_VAR_HOLDING_MESSAGE }}
       TF_VAR_build_revision: ${{ github.sha }}
       TF_VAR_contact_email: ""
-      TF_VAR_manage_apex_dns_record: "true"
-      TF_VAR_apex_dns_record_content: "192.0.2.1"
-      TF_VAR_api_custom_hostname: "api.freedomtimes.news"
+      TF_VAR_manage_apex_dns_record: ${{ vars.TF_VAR_MANAGE_APEX_DNS_RECORD_PRODUCTION }}
+      TF_VAR_apex_dns_record_content: ${{ vars.TF_VAR_APEX_DNS_RECORD_CONTENT_PRODUCTION }}
+      TF_VAR_api_custom_hostname: ${{ vars.TF_VAR_API_CUSTOM_HOSTNAME_PRODUCTION }}
       TF_VAR_api_custom_hostname_certificate_base64: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION }}
       TF_VAR_api_custom_hostname_certificate_password: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION }}
       CERT_SECRETS_CONFIGURED: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION != '' && secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION != '' }}
@@ -126,12 +126,18 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-          AUTH0_API_AUDIENCE: "https://api.freedomtimes.news"
-          API_BASE_URL: "https://api.freedomtimes.news/editorial"
+          AUTH0_API_AUDIENCE: ${{ vars.AUTH0_API_AUDIENCE_PRODUCTION }}
+          API_BASE_URL: ${{ vars.API_BASE_URL_PRODUCTION }}
+          COOKIE_BASE_DOMAIN: ${{ vars.COOKIE_BASE_DOMAIN_PRODUCTION }}
+          AUTH0_ROLES_CLAIM_NAMESPACE: ${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE_PRODUCTION }}
+          API_UPSTREAM_MODE: ${{ vars.API_UPSTREAM_MODE_PRODUCTION }}
         run: >
           npx wrangler deploy --config wrangler.production.jsonc
           --var AUTH0_API_AUDIENCE:$AUTH0_API_AUDIENCE
           --var API_BASE_URL:$API_BASE_URL
+          --var COOKIE_BASE_DOMAIN:$COOKIE_BASE_DOMAIN
+          --var AUTH0_ROLES_CLAIM_NAMESPACE:$AUTH0_ROLES_CLAIM_NAMESPACE
+          --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
 
       - name: Set Worker Secrets for Production
         if: false

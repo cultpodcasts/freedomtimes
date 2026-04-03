@@ -15,11 +15,16 @@ Copy `.env.example` to `.env` and set values:
 AUTH0_DOMAIN=freedomtimes.uk.auth0.com
 AUTH0_CLIENT_ID=...
 AUTH0_CLIENT_SECRET=...
+AUTH0_API_AUDIENCE=...
+API_BASE_URL=...
+COOKIE_BASE_DOMAIN=freedomtimes.news
+AUTH0_ROLES_CLAIM_NAMESPACE=https://freedomtimes.news
+API_UPSTREAM_MODE=apim
 ```
 
 Role detection checks either of these claims in the ID token:
 
-- `https://freedomtimes.news/roles`
+- `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` (when namespace is configured)
 - `roles`
 
 The user is considered admin only if one role equals `admin` (case-insensitive).

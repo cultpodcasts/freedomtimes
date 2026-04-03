@@ -7,8 +7,9 @@ function joinUrl(base: string, path: string, query: string): string {
   return `${normalizedBase}${normalizedPath}${query}`;
 }
 
-function isApimUpstream(url: string): boolean {
-  return url.includes('.azure-api.net');
+function isApimUpstream(): boolean {
+  const mode = readOptionalEnv('API_UPSTREAM_MODE').trim().toLowerCase();
+  return mode === '' || mode === 'apim';
 }
 
 async function proxyRequest(ctx: Parameters<APIRoute>[0]): Promise<Response> {
@@ -41,7 +42,7 @@ async function proxyRequest(ctx: Parameters<APIRoute>[0]): Promise<Response> {
 
   const path = ctx.params.path ?? '';
   const targetUrl = joinUrl(baseUrl, path, ctx.url.search);
-  const apimUpstream = isApimUpstream(baseUrl);
+  const apimUpstream = isApimUpstream();
   const csrfCookie = ctx.cookies.get(CSRF_COOKIE)?.value;
   const csrfHeader = ctx.request.headers.get('x-csrf-token');
 
