@@ -462,12 +462,15 @@ jobs:
 
       - name: Enable API DNS Proxy After APIM Custom Domain
         timeout-minutes: 10
+        env:
+          APIM_FUNCTION_KEY: ${{ steps.function_key.outputs.apim_function_key }}
         run: |
           set -euo pipefail
 
           terraform apply -input=false -lock-timeout=5m -no-color -auto-approve \
             -target="cloudflare_record.api_custom_hostname[0]" \
-            -var "api_custom_hostname_proxied=true"
+            -var "api_custom_hostname_proxied=true" \
+            -var "apim_function_key=$APIM_FUNCTION_KEY"
 
       - name: Install Web Dependencies
         working-directory: web

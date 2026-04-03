@@ -86,7 +86,6 @@ resource "cloudflare_record" "api_custom_hostname" {
   proxied = var.api_custom_hostname_proxied
   ttl     = 1
   allow_overwrite = true
-  depends_on = [module.azure_editorial_api]
 }
 
 resource "time_sleep" "wait_for_api_custom_hostname_dns" {
