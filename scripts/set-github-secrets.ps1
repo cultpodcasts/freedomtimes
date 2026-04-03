@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-    Syncs GitHub Actions secrets/variables (and optionally Cloudflare Worker secrets) from .env.dev.
+    Syncs GitHub Actions secrets/variables (and optionally Cloudflare Worker secrets)
+    from layered local env files.
 
 .EXAMPLE
     .\scripts\set-github-secrets.ps1
@@ -15,6 +16,11 @@
 [CmdletBinding()]
 param(
     [string]$Repo = "cultpodcasts/freedomtimes",
+    [string]$BaseEnvFile = ".env.dev",
+    [string]$StagingEnvFile = ".env.staging",
+    [string]$ProductionEnvFile = ".env.production",
+    [ValidateSet("All", "Staging", "Production")]
+    [string]$Target = "All",
     [switch]$DryRun,
     [switch]$SyncCloudflareWorkerSecrets
 )
@@ -23,13 +29,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$envFile = Join-Path $repoRoot ".env.dev"
+$baseEnvPath = Join-Path $repoRoot $BaseEnvFile
+$stagingEnvPath = Join-Path $repoRoot $StagingEnvFile
+$productionEnvPath = Join-Path $repoRoot $ProductionEnvFile
 $tfcCredsFile = Join-Path $env:APPDATA "terraform.d\credentials.tfrc.json"
 $stagingWranglerConfig = Join-Path $repoRoot "web\wrangler.staging.jsonc"
 $productionWranglerConfig = Join-Path $repoRoot "web\wrangler.production.jsonc"
 
-if (-not (Test-Path $envFile)) {
-    Write-Error ".env.dev not found at $envFile. Copy .env.dev.example and fill in real values."
+if (-not (Test-Path $baseEnvPath)) {
+    Write-Error "$BaseEnvFile not found at $baseEnvPath. Copy .env.dev.example and fill in real values."
     exit 1
 }
 
@@ -52,6 +60,29 @@ function Parse-EnvFile {
     }
 
     return $values
+}
+
+function Merge-EnvValues {
+    param(
+        [hashtable]$Base,
+        [hashtable]$Override
+    )
+
+    $merged = @{}
+
+    if ($null -ne $Base) {
+        foreach ($key in $Base.Keys) {
+            $merged[$key] = $Base[$key]
+        }
+    }
+
+    if ($null -ne $Override) {
+        foreach ($key in $Override.Keys) {
+            $merged[$key] = $Override[$key]
+        }
+    }
+
+    return $merged
 }
 
 function Get-EnvValue {
@@ -79,7 +110,7 @@ function Set-GhSecret {
     )
 
     if ([string]::IsNullOrWhiteSpace($Value)) {
-        Write-Warning "Skipping secret $Name - value is empty in .env.dev"
+        Write-Warning "Skipping secret $Name - value is empty in the loaded env values"
         return
     }
 
@@ -101,7 +132,7 @@ function Set-GhVariable {
     )
 
     if ([string]::IsNullOrWhiteSpace($Value)) {
-        Write-Warning "Skipping variable $Name - value is empty in .env.dev"
+        Write-Warning "Skipping variable $Name - value is empty in the loaded env values"
         return
     }
 
@@ -151,32 +182,70 @@ function Set-WorkerSecret {
     $escaped = $Value.Replace("'", "''")
     $command = "printf '%s' '$escaped' | npx wrangler secret put $Name --config '$ConfigPath'"
     & bash -lc $command
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to set Worker secret $Name via $ConfigPath"
+    }
     Write-Host "  [ok] Worker secret $Name via $ConfigPath" -ForegroundColor Green
 }
 
-$envValues = Parse-EnvFile -Path $envFile
+function Add-EntryIfTargetMatches {
+    param(
+        [System.Collections.IDictionary]$Map,
+        [string]$Name,
+        [string]$Value,
+        [string]$EntryTarget,
+        [string]$RequestedTarget
+    )
+
+    if ($RequestedTarget -eq "All" -or $RequestedTarget -eq $EntryTarget) {
+        $Map[$Name] = $Value
+    }
+}
+
+$baseEnvValues = Parse-EnvFile -Path $baseEnvPath
+$stagingOverlayValues = if (Test-Path $stagingEnvPath) { Parse-EnvFile -Path $stagingEnvPath } else { @{} }
+$productionOverlayValues = if (Test-Path $productionEnvPath) { Parse-EnvFile -Path $productionEnvPath } else { @{} }
+
+$stagingEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $stagingOverlayValues
+$productionEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $productionOverlayValues
+
+Write-Host "Loaded base env: $BaseEnvFile" -ForegroundColor DarkGray
+if (Test-Path $stagingEnvPath) {
+    Write-Host "Loaded staging overlay: $StagingEnvFile" -ForegroundColor DarkGray
+}
+else {
+    Write-Host "Staging overlay not found: $StagingEnvFile (using base values only)" -ForegroundColor DarkYellow
+}
+
+if (Test-Path $productionEnvPath) {
+    Write-Host "Loaded production overlay: $ProductionEnvFile" -ForegroundColor DarkGray
+}
+else {
+    Write-Host "Production overlay not found: $ProductionEnvFile (using base values only)" -ForegroundColor DarkYellow
+}
 
 Write-Host "`nSyncing GitHub Actions secrets..." -ForegroundColor Cyan
 $secrets = [ordered]@{
-    ARM_CLIENT_ID = (Get-EnvValue -Values $envValues -Keys @("ARM_CLIENT_ID"))
-    ARM_CLIENT_SECRET = (Get-EnvValue -Values $envValues -Keys @("ARM_CLIENT_SECRET"))
-    ARM_SUBSCRIPTION_ID = (Get-EnvValue -Values $envValues -Keys @("ARM_SUBSCRIPTION_ID"))
-    ARM_TENANT_ID = (Get-EnvValue -Values $envValues -Keys @("ARM_TENANT_ID"))
-    TF_VAR_CLOUDFLARE_API_TOKEN = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_cloudflare_api_token"))
-    TF_VAR_CLOUDFLARE_ACCOUNT_ID = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_cloudflare_account_id"))
-    TF_VAR_CLOUDFLARE_ZONE_ID = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_cloudflare_zone_id"))
-    TF_VAR_AUTH0_DOMAIN = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_auth0_domain"))
-    TF_VAR_AUTH0_CLIENT_ID = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_auth0_client_id"))
-    TF_VAR_AUTH0_CLIENT_SECRET = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_auth0_client_secret"))
-    AUTH0_LOGIN_APP_CLIENT_ID_STAGING = (Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_STAGING"))
-    AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING = (Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING"))
-    AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION"))
-    AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION"))
-    TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_api_custom_hostname_certificate_base64_staging", "TF_VAR_api_custom_hostname_certificate_base64"))
-    TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_api_custom_hostname_certificate_password_staging", "TF_VAR_api_custom_hostname_certificate_password"))
-    TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_api_custom_hostname_certificate_base64_production"))
-    TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_api_custom_hostname_certificate_password_production"))
+    ARM_CLIENT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("ARM_CLIENT_ID"))
+    ARM_CLIENT_SECRET = (Get-EnvValue -Values $baseEnvValues -Keys @("ARM_CLIENT_SECRET"))
+    ARM_SUBSCRIPTION_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("ARM_SUBSCRIPTION_ID"))
+    ARM_TENANT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("ARM_TENANT_ID"))
+    TF_VAR_CLOUDFLARE_API_TOKEN = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_cloudflare_api_token"))
+    TF_VAR_CLOUDFLARE_ACCOUNT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_cloudflare_account_id"))
+    TF_VAR_CLOUDFLARE_ZONE_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_cloudflare_zone_id"))
+    TF_VAR_AUTH0_DOMAIN = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_domain"))
+    TF_VAR_AUTH0_CLIENT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_client_id"))
+    TF_VAR_AUTH0_CLIENT_SECRET = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_client_secret"))
 }
+
+Add-EntryIfTargetMatches -Map $secrets -Name "AUTH0_LOGIN_APP_CLIENT_ID_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_STAGING")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $secrets -Name "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $secrets -Name "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_api_custom_hostname_certificate_base64", "TF_VAR_api_custom_hostname_certificate_base64_staging")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $secrets -Name "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_api_custom_hostname_certificate_password", "TF_VAR_api_custom_hostname_certificate_password_staging")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $secrets -Name "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $secrets -Name "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $secrets -Name "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("TF_VAR_api_custom_hostname_certificate_base64", "TF_VAR_api_custom_hostname_certificate_base64_production")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $secrets -Name "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("TF_VAR_api_custom_hostname_certificate_password", "TF_VAR_api_custom_hostname_certificate_password_production")) -EntryTarget "Production" -RequestedTarget $Target
 
 foreach ($name in $secrets.Keys) {
     Set-GhSecret -Name $name -Value ([string]$secrets[$name]) -Repository $Repo -WhatIfOnly:$DryRun
@@ -195,33 +264,32 @@ $variables = [ordered]@{
     TFC_ORGANIZATION = "freedomtimes"
     TFC_WORKSPACE_PRODUCTION = "freedomtimes-production"
 
-    TF_VAR_AZURE_LOCATION = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_azure_location"))
-    TF_VAR_ROUTE_PATTERN = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_route_pattern"))
-    TF_VAR_WORKER_NAME = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_worker_name"))
-    TF_VAR_HOLDING_TITLE = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_holding_title"))
-    TF_VAR_HOLDING_HEADING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_holding_heading"))
-    TF_VAR_HOLDING_MESSAGE = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_holding_message"))
-    TF_VAR_CONTACT_EMAIL = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_contact_email"))
-
-    TF_VAR_AZURE_LOCATION_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_azure_location_staging", "TF_VAR_azure_location"))
-    TF_VAR_ROUTE_PATTERN_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_route_pattern_staging", "TF_VAR_route_pattern"))
-    TF_VAR_WORKER_NAME_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_worker_name_staging"))
-    TF_VAR_MANAGE_APEX_DNS_RECORD_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_manage_apex_dns_record_staging", "TF_VAR_manage_apex_dns_record") -Default "false")
-    TF_VAR_APEX_DNS_RECORD_CONTENT_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_apex_dns_record_content_staging", "TF_VAR_apex_dns_record_content") -Default "192.0.2.1")
-    TF_VAR_API_CUSTOM_HOSTNAME_STAGING = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_api_custom_hostname_staging", "TF_VAR_api_custom_hostname"))
-    COOKIE_BASE_DOMAIN_STAGING = (Get-EnvValue -Values $envValues -Keys @("COOKIE_BASE_DOMAIN_STAGING") -Default "freedomtimes.news")
-    AUTH0_ROLES_CLAIM_NAMESPACE_STAGING = (Get-EnvValue -Values $envValues -Keys @("AUTH0_ROLES_CLAIM_NAMESPACE_STAGING") -Default "https://freedomtimes.news")
-    API_UPSTREAM_MODE_STAGING = (Get-EnvValue -Values $envValues -Keys @("API_UPSTREAM_MODE_STAGING") -Default "apim")
-
-    TF_VAR_MANAGE_APEX_DNS_RECORD_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_manage_apex_dns_record_production", "TF_VAR_manage_apex_dns_record") -Default "true")
-    TF_VAR_APEX_DNS_RECORD_CONTENT_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_apex_dns_record_content_production", "TF_VAR_apex_dns_record_content") -Default "192.0.2.1")
-    TF_VAR_API_CUSTOM_HOSTNAME_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("TF_VAR_api_custom_hostname_production") -Default "api.freedomtimes.news")
-    AUTH0_API_AUDIENCE_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("AUTH0_API_AUDIENCE_PRODUCTION", "AUTH0_API_AUDIENCE") -Default "https://api.freedomtimes.news")
-    API_BASE_URL_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("API_BASE_URL_PRODUCTION") -Default "https://api.freedomtimes.news/editorial")
-    COOKIE_BASE_DOMAIN_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("COOKIE_BASE_DOMAIN_PRODUCTION", "COOKIE_BASE_DOMAIN") -Default "freedomtimes.news")
-    AUTH0_ROLES_CLAIM_NAMESPACE_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("AUTH0_ROLES_CLAIM_NAMESPACE_PRODUCTION", "AUTH0_ROLES_CLAIM_NAMESPACE") -Default "https://freedomtimes.news")
-    API_UPSTREAM_MODE_PRODUCTION = (Get-EnvValue -Values $envValues -Keys @("API_UPSTREAM_MODE_PRODUCTION") -Default "apim")
+    TF_VAR_AZURE_LOCATION = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_azure_location"))
+    TF_VAR_ROUTE_PATTERN = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_route_pattern"))
+    TF_VAR_WORKER_NAME = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_worker_name"))
+    TF_VAR_HOLDING_TITLE = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_holding_title"))
+    TF_VAR_HOLDING_HEADING = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_holding_heading"))
+    TF_VAR_HOLDING_MESSAGE = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_holding_message"))
+    TF_VAR_CONTACT_EMAIL = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_contact_email"))
 }
+
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_AZURE_LOCATION_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_azure_location") -Default (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_azure_location"))) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_ROUTE_PATTERN_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_route_pattern")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_WORKER_NAME_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_worker_name") -Default "freedomtimes-holding-staging") -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_MANAGE_APEX_DNS_RECORD_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_manage_apex_dns_record") -Default "false") -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_APEX_DNS_RECORD_CONTENT_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_apex_dns_record_content") -Default "192.0.2.1") -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_API_CUSTOM_HOSTNAME_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("TF_VAR_api_custom_hostname")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "COOKIE_BASE_DOMAIN_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("COOKIE_BASE_DOMAIN")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "AUTH0_ROLES_CLAIM_NAMESPACE_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_ROLES_CLAIM_NAMESPACE")) -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "API_UPSTREAM_MODE_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("API_UPSTREAM_MODE") -Default "apim") -EntryTarget "Staging" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_MANAGE_APEX_DNS_RECORD_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("TF_VAR_manage_apex_dns_record") -Default "true") -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_APEX_DNS_RECORD_CONTENT_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("TF_VAR_apex_dns_record_content") -Default "192.0.2.1") -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "TF_VAR_API_CUSTOM_HOSTNAME_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("TF_VAR_api_custom_hostname")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "AUTH0_API_AUDIENCE_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_API_AUDIENCE")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "API_BASE_URL_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("API_BASE_URL")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "COOKIE_BASE_DOMAIN_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("COOKIE_BASE_DOMAIN")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "AUTH0_ROLES_CLAIM_NAMESPACE_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_ROLES_CLAIM_NAMESPACE")) -EntryTarget "Production" -RequestedTarget $Target
+Add-EntryIfTargetMatches -Map $variables -Name "API_UPSTREAM_MODE_PRODUCTION" -Value (Get-EnvValue -Values $productionEnvValues -Keys @("API_UPSTREAM_MODE") -Default "apim") -EntryTarget "Production" -RequestedTarget $Target
 
 foreach ($name in $variables.Keys) {
     Set-GhVariable -Name $name -Value ([string]$variables[$name]) -Repository $Repo -WhatIfOnly:$DryRun
@@ -234,21 +302,26 @@ if ($SyncCloudflareWorkerSecrets) {
         Write-Warning "Wrangler config file missing, skipping Cloudflare Worker secret sync."
     }
     else {
-        $auth0Domain = Get-EnvValue -Values $envValues -Keys @("TF_VAR_auth0_domain")
-        $stagingClientId = Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_STAGING")
-        $stagingClientSecret = Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING")
-        $productionClientId = Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION")
-        $productionClientSecret = Get-EnvValue -Values $envValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION")
+        $stagingAuth0Domain = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
+        $stagingClientId = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_STAGING")
+        $stagingClientSecret = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING")
+        $productionAuth0Domain = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
+        $productionClientId = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION")
+        $productionClientSecret = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION")
 
         Push-Location (Join-Path $repoRoot "web")
         try {
-            Set-WorkerSecret -ConfigPath "wrangler.staging.jsonc" -Name "AUTH0_DOMAIN" -Value $auth0Domain -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath "wrangler.staging.jsonc" -Name "AUTH0_CLIENT_ID" -Value $stagingClientId -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath "wrangler.staging.jsonc" -Name "AUTH0_CLIENT_SECRET" -Value $stagingClientSecret -WhatIfOnly:$DryRun
+            if ($Target -eq "All" -or $Target -eq "Staging") {
+                Set-WorkerSecret -ConfigPath "wrangler.staging.jsonc" -Name "AUTH0_DOMAIN" -Value $stagingAuth0Domain -WhatIfOnly:$DryRun
+                Set-WorkerSecret -ConfigPath "wrangler.staging.jsonc" -Name "AUTH0_CLIENT_ID" -Value $stagingClientId -WhatIfOnly:$DryRun
+                Set-WorkerSecret -ConfigPath "wrangler.staging.jsonc" -Name "AUTH0_CLIENT_SECRET" -Value $stagingClientSecret -WhatIfOnly:$DryRun
+            }
 
-            Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_DOMAIN" -Value $auth0Domain -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
+            if ($Target -eq "All" -or $Target -eq "Production") {
+                Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
+                Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
+                Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
+            }
         }
         finally {
             Pop-Location

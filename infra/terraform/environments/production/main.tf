@@ -36,6 +36,7 @@ module "auth0_app" {
 
   app_name                     = "freedomtimes-admin"
   workspace_url                = "https://freedomtimes.news"
+  roles_claim_namespace        = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   auth0_domain                 = var.auth0_domain
   extra_workspace_urls         = ["https://staging.freedomtimes.news"]
 }

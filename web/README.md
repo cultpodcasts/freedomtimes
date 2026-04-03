@@ -12,15 +12,18 @@ This app implements the current staging auth gate flow:
 Copy `.env.example` to `.env` and set values:
 
 ```sh
-AUTH0_DOMAIN=freedomtimes.uk.auth0.com
+AUTH0_DOMAIN=your-tenant.example-auth0.com
 AUTH0_CLIENT_ID=...
 AUTH0_CLIENT_SECRET=...
 AUTH0_API_AUDIENCE=...
 API_BASE_URL=...
-COOKIE_BASE_DOMAIN=freedomtimes.news
-AUTH0_ROLES_CLAIM_NAMESPACE=https://freedomtimes.news
+COOKIE_BASE_DOMAIN=example.com
+AUTH0_ROLES_CLAIM_NAMESPACE=https://example.com
 API_UPSTREAM_MODE=apim
 ```
+
+Local development does not use `scripts/set-github-secrets.ps1`.
+`wrangler dev` / Astro reads local env files directly, so keys must use the pure runtime names shown above (for example `AUTH0_DOMAIN`, not prefixed aliases).
 
 Role detection checks either of these claims in the ID token:
 
@@ -48,7 +51,7 @@ Run all commands from `web/`:
 
 ## Staging Login Flow Runbook
 
-Expected end-to-end behavior on `https://staging.freedomtimes.news`:
+Expected end-to-end behavior on your configured staging workspace URL:
 
 1. `GET /auth/login`
 2. Redirect to Auth0 authorize endpoint

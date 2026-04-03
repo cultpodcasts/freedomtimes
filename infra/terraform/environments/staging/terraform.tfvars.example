@@ -1,7 +1,7 @@
 cloudflare_account_id = "<cloudflare-account-id>"
 cloudflare_zone_id    = "<cloudflare-zone-id>"
 azure_location        = "uksouth"
-route_pattern         = "staging.freedomtimes.news/*"
+route_pattern         = "staging.example.com/*"
 
 worker_name     = "freedomtimes-holding-staging"
 holding_title   = "Freedom Times (Staging)"
@@ -11,11 +11,11 @@ contact_email   = ""
 
 enable_editorial_easy_auth      = true
 enable_editorial_gateway_policy = true
-editorial_roles_claim           = "https://freedomtimes.news/roles"
+editorial_roles_claim           = "https://example.com/roles"
 editorial_allowed_roles         = ["admin", "editor"]
 api_management_sku_name         = "Consumption_0"
 api_management_api_path         = "editorial"
-api_custom_hostname             = "api-staging.freedomtimes.news"
+api_custom_hostname             = "api-staging.example.com"
 
 # APIM custom hostname certificate (PFX) material for gateway TLS
 # Provide these via environment variables or secure workspace vars in CI/Terraform Cloud.

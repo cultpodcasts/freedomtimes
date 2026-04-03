@@ -21,5 +21,7 @@ crash.log
 
 # Local env files
 .env.dev
+.env.staging
+.env.production
 *.har
 certs/*

@@ -16,15 +16,21 @@ variable "app_name" {
 }
 
 variable "api_identifier" {
-  description = "Auth0 API identifier (e.g., https://api.freedomtimes.news)"
+  description = "Auth0 API identifier (e.g., https://api.example.com)"
   type        = string
-  default     = "https://api.freedomtimes.news"
+  default     = "https://api.example.com"
 }
 
 variable "workspace_url" {
   description = "Workspace URL for admin application callback"
   type        = string
-  default     = "https://freedomtimes.news"
+  default     = "https://example.com"
+}
+
+variable "roles_claim_namespace" {
+  description = "Namespace prefix for custom role claims (without /roles suffix)"
+  type        = string
+  default     = "https://example.com"
 }
 
 variable "extra_workspace_urls" {
