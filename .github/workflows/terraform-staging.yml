@@ -249,9 +249,11 @@ jobs:
 
           API_BASE_URL=$(get_output_with_retry azure_editorial_api_public_base_url)
           FUNCTION_APP_NAME=$(get_output_with_retry azure_function_app_name)
+          RESOURCE_GROUP_NAME=$(get_output_with_retry azure_resource_group_name)
 
           echo "api_base_url=$API_BASE_URL" >> $GITHUB_OUTPUT
           echo "function_app_name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
+          echo "resource_group_name=$RESOURCE_GROUP_NAME" >> $GITHUB_OUTPUT
 
       - name: Validate Worker Runtime Vars
         run: |
@@ -311,6 +313,47 @@ jobs:
           package: ./functions/editorial-api
           remote-build: true
           respect-funcignore: true
+
+      - name: Resolve Function Host Key
+        id: function_key
+        run: |
+          set -euo pipefail
+
+          RESOURCE_GROUP_NAME="${{ steps.tf_outputs.outputs.resource_group_name }}"
+          FUNCTION_APP_NAME="${{ steps.tf_outputs.outputs.function_app_name }}"
+
+          HOST_KEY=$(az functionapp keys list \
+            --resource-group "$RESOURCE_GROUP_NAME" \
+            --name "$FUNCTION_APP_NAME" \
+            --query "functionKeys.default" \
+            -o tsv 2>/dev/null || true)
+
+          if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
+            HOST_KEY=$(az functionapp keys list \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --name "$FUNCTION_APP_NAME" \
+              --query "masterKey" \
+              -o tsv)
+          fi
+
+          if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
+            echo "Failed to resolve Function host key after deployment"
+            exit 1
+          fi
+
+          echo "::add-mask::$HOST_KEY"
+          echo "apim_function_key=$HOST_KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Finalize APIM Function Key Named Value
+        timeout-minutes: 10
+        env:
+          APIM_FUNCTION_KEY: ${{ steps.function_key.outputs.apim_function_key }}
+        run: |
+          set -euo pipefail
+
+          terraform apply -input=false -lock-timeout=5m -no-color -auto-approve \
+            -target="module.azure_editorial_api.azurerm_api_management_named_value.function_key[0]" \
+            -var "apim_function_key=$APIM_FUNCTION_KEY"
 
       - name: Install Web Dependencies
         working-directory: web

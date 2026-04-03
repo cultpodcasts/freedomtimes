@@ -93,6 +93,13 @@ variable "auth0_api_audience" {
   default     = ""
 }
 
+variable "apim_function_key" {
+  description = "Optional APIM-to-Function host key. If empty, module seeds a bootstrap placeholder and expects a follow-up apply."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "roles_claim" {
   description = "JWT claim name that contains application roles"
   type        = string

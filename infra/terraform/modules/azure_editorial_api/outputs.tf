@@ -34,8 +34,8 @@ output "api_gateway_hostname" {
 }
 
 output "function_default_key" {
-  description = "Default host key for the Azure Function App (for APIM)"
-  value       = try(data.azurerm_function_app_host_keys.editorial.default_function_key, null)
+  description = "Configured APIM-to-Function host key value"
+  value       = length(trimspace(var.apim_function_key)) > 0 ? var.apim_function_key : null
   sensitive   = true
 }
 

@@ -38,6 +38,13 @@ variable "auth0_api_identifier" {
   default     = "https://api.freedomtimes.news"
 }
 
+variable "apim_function_key" {
+  description = "Optional APIM-to-Function host key injected in a follow-up apply"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "extra_workspace_urls" {
   description = "Additional workspace URLs for Auth0 callback/logout/origin allow list"
   type        = list(string)

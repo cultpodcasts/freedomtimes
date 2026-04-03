@@ -22,6 +22,7 @@ locals {
   apim_allowed_origins_condition    = length(var.api_management_allowed_origins) > 0 ? join(" || ", [for origin in var.api_management_allowed_origins : "context.Request.Headers.GetValueOrDefault(\"Origin\", \"\") == \"${origin}\""]) : "false"
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
   apim_gateway_custom_domain_enabled = var.manage_api_management_gateway_custom_domain && local.api_gateway_policy_enabled && length(trimspace(var.api_management_gateway_custom_domain)) > 0 && length(trimspace(var.api_management_gateway_certificate_base64)) > 0 && length(trimspace(var.api_management_gateway_certificate_password)) > 0
+  apim_function_key_value           = length(trimspace(var.apim_function_key)) > 0 ? trimspace(var.apim_function_key) : "__bootstrap_pending__"
 
   base_app_settings = {
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
@@ -117,13 +118,6 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   }
 }
 
-  # --- Fetch the default function key for the Function App ---
-  data "azurerm_function_app_host_keys" "editorial" {
-    name                = azurerm_function_app_flex_consumption.editorial.name
-    resource_group_name = azurerm_resource_group.editorial.name
-    depends_on = [azurerm_function_app_flex_consumption.editorial]
-  }
-
   # --- Create APIM Named Value for the Function Key ---
   resource "azurerm_api_management_named_value" "function_key" {
     count               = local.api_gateway_policy_enabled ? 1 : 0
@@ -131,7 +125,7 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
     resource_group_name = azurerm_resource_group.editorial.name
     api_management_name = azurerm_api_management.editorial[0].name
     display_name        = "editorial-function-key"
-    value               = data.azurerm_function_app_host_keys.editorial.default_function_key
+    value               = local.apim_function_key_value
     secret              = true
   }
 

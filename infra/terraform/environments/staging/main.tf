@@ -52,6 +52,7 @@ module "azure_editorial_api" {
 
   auth0_domain             = module.auth0_app.domain
   auth0_api_audience       = module.auth0_app.api_identifier
+  apim_function_key        = var.apim_function_key
   roles_claim              = var.editorial_roles_claim
   allowed_roles            = var.editorial_allowed_roles
 
