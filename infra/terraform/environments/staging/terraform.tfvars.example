@@ -3,6 +3,12 @@ cloudflare_zone_id    = "<cloudflare-zone-id>"
 azure_location        = "uksouth"
 route_pattern         = "staging.example.com/*"
 
+# Auth0 app workspace URL for staging auth callbacks
+workspace_url = "https://staging.example.com"
+
+# CORS allowed origins for staging APIM
+api_management_allowed_origins = ["https://staging.example.com", "https://example.com"]
+
 worker_name     = "freedomtimes-holding-staging"
 holding_title   = "Freedom Times (Staging)"
 holding_heading = "Freedom Times"

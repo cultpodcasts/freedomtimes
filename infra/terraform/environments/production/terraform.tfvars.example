@@ -3,6 +3,12 @@ cloudflare_zone_id    = "<cloudflare-zone-id>"
 azure_location        = "uksouth"
 route_pattern         = "example.com/*"
 
+# Auth0 app workspace URL for production auth callbacks
+workspace_url = "https://example.com"
+
+# Additional Auth0 callback URLs for staging and other environments
+extra_workspace_urls = ["https://staging.example.com"]
+
 worker_name     = "freedomtimes-holding"
 holding_title   = "Freedom Times"
 holding_heading = "Freedom Times"
