@@ -150,7 +150,7 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
     name                = "editorial-function-key"
     resource_group_name = azurerm_resource_group.editorial.name
     api_management_name = azurerm_api_management.editorial[0].name
-    display_name        = "Editorial Function Key"
+    display_name        = "editorial-function-key"
     value               = data.azurerm_function_app_host_keys.editorial.default_function_key
     secret              = true
   }
