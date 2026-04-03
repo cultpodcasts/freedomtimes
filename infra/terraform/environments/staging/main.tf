@@ -7,9 +7,10 @@ provider "azurerm" {
 }
 
 provider "auth0" {
+  # Management client credentials: used only for Terraform to manage Auth0 resources
   domain        = var.auth0_domain
-  client_id     = var.auth0_client_id
-  client_secret = var.auth0_client_secret
+  client_id     = var.auth0_management_client_id
+  client_secret = var.auth0_management_client_secret
 }
 
 module "cloudflare_holding_page" {
@@ -34,6 +35,7 @@ module "cloudflare_holding_page" {
 module "auth0_app" {
   source = "../../modules/auth0_app"
 
+  # This module creates the login application for the staging web app. Its client ID is output as auth0_app_client_id.
   auth0_domain            = var.auth0_domain
   api_identifier          = var.auth0_api_identifier
   workspace_url           = var.workspace_url

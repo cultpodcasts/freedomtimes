@@ -17,8 +17,8 @@ Auth0 resources are managed by Terraform **except** for the two M2M applications
 This app authenticates the Terraform Auth0 provider to the Auth0 Management API. It allows Terraform to create and manage Auth0 resources (clients, roles, actions, resource servers, etc.).
 
 **Corresponds to `.env.dev` vars:**
-- `TF_VAR_auth0_client_id`
-- `TF_VAR_auth0_client_secret`
+- `TF_VAR_auth0_management_client_id`
+- `TF_VAR_auth0_management_client_secret`
 
 #### Steps
 
@@ -40,8 +40,8 @@ This app authenticates the Terraform Auth0 provider to the Auth0 Management API.
 
 7. Click **Authorize**
 8. Go to the **Settings** tab of the new application
-9. Copy **Client ID** → set as `TF_VAR_auth0_client_id` in `.env.dev`
-10. Copy **Client Secret** → set as `TF_VAR_auth0_client_secret` in `.env.dev`
+9. Copy **Client ID** → set as `TF_VAR_auth0_management_client_id` in `.env.dev`
+10. Copy **Client Secret** → set as `TF_VAR_auth0_management_client_secret` in `.env.dev`
 11. Run `.\scripts\set-github-secrets.ps1` to push updated values to GitHub Actions
 
 ---
@@ -58,7 +58,7 @@ Once the Terraform provider M2M app is created and credentials are set:
 
 ## Why These Cannot Be in Terraform
 
-The Auth0 Terraform provider uses client credentials from `TF_VAR_auth0_client_id` / `TF_VAR_auth0_client_secret` to authenticate against the Management API. Those credentials must already exist and be authorized before Terraform can run — so they cannot be resources that Terraform itself creates.
+The Auth0 Terraform provider uses client credentials from `TF_VAR_auth0_management_client_id` / `TF_VAR_auth0_management_client_secret` to authenticate against the Management API. Those credentials must already exist and be authorized before Terraform can run — so they cannot be resources that Terraform itself creates.
 
 ---
 

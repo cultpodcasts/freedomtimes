@@ -92,10 +92,41 @@ Do not grant unrelated permissions (DNS edit, cache purge, account settings, bil
    - terraform plan
    - terraform apply
 
+Recommended non-interactive forms:
+- terraform init -input=false
+- terraform plan -input=false -lock-timeout=5m -no-color
+- terraform apply -input=false -lock-timeout=5m -no-color
+- terraform destroy -input=false -lock-timeout=5m -no-color -auto-approve
+
 Important for this repository:
 
 - Do not use `terraform init -backend-config=...` in these environment folders.
 - These folders use the `terraform { cloud { ... } }` block, so workspace selection is already defined in `versions.tf`.
+
+## Troubleshooting
+
+### Provider auth failures
+
+- Auth0 provider: set `TF_VAR_auth0_domain`, `TF_VAR_auth0_management_client_id`, and `TF_VAR_auth0_management_client_secret`.
+- Azure provider: set `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_SUBSCRIPTION_ID`, and `ARM_TENANT_ID`.
+- Cloudflare provider: set `TF_VAR_cloudflare_api_token`, `TF_VAR_cloudflare_account_id`, and `TF_VAR_cloudflare_zone_id`.
+- Terraform Cloud auth: set shell env `TF_TOKEN_app_terraform_io`, or in GitHub use secret `TF_TOKEN_APP_TERRAFORM_IO`.
+
+### Workspace lock errors
+
+If plan/apply reports that the workspace is already locked:
+
+1. Confirm no active apply is running in HCP Terraform.
+2. Unlock explicitly (replace ID from error output):
+   - `terraform force-unlock -force <LOCK_ID>`
+3. Re-run with lock retry:
+   - `terraform plan -input=false -lock-timeout=5m -no-color`
+
+### Avoid manual prompts
+
+- Always pass `-input=false` for CI and scripted local runs.
+- For destroy automation, use `-auto-approve` only in controlled contexts.
+- Keep secrets out of `*.tfvars`; use environment variables or CI secret stores.
 
 Recommended route examples:
 - production: `example.com/*`

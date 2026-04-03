@@ -7,9 +7,10 @@ provider "azurerm" {
 }
 
 provider "auth0" {
+  # Management client credentials: used only for Terraform to manage Auth0 resources
   domain        = var.auth0_domain
-  client_id     = var.auth0_client_id
-  client_secret = var.auth0_client_secret
+  client_id     = var.auth0_management_client_id
+  client_secret = var.auth0_management_client_secret
 }
 
 module "cloudflare_holding_page" {
@@ -34,12 +35,13 @@ module "cloudflare_holding_page" {
 module "auth0_app" {
   source = "../../modules/auth0_app"
 
-  app_name                     = "freedomtimes-admin"
-  api_identifier               = var.auth0_api_identifier
-  workspace_url                = var.workspace_url
-  roles_claim_namespace        = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
-  auth0_domain                 = var.auth0_domain
-  extra_workspace_urls         = var.extra_workspace_urls
+  # This module creates the login application for the web app. Its client ID is output as auth0_app_client_id.
+  app_name              = "freedomtimes-admin"
+  api_identifier        = var.auth0_api_identifier
+  workspace_url         = var.workspace_url
+  roles_claim_namespace = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
+  auth0_domain          = var.auth0_domain
+  extra_workspace_urls  = var.extra_workspace_urls
 }
 
 module "azure_editorial_api" {

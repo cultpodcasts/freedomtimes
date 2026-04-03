@@ -48,6 +48,23 @@ For infrastructure planning/apply:
    - `terraform plan`
    - `terraform apply`
 
+Local automation helpers (recommended):
+
+- Validate environment and provider credentials:
+   - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment staging -LoadEnvFiles`
+   - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment production -LoadEnvFiles`
+- Run Terraform non-interactively:
+   - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles`
+   - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFiles`
+   - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles`
+   - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation destroy -LoadEnvFiles -AutoApprove`
+
+Notes:
+
+- `terraform-run.ps1` uses `-input=false` and lock timeout flags automatically.
+- `apply` uses `tfplan` when present; otherwise pass `-AutoApprove` for direct apply.
+- `destroy` requires `-AutoApprove` to avoid interactive prompts.
+
 ## Security Rules
 
 - Do not store secrets in tfvars files.

@@ -9,7 +9,7 @@ output "route_pattern" {
 }
 
 output "auth0_app_client_id" {
-  description = "Auth0 app client ID for the staging application"
+  description = "Auth0 login application client ID for the staging web app (not the management client)"
   value       = module.auth0_app.application_id
 }
 

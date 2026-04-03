@@ -59,8 +59,8 @@ jobs:
       TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE_STAGING || 'https://api.freedomtimes.news' }}
       TF_VAR_api_management_allowed_origins: ${{ vars.TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING }}
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
-      TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
-      TF_VAR_auth0_client_secret: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
+      TF_VAR_auth0_management_client_id: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID || secrets.TF_VAR_AUTH0_CLIENT_ID }}
+      TF_VAR_auth0_management_client_secret: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET || secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
 
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +70,41 @@ jobs:
         with:
           terraform_version: "1.14.8"
           terraform_wrapper: false
+
+      - name: Validate Required Terraform Environment
+        run: |
+          set -euo pipefail
+
+          required=(
+            TF_TOKEN_app_terraform_io
+            ARM_CLIENT_ID
+            ARM_CLIENT_SECRET
+            ARM_SUBSCRIPTION_ID
+            ARM_TENANT_ID
+            TF_VAR_cloudflare_api_token
+            TF_VAR_cloudflare_account_id
+            TF_VAR_cloudflare_zone_id
+            TF_VAR_auth0_domain
+            TF_VAR_auth0_management_client_id
+            TF_VAR_auth0_management_client_secret
+            TF_VAR_route_pattern
+            TF_VAR_workspace_url
+            TF_VAR_api_management_allowed_origins
+          )
+
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required environment variables: ${missing[*]}"
+            exit 1
+          fi
+
+          echo "All required Terraform environment variables are present."
 
       - name: Preflight Unlock Stale TFC Lock
         env:

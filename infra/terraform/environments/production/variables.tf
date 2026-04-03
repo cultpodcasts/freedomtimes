@@ -171,14 +171,14 @@ variable "auth0_domain" {
   sensitive   = true
 }
 
-variable "auth0_client_id" {
-  description = "Auth0 Management API client ID"
+variable "auth0_management_client_id" {
+  description = "Auth0 Management API client ID (used by Terraform provider only, never output to app)"
   type        = string
   sensitive   = true
 }
 
-variable "auth0_client_secret" {
-  description = "Auth0 Management API client secret"
+variable "auth0_management_client_secret" {
+  description = "Auth0 Management API client secret (used by Terraform provider only, never output to app)"
   type        = string
   sensitive   = true
 }

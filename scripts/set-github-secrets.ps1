@@ -248,8 +248,11 @@ $secrets = [ordered]@{
     TF_VAR_CLOUDFLARE_ACCOUNT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_cloudflare_account_id"))
     TF_VAR_CLOUDFLARE_ZONE_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_cloudflare_zone_id"))
     TF_VAR_AUTH0_DOMAIN = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_domain"))
-    TF_VAR_AUTH0_CLIENT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_client_id"))
-    TF_VAR_AUTH0_CLIENT_SECRET = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_client_secret"))
+    TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_management_client_id", "TF_VAR_auth0_client_id"))
+    TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_management_client_secret", "TF_VAR_auth0_client_secret"))
+    # Backward compatibility for older workflows still referencing deprecated secret names.
+    TF_VAR_AUTH0_CLIENT_ID = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_management_client_id", "TF_VAR_auth0_client_id"))
+    TF_VAR_AUTH0_CLIENT_SECRET = (Get-EnvValue -Values $baseEnvValues -Keys @("TF_VAR_auth0_management_client_secret", "TF_VAR_auth0_client_secret"))
 }
 
 Add-EntryIfTargetMatches -Map $secrets -Name "AUTH0_LOGIN_APP_CLIENT_ID_STAGING" -Value (Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_STAGING")) -EntryTarget "Staging" -RequestedTarget $Target
@@ -267,10 +270,10 @@ foreach ($name in $secrets.Keys) {
 
 $tfcToken = Get-TfcTokenFromCredentials -FilePath $tfcCredsFile
 if ([string]::IsNullOrWhiteSpace($tfcToken)) {
-    Write-Warning "Terraform Cloud token not found in $tfcCredsFile. Skipping TF_TOKEN_app_terraform_io."
+    Write-Warning "Terraform Cloud token not found in $tfcCredsFile. Skipping TF_TOKEN_APP_TERRAFORM_IO."
 }
 else {
-    Set-GhSecret -Name "TF_TOKEN_app_terraform_io" -Value $tfcToken -Repository $Repo -WhatIfOnly:$DryRun
+    Set-GhSecret -Name "TF_TOKEN_APP_TERRAFORM_IO" -Value $tfcToken -Repository $Repo -WhatIfOnly:$DryRun
 }
 
 Write-Host "`nSyncing GitHub Actions variables..." -ForegroundColor Cyan
