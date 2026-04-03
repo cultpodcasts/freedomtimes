@@ -89,6 +89,14 @@ resource "cloudflare_record" "api_custom_hostname" {
   depends_on = [module.azure_editorial_api]
 }
 
+resource "time_sleep" "wait_for_api_custom_hostname_dns" {
+  count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 ? 1 : 0
+
+  create_duration = "90s"
+
+  depends_on = [cloudflare_record.api_custom_hostname]
+}
+
 resource "azurerm_api_management_custom_domain" "editorial" {
   count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 ? 1 : 0
 
@@ -100,5 +108,5 @@ resource "azurerm_api_management_custom_domain" "editorial" {
     certificate_password = trimspace(var.api_custom_hostname_certificate_password)
   }
 
-  depends_on = [cloudflare_record.api_custom_hostname]
+  depends_on = [time_sleep.wait_for_api_custom_hostname_dns]
 }
