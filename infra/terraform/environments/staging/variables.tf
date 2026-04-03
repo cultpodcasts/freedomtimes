@@ -20,12 +20,6 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
-variable "enable_editorial_easy_auth" {
-  description = "Enable EasyAuth on staging editorial Function App"
-  type        = bool
-  default     = false
-}
-
 variable "enable_editorial_gateway_policy" {
   description = "Enable APIM gateway JWT/role policy for staging editorial API"
   type        = bool

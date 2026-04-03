@@ -75,12 +75,6 @@ variable "node_version" {
   default     = "20"
 }
 
-variable "enable_easy_auth" {
-  description = "Enable Function App EasyAuth with Auth0 OIDC"
-  type        = bool
-  default     = true
-}
-
 variable "enable_api_gateway_policy" {
   description = "Enable API Management gateway and JWT/role policy in front of the Function App"
   type        = bool
@@ -89,12 +83,6 @@ variable "enable_api_gateway_policy" {
 
 variable "auth0_domain" {
   description = "Auth0 tenant domain used for OIDC discovery (for example: tenant.uk.auth0.com)"
-  type        = string
-  default     = ""
-}
-
-variable "auth0_editorial_client_id" {
-  description = "Auth0 application client ID used by EasyAuth custom OIDC provider"
   type        = string
   default     = ""
 }

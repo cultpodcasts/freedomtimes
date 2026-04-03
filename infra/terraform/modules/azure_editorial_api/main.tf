@@ -13,11 +13,10 @@ locals {
 
   auth0_issuer_url                  = startswith(var.auth0_domain, "https://") ? trimsuffix(var.auth0_domain, "/") : "https://${trimspace(var.auth0_domain)}"
   auth0_openid_configuration_url    = "${local.auth0_issuer_url}/.well-known/openid-configuration"
-  easy_auth_enabled                 = var.enable_easy_auth && length(trimspace(var.auth0_domain)) > 0 && length(trimspace(var.auth0_editorial_client_id)) > 0
-  api_gateway_policy_enabled        = var.enable_api_gateway_policy && length(trimspace(var.auth0_domain)) > 0 && length(trimspace(var.auth0_api_audience)) > 0 && length(trimspace(var.auth0_editorial_client_id)) > 0
+  api_gateway_policy_enabled        = var.enable_api_gateway_policy && length(trimspace(var.auth0_domain)) > 0 && length(trimspace(var.auth0_api_audience)) > 0
   api_gateway_diagnostics_enabled   = local.api_gateway_policy_enabled && var.enable_api_management_diagnostics
   apim_allowed_roles_xml            = join("\n", [for role in var.allowed_roles : "              <value>${role}</value>"])
-  apim_allowed_audiences            = distinct(compact([var.auth0_api_audience, var.auth0_editorial_client_id, "${local.auth0_issuer_url}/userinfo"]))
+  apim_allowed_audiences            = distinct(compact([var.auth0_api_audience, "${local.auth0_issuer_url}/userinfo"]))
   apim_allowed_audiences_xml        = join("\n", [for audience in local.apim_allowed_audiences : "            <audience>${audience}</audience>"])
   apim_allowed_origins_xml          = join("\n", [for origin in var.api_management_allowed_origins : "            <origin>${origin}</origin>"])
   apim_allowed_origins_condition    = length(var.api_management_allowed_origins) > 0 ? join(" || ", [for origin in var.api_management_allowed_origins : "context.Request.Headers.GetValueOrDefault(\"Origin\", \"\") == \"${origin}\""]) : "false"
@@ -103,25 +102,6 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   site_config {
     application_insights_connection_string = azurerm_application_insights.editorial.connection_string
     application_insights_key               = azurerm_application_insights.editorial.instrumentation_key
-  }
-
-  dynamic "auth_settings_v2" {
-    for_each = local.easy_auth_enabled ? [1] : []
-    content {
-      auth_enabled           = true
-      require_authentication = true
-      require_https          = true
-      unauthenticated_action = "Return401"
-
-      custom_oidc_v2 {
-        name                          = "auth0"
-        client_id                     = var.auth0_editorial_client_id
-        openid_configuration_endpoint = local.auth0_openid_configuration_url
-        name_claim_type               = "name"
-      }
-
-      login {}
-    }
   }
 
   app_settings = local.function_app_settings

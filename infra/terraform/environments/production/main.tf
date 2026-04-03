@@ -50,12 +50,10 @@ module "azure_editorial_api" {
   location     = var.azure_location
 
   auth0_domain              = module.auth0_app.domain
-  auth0_editorial_client_id = module.auth0_app.application_id
   auth0_api_audience        = module.auth0_app.api_identifier
   roles_claim               = var.editorial_roles_claim
   allowed_roles             = var.editorial_allowed_roles
 
-  enable_easy_auth          = var.enable_editorial_easy_auth
   enable_api_gateway_policy = var.enable_editorial_gateway_policy
   api_management_publisher_name  = var.api_management_publisher_name
   api_management_publisher_email = var.api_management_publisher_email
