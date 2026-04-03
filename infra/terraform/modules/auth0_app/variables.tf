@@ -23,13 +23,11 @@ variable "api_identifier" {
 variable "workspace_url" {
   description = "Workspace URL for admin application callback"
   type        = string
-  default     = "https://example.com"
 }
 
 variable "roles_claim_namespace" {
   description = "Namespace prefix for custom role claims (without /roles suffix)"
   type        = string
-  default     = "https://example.com"
 }
 
 variable "extra_workspace_urls" {

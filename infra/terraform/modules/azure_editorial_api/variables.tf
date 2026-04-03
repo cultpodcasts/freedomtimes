@@ -108,7 +108,7 @@ variable "auth0_api_audience" {
 variable "roles_claim" {
   description = "JWT claim name that contains application roles"
   type        = string
-  default     = "https://example.com/roles"
+  default     = "https://freedomtimes.news/roles"
 }
 
 variable "allowed_roles" {
@@ -138,7 +138,7 @@ variable "api_management_publisher_name" {
 variable "api_management_publisher_email" {
   description = "Publisher email required by API Management"
   type        = string
-  default     = "platform@example.com"
+  default     = "developer@freedomtimes.news"
 }
 
 variable "api_management_api_name" {
@@ -182,7 +182,7 @@ variable "manage_api_management_gateway_custom_domain" {
 variable "api_management_allowed_origins" {
   description = "Allowed browser origins for APIM CORS policy"
   type        = list(string)
-  default     = ["https://staging.example.com", "https://example.com"]
+  default     = ["https://staging.freedomtimes.news", "https://freedomtimes.news"]
 }
 
 variable "enable_api_management_diagnostics" {

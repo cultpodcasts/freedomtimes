@@ -226,8 +226,37 @@ jobs:
       - name: Capture Terraform Outputs
         id: tf_outputs
         run: |
-          echo "api_base_url=$(terraform output -raw azure_editorial_api_public_base_url)" >> $GITHUB_OUTPUT
-          echo "function_app_name=$(terraform output -raw azure_function_app_name)" >> $GITHUB_OUTPUT
+          set -euo pipefail
+
+          get_output_with_retry() {
+            local output_name="$1"
+            local max_attempts=8
+            local sleep_seconds=15
+            local attempt=1
+            local value=""
+
+            while [ "$attempt" -le "$max_attempts" ]; do
+              if value=$(terraform output -raw "$output_name" 2>/dev/null); then
+                if [ -n "$value" ] && [ "$value" != "null" ]; then
+                  echo "$value"
+                  return 0
+                fi
+              fi
+
+              echo "Output $output_name not ready (attempt $attempt/$max_attempts); retrying in ${sleep_seconds}s..."
+              sleep "$sleep_seconds"
+              attempt=$((attempt + 1))
+            done
+
+            echo "Failed to read Terraform output '$output_name' after $max_attempts attempts" >&2
+            return 1
+          }
+
+          API_BASE_URL=$(get_output_with_retry azure_editorial_api_public_base_url)
+          FUNCTION_APP_NAME=$(get_output_with_retry azure_function_app_name)
+
+          echo "api_base_url=$API_BASE_URL" >> $GITHUB_OUTPUT
+          echo "function_app_name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
 
       - name: Validate Worker Runtime Vars
         run: |
