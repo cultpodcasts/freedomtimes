@@ -460,6 +460,15 @@ jobs:
             -target="module.azure_editorial_api.azurerm_api_management_named_value.function_key[0]" \
             -var "apim_function_key=$APIM_FUNCTION_KEY"
 
+      - name: Enable API DNS Proxy After APIM Custom Domain
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+
+          terraform apply -input=false -lock-timeout=5m -no-color -auto-approve \
+            -target="cloudflare_record.api_custom_hostname[0]" \
+            -var "api_custom_hostname_proxied=true"
+
       - name: Install Web Dependencies
         working-directory: web
         run: npm ci
