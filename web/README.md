@@ -4,8 +4,8 @@ This app implements the current staging auth gate flow:
 
 1. Holding page with a `Log in with Google` button
 2. Auth0 login through Google SSO
-3. If role includes `admin`, user is sent to `/signed-in`
-4. If not admin, user is redirected back to the holding page
+3. If role includes `admin` or `editor`, user is sent to `/signed-in`
+4. If no required role is present, user is redirected back to the holding page
 
 ## Environment Variables
 
@@ -48,6 +48,12 @@ Run all commands from `web/`:
 - `/auth/callback` handles code exchange + role check
 - `/auth/logout` clears app session + logs out at Auth0
 - `/signed-in` protected admin page
+
+## Auth0 Scope and Consent
+
+- Login requests `scope=openid` for minimal identity claims.
+- Login also requests the configured API audience so Auth0 issues an API access token used by the cookie-to-APIM flow.
+- The Auth0 API is configured to skip first-party consent prompts, so normal staging/production login should not show the consent screen.
 
 ## Staging Login Flow Runbook
 

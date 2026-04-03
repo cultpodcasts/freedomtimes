@@ -30,11 +30,16 @@ Use this runbook when validating login behavior on staging at https://staging.fr
 Expected sequence:
 
 1. GET /auth/login
-2. Redirect to Auth0 authorize endpoint
+2. Redirect to Auth0 authorize endpoint (Authorization Code flow, scope `openid`, API audience requested)
 3. GET /auth/callback with code and state
 4. Role check allows admin/editor
 5. Redirect to GET /signed-in
 6. Token verifies and page renders
+
+Consent behavior:
+
+- For first-party staging and production apps, Auth0 API consent is skipped by Terraform (`skip_consent_for_verifiable_first_party_clients = true`).
+- Users should not see an Auth0 consent screen during normal login unless tenant settings or app/API mappings are changed.
 
 Cookie names used by web auth:
 

@@ -15,7 +15,7 @@ holding_heading = "Freedom Times"
 holding_message = "This is the staging environment."
 contact_email   = ""
 
-enable_editorial_easy_auth      = true
+enable_editorial_easy_auth      = false
 enable_editorial_gateway_policy = true
 editorial_roles_claim           = "https://example.com/roles"
 editorial_allowed_roles         = ["admin", "editor"]

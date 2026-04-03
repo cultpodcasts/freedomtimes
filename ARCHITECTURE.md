@@ -257,7 +257,7 @@ Recommended split:
 
 ### 4.6 Auth0 — Authentication & RBAC
 
-Auth0 handles login for editors/admins and issues JWTs with custom role claims. The Admin UI requests a token from Auth0 (SPA flow or PKCE), then includes the Bearer token with every call to the Azure Function.
+Auth0 handles login for editors/admins and issues JWTs with custom role claims. The web app uses Authorization Code flow and stores tokens in secure cookies; browser JavaScript does not read bearer tokens directly.
 
 **Roles:**
 
@@ -267,6 +267,11 @@ Auth0 handles login for editors/admins and issues JWTs with custom role claims. 
 | `admin` | All editor permissions + delete stories + manage subscribers |
 
 The Cloudflare Worker also validates tokens for any protected admin routes served within the same origin (e.g., `/admin/*`). This allows the progressive Admin UI to be progressively revealed within the same Astro application without a separate admin domain.
+
+Consent and scope notes:
+
+- Login requests minimal identity scope (`openid`) plus the configured API audience for role/permission-aware API access.
+- First-party consent prompts are disabled on the Auth0 API resource server (`skip_consent_for_verifiable_first_party_clients = true`) so normal login does not require a separate consent click-through.
 
 **Discussion point:** Hosting the admin UI within the same Workers origin (progressive enhancement) vs a separate subdomain (`admin.freedomtimes.com`). The same-origin approach gives a single deployment artefact and avoids CORS issues between admin UI and API. The trade-off is that the Worker needs to handle JWT validation.
 

@@ -23,7 +23,7 @@ variable "azure_location" {
 variable "enable_editorial_easy_auth" {
   description = "Enable EasyAuth on staging editorial Function App"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "enable_editorial_gateway_policy" {
