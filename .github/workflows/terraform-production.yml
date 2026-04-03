@@ -162,6 +162,40 @@ jobs:
         if: false
         run: terraform apply -input=false -lock-timeout=5m tfplan
 
+      - name: Capture Terraform Outputs
+        id: tf_outputs
+        if: false
+        run: |
+          set -euo pipefail
+
+          get_output_with_retry() {
+            local output_name="$1"
+            local max_attempts=8
+            local sleep_seconds=15
+            local attempt=1
+            local value=""
+
+            while [ "$attempt" -le "$max_attempts" ]; do
+              if value=$(terraform output -raw "$output_name" 2>/dev/null); then
+                if [ -n "$value" ] && [ "$value" != "null" ]; then
+                  echo "$value"
+                  return 0
+                fi
+              fi
+
+              echo "Output $output_name not ready (attempt $attempt/$max_attempts); retrying in ${sleep_seconds}s..."
+              sleep "$sleep_seconds"
+              attempt=$((attempt + 1))
+            done
+
+            echo "Failed to read Terraform output '$output_name' after $max_attempts attempts" >&2
+            return 1
+          }
+
+          AUTH0_APP_CLIENT_ID=$(get_output_with_retry auth0_app_client_id)
+
+          echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
+
       - name: Cleanup Terraform Plan File
         if: always()
         run: rm -f tfplan
@@ -206,14 +240,15 @@ jobs:
       - name: Set Worker Secrets for Production
         if: false
         working-directory: web
-        # Cloudflare Worker secrets are synced here from GitHub secrets.
-        # GitHub secrets are populated by scripts/set-github-secrets.ps1, which reads from .env.production.
-        # Canonical source: .env.production → (script syncs to) → GitHub secrets → (workflow reads) → Cloudflare Worker
+        # Cloudflare Worker secrets are synced here from Terraform outputs and GitHub secrets.
+        # Auth0 login app client ID comes from Terraform (newly created freedomtimes-admin-production app).
+        # Auth0 domain and client secret come from GitHub secrets (stable across deployments).
+        # Canonical source: Terraform → workflow → Cloudflare Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
           AUTH0_DOMAIN_VALUE: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
-          AUTH0_CLIENT_ID_VALUE: ${{ secrets.AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION }}
+          AUTH0_CLIENT_ID_VALUE: ${{ steps.tf_outputs.outputs.auth0_app_client_id }}
           AUTH0_CLIENT_SECRET_VALUE: ${{ secrets.AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION }}
         run: |
           printf '%s' "$AUTH0_DOMAIN_VALUE" | npx wrangler secret put AUTH0_DOMAIN --config wrangler.production.jsonc
