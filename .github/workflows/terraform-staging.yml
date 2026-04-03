@@ -55,6 +55,8 @@ jobs:
       TF_VAR_api_custom_hostname_certificate_base64: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING }}
       TF_VAR_api_custom_hostname_certificate_password: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING }}
       CERT_SECRETS_CONFIGURED: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING != '' && secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING != '' }}
+      TF_VAR_workspace_url: ${{ vars.TF_VAR_WORKSPACE_URL_STAGING }}
+      TF_VAR_api_management_allowed_origins: ${{ vars.TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING }}
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
       TF_VAR_auth0_client_secret: ${{ secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
