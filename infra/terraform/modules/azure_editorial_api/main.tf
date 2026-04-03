@@ -142,6 +142,17 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   }
 }
 
+# Kept for compatibility to avoid APIM validation errors during policy transition.
+resource "azurerm_api_management_named_value" "function_key" {
+  count               = local.api_gateway_policy_enabled ? 1 : 0
+  name                = "editorial-function-key"
+  resource_group_name = azurerm_resource_group.editorial.name
+  api_management_name = azurerm_api_management.editorial[0].name
+  display_name        = "editorial-function-key"
+  value               = "__unused_managed_identity_backend__"
+  secret              = true
+}
+
 resource "azurerm_api_management" "editorial" {
   count = local.api_gateway_policy_enabled ? 1 : 0
 
