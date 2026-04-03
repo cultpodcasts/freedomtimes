@@ -376,6 +376,9 @@ jobs:
           remote-build: true
           respect-funcignore: true
 
+      - name: Function App Deploy Complete
+        run: echo "Deploy Stub Azure Function App to Staging completed successfully"
+
       - name: Resolve Function Host Key
         id: function_key
         run: |
