@@ -28,6 +28,14 @@ resource "auth0_client_credentials" "admin_ui" {
   authentication_method = "client_secret_post"
 }
 
+# Grant the client access to the API with consent skipped for first-party clients
+resource "auth0_client_grant" "admin_ui_api_access" {
+  count             = var.create_shared_resources ? 1 : 0
+  client_id         = auth0_client.admin_ui.id
+  audience          = auth0_resource_server.api[0].identifier
+  scopes             = ["openid", "profile", "email"]
+}
+
 # Auth0 Resource Server (API) — tenant-wide, production only
 resource "auth0_resource_server" "api" {
   count      = var.create_shared_resources ? 1 : 0
