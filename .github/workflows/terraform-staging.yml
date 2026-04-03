@@ -357,22 +357,50 @@ jobs:
           RESOURCE_GROUP_NAME="${{ steps.tf_outputs.outputs.resource_group_name }}"
           FUNCTION_APP_NAME="${{ steps.tf_outputs.outputs.function_app_name }}"
 
-          HOST_KEY=$(az functionapp keys list \
-            --resource-group "$RESOURCE_GROUP_NAME" \
-            --name "$FUNCTION_APP_NAME" \
-            --query "functionKeys.default" \
-            -o tsv 2>/dev/null || true)
+          HOST_KEY=""
+          MAX_ATTEMPTS=12
+          SLEEP_SECONDS=15
 
-          if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
+          for ATTEMPT in $(seq 1 "$MAX_ATTEMPTS"); do
+            echo "Resolve host key attempt $ATTEMPT/$MAX_ATTEMPTS"
+
             HOST_KEY=$(az functionapp keys list \
               --resource-group "$RESOURCE_GROUP_NAME" \
               --name "$FUNCTION_APP_NAME" \
-              --query "masterKey" \
-              -o tsv)
-          fi
+              --query "functionKeys.default" \
+              -o tsv 2>/dev/null || true)
+
+            if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
+              HOST_KEY=$(az functionapp keys list \
+                --resource-group "$RESOURCE_GROUP_NAME" \
+                --name "$FUNCTION_APP_NAME" \
+                --query "masterKey" \
+                -o tsv 2>/dev/null || true)
+            fi
+
+            # If key listing is temporarily unavailable, create a dedicated key and use it.
+            if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
+              HOST_KEY=$(az functionapp keys set \
+                --resource-group "$RESOURCE_GROUP_NAME" \
+                --name "$FUNCTION_APP_NAME" \
+                --key-type functionKeys \
+                --key-name apim \
+                --query "value" \
+                -o tsv 2>/dev/null || true)
+            fi
+
+            if [ -n "$HOST_KEY" ] && [ "$HOST_KEY" != "null" ]; then
+              break
+            fi
+
+            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+              sleep "$SLEEP_SECONDS"
+            fi
+          done
 
           if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
-            echo "Failed to resolve Function host key after deployment"
+            echo "Failed to resolve Function host key after deployment retries"
+            az functionapp show --resource-group "$RESOURCE_GROUP_NAME" --name "$FUNCTION_APP_NAME" --query "{state:state,defaultHostName:defaultHostName}" -o json || true
             exit 1
           fi
 
