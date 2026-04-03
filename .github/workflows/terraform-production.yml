@@ -45,7 +45,7 @@ jobs:
       TF_VAR_api_custom_hostname_certificate_password: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION }}
       CERT_SECRETS_CONFIGURED: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION != '' && secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION != '' }}
       TF_VAR_workspace_url: ${{ vars.TF_VAR_WORKSPACE_URL_PRODUCTION }}
-      TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE_PRODUCTION }}
+      TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE_PRODUCTION || 'https://api.freedomtimes.news' }}
       TF_VAR_extra_workspace_urls: ${{ vars.TF_VAR_EXTRA_WORKSPACE_URLS_PRODUCTION }}
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
