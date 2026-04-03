@@ -81,7 +81,7 @@ resource "cloudflare_record" "api_custom_hostname" {
   name    = var.api_custom_hostname
   type    = "CNAME"
   content = module.azure_editorial_api.api_gateway_hostname
-  proxied = true
+  proxied = var.api_custom_hostname_proxied
   ttl     = 1
   allow_overwrite = true
   depends_on = [module.azure_editorial_api]

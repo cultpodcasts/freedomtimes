@@ -93,6 +93,12 @@ variable "api_custom_hostname" {
   default     = "api-staging.freedomtimes.news"
 }
 
+variable "api_custom_hostname_proxied" {
+  description = "Whether Cloudflare should proxy the staging API custom hostname CNAME"
+  type        = bool
+  default     = false
+}
+
 variable "api_custom_hostname_certificate_base64" {
   description = "Base64-encoded PFX certificate for staging custom API hostname"
   type        = string
