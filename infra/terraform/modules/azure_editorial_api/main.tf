@@ -315,6 +315,7 @@ resource "azurerm_api_management_api_policy" "editorial" {
   api_name            = azurerm_api_management_api.editorial[0].name
 
   depends_on = [
+    azurerm_api_management_named_value.function_key,
     azurerm_api_management_api_operation.stories_get,
     azurerm_api_management_api_operation.stories_search_get,
     azurerm_api_management_api_operation.story_by_id_get,
