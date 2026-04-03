@@ -33,6 +33,7 @@ resource "auth0_resource_server" "api" {
   count      = var.create_shared_resources ? 1 : 0
   identifier = var.api_identifier
   name       = "freedomtimes-api"
+  skip_consent_for_verifiable_first_party_clients = true
 }
 
 # Define scopes for the API

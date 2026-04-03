@@ -25,7 +25,8 @@ export const GET: APIRoute = async (ctx) => {
   authorizeUrl.searchParams.set('response_type', 'code');
   authorizeUrl.searchParams.set('client_id', config.clientId);
   authorizeUrl.searchParams.set('redirect_uri', redirectUri);
-  authorizeUrl.searchParams.set('scope', 'openid profile email');
+  // Minimal identity scope; roles/permissions remain on token claims via API audience + Auth0 config.
+  authorizeUrl.searchParams.set('scope', 'openid');
   authorizeUrl.searchParams.set('audience', config.apiAudience);
   authorizeUrl.searchParams.set('connection', 'google-oauth2');
   authorizeUrl.searchParams.set('state', state);
