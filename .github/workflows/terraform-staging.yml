@@ -56,6 +56,7 @@ jobs:
       TF_VAR_api_custom_hostname_certificate_password: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING }}
       CERT_SECRETS_CONFIGURED: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING != '' && secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING != '' }}
       TF_VAR_workspace_url: ${{ vars.TF_VAR_WORKSPACE_URL_STAGING }}
+      TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE_STAGING }}
       TF_VAR_api_management_allowed_origins: ${{ vars.TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING }}
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_client_id: ${{ secrets.TF_VAR_AUTH0_CLIENT_ID }}
@@ -227,13 +228,12 @@ jobs:
         run: |
           echo "api_base_url=$(terraform output -raw azure_editorial_api_public_base_url)" >> $GITHUB_OUTPUT
           echo "function_app_name=$(terraform output -raw azure_function_app_name)" >> $GITHUB_OUTPUT
-          echo "auth0_api_audience=$(terraform output -raw auth0_api_identifier)" >> $GITHUB_OUTPUT
 
       - name: Validate Worker Runtime Vars
         run: |
           set -euo pipefail
           API_BASE_URL="${{ steps.tf_outputs.outputs.api_base_url }}"
-          AUTH0_API_AUDIENCE="${{ steps.tf_outputs.outputs.auth0_api_audience }}"
+          AUTH0_API_AUDIENCE="${{ vars.AUTH0_API_AUDIENCE_STAGING }}"
           COOKIE_BASE_DOMAIN="${{ vars.COOKIE_BASE_DOMAIN_STAGING }}"
           AUTH0_ROLES_CLAIM_NAMESPACE="${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE_STAGING }}"
 
@@ -243,7 +243,7 @@ jobs:
           fi
 
           if [ -z "$AUTH0_API_AUDIENCE" ] || [ "$AUTH0_API_AUDIENCE" = "null" ]; then
-            echo "Missing required Terraform output: auth0_api_identifier"
+            echo "Missing required repository var: AUTH0_API_AUDIENCE_STAGING"
             exit 1
           fi
 
@@ -301,7 +301,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-          AUTH0_API_AUDIENCE: ${{ steps.tf_outputs.outputs.auth0_api_audience }}
+          AUTH0_API_AUDIENCE: ${{ vars.AUTH0_API_AUDIENCE_STAGING }}
           API_BASE_URL: ${{ steps.tf_outputs.outputs.api_base_url }}
           COOKIE_BASE_DOMAIN: ${{ vars.COOKIE_BASE_DOMAIN_STAGING }}
           AUTH0_ROLES_CLAIM_NAMESPACE: ${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE_STAGING }}

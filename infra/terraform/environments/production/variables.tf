@@ -38,6 +38,12 @@ variable "workspace_url" {
   default     = "https://freedomtimes.news"
 }
 
+variable "auth0_api_identifier" {
+  description = "Auth0 API identifier (audience) for production"
+  type        = string
+  default     = "https://api.freedomtimes.news"
+}
+
 variable "extra_workspace_urls" {
   description = "Additional workspace URLs for Auth0 callback/logout/origin allow list"
   type        = list(string)

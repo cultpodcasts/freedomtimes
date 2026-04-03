@@ -16,9 +16,8 @@ variable "app_name" {
 }
 
 variable "api_identifier" {
-  description = "Auth0 API identifier (e.g., https://api.example.com)"
+  description = "Auth0 API identifier (audience)"
   type        = string
-  default     = "https://api.example.com"
 }
 
 variable "workspace_url" {

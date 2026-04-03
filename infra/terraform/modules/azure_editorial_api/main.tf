@@ -382,15 +382,6 @@ ${local.apim_allowed_origins_xml}
               var end = cookie.IndexOf(&quot;;&quot;, start);
               return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
             }" />
-            <set-variable name="sessionTokenFromCookie" value="@{
-              var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
-              var marker = &quot;ft_session=&quot;;
-              var start = cookie.IndexOf(marker);
-              if (start < 0) { return &quot;&quot;; }
-              start += marker.Length;
-              var end = cookie.IndexOf(&quot;;&quot;, start);
-              return (end < 0 ? cookie.Substring(start) : cookie.Substring(start, end - start)).Trim();
-            }" />
             <set-variable name="csrfTokenFromCookie" value="@{
               var cookie = (string)context.Variables[&quot;cookieHeader&quot;];
               var marker = &quot;ft_csrf=&quot;;
@@ -409,15 +400,6 @@ ${local.apim_allowed_origins_xml}
                   <value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;accessTokenFromCookie&quot;])</value>
                 </set-header>
               </when>
-              <otherwise>
-                <choose>
-                  <when condition="@(!string.IsNullOrEmpty((string)context.Variables[&quot;sessionTokenFromCookie&quot;]))">
-                    <set-header name="Authorization" exists-action="override">
-                      <value>@(&quot;Bearer &quot; + (string)context.Variables[&quot;sessionTokenFromCookie&quot;])</value>
-                    </set-header>
-                  </when>
-                </choose>
-              </otherwise>
             </choose>
 
             <!-- Enforce CSRF for state-changing methods when using cookie auth -->
