@@ -379,101 +379,14 @@ jobs:
       - name: Function App Deploy Complete
         run: echo "Deploy Stub Azure Function App to Staging completed successfully"
 
-      - name: Resolve Function Host Key
-        id: function_key
-        run: |
-          set -euo pipefail
-
-          RESOURCE_GROUP_NAME="${{ steps.tf_outputs.outputs.resource_group_name }}"
-          FUNCTION_APP_NAME="${{ steps.tf_outputs.outputs.function_app_name }}"
-
-          HOST_KEY=""
-          MAX_ATTEMPTS=40
-          SLEEP_SECONDS=15
-
-          for ATTEMPT in $(seq 1 "$MAX_ATTEMPTS"); do
-            echo "Resolve host key attempt $ATTEMPT/$MAX_ATTEMPTS"
-
-            # Flex runtime can take several minutes after deploy before host key APIs respond.
-            az functionapp function list \
-              --resource-group "$RESOURCE_GROUP_NAME" \
-              --name "$FUNCTION_APP_NAME" \
-              -o none 2>/dev/null || true
-
-            HOST_KEY=$(az functionapp keys list \
-              --resource-group "$RESOURCE_GROUP_NAME" \
-              --name "$FUNCTION_APP_NAME" \
-              --query "functionKeys.default" \
-              -o tsv 2>/dev/null || true)
-
-            if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
-              HOST_KEY=$(az functionapp keys list \
-                --resource-group "$RESOURCE_GROUP_NAME" \
-                --name "$FUNCTION_APP_NAME" \
-                --query "masterKey" \
-                -o tsv 2>/dev/null || true)
-            fi
-
-            # If key listing is temporarily unavailable, create a dedicated key and use it.
-            if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
-              HOST_KEY=$(az functionapp keys set \
-                --resource-group "$RESOURCE_GROUP_NAME" \
-                --name "$FUNCTION_APP_NAME" \
-                --key-type functionKeys \
-                --key-name apim \
-                --query "value" \
-                -o tsv 2>/dev/null || true)
-            fi
-
-            if [ -n "$HOST_KEY" ] && [ "$HOST_KEY" != "null" ]; then
-              break
-            fi
-
-            # Nudge runtime if host key endpoint stays unavailable for several attempts.
-            if [ "$ATTEMPT" -eq 10 ]; then
-              echo "Host keys still unavailable; restarting Function App to recover runtime"
-              az functionapp restart \
-                --resource-group "$RESOURCE_GROUP_NAME" \
-                --name "$FUNCTION_APP_NAME" \
-                -o none 2>/dev/null || true
-            fi
-
-            if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
-              sleep "$SLEEP_SECONDS"
-            fi
-          done
-
-          if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ]; then
-            echo "Failed to resolve Function host key after deployment retries"
-            az functionapp show --resource-group "$RESOURCE_GROUP_NAME" --name "$FUNCTION_APP_NAME" --query "{state:state,defaultHostName:defaultHostName}" -o json || true
-            exit 1
-          fi
-
-          echo "::add-mask::$HOST_KEY"
-          echo "apim_function_key=$HOST_KEY" >> "$GITHUB_OUTPUT"
-
-      - name: Finalize APIM Function Key Named Value
-        timeout-minutes: 10
-        env:
-          APIM_FUNCTION_KEY: ${{ steps.function_key.outputs.apim_function_key }}
-        run: |
-          set -euo pipefail
-
-          terraform apply -input=false -lock-timeout=5m -no-color -auto-approve \
-            -target="module.azure_editorial_api.azurerm_api_management_named_value.function_key[0]" \
-            -var "apim_function_key=$APIM_FUNCTION_KEY"
-
       - name: Enable API DNS Proxy After APIM Custom Domain
         timeout-minutes: 10
-        env:
-          APIM_FUNCTION_KEY: ${{ steps.function_key.outputs.apim_function_key }}
         run: |
           set -euo pipefail
 
           terraform apply -input=false -lock-timeout=5m -no-color -auto-approve \
             -target="cloudflare_record.api_custom_hostname[0]" \
-            -var "api_custom_hostname_proxied=true" \
-            -var "apim_function_key=$APIM_FUNCTION_KEY"
+            -var "api_custom_hostname_proxied=true"
 
       - name: Install Web Dependencies
         working-directory: web

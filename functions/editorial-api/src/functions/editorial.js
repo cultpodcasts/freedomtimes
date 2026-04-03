@@ -36,7 +36,7 @@ const stubStories = [
 app.http('editorialHealth', {
   route: 'health',
   methods: ['GET'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   handler: async (request, context) => {
     const correlationId = getCorrelationId(request, context);
     context.info('editorialHealth', {
@@ -59,7 +59,7 @@ app.http('editorialHealth', {
 app.http('editorialStoriesList', {
   route: 'stories',
   methods: ['GET'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   handler: async (request, context) => {
     const correlationId = getCorrelationId(request, context);
     context.info('editorialStoriesList', {
@@ -81,7 +81,7 @@ app.http('editorialStoriesList', {
 app.http('editorialStoryById', {
   route: 'stories/{id}',
   methods: ['GET'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   handler: async (request, context) => {
     const correlationId = getCorrelationId(request, context);
     const { id } = request.params;
@@ -115,7 +115,7 @@ app.http('editorialStoryById', {
 app.http('editorialStoriesSearch', {
   route: 'stories/search',
   methods: ['GET'],
-  authLevel: 'function',
+  authLevel: 'anonymous',
   handler: async (request, context) => {
     const correlationId = getCorrelationId(request, context);
     const query = request.query.get('q') || '';

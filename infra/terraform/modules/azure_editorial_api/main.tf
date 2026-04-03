@@ -22,7 +22,6 @@ locals {
   apim_allowed_origins_condition    = length(var.api_management_allowed_origins) > 0 ? join(" || ", [for origin in var.api_management_allowed_origins : "context.Request.Headers.GetValueOrDefault(\"Origin\", \"\") == \"${origin}\""]) : "false"
   apim_required_claims_xml          = length(var.allowed_roles) > 0 ? format("          <required-claims>\n            <claim name=\"%s\" match=\"any\">\n%s\n            </claim>\n          </required-claims>", var.roles_claim, local.apim_allowed_roles_xml) : ""
   apim_gateway_custom_domain_enabled = var.manage_api_management_gateway_custom_domain && local.api_gateway_policy_enabled && length(trimspace(var.api_management_gateway_custom_domain)) > 0 && length(trimspace(var.api_management_gateway_certificate_base64)) > 0 && length(trimspace(var.api_management_gateway_certificate_password)) > 0
-  apim_function_key_value           = length(trimspace(var.apim_function_key)) > 0 ? trimspace(var.apim_function_key) : "__bootstrap_pending__"
 
   base_app_settings = {
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
@@ -41,6 +40,8 @@ locals {
     }
   )
 }
+
+data "azurerm_client_config" "current" {}
 
 resource "azurerm_resource_group" "editorial" {
   name     = local.resource_group_name
@@ -110,6 +111,24 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
     application_insights_key               = azurerm_application_insights.editorial.instrumentation_key
   }
 
+  auth_settings_v2 {
+    auth_enabled             = local.api_gateway_policy_enabled
+    require_authentication   = local.api_gateway_policy_enabled
+    unauthenticated_action   = "Return401"
+    default_provider         = "azureactivedirectory"
+    require_https            = true
+
+    login {
+      token_store_enabled = false
+    }
+
+    active_directory_v2 {
+      tenant_auth_endpoint = "https://login.microsoftonline.com/${data.azurerm_client_config.current.tenant_id}/v2.0"
+      client_id            = data.azurerm_client_config.current.client_id
+      allowed_audiences    = ["https://management.azure.com"]
+    }
+  }
+
   app_settings = local.function_app_settings
   https_only   = true
   tags         = var.tags
@@ -123,17 +142,6 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   }
 }
 
-  # --- Create APIM Named Value for the Function Key ---
-  resource "azurerm_api_management_named_value" "function_key" {
-    count               = local.api_gateway_policy_enabled ? 1 : 0
-    name                = "editorial-function-key"
-    resource_group_name = azurerm_resource_group.editorial.name
-    api_management_name = azurerm_api_management.editorial[0].name
-    display_name        = "editorial-function-key"
-    value               = local.apim_function_key_value
-    secret              = true
-  }
-
 resource "azurerm_api_management" "editorial" {
   count = local.api_gateway_policy_enabled ? 1 : 0
 
@@ -144,6 +152,10 @@ resource "azurerm_api_management" "editorial" {
   publisher_email     = var.api_management_publisher_email
   sku_name            = var.api_management_sku_name
   tags                = var.tags
+
+  identity {
+    type = "SystemAssigned"
+  }
 }
 
 resource "azurerm_api_management_api" "editorial" {
@@ -294,7 +306,6 @@ resource "azurerm_api_management_api_policy" "editorial" {
   api_name            = azurerm_api_management_api.editorial[0].name
 
   depends_on = [
-    azurerm_api_management_named_value.function_key,
     azurerm_api_management_api_operation.stories_get,
     azurerm_api_management_api_operation.stories_search_get,
     azurerm_api_management_api_operation.story_by_id_get,
@@ -405,13 +416,11 @@ ${local.apim_required_claims_xml}
           </when>
         </choose>
 
-        <!-- Inject Azure Function key for backend call -->
-        <set-header name="x-functions-key" exists-action="override">
-          <value>{{editorial-function-key}}</value>
-        </set-header>
       </inbound>
       <backend>
         <base />
+        <!-- APIM uses its managed identity to call the Function backend. -->
+        <authentication-managed-identity resource="https://management.azure.com/" ignore-error="false" />
       </backend>
       <outbound>
         <base />
