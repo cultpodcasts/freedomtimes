@@ -33,6 +33,12 @@ output "api_gateway_hostname" {
   value       = length(azurerm_api_management.editorial) > 0 ? trimsuffix(trimprefix(azurerm_api_management.editorial[0].gateway_url, "https://"), "/") : null
 }
 
+output "function_default_key" {
+  description = "Default host key for the Azure Function App (for APIM)"
+  value       = try(data.azurerm_function_app_host_keys.editorial.default_function_key, null)
+  sensitive   = true
+}
+
 output "application_insights_name" {
   description = "Application Insights resource name for editorial API telemetry"
   value       = azurerm_application_insights.editorial.name

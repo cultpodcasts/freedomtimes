@@ -137,6 +137,24 @@ resource "azurerm_function_app_flex_consumption" "editorial" {
   }
 }
 
+  # --- Fetch the default function key for the Function App ---
+  data "azurerm_function_app_host_keys" "editorial" {
+    name                = azurerm_function_app_flex_consumption.editorial.name
+    resource_group_name = azurerm_resource_group.editorial.name
+    depends_on = [azurerm_function_app_flex_consumption.editorial]
+  }
+
+  # --- Create APIM Named Value for the Function Key ---
+  resource "azurerm_api_management_named_value" "function_key" {
+    count               = local.api_gateway_policy_enabled ? 1 : 0
+    name                = "editorial-function-key"
+    resource_group_name = azurerm_resource_group.editorial.name
+    api_management_name = azurerm_api_management.editorial[0].name
+    display_name        = "Editorial Function Key"
+    value               = data.azurerm_function_app_host_keys.editorial.default_function_key
+    secret              = true
+  }
+
 resource "azurerm_api_management" "editorial" {
   count = local.api_gateway_policy_enabled ? 1 : 0
 
@@ -406,6 +424,11 @@ ${local.apim_required_claims_xml}
             </validate-jwt>
           </when>
         </choose>
+
+        <!-- Inject Azure Function key for backend call -->
+        <set-header name="x-functions-key" exists-action="override">
+          <value>{{editorial-function-key}}</value>
+        </set-header>
       </inbound>
       <backend>
         <base />
