@@ -427,11 +427,12 @@ ${local.apim_required_claims_xml}
           </when>
         </choose>
 
+        <!-- APIM uses its managed identity to call the Function backend. -->
+        <authentication-managed-identity resource="https://management.azure.com" />
+
       </inbound>
       <backend>
         <base />
-        <!-- APIM uses its managed identity to call the Function backend. -->
-        <authentication-managed-identity resource="https://management.azure.com/" ignore-error="false" />
       </backend>
       <outbound>
         <base />
