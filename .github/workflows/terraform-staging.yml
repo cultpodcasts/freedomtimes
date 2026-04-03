@@ -385,11 +385,17 @@ jobs:
           FUNCTION_APP_NAME="${{ steps.tf_outputs.outputs.function_app_name }}"
 
           HOST_KEY=""
-          MAX_ATTEMPTS=12
+          MAX_ATTEMPTS=40
           SLEEP_SECONDS=15
 
           for ATTEMPT in $(seq 1 "$MAX_ATTEMPTS"); do
             echo "Resolve host key attempt $ATTEMPT/$MAX_ATTEMPTS"
+
+            # Flex runtime can take several minutes after deploy before host key APIs respond.
+            az functionapp function list \
+              --resource-group "$RESOURCE_GROUP_NAME" \
+              --name "$FUNCTION_APP_NAME" \
+              -o none 2>/dev/null || true
 
             HOST_KEY=$(az functionapp keys list \
               --resource-group "$RESOURCE_GROUP_NAME" \
@@ -418,6 +424,15 @@ jobs:
 
             if [ -n "$HOST_KEY" ] && [ "$HOST_KEY" != "null" ]; then
               break
+            fi
+
+            # Nudge runtime if host key endpoint stays unavailable for several attempts.
+            if [ "$ATTEMPT" -eq 10 ]; then
+              echo "Host keys still unavailable; restarting Function App to recover runtime"
+              az functionapp restart \
+                --resource-group "$RESOURCE_GROUP_NAME" \
+                --name "$FUNCTION_APP_NAME" \
+                -o none 2>/dev/null || true
             fi
 
             if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
