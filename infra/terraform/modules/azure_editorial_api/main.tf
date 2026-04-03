@@ -34,7 +34,12 @@ locals {
     COSMOSDB_CONNECTION_STRING      = azurerm_cosmosdb_account.editorial.primary_sql_connection_string
   }
 
-  function_app_settings = local.base_app_settings
+  function_app_settings = merge(
+    local.base_app_settings,
+    {
+      DEPLOYMENT_STORAGE_CONNECTION_STRING = local.storage_connection_string
+    }
+  )
 }
 
 resource "azurerm_resource_group" "editorial" {
