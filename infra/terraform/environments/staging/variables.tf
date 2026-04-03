@@ -32,6 +32,18 @@ variable "enable_editorial_gateway_policy" {
   default     = true
 }
 
+variable "workspace_url" {
+  description = "Workspace URL for staging auth callbacks"
+  type        = string
+  default     = "https://staging.freedomtimes.news"
+}
+
+variable "api_management_allowed_origins" {
+  description = "Allowed browser origins for staging APIM CORS policy"
+  type        = list(string)
+  default     = ["https://staging.freedomtimes.news", "https://freedomtimes.news"]
+}
+
 variable "editorial_roles_claim" {
   description = "JWT claim name that carries editorial roles"
   type        = string

@@ -35,10 +35,10 @@ module "auth0_app" {
   source = "../../modules/auth0_app"
 
   app_name                     = "freedomtimes-admin"
-  workspace_url                = "https://freedomtimes.news"
+  workspace_url                = var.workspace_url
   roles_claim_namespace        = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   auth0_domain                 = var.auth0_domain
-  extra_workspace_urls         = ["https://staging.freedomtimes.news"]
+  extra_workspace_urls         = var.extra_workspace_urls
 }
 
 module "azure_editorial_api" {

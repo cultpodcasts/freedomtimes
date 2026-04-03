@@ -35,7 +35,7 @@ module "auth0_app" {
   source = "../../modules/auth0_app"
 
   auth0_domain            = var.auth0_domain
-  workspace_url           = "https://staging.freedomtimes.news"
+  workspace_url           = var.workspace_url
   roles_claim_namespace   = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   app_name                = "freedomtimes-admin-staging"
   create_shared_resources = false
@@ -55,16 +55,13 @@ module "azure_editorial_api" {
   roles_claim              = var.editorial_roles_claim
   allowed_roles            = var.editorial_allowed_roles
 
-  enable_easy_auth          = false
+  enable_easy_auth          = var.enable_editorial_easy_auth
   enable_api_gateway_policy = var.enable_editorial_gateway_policy
   api_management_publisher_name  = var.api_management_publisher_name
   api_management_publisher_email = var.api_management_publisher_email
   api_management_sku_name        = var.api_management_sku_name
   api_management_api_path        = var.api_management_api_path
-  api_management_allowed_origins = [
-    "https://staging.freedomtimes.news",
-    "https://freedomtimes.news",
-  ]
+  api_management_allowed_origins = var.api_management_allowed_origins
   api_management_gateway_custom_domain         = var.api_custom_hostname
   api_management_gateway_certificate_base64    = var.api_custom_hostname_certificate_base64
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password

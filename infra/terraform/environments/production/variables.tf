@@ -32,6 +32,18 @@ variable "enable_editorial_gateway_policy" {
   default     = true
 }
 
+variable "workspace_url" {
+  description = "Workspace URL for production auth callbacks"
+  type        = string
+  default     = "https://freedomtimes.news"
+}
+
+variable "extra_workspace_urls" {
+  description = "Additional workspace URLs for Auth0 callback/logout/origin allow list"
+  type        = list(string)
+  default     = ["https://staging.freedomtimes.news"]
+}
+
 variable "editorial_roles_claim" {
   description = "JWT claim name that carries editorial roles"
   type        = string
