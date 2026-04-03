@@ -38,7 +38,7 @@ module "auth0_app" {
   workspace_url           = var.workspace_url
   roles_claim_namespace   = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   app_name                = "freedomtimes-admin-staging"
-  create_shared_resources = false
+  create_shared_resources = true
   jwt_signing_alg         = "RS256"
 }
 
