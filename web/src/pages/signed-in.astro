@@ -1,6 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { ACCESS_TOKEN_COOKIE, CSRF_COOKIE, SESSION_COOKIE, getAuthConfig, getCookieDeleteOptionsForHost, getDisplayName, getRoleClaimDebug, hasEditorialRole, verifyIdToken } from '../lib/auth';
+import { ACCESS_TOKEN_COOKIE, CSRF_COOKIE, SESSION_COOKIE, getAuthConfig, getCookieDeleteOptionsForHost, getDisplayName, getRoleClaimDebug, hasEditorialRole, readOptionalEnv, verifyIdToken } from '../lib/auth';
 
 function readCookieValuesFromHeader(cookieHeader: string, name: string): string[] {
   const prefix = `${name}=`;
@@ -42,7 +42,7 @@ if (sessionCookieValues.length > 1) {
 }
 
 let name = '';
-const editorialApiBaseUrl = '/api/editorial';
+const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
 
 try {
   const payload = await verifyIdToken(token, getAuthConfig());
@@ -127,6 +127,11 @@ try {
     }
 
     async function testApi() {
+      if (!baseUrl) {
+        resultEl.textContent = 'API_BASE_URL is not configured in worker runtime vars.';
+        return;
+      }
+
       const endpointPath = endpointInput.value.trim() || '/stories';
       const normalizedPath = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
       const url = `${baseUrl}${normalizedPath}`;
