@@ -32,6 +32,20 @@ Role detection checks either of these claims in the ID token:
 
 The user is considered admin only if one role equals `admin` (case-insensitive).
 
+## Wrangler Config Files
+
+Two wrangler configs exist in `web/` — do not merge them:
+
+| File | Purpose |
+|---|---|
+| `wrangler.build.jsonc` | Used by `npm run build` via `astro.config.mjs`. No `main` field — the Astro adapter generates `dist/server/entry.mjs` at build time and the `@cloudflare/vite-plugin` would error if `main` pointed to a file that does not yet exist. |
+| `wrangler.jsonc` | Used by `npx wrangler deploy`. Has `main: "dist/server/entry.mjs"` and full `env` blocks with vars for staging and production. |
+
+**Never add `main` to `wrangler.build.jsonc`.  
+Never run `npx wrangler deploy` without `--config .\web\wrangler.jsonc --env <staging|production>` from repo root.**
+
+See also: `scripts/set-github-secrets.md` for syncing Worker secrets after deploy.
+
 ## Commands
 
 Run all commands from `web/`:
