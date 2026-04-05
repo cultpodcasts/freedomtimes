@@ -45,10 +45,13 @@ let name = '';
 const editorialApiBaseUrl = readOptionalEnv('API_BASE_URL');
 
 try {
+
   const payload = await verifyIdToken(token, getAuthConfig());
   if (!hasEditorialRole(payload)) {
     console.warn('[signed-in] token verified but role check failed', {
       requestId,
+      sessionToken: token,
+      decodedPayload: payload,
       roleDebug: getRoleClaimDebug(payload),
     });
     for (const deleteOptions of deleteOptionsList) {
@@ -85,6 +88,13 @@ try {
 
   return Astro.redirect('/');
 }
+// Log AUTH0_DOMAIN at runtime for debugging
+  try {
+    const authConfig = getAuthConfig();
+    console.log('[signed-in] AUTH0_DOMAIN at runtime:', authConfig.domain);
+  } catch (e) {
+    console.error('[signed-in] AUTH0_DOMAIN missing or error:', e);
+  }
 ---
 
 <Layout>

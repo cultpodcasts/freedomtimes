@@ -53,6 +53,8 @@ export const GET: APIRoute = async (ctx) => {
     if (!hasEditorialRole(payload)) {
       console.warn('[auth.callback] user denied: missing required editorial role claim', {
         requestId,
+        idToken,
+        decodedPayload: payload,
         roleDebug: getRoleClaimDebug(payload),
       });
       for (const deleteOptions of deleteOptionsList) {
