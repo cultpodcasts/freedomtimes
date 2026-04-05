@@ -91,3 +91,95 @@ If Terraform resources change later (for example DNS records, KV namespace manag
 - Auth0 local integration requirements
 - Any required VS Code extensions
 - CI parity commands for local preflight checks
+
+---
+## Restoring and Syncing Auth0 Client ID for Staging
+
+To ensure the Cloudflare Worker and web app can authenticate with Auth0 after a full environment teardown or redeploy, follow this process to restore and sync the Auth0 login app client ID:
+
+### 1. Ensure Terraform State and Outputs Exist
+- Navigate to the staging environment directory:
+  ```sh
+  cd infra/terraform/environments/staging
+  ```
+- Initialize Terraform if needed:
+  ```sh
+  terraform init
+  ```
+- Apply the configuration to create/update state and outputs:
+  ```sh
+  terraform apply -auto-approve
+  ```
+  This will create the state file and output the `auth0_app_client_id`.
+
+### 2. Fetch the Auth0 Client ID
+- Run:
+  ```sh
+  terraform output -raw auth0_app_client_id
+  ```
+- Copy the output value (should start with `DtpB...`).
+
+### 3. Update `.env.staging`
+- Open `.env.staging` in the repo root.
+- Set the value for `AUTH0_LOGIN_APP_CLIENT_ID` to the value from Terraform output:
+  ```env
+  AUTH0_LOGIN_APP_CLIENT_ID=<value from terraform output>
+  ```
+
+### 4. Sync Secrets to Cloudflare Worker (if needed)
+- Run the sync script:
+  ```sh
+  pwsh ./scripts/set-github-secrets.ps1
+  ```
+- This will push the updated secrets to GitHub Actions/Cloudflare as needed.
+
+### Troubleshooting
+- If `terraform output -raw auth0_app_client_id` returns nothing:
+  - Ensure you have run `terraform apply` and the state file exists.
+  - Check that `outputs.tf` defines the correct output.
+- If the client ID in Auth0 dashboard does not match, check for manual changes or drift.
+
+### Automation
+- This process can be scripted for CI/CD or local automation, but always verify the value matches the Auth0 dashboard after a full teardown.
+
+---
+## Reconciling and Syncing Staging Cloudflare Worker Secrets
+
+If Cloudflare Worker secrets for staging (such as Auth0 credentials) are missing or out of sync, follow these steps to restore and reconcile them using the sync script:
+
+### 1. Ensure `.env.staging` is Up to Date
+- Confirm that `.env.staging` contains the correct values for:
+  - `AUTH0_LOGIN_APP_CLIENT_ID`
+  - `AUTH0_LOGIN_APP_CLIENT_SECRET`
+  - `AUTH0_DOMAIN`
+- These values are used to set the corresponding Worker secrets.
+
+### 2. Run the Sync Script with Cloudflare Option
+- From the repo root, run:
+  ```sh
+  pwsh ./scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging
+  ```
+- This will:
+  - Read `.env.staging` and overlay it on `.env.dev`.
+  - Push the following secrets to the staging Worker (via wrangler.jsonc):
+    - `AUTH0_DOMAIN`
+    - `AUTH0_CLIENT_ID` (from `AUTH0_LOGIN_APP_CLIENT_ID`)
+    - `AUTH0_CLIENT_SECRET` (from `AUTH0_LOGIN_APP_CLIENT_SECRET`)
+
+### 3. Verification
+- You can verify the secrets are set by running:
+  ```sh
+  npx wrangler secret list --config web/wrangler.jsonc --env staging
+  ```
+- Or by checking the Cloudflare dashboard for the Worker.
+
+### 4. Troubleshooting
+- If secrets are missing after running the script:
+  - Ensure `.env.staging` has the correct, non-empty values.
+  - Ensure you have permissions to update Worker secrets.
+  - Check for errors in the script output.
+- If you need to force a refresh, you can delete and re-add secrets using Wrangler CLI.
+
+### 5. Notes
+- The sync script can also update GitHub Actions secrets/variables if run without the `-SyncCloudflareWorkerSecrets` flag.
+- For production, use `-Target Production` and ensure `.env.production` is correct.

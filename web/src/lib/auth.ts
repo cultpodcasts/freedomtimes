@@ -1,32 +1,19 @@
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
-import { getSecret } from 'astro:env/server';
-
-export async function logSecretMeta(key: string) {
-  const val = await getSecret(key);
-  if (typeof val === 'string') {
-    console.log(`[startup] ${key}: length=${val.length}, first='${val[0] ?? ''}'`);
-  } else {
-    console.log(`[startup] ${key}: not set or not a string`);
-  }
-}
-
-(async () => {
-  await logSecretMeta('AUTH0_DOMAIN');
-  await logSecretMeta('AUTH0_CLIENT_ID');
-  await logSecretMeta('AUTH0_CLIENT_SECRET');
-})();
+import { env as cfEnv } from 'cloudflare:workers';
 
 export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
 export const CSRF_COOKIE = 'ft_csrf';
 const STATE_COOKIE = 'ft_state';
 
-export async function getRoleClaims(): Promise<string[]> {
-  const namespace = (await readOptionalEnv('AUTH0_ROLES_CLAIM_NAMESPACE')).trim().replace(/\/$/, '');
+function getRoleClaims(): string[] {
+  const namespace = readOptionalEnv('AUTH0_ROLES_CLAIM_NAMESPACE').trim().replace(/\/$/, '');
   const claims = ['roles'];
+
   if (namespace.length > 0) {
-    claims.unshift(`${namespace}/roles`);
+    claims.unshift(namespace);
   }
+
   return claims;
 }
 
@@ -37,27 +24,30 @@ export type AuthConfig = {
   apiAudience: string;
 };
 
+export function readEnv(key: string): string {
+  const runtimeEnv = cfEnv as Record<string, string | undefined>;
+  const value =
+    runtimeEnv[key] ??
+    (import.meta.env as Record<string, string | undefined>)[key];
 
-export async function readEnv(key: string): Promise<string> {
-  const value = await getSecret(key);
   if (!value) {
     throw new Error(`Missing required env var: ${key}`);
   }
+
   return value;
 }
 
-
-export async function readOptionalEnv(key: string): Promise<string> {
-  return (await getSecret(key)) ?? '';
+export function readOptionalEnv(key: string): string {
+  const runtimeEnv = cfEnv as Record<string, string | undefined>;
+  return runtimeEnv[key] ?? (import.meta.env as Record<string, string | undefined>)[key] ?? '';
 }
 
-
-export async function getAuthConfig(): Promise<AuthConfig> {
+export function getAuthConfig(): AuthConfig {
   return {
-    domain: await readEnv('AUTH0_DOMAIN'),
-    clientId: await readEnv('AUTH0_CLIENT_ID'),
-    clientSecret: await readEnv('AUTH0_CLIENT_SECRET'),
-    apiAudience: await readEnv('AUTH0_API_AUDIENCE'),
+    domain: readEnv('AUTH0_DOMAIN'),
+    clientId: readEnv('AUTH0_CLIENT_ID'),
+    clientSecret: readEnv('AUTH0_CLIENT_SECRET'),
+    apiAudience: readEnv('AUTH0_API_AUDIENCE'),
   };
 }
 
@@ -71,9 +61,9 @@ export function getStateCookieName(): string {
   return STATE_COOKIE;
 }
 
-export async function getCookieDomainForHost(hostname: string): Promise<string | undefined> {
+export function getCookieDomainForHost(hostname: string): string | undefined {
   const normalized = hostname.trim().toLowerCase();
-  const baseDomain = (await readOptionalEnv('COOKIE_BASE_DOMAIN')).trim().toLowerCase().replace(/^\./, '');
+  const baseDomain = readOptionalEnv('COOKIE_BASE_DOMAIN').trim().toLowerCase().replace(/^\./, '');
 
   if (!normalized || normalized === 'localhost') {
     return undefined;
@@ -91,8 +81,8 @@ export async function getCookieDomainForHost(hostname: string): Promise<string |
   return undefined;
 }
 
-export async function getCookieDeleteOptionsForHost(hostname: string): Promise<Array<{ path: '/'; domain?: string }>> {
-  const cookieDomain = await getCookieDomainForHost(hostname);
+export function getCookieDeleteOptionsForHost(hostname: string): Array<{ path: '/'; domain?: string }> {
+  const cookieDomain = getCookieDomainForHost(hostname);
   return cookieDomain ? [{ path: '/' }, { path: '/', domain: cookieDomain }] : [{ path: '/' }];
 }
 
@@ -171,36 +161,41 @@ function decodeAuth0ClientSecret(secret: string): Uint8Array {
   return Uint8Array.from(decoded, (char) => char.charCodeAt(0));
 }
 
-export async function hasAdminRole(payload: JWTPayload): Promise<boolean> {
-  for (const claim of await getRoleClaims()) {
+export function hasAdminRole(payload: JWTPayload): boolean {
+  for (const claim of getRoleClaims()) {
     const value = payload[claim];
     if (Array.isArray(value) && value.some((r) => String(r).toLowerCase() === 'admin')) {
       return true;
     }
   }
+
   return false;
 }
 
-export async function hasEditorialRole(payload: JWTPayload): Promise<boolean> {
+export function hasEditorialRole(payload: JWTPayload): boolean {
   const allowed = new Set(['admin', 'editor']);
-  for (const claim of await getRoleClaims()) {
+
+  for (const claim of getRoleClaims()) {
     const value = payload[claim];
     if (Array.isArray(value) && value.some((r) => allowed.has(String(r).toLowerCase()))) {
       return true;
     }
   }
+
   return false;
 }
 
-export async function getRoleClaimDebug(payload: JWTPayload): Promise<Record<string, unknown>> {
-  const roleClaims = await getRoleClaims();
+export function getRoleClaimDebug(payload: JWTPayload): Record<string, unknown> {
+  const roleClaims = getRoleClaims();
   const roleClaimValues: Record<string, unknown> = {};
   for (const claim of roleClaims) {
     roleClaimValues[claim] = payload[claim] ?? null;
   }
+
   const availableRoleLikeClaims = Object.keys(payload).filter((k) =>
     k.toLowerCase().endsWith('/roles') || k.toLowerCase() === 'roles',
   );
+
   return {
     configuredRoleClaims: roleClaims,
     roleClaimValues,

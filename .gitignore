@@ -25,3 +25,4 @@ crash.log
 .env.production
 *.har
 certs/*
+infra/terraform/environments/staging/.wrangler/cache/wrangler-account.json

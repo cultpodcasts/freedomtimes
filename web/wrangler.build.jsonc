@@ -1,0 +1,10 @@
+{
+	// Minimal wrangler config used ONLY during `npm run build`.
+	// This file intentionally has no `main` field — the Astro/Cloudflare adapter
+	// generates dist/server/entry.mjs itself. Having `main` here would cause the
+	// adapter to bundle that file instead of the Astro routes.
+	//
+	// For deployment use wrangler.jsonc (which has `main` and env blocks).
+	"name": "freedomtimes-holding",
+	"compatibility_date": "2026-03-29"
+}

@@ -125,3 +125,35 @@ Security requirements for this model:
 Current implementation note:
 
 - The signed-in API test page now calls APIM with `credentials: include` and does not read or attach bearer tokens in browser JavaScript.
+
+## Staging Deployment Command (Cloudflare Worker)
+
+To deploy the staging Cloudflare Worker with all required runtime variables (matching CI):
+
+```powershell
+cd web
+npx wrangler deploy --config wrangler.jsonc --env staging \
+  --var "AUTH0_API_AUDIENCE:https://api.freedomtimes.news" \
+  --var "API_BASE_URL:https://api-staging.freedomtimes.news/editorial" \
+  --var "COOKIE_BASE_DOMAIN:freedomtimes.news" \
+  --var "AUTH0_ROLES_CLAIM_NAMESPACE:https://freedomtimes.news/roles" \
+  --var "API_UPSTREAM_MODE:apim"
+```
+
+- This command must be run from the `web/` directory.
+- All `--var` flags are required for correct runtime configuration.
+- Secrets must be set separately using `npx wrangler secret put ...` for each secret (see below).
+
+**Note:** This matches the GitHub Actions CI deploy process. If you skip any vars or secrets, the Worker may not function correctly at runtime.
+
+### After Deploy: Sync Secrets
+
+After deploying, re-sync all required secrets:
+
+```powershell
+npx wrangler secret put AUTH0_DOMAIN
+npx wrangler secret put AUTH0_CLIENT_ID
+npx wrangler secret put AUTH0_CLIENT_SECRET
+```
+
+You will be prompted for each value. These must match the values used in CI and production.

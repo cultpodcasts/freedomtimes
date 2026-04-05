@@ -407,7 +407,7 @@ jobs:
           AUTH0_ROLES_CLAIM_NAMESPACE: ${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE_STAGING }}
           API_UPSTREAM_MODE: ${{ vars.API_UPSTREAM_MODE_STAGING }}
         run: >
-          npx wrangler deploy --config wrangler.staging.jsonc
+          npx wrangler deploy --config wrangler.jsonc --env staging
           --var AUTH0_API_AUDIENCE:$AUTH0_API_AUDIENCE
           --var API_BASE_URL:$API_BASE_URL
           --var COOKIE_BASE_DOMAIN:$COOKIE_BASE_DOMAIN
@@ -426,9 +426,9 @@ jobs:
           AUTH0_CLIENT_ID_VALUE: ${{ steps.tf_outputs.outputs.auth0_app_client_id }}
           AUTH0_CLIENT_SECRET_VALUE: ${{ steps.auth0_app_secret.outputs.auth0_app_client_secret }}
         run: |
-          printf '%s' "$AUTH0_DOMAIN_VALUE" | npx wrangler secret put AUTH0_DOMAIN --config wrangler.staging.jsonc
-          printf '%s' "$AUTH0_CLIENT_ID_VALUE" | npx wrangler secret put AUTH0_CLIENT_ID --config wrangler.staging.jsonc
-          printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.staging.jsonc
+          printf '%s' "$AUTH0_DOMAIN_VALUE" | npx wrangler secret put AUTH0_DOMAIN --config wrangler.jsonc --env staging
+          printf '%s' "$AUTH0_CLIENT_ID_VALUE" | npx wrangler secret put AUTH0_CLIENT_ID --config wrangler.jsonc --env staging
+          printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.jsonc --env staging
 
       - name: Cleanup Unlock TFC Workspace
         if: always()
