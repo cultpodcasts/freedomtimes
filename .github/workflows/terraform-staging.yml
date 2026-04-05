@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  STAGING_TERRAFORM_APPLY: "true"
+  STAGING_TERRAFORM_APPLY: "false"
 
 jobs:
   terraform:
