@@ -23,7 +23,11 @@
 		"production": {
 			"name": "freedomtimes-holding",
 			"vars": {
-				// Fill with production values as needed
+				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
+				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
+				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
+				"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles",
+				"API_UPSTREAM_MODE": "apim"
 			}
 		},
 		"staging": {

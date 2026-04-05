@@ -65,6 +65,7 @@ module "azure_editorial_api" {
   api_management_gateway_custom_domain         = var.api_custom_hostname
   api_management_gateway_certificate_base64    = var.api_custom_hostname_certificate_base64
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
+  api_management_allowed_origins               = var.api_management_allowed_origins
 
   tags = {
     project     = "freedomtimes"
@@ -79,7 +80,8 @@ resource "cloudflare_record" "api_custom_hostname" {
   zone_id = var.cloudflare_zone_id
   name    = var.api_custom_hostname
   type    = "CNAME"
-  content = module.azure_editorial_api.api_gateway_hostname
-  proxied = true
-  ttl     = 1
+  content         = module.azure_editorial_api.api_gateway_hostname
+  proxied         = true
+  ttl             = 1
+  allow_overwrite = true
 }

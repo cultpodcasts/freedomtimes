@@ -165,6 +165,12 @@ variable "contact_email" {
   type        = string
   default     = ""
 }
+variable "api_management_allowed_origins" {
+  description = "Allowed browser origins for production APIM CORS policy"
+  type        = list(string)
+  default     = ["https://freedomtimes.news"]
+}
+
 variable "auth0_domain" {
   description = "Auth0 tenant domain (e.g., tenant.us.auth0.com)"
   type        = string

@@ -50,15 +50,11 @@ function Main {
             Write-Host "[LOG] Setting AUTH0_DOMAIN for production: '$productionAuth0Domain'" -ForegroundColor Magenta
             $productionClientId = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION")
             $productionClientSecret = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION")
-            Push-Location (Join-Path $repoRoot "web")
-            try {
-                Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
-                Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
-                Set-WorkerSecret -ConfigPath "wrangler.production.jsonc" -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
-            }
-            finally {
-                Pop-Location
-            }
+            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID (from AUTH0_LOGIN_APP_CLIENT_ID): '$productionClientId'" -ForegroundColor Yellow
+            Write-Host "[DEBUG] Will set AUTH0_CLIENT_SECRET (from AUTH0_LOGIN_APP_CLIENT_SECRET): '$productionClientSecret'" -ForegroundColor Yellow
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
         }
     }
 }
