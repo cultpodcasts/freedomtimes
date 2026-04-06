@@ -51,6 +51,9 @@ jobs:
       TF_VAR_api_custom_hostname: ${{ vars.TF_VAR_API_CUSTOM_HOSTNAME_PRODUCTION }}
       TF_VAR_api_custom_hostname_certificate_base64: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION }}
       TF_VAR_api_custom_hostname_certificate_password: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION }}
+      # Keep CNAME unproxied during apply so Azure APIM can verify ownership.
+      # A targeted second apply re-proxies it after the custom domain is registered.
+      TF_VAR_api_custom_hostname_proxied: "false"
       CERT_SECRETS_CONFIGURED: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION != '' && secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION != '' }}
       TF_VAR_workspace_url: ${{ vars.TF_VAR_WORKSPACE_URL_PRODUCTION }}
       TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE }}
@@ -274,6 +277,23 @@ jobs:
 
           echo "::add-mask::$AUTH0_APP_CLIENT_SECRET"
           echo "auth0_app_client_secret=$AUTH0_APP_CLIENT_SECRET" >> "$GITHUB_OUTPUT"
+
+      - name: Re-proxy API CNAME after Custom Domain Validation
+        if: >
+          env.CERT_SECRETS_CONFIGURED == 'true' &&
+          ((env.PRODUCTION_TERRAFORM_APPLY == 'true') ||
+           (github.event_name == 'workflow_dispatch' && github.event.inputs.production_terraform_apply == 'true'))
+        run: |
+          set -euo pipefail
+          echo "Flipping API CNAME back to proxied=true after APIM custom domain validation..."
+          terraform apply \
+            -input=false \
+            -lock-timeout=5m \
+            -no-color \
+            -auto-approve \
+            -var="api_custom_hostname_proxied=true" \
+            -target='cloudflare_record.api_custom_hostname[0]'
+          echo "API CNAME is now proxied."
 
       - name: Cleanup Terraform Plan File
         if: always()

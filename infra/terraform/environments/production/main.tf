@@ -67,6 +67,7 @@ module "azure_editorial_api" {
   api_management_gateway_custom_domain         = var.api_custom_hostname
   api_management_gateway_certificate_base64    = var.api_custom_hostname_certificate_base64
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
+  manage_api_management_gateway_custom_domain  = false
   api_management_allowed_origins               = var.api_management_allowed_origins
 
   tags = {
