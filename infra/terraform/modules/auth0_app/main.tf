@@ -1,5 +1,6 @@
 locals {
   base_urls = distinct(concat([var.workspace_url], var.extra_workspace_urls))
+  create_api_resource_server = var.create_shared_resources || var.create_api_resource_server
 }
 
 # Auth0 Client (Regular Web App for server-side code exchange)
@@ -40,7 +41,7 @@ resource "auth0_client_grant" "admin_ui_api_access" {
 
 # Auth0 Resource Server (API) — tenant-wide, production only
 resource "auth0_resource_server" "api" {
-  count      = var.create_shared_resources ? 1 : 0
+  count      = local.create_api_resource_server ? 1 : 0
   identifier = var.api_identifier
   name       = "freedomtimes-api"
   skip_consent_for_verifiable_first_party_clients = true
@@ -48,7 +49,7 @@ resource "auth0_resource_server" "api" {
 
 # Define scopes for the API
 resource "auth0_resource_server_scopes" "api_scopes" {
-  count                      = var.create_shared_resources ? 1 : 0
+  count                      = local.create_api_resource_server ? 1 : 0
   resource_server_identifier = auth0_resource_server.api[0].identifier
 
   scopes {

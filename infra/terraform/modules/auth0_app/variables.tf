@@ -9,6 +9,12 @@ variable "create_shared_resources" {
   default     = true
 }
 
+variable "create_api_resource_server" {
+  description = "Whether to create the Auth0 API resource server and scopes for this audience."
+  type        = bool
+  default     = false
+}
+
 variable "create_login_app" {
   description = "Whether to create the Auth0 regular web application and credentials."
   type        = bool

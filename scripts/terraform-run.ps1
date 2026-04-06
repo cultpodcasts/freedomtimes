@@ -129,22 +129,36 @@ function Get-FirstEnvValue {
 }
 
 function Build-TerraformVarArgs {
-    $map = [ordered]@{
-        cloudflare_api_token                    = @("TF_VAR_cloudflare_api_token", "TF_VAR_CLOUDFLARE_API_TOKEN")
-        cloudflare_account_id                   = @("TF_VAR_cloudflare_account_id", "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
-        cloudflare_zone_id                      = @("TF_VAR_cloudflare_zone_id", "TF_VAR_CLOUDFLARE_ZONE_ID")
-        auth0_domain                            = @("TF_VAR_auth0_domain", "TF_VAR_AUTH0_DOMAIN")
-        auth0_management_client_id              = @("TF_VAR_auth0_management_client_id", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID")
-        auth0_management_client_secret          = @("TF_VAR_auth0_management_client_secret", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET")
-        route_pattern                           = @("TF_VAR_route_pattern")
-        worker_name                             = @("TF_VAR_worker_name")
-        manage_apex_dns_record                  = @("TF_VAR_manage_apex_dns_record")
-        apex_dns_record_content                 = @("TF_VAR_apex_dns_record_content")
-        api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
-        workspace_url                           = @("TF_VAR_workspace_url")
-        api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
-        api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
-        api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
+    param([string]$Env)
+
+    if ($Env -eq "auth0-shared") {
+        $map = [ordered]@{
+            auth0_domain                        = @("TF_VAR_auth0_domain", "TF_VAR_AUTH0_DOMAIN")
+            auth0_management_client_id          = @("TF_VAR_auth0_management_client_id", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID")
+            auth0_management_client_secret      = @("TF_VAR_auth0_management_client_secret", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET")
+            auth0_api_identifier                = @("TF_VAR_auth0_api_identifier", "AUTH0_API_AUDIENCE")
+            editorial_roles_claim               = @("TF_VAR_editorial_roles_claim", "AUTH0_ROLES_CLAIM_NAMESPACE")
+            workspace_url                       = @("TF_VAR_workspace_url", "TF_VAR_WORKSPACE_URL_PRODUCTION")
+        }
+    }
+    else {
+        $map = [ordered]@{
+            cloudflare_api_token                    = @("TF_VAR_cloudflare_api_token", "TF_VAR_CLOUDFLARE_API_TOKEN")
+            cloudflare_account_id                   = @("TF_VAR_cloudflare_account_id", "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
+            cloudflare_zone_id                      = @("TF_VAR_cloudflare_zone_id", "TF_VAR_CLOUDFLARE_ZONE_ID")
+            auth0_domain                            = @("TF_VAR_auth0_domain", "TF_VAR_AUTH0_DOMAIN")
+            auth0_management_client_id              = @("TF_VAR_auth0_management_client_id", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID")
+            auth0_management_client_secret          = @("TF_VAR_auth0_management_client_secret", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET")
+            route_pattern                           = @("TF_VAR_route_pattern")
+            worker_name                             = @("TF_VAR_worker_name")
+            manage_apex_dns_record                  = @("TF_VAR_manage_apex_dns_record")
+            apex_dns_record_content                 = @("TF_VAR_apex_dns_record_content")
+            api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
+            workspace_url                           = @("TF_VAR_workspace_url")
+            api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
+            api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
+            api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
+        }
     }
 
     $varList = New-Object System.Collections.Generic.List[string]
@@ -271,7 +285,7 @@ if ($preflightCode -ne 0) {
 Push-Location $envDir
 try {
     Write-Host "DEBUG: Building terraform var args..." -ForegroundColor DarkGray
-    $varArgs = Build-TerraformVarArgs
+    $varArgs = Build-TerraformVarArgs -Env $Environment
     Write-Host "DEBUG: Built $($varArgs.Count) var args" -ForegroundColor DarkGray
 
     if ($Operation -eq "init") {

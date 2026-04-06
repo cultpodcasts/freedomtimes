@@ -10,7 +10,7 @@ output "domain" {
 
 output "api_identifier" {
   description = "Auth0 API identifier"
-  value       = var.create_shared_resources ? auth0_resource_server.api[0].identifier : var.api_identifier
+  value       = (var.create_shared_resources || var.create_api_resource_server) ? auth0_resource_server.api[0].identifier : var.api_identifier
 }
 
 output "editor_role_id" {
