@@ -138,6 +138,65 @@ jobs:
       - name: Terraform Validate (explicit)
         run: terraform validate
 
+      - name: Import Auth0 Admin UI App
+        id: import_auth0
+        run: |
+          set -euo pipefail
+
+          # Get Auth0 management token
+          TOKEN=$(curl -sS --fail \
+            --request POST \
+            --url "https://${TF_VAR_auth0_domain}/oauth/token" \
+            --header 'content-type: application/json' \
+            --data "{\"grant_type\":\"client_credentials\",\"client_id\":\"${TF_VAR_auth0_management_client_id}\",\"client_secret\":\"${TF_VAR_auth0_management_client_secret}\",\"audience\":\"https://${TF_VAR_auth0_domain}/api/v2/\"}" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+
+          # Query for existing admin_ui client
+          CLIENT_ID=$(curl -sS --fail \
+            --url "https://${TF_VAR_auth0_domain}/api/v2/clients?name=admin_ui" \
+            --header "authorization: Bearer ${TOKEN}" \
+            | python3 -c "import json,sys; clients = json.load(sys.stdin); print(clients[0]['client_id'] if clients else '')")
+
+          if [ -z "$CLIENT_ID" ]; then
+            echo "No Auth0 admin_ui client found; Terraform will create it"
+            exit 0
+          fi
+
+          RESOURCE_ADDR='module.auth0_app.auth0_client.admin_ui'
+          if terraform state show "$RESOURCE_ADDR" >/dev/null 2>&1; then
+            echo "Auth0 admin_ui already tracked in state"
+            exit 0
+          fi
+
+          echo "Importing Auth0 admin_ui client: $CLIENT_ID"
+          terraform import -input=false "$RESOURCE_ADDR" "$CLIENT_ID" || echo "Import already exists or failed expectedly"
+
+      - name: Import Azure API Management
+        id: import_apim
+        run: |
+          set -euo pipefail
+
+          RESOURCE_ADDR='module.azure_editorial_api.azurerm_api_management.editorial[0]'
+          
+          if terraform state show "$RESOURCE_ADDR" >/dev/null 2>&1; then
+            echo "APIM already tracked in state"
+            exit 0
+          fi
+
+          # Query for existing APIM resource in staging resource group
+          APIM_ID=$(az apim show \
+            --name freedomtimes-staging-apim-1ff9a3 \
+            --resource-group freedomtimes-staging-rg \
+            --query id -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$APIM_ID" ]; then
+            echo "No existing APIM found; Terraform will create it"
+            exit 0
+          fi
+
+          echo "Importing APIM: $APIM_ID"
+          terraform import -input=false "$RESOURCE_ADDR" "$APIM_ID" || echo "Import already exists or failed expectedly"
+
       - name: Adopt Existing API CNAME Record
         if: env.CERT_SECRETS_CONFIGURED == 'true'
         run: |
