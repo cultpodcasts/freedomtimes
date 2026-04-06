@@ -43,7 +43,7 @@ resource "auth0_client_grant" "admin_ui_api_access" {
 resource "auth0_resource_server" "api" {
   count      = local.create_api_resource_server ? 1 : 0
   identifier = var.api_identifier
-  name       = "freedomtimes-api"
+  name       = var.api_name
   skip_consent_for_verifiable_first_party_clients = true
 }
 

@@ -32,6 +32,12 @@ variable "api_identifier" {
   type        = string
 }
 
+variable "api_name" {
+  description = "Auth0 API resource server name"
+  type        = string
+  default     = "freedomtimes-api"
+}
+
 variable "workspace_url" {
   description = "Workspace URL for admin application callback"
   type        = string

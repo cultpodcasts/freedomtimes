@@ -38,6 +38,7 @@ module "auth0_app" {
   # This module creates the login application for the staging web app. Its client ID is output as auth0_app_client_id.
   auth0_domain            = var.auth0_domain
   api_identifier          = var.auth0_api_identifier
+  api_name                = "freedomtimes-api-staging"
   workspace_url           = var.workspace_url
   roles_claim_namespace   = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   app_name                = "freedomtimes-admin-staging"
