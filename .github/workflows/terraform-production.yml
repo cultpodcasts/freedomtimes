@@ -242,34 +242,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          get_output_with_retry() {
-            local output_name="$1"
-            local max_attempts=8
-            local sleep_seconds=15
-            local attempt=1
-            local value=""
-
-            while [ "$attempt" -le "$max_attempts" ]; do
-              if value=$(terraform output -raw "$output_name" 2>/dev/null); then
-                if [ -n "$value" ] && [ "$value" != "null" ]; then
-                  echo "$value"
-                  return 0
-                fi
-              fi
-
-              echo "Output $output_name not ready (attempt $attempt/$max_attempts); retrying in ${sleep_seconds}s..."
-              sleep "$sleep_seconds"
-              attempt=$((attempt + 1))
-            done
-
-            echo "Failed to read Terraform output '$output_name' after $max_attempts attempts" >&2
-            return 1
-          }
-
-          AUTH0_APP_CLIENT_ID=$(get_output_with_retry auth0_app_client_id)
-          API_BASE_URL=$(get_output_with_retry azure_editorial_api_public_base_url)
-          FUNCTION_APP_NAME=$(get_output_with_retry azure_function_app_name)
-          RESOURCE_GROUP_NAME=$(get_output_with_retry azure_resource_group_name)
+          AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
+          API_BASE_URL=$(terraform output -raw azure_editorial_api_public_base_url 2>/dev/null || echo "")
+          FUNCTION_APP_NAME=$(terraform output -raw azure_function_app_name 2>/dev/null || echo "")
+          RESOURCE_GROUP_NAME=$(terraform output -raw azure_resource_group_name 2>/dev/null || echo "")
 
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
           echo "api_base_url=$API_BASE_URL" >> $GITHUB_OUTPUT
@@ -319,12 +295,14 @@ jobs:
         run: npm ci
 
       - name: Azure Login for Function Deploy
+        if: steps.tf_outputs.outputs.function_app_name != '' && steps.tf_outputs.outputs.function_app_name != 'null'
         uses: azure/login@v2
         with:
           creds: >-
             {"clientId":"${{ secrets.ARM_CLIENT_ID }}","clientSecret":"${{ secrets.ARM_CLIENT_SECRET }}","subscriptionId":"${{ secrets.ARM_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.ARM_TENANT_ID }}"}
 
       - name: Deploy Stub Azure Function App to Production
+        if: steps.tf_outputs.outputs.function_app_name != '' && steps.tf_outputs.outputs.function_app_name != 'null'
         uses: Azure/functions-action@v1
         with:
           app-name: ${{ steps.tf_outputs.outputs.function_app_name }}
@@ -333,9 +311,11 @@ jobs:
           respect-funcignore: true
 
       - name: Function App Deploy Complete
+        if: steps.tf_outputs.outputs.function_app_name != '' && steps.tf_outputs.outputs.function_app_name != 'null'
         run: echo "Deploy Stub Azure Function App to Production completed successfully"
 
       - name: Validate Worker Runtime Vars
+        if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
         run: |
           set -euo pipefail
           API_BASE_URL="${{ steps.tf_outputs.outputs.api_base_url }}"
@@ -372,6 +352,7 @@ jobs:
         run: npm run build
 
       - name: Deploy Astro Worker to Production
+        if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
         working-directory: web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
@@ -390,6 +371,7 @@ jobs:
           --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
 
       - name: Set Worker Secrets for Production
+        if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
         working-directory: web
         # Cloudflare Worker secrets are synced here from Terraform outputs and Auth0 Management API.
         # Auth0 login app credentials come from the Terraform-managed application.
