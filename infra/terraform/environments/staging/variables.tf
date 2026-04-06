@@ -35,7 +35,7 @@ variable "workspace_url" {
 variable "auth0_api_identifier" {
   description = "Auth0 API identifier (audience) for staging"
   type        = string
-  default     = "https://api.freedomtimes.news"
+  default     = "https://api-staging.freedomtimes.news"
 }
 
 variable "apim_function_key" {

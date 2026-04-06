@@ -100,6 +100,17 @@ function Invoke-EnvRemapping {
                 [System.Environment]::SetEnvironmentVariable($target, $src, "Process")
             }
         }
+
+        # Keep Auth0 API audience environment-specific to avoid staging/prod cross-contamination.
+        if ($Env -eq "staging") {
+            $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_STAGING")
+        }
+        else {
+            $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_PRODUCTION", "AUTH0_API_AUDIENCE")
+        }
+        if (-not [string]::IsNullOrWhiteSpace($audience)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
+        }
     }
 
     if ($Env -eq "auth0-shared") {
@@ -149,6 +160,7 @@ function Build-TerraformVarArgs {
             auth0_domain                            = @("TF_VAR_auth0_domain", "TF_VAR_AUTH0_DOMAIN")
             auth0_management_client_id              = @("TF_VAR_auth0_management_client_id", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID")
             auth0_management_client_secret          = @("TF_VAR_auth0_management_client_secret", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET")
+            auth0_api_identifier                    = @("TF_VAR_auth0_api_identifier")
             route_pattern                           = @("TF_VAR_route_pattern")
             worker_name                             = @("TF_VAR_worker_name")
             manage_apex_dns_record                  = @("TF_VAR_manage_apex_dns_record")

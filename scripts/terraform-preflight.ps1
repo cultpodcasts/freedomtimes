@@ -148,6 +148,19 @@ if ($LoadEnvFiles) {
                 [System.Environment]::SetEnvironmentVariable($tfVar, $sourceValue, "Process")
             }
         }
+
+        if ($Environment -eq "staging") {
+            $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE_STAGING", "Process")
+        }
+        else {
+            $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE_PRODUCTION", "Process")
+            if ([string]::IsNullOrWhiteSpace($audience)) {
+                $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE", "Process")
+            }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($audience)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
+        }
     }
 
     if ($Environment -eq "auth0-shared") {
@@ -202,7 +215,8 @@ $requiredByEnvironment = @{
     "TF_VAR_cloudflare_api_token",
     "TF_VAR_cloudflare_account_id",
     "TF_VAR_cloudflare_zone_id",
-    "TF_VAR_route_pattern"
+    "TF_VAR_route_pattern",
+    "TF_VAR_auth0_api_identifier"
     )
     production = @(
         "ARM_CLIENT_ID",
@@ -212,7 +226,8 @@ $requiredByEnvironment = @{
         "TF_VAR_cloudflare_api_token",
         "TF_VAR_cloudflare_account_id",
         "TF_VAR_cloudflare_zone_id",
-        "TF_VAR_route_pattern"
+        "TF_VAR_route_pattern",
+        "TF_VAR_auth0_api_identifier"
     )
     "auth0-shared" = @(
         "TF_VAR_auth0_api_identifier",
