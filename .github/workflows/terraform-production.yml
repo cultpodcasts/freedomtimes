@@ -53,7 +53,7 @@ jobs:
       TF_VAR_api_custom_hostname_certificate_password: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION }}
       CERT_SECRETS_CONFIGURED: ${{ secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION != '' && secrets.TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION != '' }}
       TF_VAR_workspace_url: ${{ vars.TF_VAR_WORKSPACE_URL_PRODUCTION }}
-      TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE_PRODUCTION || 'https://api.freedomtimes.news' }}
+      TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE }}
       TF_VAR_api_management_allowed_origins: ${{ vars.TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_PRODUCTION }}
       TF_VAR_extra_workspace_urls: ${{ vars.TF_VAR_EXTRA_WORKSPACE_URLS_PRODUCTION }}
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
@@ -338,9 +338,9 @@ jobs:
         run: |
           set -euo pipefail
           API_BASE_URL="${{ steps.tf_outputs.outputs.api_base_url }}"
-          AUTH0_API_AUDIENCE="${{ vars.AUTH0_API_AUDIENCE_PRODUCTION || 'https://api.freedomtimes.news' }}"
-          COOKIE_BASE_DOMAIN="${{ vars.COOKIE_BASE_DOMAIN_PRODUCTION }}"
-          AUTH0_ROLES_CLAIM_NAMESPACE="${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE_PRODUCTION }}"
+          AUTH0_API_AUDIENCE="${{ vars.AUTH0_API_AUDIENCE || 'https://api.freedomtimes.news' }}"
+          COOKIE_BASE_DOMAIN="${{ vars.COOKIE_BASE_DOMAIN }}"
+          AUTH0_ROLES_CLAIM_NAMESPACE="${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE }}"
 
           if [ -z "$API_BASE_URL" ] || [ "$API_BASE_URL" = "null" ]; then
             echo "Missing required Terraform output: azure_editorial_api_public_base_url"
@@ -348,17 +348,17 @@ jobs:
           fi
 
           if [ -z "$AUTH0_API_AUDIENCE" ] || [ "$AUTH0_API_AUDIENCE" = "null" ]; then
-            echo "Missing required repository var: AUTH0_API_AUDIENCE_PRODUCTION"
+            echo "Missing required repository var: AUTH0_API_AUDIENCE"
             exit 1
           fi
 
           if [ -z "$COOKIE_BASE_DOMAIN" ]; then
-            echo "Missing required repository var: COOKIE_BASE_DOMAIN_PRODUCTION"
+            echo "Missing required repository var: COOKIE_BASE_DOMAIN"
             exit 1
           fi
 
           if [ -z "$AUTH0_ROLES_CLAIM_NAMESPACE" ]; then
-            echo "Missing required repository var: AUTH0_ROLES_CLAIM_NAMESPACE_PRODUCTION"
+            echo "Missing required repository var: AUTH0_ROLES_CLAIM_NAMESPACE"
             exit 1
           fi
 
@@ -375,11 +375,11 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-          AUTH0_API_AUDIENCE: ${{ vars.AUTH0_API_AUDIENCE_PRODUCTION || 'https://api.freedomtimes.news' }}
+          AUTH0_API_AUDIENCE: ${{ vars.AUTH0_API_AUDIENCE || 'https://api.freedomtimes.news' }}
           API_BASE_URL: ${{ steps.tf_outputs.outputs.api_base_url }}
-          COOKIE_BASE_DOMAIN: ${{ vars.COOKIE_BASE_DOMAIN_PRODUCTION }}
-          AUTH0_ROLES_CLAIM_NAMESPACE: ${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE_PRODUCTION }}
-          API_UPSTREAM_MODE: ${{ vars.API_UPSTREAM_MODE_PRODUCTION }}
+          COOKIE_BASE_DOMAIN: ${{ vars.COOKIE_BASE_DOMAIN }}
+          AUTH0_ROLES_CLAIM_NAMESPACE: ${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE }}
+          API_UPSTREAM_MODE: ${{ vars.API_UPSTREAM_MODE }}
         run: >
           npx wrangler deploy --config wrangler.jsonc --env production
           --var AUTH0_API_AUDIENCE:$AUTH0_API_AUDIENCE

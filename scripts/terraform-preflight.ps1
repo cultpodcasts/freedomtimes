@@ -95,6 +95,32 @@ if ($LoadEnvFiles) {
     Write-Host "Loaded env values from $BaseEnvFile + $overlayFile" -ForegroundColor DarkGray
 }
 
+# Remap environment-specific vars from suffixed keys in .env.dev to the
+# unsuffixed names Terraform expects.  GitHub Actions workflows do this
+# remapping in their env: block; this block handles it for local runs.
+if ($LoadEnvFiles) {
+    $suffix = if ($Environment -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
+    $envSpecificKeys = [ordered]@{
+        "TF_VAR_route_pattern"                            = "TF_VAR_ROUTE_PATTERN$suffix"
+        "TF_VAR_worker_name"                              = "TF_VAR_WORKER_NAME$suffix"
+        "TF_VAR_manage_apex_dns_record"                   = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
+        "TF_VAR_apex_dns_record_content"                  = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
+        "TF_VAR_api_custom_hostname"                      = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
+        "TF_VAR_workspace_url"                            = "TF_VAR_WORKSPACE_URL$suffix"
+        "TF_VAR_api_management_allowed_origins"           = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
+        "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
+        "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
+    }
+    foreach ($tfVar in $envSpecificKeys.Keys) {
+        $sourceKey = $envSpecificKeys[$tfVar]
+        $sourceValue = [System.Environment]::GetEnvironmentVariable($sourceKey, "Process")
+        if (-not [string]::IsNullOrWhiteSpace($sourceValue)) {
+            [System.Environment]::SetEnvironmentVariable($tfVar, $sourceValue, "Process")
+        }
+    }
+    Write-Host "Remapped env-specific vars for $Environment." -ForegroundColor DarkGray
+}
+
 # Normalize legacy Auth0 env var names for compatibility.
 if (-not $env:TF_VAR_auth0_management_client_id -and $env:TF_VAR_auth0_client_id) {
     $env:TF_VAR_auth0_management_client_id = $env:TF_VAR_auth0_client_id
@@ -117,12 +143,12 @@ $requiredCommon = @(
     "ARM_CLIENT_SECRET",
     "ARM_SUBSCRIPTION_ID",
     "ARM_TENANT_ID",
-    "TF_VAR_cloudflare_api_token",
-    "TF_VAR_cloudflare_account_id",
-    "TF_VAR_cloudflare_zone_id",
-    "TF_VAR_auth0_domain",
-    "TF_VAR_auth0_management_client_id",
-    "TF_VAR_auth0_management_client_secret",
+    "TF_VAR_CLOUDFLARE_API_TOKEN",
+    "TF_VAR_CLOUDFLARE_ACCOUNT_ID",
+    "TF_VAR_CLOUDFLARE_ZONE_ID",
+    "TF_VAR_AUTH0_DOMAIN",
+    "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID",
+    "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET",
     "TF_VAR_route_pattern"
 )
 

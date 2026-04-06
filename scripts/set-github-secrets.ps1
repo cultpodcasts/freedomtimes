@@ -2,6 +2,7 @@ param(
     [ValidateSet("Staging", "Production")]
     [string]$Target = "Staging",
     [switch]$SyncCloudflareWorkerSecrets,
+    [switch]$SyncGitHubSecretsAndVars,
     [switch]$DryRun,
     [switch]$AllowProduction
 )
@@ -20,6 +21,7 @@ Write-Host "[DEBUG] PSBoundParameters: $($PSBoundParameters | Out-String)" -Fore
 function Main {
     Write-Host "[DEBUG] Main function entered" -ForegroundColor Cyan
     Write-Host "[DEBUG] SyncCloudflareWorkerSecrets: $SyncCloudflareWorkerSecrets" -ForegroundColor Cyan
+    Write-Host "[DEBUG] SyncGitHubSecretsAndVars: $SyncGitHubSecretsAndVars" -ForegroundColor Cyan
     Write-Host "[DEBUG] baseEnvPath: $baseEnvPath" -ForegroundColor Cyan
     Write-Host "[DEBUG] stagingEnvPath: $stagingEnvPath" -ForegroundColor Cyan
     Write-Host "[DEBUG] productionEnvPath: $productionEnvPath" -ForegroundColor Cyan
@@ -56,6 +58,70 @@ function Main {
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
         }
+    }
+
+    if ($SyncGitHubSecretsAndVars) {
+        if (-not $AllowProduction) {
+            Write-Error "[GUARDRAIL] SyncGitHubSecretsAndVars updates repo-level GitHub secrets and variables that affect production deployments. Use -AllowProduction to proceed."
+            return
+        }
+        $ghRepo = "cultpodcasts/freedomtimes"
+        Write-Host "`nSyncing GitHub secrets and variables from .env.dev to $ghRepo..." -ForegroundColor Cyan
+
+        $secrets = @(
+            "ARM_CLIENT_ID",
+            "ARM_CLIENT_SECRET",
+            "ARM_SUBSCRIPTION_ID",
+            "ARM_TENANT_ID",
+            "TF_VAR_CLOUDFLARE_API_TOKEN",
+            "TF_VAR_CLOUDFLARE_ACCOUNT_ID",
+            "TF_VAR_CLOUDFLARE_ZONE_ID",
+            "TF_VAR_AUTH0_DOMAIN",
+            "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID",
+            "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET",
+            "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING",
+            "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING",
+            "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION",
+            "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION",
+            "AUTH0_LOGIN_APP_CLIENT_ID_STAGING",
+            "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING",
+            "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION",
+            "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION"
+        )
+        Write-Host "  Syncing secrets..." -ForegroundColor Gray
+        foreach ($name in $secrets) {
+            $value = Get-EnvValue -Values $baseEnvValues -Keys @($name)
+            Set-GhSecret -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun
+        }
+
+        $variables = @(
+            "TF_VAR_AZURE_LOCATION",
+            "API_UPSTREAM_MODE",
+            "AUTH0_API_AUDIENCE",
+            "COOKIE_BASE_DOMAIN",
+            "AUTH0_ROLES_CLAIM_NAMESPACE",
+            "TF_VAR_ROUTE_PATTERN_STAGING",
+            "TF_VAR_ROUTE_PATTERN_PRODUCTION",
+            "TF_VAR_WORKER_NAME_STAGING",
+            "TF_VAR_WORKER_NAME_PRODUCTION",
+            "TF_VAR_MANAGE_APEX_DNS_RECORD_STAGING",
+            "TF_VAR_MANAGE_APEX_DNS_RECORD_PRODUCTION",
+            "TF_VAR_APEX_DNS_RECORD_CONTENT_STAGING",
+            "TF_VAR_APEX_DNS_RECORD_CONTENT_PRODUCTION",
+            "TF_VAR_API_CUSTOM_HOSTNAME_STAGING",
+            "TF_VAR_API_CUSTOM_HOSTNAME_PRODUCTION",
+            "TF_VAR_WORKSPACE_URL_STAGING",
+            "TF_VAR_WORKSPACE_URL_PRODUCTION",
+            "TF_VAR_EXTRA_WORKSPACE_URLS_PRODUCTION",
+            "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING",
+            "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_PRODUCTION"
+        )
+        Write-Host "  Syncing variables..." -ForegroundColor Gray
+        foreach ($name in $variables) {
+            $value = Get-EnvValue -Values $baseEnvValues -Keys @($name)
+            Set-GhVariable -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun
+        }
+        Write-Host "`nGitHub secrets and variables synced." -ForegroundColor Green
     }
 }
 
