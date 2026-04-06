@@ -95,6 +95,27 @@ if ($LoadEnvFiles) {
     Write-Host "Loaded env values from $BaseEnvFile + $overlayFile" -ForegroundColor DarkGray
 }
 
+# Normalize shared vars from canonical uppercase names in .env.dev to the
+# lowercase TF_VAR names used by root module variables.
+if ($LoadEnvFiles) {
+    $sharedAliases = [ordered]@{
+        "TF_VAR_cloudflare_api_token"          = "TF_VAR_CLOUDFLARE_API_TOKEN"
+        "TF_VAR_cloudflare_account_id"         = "TF_VAR_CLOUDFLARE_ACCOUNT_ID"
+        "TF_VAR_cloudflare_zone_id"            = "TF_VAR_CLOUDFLARE_ZONE_ID"
+        "TF_VAR_auth0_domain"                  = "TF_VAR_AUTH0_DOMAIN"
+        "TF_VAR_auth0_management_client_id"    = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
+        "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
+        "TF_VAR_azure_location"                = "TF_VAR_AZURE_LOCATION"
+    }
+    foreach ($targetKey in $sharedAliases.Keys) {
+        $sourceKey = $sharedAliases[$targetKey]
+        $sourceValue = [System.Environment]::GetEnvironmentVariable($sourceKey, "Process")
+        if (-not [string]::IsNullOrWhiteSpace($sourceValue)) {
+            [System.Environment]::SetEnvironmentVariable($targetKey, $sourceValue, "Process")
+        }
+    }
+}
+
 # Remap environment-specific vars from suffixed keys in .env.dev to the
 # unsuffixed names Terraform expects.  GitHub Actions workflows do this
 # remapping in their env: block; this block handles it for local runs.
@@ -143,12 +164,12 @@ $requiredCommon = @(
     "ARM_CLIENT_SECRET",
     "ARM_SUBSCRIPTION_ID",
     "ARM_TENANT_ID",
-    "TF_VAR_CLOUDFLARE_API_TOKEN",
-    "TF_VAR_CLOUDFLARE_ACCOUNT_ID",
-    "TF_VAR_CLOUDFLARE_ZONE_ID",
-    "TF_VAR_AUTH0_DOMAIN",
-    "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID",
-    "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET",
+    "TF_VAR_cloudflare_api_token",
+    "TF_VAR_cloudflare_account_id",
+    "TF_VAR_cloudflare_zone_id",
+    "TF_VAR_auth0_domain",
+    "TF_VAR_auth0_management_client_id",
+    "TF_VAR_auth0_management_client_secret",
     "TF_VAR_route_pattern"
 )
 

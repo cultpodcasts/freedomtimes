@@ -36,6 +36,50 @@ function Invoke-TerraformCommand {
     return 1
 }
 
+function Get-FirstEnvValue {
+    param([string[]]$Names)
+
+    foreach ($name in $Names) {
+        $value = [System.Environment]::GetEnvironmentVariable($name, "Process")
+        if (-not [string]::IsNullOrWhiteSpace([string]$value)) {
+            return [string]$value
+        }
+    }
+
+    return ""
+}
+
+function Build-TerraformVarArgs {
+    $map = [ordered]@{
+        cloudflare_api_token                    = @("TF_VAR_cloudflare_api_token", "TF_VAR_CLOUDFLARE_API_TOKEN")
+        cloudflare_account_id                   = @("TF_VAR_cloudflare_account_id", "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
+        cloudflare_zone_id                      = @("TF_VAR_cloudflare_zone_id", "TF_VAR_CLOUDFLARE_ZONE_ID")
+        auth0_domain                            = @("TF_VAR_auth0_domain", "TF_VAR_AUTH0_DOMAIN")
+        auth0_management_client_id              = @("TF_VAR_auth0_management_client_id", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID")
+        auth0_management_client_secret          = @("TF_VAR_auth0_management_client_secret", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET")
+        route_pattern                           = @("TF_VAR_route_pattern")
+        worker_name                             = @("TF_VAR_worker_name")
+        manage_apex_dns_record                  = @("TF_VAR_manage_apex_dns_record")
+        apex_dns_record_content                 = @("TF_VAR_apex_dns_record_content")
+        api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
+        workspace_url                           = @("TF_VAR_workspace_url")
+        api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
+        api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
+        api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
+    }
+
+    $args = New-Object System.Collections.Generic.List[string]
+    foreach ($tfVarName in $map.Keys) {
+        $value = Get-FirstEnvValue -Names $map[$tfVarName]
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            $args.Add("-var")
+            $args.Add("$tfVarName=$value")
+        }
+    }
+
+    return @($args)
+}
+
 if (-not (Test-Path $envDir)) {
     throw "Environment directory not found: $envDir"
 }
@@ -58,6 +102,8 @@ if ($null -ne $preflightExit -and [int]$preflightExit.Value -ne 0) {
 
 Push-Location $envDir
 try {
+    $varArgs = Build-TerraformVarArgs
+
     if ($Operation -eq "init") {
         $exitCode = Invoke-TerraformCommand -Args @("init", "-input=false", "-no-color")
         exit $exitCode
@@ -69,7 +115,8 @@ try {
     }
 
     if ($Operation -eq "plan") {
-        $exitCode = Invoke-TerraformCommand -Args @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile")
+        $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile") + $varArgs
+        $exitCode = Invoke-TerraformCommand -Args $planArgs
         exit $exitCode
     }
 
@@ -80,7 +127,8 @@ try {
         }
 
         if ($AutoApprove) {
-            $exitCode = Invoke-TerraformCommand -Args @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve")
+            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $varArgs
+            $exitCode = Invoke-TerraformCommand -Args $applyArgs
             exit $exitCode
         }
 
@@ -92,7 +140,8 @@ try {
             throw "Destroy requires -AutoApprove to ensure non-interactive execution."
         }
 
-        $exitCode = Invoke-TerraformCommand -Args @("destroy", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve")
+        $destroyArgs = @("destroy", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $varArgs
+        $exitCode = Invoke-TerraformCommand -Args $destroyArgs
         exit $exitCode
     }
 }
