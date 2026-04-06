@@ -133,10 +133,8 @@ jobs:
         run: terraform init -input=false
 
 
-      - name: Validate Terraform (automation script)
-        run: |
-          cd ${{ github.workspace }}
-          ./scripts/terraform-run.ps1 -Environment production -Operation validate -LoadEnvFiles
+      - name: Terraform Validate
+        run: terraform validate
 
       - name: Adopt Existing API CNAME Record
         if: env.CERT_SECRETS_CONFIGURED == 'true'
