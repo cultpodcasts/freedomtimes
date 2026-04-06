@@ -9,6 +9,12 @@ variable "create_shared_resources" {
   default     = true
 }
 
+variable "create_login_app" {
+  description = "Whether to create the Auth0 regular web application and credentials."
+  type        = bool
+  default     = true
+}
+
 variable "app_name" {
   description = "Auth0 application name"
   type        = string

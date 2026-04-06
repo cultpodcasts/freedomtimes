@@ -4,6 +4,7 @@ locals {
 
 # Auth0 Client (Regular Web App for server-side code exchange)
 resource "auth0_client" "admin_ui" {
+  count           = var.create_login_app ? 1 : 0
   name            = var.app_name
   app_type        = "regular_web"
 
@@ -24,19 +25,17 @@ resource "auth0_client" "admin_ui" {
 
 # Configure the app to use client_secret_post authentication.
 resource "auth0_client_credentials" "admin_ui" {
-  client_id             = auth0_client.admin_ui.id
+  count                 = var.create_login_app ? 1 : 0
+  client_id             = auth0_client.admin_ui[0].id
   authentication_method = "client_secret_post"
 }
 
 # Grant the client access to the API with consent skipped for first-party clients
 resource "auth0_client_grant" "admin_ui_api_access" {
-  count             = var.create_shared_resources ? 1 : 0
-  client_id         = auth0_client.admin_ui.id
+  count             = var.create_login_app ? 1 : 0
+  client_id         = auth0_client.admin_ui[0].id
   audience          = var.api_identifier
   scopes            = []
-
-  # Ensure resource server exists before granting access
-  depends_on = [auth0_resource_server.api]
 }
 
 # Auth0 Resource Server (API) — tenant-wide, production only

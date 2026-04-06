@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("staging", "production")]
+    [ValidateSet("staging", "production", "auth0-shared")]
     [string]$Environment,
     [string]$BaseEnvFile = ".env.dev",
     [string]$StagingEnvFile = ".env.staging",
@@ -14,7 +14,15 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $baseEnvPath = Join-Path $repoRoot $BaseEnvFile
-$overlayFile = if ($Environment -eq "staging") { $StagingEnvFile } else { $ProductionEnvFile }
+$overlayFile = if ($Environment -eq "staging") {
+    $StagingEnvFile
+}
+elseif ($Environment -eq "production") {
+    $ProductionEnvFile
+}
+else {
+    $null
+}
 $overlayEnvPath = Join-Path $repoRoot $overlayFile
 
 function Parse-EnvFile {
@@ -88,7 +96,7 @@ if ($LoadEnvFiles) {
     }
 
     $baseValues = Parse-EnvFile -Path $baseEnvPath
-    $overlayValues = Parse-EnvFile -Path $overlayEnvPath
+    $overlayValues = if ($overlayFile) { Parse-EnvFile -Path $overlayEnvPath } else { @{} }
     $merged = Merge-Hashtable -Base $baseValues -Overlay $overlayValues
     Set-ProcessEnvFromHashtable -Values $merged
 
@@ -121,24 +129,44 @@ if ($LoadEnvFiles) {
 # remapping in their env: block; this block handles it for local runs.
 if ($LoadEnvFiles) {
     $suffix = if ($Environment -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
-    $envSpecificKeys = [ordered]@{
-        "TF_VAR_route_pattern"                            = "TF_VAR_ROUTE_PATTERN$suffix"
-        "TF_VAR_worker_name"                              = "TF_VAR_WORKER_NAME$suffix"
-        "TF_VAR_manage_apex_dns_record"                   = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
-        "TF_VAR_apex_dns_record_content"                  = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
-        "TF_VAR_api_custom_hostname"                      = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
-        "TF_VAR_workspace_url"                            = "TF_VAR_WORKSPACE_URL$suffix"
-        "TF_VAR_api_management_allowed_origins"           = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
-        "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
-        "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
-    }
-    foreach ($tfVar in $envSpecificKeys.Keys) {
-        $sourceKey = $envSpecificKeys[$tfVar]
-        $sourceValue = [System.Environment]::GetEnvironmentVariable($sourceKey, "Process")
-        if (-not [string]::IsNullOrWhiteSpace($sourceValue)) {
-            [System.Environment]::SetEnvironmentVariable($tfVar, $sourceValue, "Process")
+    if ($Environment -eq "staging" -or $Environment -eq "production") {
+        $envSpecificKeys = [ordered]@{
+            "TF_VAR_route_pattern"                            = "TF_VAR_ROUTE_PATTERN$suffix"
+            "TF_VAR_worker_name"                              = "TF_VAR_WORKER_NAME$suffix"
+            "TF_VAR_manage_apex_dns_record"                   = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
+            "TF_VAR_apex_dns_record_content"                  = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
+            "TF_VAR_api_custom_hostname"                      = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
+            "TF_VAR_workspace_url"                            = "TF_VAR_WORKSPACE_URL$suffix"
+            "TF_VAR_api_management_allowed_origins"           = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
+            "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
+            "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
+        }
+        foreach ($tfVar in $envSpecificKeys.Keys) {
+            $sourceKey = $envSpecificKeys[$tfVar]
+            $sourceValue = [System.Environment]::GetEnvironmentVariable($sourceKey, "Process")
+            if (-not [string]::IsNullOrWhiteSpace($sourceValue)) {
+                [System.Environment]::SetEnvironmentVariable($tfVar, $sourceValue, "Process")
+            }
         }
     }
+
+    if ($Environment -eq "auth0-shared") {
+        $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE", "Process")
+        if (-not [string]::IsNullOrWhiteSpace($audience)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
+        }
+
+        $rolesClaim = [System.Environment]::GetEnvironmentVariable("AUTH0_ROLES_CLAIM_NAMESPACE", "Process")
+        if (-not [string]::IsNullOrWhiteSpace($rolesClaim)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_editorial_roles_claim", $rolesClaim, "Process")
+        }
+
+        $workspaceUrl = [System.Environment]::GetEnvironmentVariable("TF_VAR_WORKSPACE_URL_PRODUCTION", "Process")
+        if (-not [string]::IsNullOrWhiteSpace($workspaceUrl)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_workspace_url", $workspaceUrl, "Process")
+        }
+    }
+
     Write-Host "Remapped env-specific vars for $Environment." -ForegroundColor DarkGray
 }
 
@@ -160,6 +188,13 @@ if (-not $env:TF_TOKEN_app_terraform_io) {
 
 $requiredCommon = @(
     "TF_TOKEN_app_terraform_io",
+    "TF_VAR_auth0_domain",
+    "TF_VAR_auth0_management_client_id",
+    "TF_VAR_auth0_management_client_secret"
+)
+
+$requiredByEnvironment = @{
+    staging = @(
     "ARM_CLIENT_ID",
     "ARM_CLIENT_SECRET",
     "ARM_SUBSCRIPTION_ID",
@@ -167,15 +202,23 @@ $requiredCommon = @(
     "TF_VAR_cloudflare_api_token",
     "TF_VAR_cloudflare_account_id",
     "TF_VAR_cloudflare_zone_id",
-    "TF_VAR_auth0_domain",
-    "TF_VAR_auth0_management_client_id",
-    "TF_VAR_auth0_management_client_secret",
     "TF_VAR_route_pattern"
-)
-
-$requiredByEnvironment = @{
-    staging = @()
-    production = @()
+    )
+    production = @(
+        "ARM_CLIENT_ID",
+        "ARM_CLIENT_SECRET",
+        "ARM_SUBSCRIPTION_ID",
+        "ARM_TENANT_ID",
+        "TF_VAR_cloudflare_api_token",
+        "TF_VAR_cloudflare_account_id",
+        "TF_VAR_cloudflare_zone_id",
+        "TF_VAR_route_pattern"
+    )
+    "auth0-shared" = @(
+        "TF_VAR_auth0_api_identifier",
+        "TF_VAR_editorial_roles_claim",
+        "TF_VAR_workspace_url"
+    )
 }
 
 $required = @($requiredCommon + $requiredByEnvironment[$Environment])

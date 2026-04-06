@@ -41,6 +41,7 @@ module "auth0_app" {
   workspace_url         = var.workspace_url
   roles_claim_namespace = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   auth0_domain          = var.auth0_domain
+  create_shared_resources = false
 }
 
 module "azure_editorial_api" {

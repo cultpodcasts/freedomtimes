@@ -1,6 +1,6 @@
 output "application_id" {
   description = "Auth0 application client ID"
-  value       = auth0_client.admin_ui.client_id
+  value       = var.create_login_app ? auth0_client.admin_ui[0].client_id : null
 }
 
 output "domain" {
@@ -26,5 +26,5 @@ output "admin_role_id" {
 # Output the Auth0 client secret (for automation)
 output "client_secret" {
   description = "Auth0 application client secret (for automation only, do not expose in logs)"
-  value       = auth0_client_credentials.admin_ui.client_secret
+  value       = var.create_login_app ? auth0_client_credentials.admin_ui[0].client_secret : null
 }

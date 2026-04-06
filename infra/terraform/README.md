@@ -38,14 +38,21 @@ Terraform must maintain strict separation between staging and production for all
 - Use separate environment entrypoints:
    - `environments/staging`
    - `environments/production`
+   - `environments/auth0-shared`
 - Keep distinct Terraform Cloud workspaces per environment.
 - Keep environment-specific resource names and settings so staging and production do not collide.
 - Do not deploy feature work directly to production first; staging remains the validation path before production promotion.
+
+Auth0 shared ownership rule:
+
+- Tenant-wide Auth0 resources (API resource server, roles, role permissions, post-login action binding) are owned by `environments/auth0-shared`.
+- Staging and production each manage only their own login application resources.
 
 ## Layout
 
 - environments/production: production environment entrypoint and variables
 - environments/staging: staging environment entrypoint and variables
+- environments/auth0-shared: tenant-shared Auth0 entrypoint and variables
 - modules/cloudflare_holding_page: reusable module for holding page worker and route
 - modules/auth0_app: reusable module for Auth0 app and shared auth resources
 - modules/azure_editorial_api: reusable module for Azure editorial API resources

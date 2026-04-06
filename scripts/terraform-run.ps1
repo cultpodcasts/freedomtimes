@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("staging", "production")]
+    [ValidateSet("staging", "production", "auth0-shared")]
     [string]$Environment,
     [Parameter(Mandatory = $true)]
     [ValidateSet("init", "validate", "plan", "apply", "destroy", "import")]
@@ -81,22 +81,36 @@ function Invoke-EnvRemapping {
     }
 
     # Environment-specific suffix → unsuffixed TF_VAR names
-    $suffix = if ($Env -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
-    $envSpecific = [ordered]@{
-        "TF_VAR_route_pattern"                             = "TF_VAR_ROUTE_PATTERN$suffix"
-        "TF_VAR_worker_name"                               = "TF_VAR_WORKER_NAME$suffix"
-        "TF_VAR_manage_apex_dns_record"                    = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
-        "TF_VAR_apex_dns_record_content"                   = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
-        "TF_VAR_api_custom_hostname"                       = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
-        "TF_VAR_workspace_url"                             = "TF_VAR_WORKSPACE_URL$suffix"
-        "TF_VAR_api_management_allowed_origins"            = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
-        "TF_VAR_api_custom_hostname_certificate_base64"    = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
-        "TF_VAR_api_custom_hostname_certificate_password"  = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
+    if ($Env -eq "staging" -or $Env -eq "production") {
+        $suffix = if ($Env -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
+        $envSpecific = [ordered]@{
+            "TF_VAR_route_pattern"                             = "TF_VAR_ROUTE_PATTERN$suffix"
+            "TF_VAR_worker_name"                               = "TF_VAR_WORKER_NAME$suffix"
+            "TF_VAR_manage_apex_dns_record"                    = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
+            "TF_VAR_apex_dns_record_content"                   = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
+            "TF_VAR_api_custom_hostname"                       = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
+            "TF_VAR_workspace_url"                             = "TF_VAR_WORKSPACE_URL$suffix"
+            "TF_VAR_api_management_allowed_origins"            = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
+            "TF_VAR_api_custom_hostname_certificate_base64"    = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
+            "TF_VAR_api_custom_hostname_certificate_password"  = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
+        }
+        foreach ($target in $envSpecific.Keys) {
+            $src = [System.Environment]::GetEnvironmentVariable($envSpecific[$target], "Process")
+            if (-not [string]::IsNullOrWhiteSpace($src)) {
+                [System.Environment]::SetEnvironmentVariable($target, $src, "Process")
+            }
+        }
     }
-    foreach ($target in $envSpecific.Keys) {
-        $src = [System.Environment]::GetEnvironmentVariable($envSpecific[$target], "Process")
-        if (-not [string]::IsNullOrWhiteSpace($src)) {
-            [System.Environment]::SetEnvironmentVariable($target, $src, "Process")
+
+    if ($Env -eq "auth0-shared") {
+        $audience = Get-FirstEnvValue -Names @("TF_VAR_auth0_api_identifier", "AUTH0_API_AUDIENCE")
+        if (-not [string]::IsNullOrWhiteSpace($audience)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
+        }
+
+        $rolesClaim = Get-FirstEnvValue -Names @("TF_VAR_editorial_roles_claim", "AUTH0_ROLES_CLAIM_NAMESPACE")
+        if (-not [string]::IsNullOrWhiteSpace($rolesClaim)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_editorial_roles_claim", $rolesClaim, "Process")
         }
     }
 }
@@ -295,7 +309,7 @@ try {
             $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $varArgs
             Write-Host "DEBUG: applyArgs count: $($applyArgs.Count)" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs $applyArgs
-            if ($exitCode -eq 0) {
+            if ($exitCode -eq 0 -and ($Environment -eq "staging" -or $Environment -eq "production")) {
                 try {
                     Sync-Auth0LoginAppEnvFromState -Env $Environment -RepoRoot $repoRoot
                 }

@@ -1,0 +1,4 @@
+# Non-secret shared Auth0 defaults only. Secrets should be supplied via TF_VAR_* env vars.
+auth0_api_identifier = "https://api.freedomtimes.news"
+editorial_roles_claim = "https://freedomtimes.news/roles"
+workspace_url = "https://freedomtimes.news"
