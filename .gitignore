@@ -27,3 +27,4 @@ crash.log
 certs/*
 infra/terraform/environments/staging/.wrangler/cache/wrangler-account.json
 infra/terraform/environments/staging/tfplan
+infra/terraform/environments/production/tfplan

@@ -38,10 +38,12 @@ module "auth0_app" {
   # This module creates the login application for the web app. Its client ID is output as auth0_app_client_id.
   app_name              = "freedomtimes-admin"
   api_identifier        = var.auth0_api_identifier
+  api_name              = "freedomtimes-api"
   workspace_url         = var.workspace_url
   roles_claim_namespace = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   auth0_domain          = var.auth0_domain
   create_shared_resources = false
+  create_api_resource_server = true
 }
 
 module "azure_editorial_api" {
