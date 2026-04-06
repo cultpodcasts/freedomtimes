@@ -1,42 +1,72 @@
-# Staging/Production Recovery Checklist
+# Staging Recovery Checklist
 
-When you destroy and re-create a full environment (staging or production), you must perform these manual follow-up steps to restore all required secrets and application state:
+Use this when staging is destroyed and needs to be rebuilt from local with minimal friction.
 
-## 1. Re-sync Cloudflare Worker secrets
+## 1. Rebuild staging infrastructure from local Terraform
+
+Run from repo root:
+
+```powershell
+.\scripts\terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove
+```
+
+This applies Terraform using `.env.dev` values.
+
+## 2. Sync Terraform-created Auth0 login app credentials into `.env.dev`
+
+This is now automatic when step 1 succeeds.
+
+`terraform-run.ps1` writes these staging keys in `.env.dev` from Terraform state:
+
+- `AUTH0_LOGIN_APP_CLIENT_ID_STAGING`
+- `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`
+
+No manual Auth0 dashboard copy is required for staging recovery.
+
+## 3. Sync Cloudflare Worker secrets for staging
+
+Run from repo root:
+
+```powershell
+.\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
+```
+
+This writes Worker secrets:
+
+- `AUTH0_DOMAIN`
+- `AUTH0_CLIENT_ID`
+- `AUTH0_CLIENT_SECRET`
+
+## 4. Deploy worker
 
 Run:
 
-    ./scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets
+```powershell
+cd web
+npx wrangler deploy --config wrangler.jsonc --env staging
+```
 
-This sets required secrets (e.g., `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`) for both staging and production Workers.
+## 5. Verify
 
-**Important:** The Auth0 login application's client secret (`AUTH0_CLIENT_SECRET`/`AUTH0_LOGIN_APP_CLIENT_SECRET`) is NOT output by Terraform for security reasons. You must manually copy it from the Auth0 dashboard and add it to your `.env.staging` and `.env.production` files before running the sync script. This is required for a working login flow.
+- Secret names exist:
 
-## 2. (If needed) Re-sync GitHub Actions secrets/variables
+```powershell
+npx wrangler secret list --config .\web\wrangler.jsonc --env staging
+```
 
-Run:
+- Site responds:
 
-    ./scripts/set-github-secrets.ps1
+```powershell
+Invoke-WebRequest https://staging.freedomtimes.news -UseBasicParsing
+```
 
-Ensures all GitHub Actions secrets/variables are up to date from your `.env` files.
+- Optional logs:
 
-## 3. Redeploy the Astro Worker
+```powershell
+npx wrangler tail freedomtimes-holding-staging --format pretty
+```
 
-Run:
+## Production Notes
 
-    cd web
-    npm run build
-    npx wrangler deploy --config wrangler.jsonc --env staging
-
-(Or use the production config for prod.)
-
-## 4. Verify application health
-
-- Test sign-in and API endpoints in the browser.
-- Check Cloudflare Worker logs for missing env errors.
-
----
-
-**Note:**
-- These steps are required after any full environment teardown, as secrets and state are not automatically restored by Terraform or GitHub Actions.
-- If you skip these, you may see 500 errors or missing environment variable errors in Cloudflare Worker logs.
+- Production secret updates remain guarded and require explicit approval (`-AllowProduction`).
+- Apply the same sequence for production, but only after explicit approval and with production commands.

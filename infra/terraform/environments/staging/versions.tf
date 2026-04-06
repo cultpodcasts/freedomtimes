@@ -1,13 +1,13 @@
 terraform {
   required_version = ">= 1.6.0"
 
-  cloud {
-    organization = "freedomtimes"
-
-    workspaces {
-      name = "freedomtimes-staging"
-    }
-  }
+  # cloud {
+  #   organization = "freedomtimes"
+  #
+  #   workspaces {
+  #     name = "freedomtimes-staging"
+  #   }
+  # }
 
   required_providers {
     cloudflare = {

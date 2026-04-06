@@ -32,13 +32,11 @@ function Main {
             Write-Host "\nSyncing Cloudflare Worker secrets for STAGING..." -ForegroundColor Cyan
             Write-Host "Reading credentials from local env: .env.staging" -ForegroundColor Gray
             $stagingEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $stagingOverlayValues
-            Write-Host "[DEBUG] stagingEnvValues: $($stagingEnvValues | Out-String)" -ForegroundColor Yellow
             $stagingAuth0Domain = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
             Write-Host "[LOG] Setting AUTH0_DOMAIN for staging: '$stagingAuth0Domain'" -ForegroundColor Magenta
-            $stagingClientId = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_STAGING")
-            $stagingClientSecret = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING")
-            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID (from AUTH0_LOGIN_APP_CLIENT_ID): '$stagingClientId'" -ForegroundColor Yellow
-            Write-Host "[DEBUG] Will set AUTH0_CLIENT_SECRET (from AUTH0_LOGIN_APP_CLIENT_SECRET): '$stagingClientSecret'" -ForegroundColor Yellow
+            $stagingClientId = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_STAGING", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_CLIENT_ID")
+            $stagingClientSecret = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_CLIENT_SECRET")
+            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for staging" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_DOMAIN" -Value $stagingAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $stagingClientId -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $stagingClientSecret -WhatIfOnly:$DryRun
@@ -47,13 +45,11 @@ function Main {
             Write-Host "\nSyncing Cloudflare Worker secrets for PRODUCTION..." -ForegroundColor Red
             Write-Host "Reading credentials from local env: .env.production" -ForegroundColor Gray
             $productionEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $productionOverlayValues
-            Write-Host "[DEBUG] productionEnvValues: $($productionEnvValues | Out-String)" -ForegroundColor Yellow
             $productionAuth0Domain = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
             Write-Host "[LOG] Setting AUTH0_DOMAIN for production: '$productionAuth0Domain'" -ForegroundColor Magenta
-            $productionClientId = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION")
-            $productionClientSecret = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION")
-            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID (from AUTH0_LOGIN_APP_CLIENT_ID): '$productionClientId'" -ForegroundColor Yellow
-            Write-Host "[DEBUG] Will set AUTH0_CLIENT_SECRET (from AUTH0_LOGIN_APP_CLIENT_SECRET): '$productionClientSecret'" -ForegroundColor Yellow
+            $productionClientId = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_CLIENT_ID")
+            $productionClientSecret = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_CLIENT_SECRET")
+            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for production" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
@@ -236,14 +232,14 @@ function Set-WorkerSecret {
         [string]$Value,
         [switch]$WhatIfOnly
     )
-    Write-Host "[DEBUG] Set-WorkerSecret called for $Name (Config: $ConfigPath) Value: '$Value'" -ForegroundColor Cyan
+    Write-Host "[DEBUG] Set-WorkerSecret called for $Name (Config: $ConfigPath)" -ForegroundColor Cyan
     if ([string]::IsNullOrWhiteSpace($Value)) {
         Write-Warning "Skipping Worker secret $Name for $ConfigPath - value is empty"
         return
     }
-    Write-Host "[DEBUG] Would run command: npx wrangler secret put $Name --config $ConfigPath (value: '$Value')" -ForegroundColor Yellow
+    Write-Host "[DEBUG] Would run command: npx wrangler secret put $Name --config $ConfigPath" -ForegroundColor Yellow
     if ($WhatIfOnly) {
-        Write-Host "  [dry-run] wrangler secret put $Name --config $ConfigPath (value: '$Value')" -ForegroundColor Yellow
+        Write-Host "  [dry-run] wrangler secret put $Name --config $ConfigPath" -ForegroundColor Yellow
         return
     }
     $processInfo = New-Object System.Diagnostics.ProcessStartInfo

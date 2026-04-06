@@ -1,35 +1,31 @@
 # set-github-secrets.ps1 Usage Guide
 
-Purpose: sync GitHub secrets/variables and Cloudflare Worker secrets from local env files.
-
-This guide is for Copilot sessions and operators so the script is used consistently and safely.
+Purpose: sync GitHub secrets/variables and Cloudflare Worker secrets from local env configuration.
 
 ## Script Location
 
 - `scripts/set-github-secrets.ps1`
 
-## What It Supports
-
-Parameters:
+## Supported Parameters
 
 - `-Target Staging|Production` (default: `Staging`)
 - `-SyncCloudflareWorkerSecrets` (pushes Worker secrets with Wrangler)
+- `-SyncGitHubSecretsAndVars` (syncs GitHub repo secrets/vars)
 - `-DryRun` (prints actions without writing)
 - `-AllowProduction` (required guardrail bypass for production)
 
-## Environment Files Read
+## Source of Truth
 
-The script reads and merges these files from repo root:
+- `.env.dev` is the canonical source file.
+- Staging and production values are selected using suffixed keys.
 
-- `.env.dev` (base)
-- `.env.staging` (staging overrides)
-- `.env.production` (production overrides)
+Worker secret sync key resolution:
 
-For Worker secret sync, staging values are resolved from these keys:
-
-- `AUTH0_DOMAIN` (or fallback `TF_VAR_auth0_domain`)
-- `AUTH0_LOGIN_APP_CLIENT_ID` (or fallback `AUTH0_CLIENT_ID`)
-- `AUTH0_LOGIN_APP_CLIENT_SECRET` (or fallback `AUTH0_CLIENT_SECRET`)
+- `AUTH0_DOMAIN` from `AUTH0_DOMAIN` (fallback `TF_VAR_auth0_domain`)
+- staging client ID preference: `AUTH0_LOGIN_APP_CLIENT_ID_STAGING` -> `AUTH0_LOGIN_APP_CLIENT_ID` -> `AUTH0_CLIENT_ID`
+- staging client secret preference: `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING` -> `AUTH0_LOGIN_APP_CLIENT_SECRET` -> `AUTH0_CLIENT_SECRET`
+- production client ID preference: `AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION` -> `AUTH0_LOGIN_APP_CLIENT_ID` -> `AUTH0_CLIENT_ID`
+- production client secret preference: `AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION` -> `AUTH0_LOGIN_APP_CLIENT_SECRET` -> `AUTH0_CLIENT_SECRET`
 
 Worker secret names written:
 
@@ -37,9 +33,23 @@ Worker secret names written:
 - `AUTH0_CLIENT_ID`
 - `AUTH0_CLIENT_SECRET`
 
-## Standard Staging Command
+## Frictionless Local Staging Flow
 
 Run from repo root:
+
+```powershell
+.\scripts\terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove
+.\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
+cd web
+npx wrangler deploy --config wrangler.jsonc --env staging
+```
+
+Why this works:
+
+- `terraform-run.ps1` applies staging and syncs Terraform-created Auth0 login app credentials back to `.env.dev` (`AUTH0_LOGIN_APP_CLIENT_ID_STAGING`, `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`).
+- `set-github-secrets.ps1` then pushes those current values to Worker secrets.
+
+## Standard Staging Secret Sync
 
 ```powershell
 .\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
@@ -51,9 +61,7 @@ Dry run:
 .\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets -DryRun
 ```
 
-## Production Command (Guarded)
-
-Production updates are blocked unless `-AllowProduction` is passed.
+## Production Secret Sync (Guarded)
 
 ```powershell
 .\scripts\set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction
@@ -63,7 +71,7 @@ Use only with explicit approval.
 
 ## Verification
 
-After staging sync, verify secret names only:
+List secret names only:
 
 ```powershell
 npx wrangler secret list --config .\web\wrangler.jsonc --env staging
@@ -75,9 +83,8 @@ Expected names:
 - `AUTH0_CLIENT_ID`
 - `AUTH0_CLIENT_SECRET`
 
-## Known Operational Notes
+## Operational Notes
 
-- Run from repo root so relative env paths resolve correctly.
+- Run from repo root so relative paths resolve correctly.
 - Ensure Wrangler auth is active (`npx wrangler whoami`).
-- If `/auth/login` returns 500 after deploy, first verify staging secret names using the command above.
-- Current script emits verbose debug output. Do not paste logs containing secret values into tickets, chat, or commits.
+- Secret values are intentionally not printed by the sync script; only names/actions are logged.
