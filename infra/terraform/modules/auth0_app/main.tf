@@ -37,6 +37,12 @@ resource "auth0_client_grant" "admin_ui_api_access" {
   client_id         = auth0_client.admin_ui[0].id
   audience          = var.api_identifier
   scopes            = []
+
+  # Fresh tenants can return 404 until the API resource server is fully materialized.
+  depends_on = [
+    auth0_resource_server.api,
+    auth0_resource_server_scopes.api_scopes
+  ]
 }
 
 # Auth0 Resource Server (API) — tenant-wide, production only
