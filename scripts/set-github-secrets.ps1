@@ -34,8 +34,8 @@ function Main {
             $stagingEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $stagingOverlayValues
             $stagingAuth0Domain = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
             Write-Host "[LOG] Setting AUTH0_DOMAIN for staging: '$stagingAuth0Domain'" -ForegroundColor Magenta
-            $stagingClientId = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_STAGING", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_CLIENT_ID")
-            $stagingClientSecret = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_CLIENT_SECRET")
+            $stagingClientId = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_STAGING") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_ID_STAGING for staging Worker secret sync."
+            $stagingClientSecret = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING for staging Worker secret sync."
             Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for staging" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_DOMAIN" -Value $stagingAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $stagingClientId -WhatIfOnly:$DryRun
@@ -47,8 +47,8 @@ function Main {
             $productionEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $productionOverlayValues
             $productionAuth0Domain = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
             Write-Host "[LOG] Setting AUTH0_DOMAIN for production: '$productionAuth0Domain'" -ForegroundColor Magenta
-            $productionClientId = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION", "AUTH0_LOGIN_APP_CLIENT_ID", "AUTH0_CLIENT_ID")
-            $productionClientSecret = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION", "AUTH0_LOGIN_APP_CLIENT_SECRET", "AUTH0_CLIENT_SECRET")
+            $productionClientId = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION for production Worker secret sync."
+            $productionClientSecret = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION for production Worker secret sync."
             Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for production" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
@@ -171,6 +171,20 @@ function Get-EnvValue {
         }
     }
     return $Default
+}
+
+function Get-EnvValueOrThrow {
+    param(
+        [hashtable]$Values,
+        [string[]]$Keys,
+        [string]$ErrorMessage
+    )
+
+    $value = Get-EnvValue -Values $Values -Keys $Keys
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        throw $ErrorMessage
+    }
+    return $value
 }
 
 function Set-GhSecret {
