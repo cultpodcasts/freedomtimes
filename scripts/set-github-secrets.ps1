@@ -94,6 +94,7 @@ function Main {
             "TF_VAR_AZURE_LOCATION",
             "API_UPSTREAM_MODE",
             "AUTH0_API_AUDIENCE",
+            "AUTH0_API_AUDIENCE_STAGING",
             "COOKIE_BASE_DOMAIN",
             "AUTH0_ROLES_CLAIM_NAMESPACE",
             "TF_VAR_ROUTE_PATTERN_STAGING",
