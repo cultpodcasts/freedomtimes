@@ -135,7 +135,7 @@ jobs:
       - name: Terraform Init
         run: terraform init -input=false
 
-      - name: Terraform Validate
+      - name: Terraform Validate (explicit)
         run: terraform validate
 
       - name: Adopt Existing API CNAME Record
