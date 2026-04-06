@@ -13,6 +13,12 @@ output "auth0_app_client_id" {
   value       = module.auth0_app.application_id
 }
 
+output "auth0_app_client_secret" {
+  description = "Auth0 login application client secret for the production web app (for automation only, do not expose in logs)"
+  value       = module.auth0_app.client_secret
+  sensitive   = true
+}
+
 output "azure_resource_group_name" {
   description = "Resource Group name for production editorial API resources"
   value       = module.azure_editorial_api.resource_group_name

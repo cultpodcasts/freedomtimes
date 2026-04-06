@@ -72,7 +72,7 @@ variable "subscribers_container_name" {
 variable "node_version" {
   description = "Node.js runtime version for Azure Functions"
   type        = string
-  default     = "20"
+  default     = "24"
 }
 
 variable "enable_api_gateway_policy" {

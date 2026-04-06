@@ -22,3 +22,9 @@ output "admin_role_id" {
   description = "Admin role ID"
   value       = var.create_shared_resources ? auth0_role.admin[0].id : null
 }
+
+# Output the Auth0 client secret (for automation)
+output "client_secret" {
+  description = "Auth0 application client secret (for automation only, do not expose in logs)"
+  value       = auth0_client_credentials.admin_ui.client_secret
+}
