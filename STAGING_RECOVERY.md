@@ -14,7 +14,7 @@ This script runs the full local staging flow in deterministic order:
 
 - applies Terraform for staging
 - auto-recovers APIM custom-domain state drift by importing `azurerm_api_management_custom_domain.editorial[0]` when needed, then re-applies
-- syncs Terraform-created Auth0 login app credentials into `.env.dev`
+- verifies Terraform-created Auth0 login app credentials are synced into `.env.dev` (`AUTH0_LOGIN_APP_CLIENT_ID_STAGING`, `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`) and that client ID matches Terraform output
 - syncs Cloudflare Worker secrets using `set-github-secrets.ps1`
 - deploys Worker via Wrangler
 - deploys Function App via `func ... --build remote`
@@ -32,20 +32,29 @@ Use this only for debugging. Default to step 1 above.
 .\scripts\terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove
 ```
 
-### 2.2 Sync Worker secrets
+### 2.2 Confirm Terraform synced Auth0 staging credentials into `.env.dev`
+
+`terraform-run.ps1` writes these keys during staging apply:
+
+- `AUTH0_LOGIN_APP_CLIENT_ID_STAGING`
+- `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`
+
+If either key is missing, stop and re-run Terraform apply before syncing Worker secrets.
+
+### 2.3 Sync Worker secrets
 
 ```powershell
 .\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
 ```
 
-### 2.3 Deploy Worker
+### 2.4 Deploy Worker
 
 ```powershell
 cd web
 npx wrangler deploy --config wrangler.jsonc --env staging
 ```
 
-### 2.4 Deploy Function
+### 2.5 Deploy Function
 
 ```powershell
 cd functions/editorial-api

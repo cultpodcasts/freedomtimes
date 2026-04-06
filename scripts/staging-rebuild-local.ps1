@@ -8,6 +8,7 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 $terraformRunScript = Join-Path $PSScriptRoot "terraform-run.ps1"
 $secretSyncScript = Join-Path $PSScriptRoot "set-github-secrets.ps1"
 $stagingEnvDir = Join-Path $repoRoot "infra/terraform/environments/staging"
+$baseEnvPath = Join-Path $repoRoot ".env.dev"
 
 function Write-Step {
     param([string]$Message)
@@ -63,7 +64,7 @@ function Invoke-TerraformApplyWithRecovery {
         throw "Terraform apply failed and did not match the APIM custom-domain import recovery path."
     }
 
-    $apimIdMatch = [regex]::Match($combined, "/subscriptions/[^\s\"]+/providers/Microsoft\.ApiManagement/service/[^\s\"]+")
+    $apimIdMatch = [regex]::Match($combined, '/subscriptions/[^\s"]+/providers/Microsoft\.ApiManagement/service/[^\s"]+')
     if (-not $apimIdMatch.Success) {
         throw "Terraform apply indicated custom-domain import is needed, but APIM service ID was not found in output."
     }
@@ -118,6 +119,44 @@ function Get-TerraformOutputRaw {
     }
     finally {
         Pop-Location
+    }
+}
+
+function Get-EnvFileValue {
+    param(
+        [string]$Path,
+        [string]$Key
+    )
+
+    if (-not (Test-Path $Path)) {
+        return ""
+    }
+
+    $line = Get-Content $Path | Where-Object { $_ -match "^$([regex]::Escape($Key))=" } | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        return ""
+    }
+
+    return ($line -split '=', 2)[1].Trim()
+}
+
+function Assert-Auth0SyncToEnv {
+    Write-Step "Verifying Terraform-synced Auth0 staging credentials in .env.dev"
+
+    $stagingClientIdInEnv = Get-EnvFileValue -Path $baseEnvPath -Key "AUTH0_LOGIN_APP_CLIENT_ID_STAGING"
+    $stagingClientSecretInEnv = Get-EnvFileValue -Path $baseEnvPath -Key "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING"
+
+    if ([string]::IsNullOrWhiteSpace($stagingClientIdInEnv)) {
+        throw "Missing AUTH0_LOGIN_APP_CLIENT_ID_STAGING in .env.dev after Terraform apply."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($stagingClientSecretInEnv)) {
+        throw "Missing AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING in .env.dev after Terraform apply."
+    }
+
+    $terraformClientId = Get-TerraformOutputRaw -Name "auth0_app_client_id"
+    if ($stagingClientIdInEnv -ne $terraformClientId) {
+        throw "AUTH0_LOGIN_APP_CLIENT_ID_STAGING in .env.dev does not match Terraform output auth0_app_client_id."
     }
 }
 
@@ -201,6 +240,7 @@ function Invoke-Verification {
 
 Write-Step "Starting local staging rebuild workflow"
 Invoke-TerraformApplyWithRecovery
+Assert-Auth0SyncToEnv
 
 $functionAppName = Get-TerraformOutputRaw -Name "azure_function_app_name"
 $apiBaseUrl = Get-TerraformOutputRaw -Name "azure_editorial_api_public_base_url"
