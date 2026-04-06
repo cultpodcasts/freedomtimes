@@ -2,17 +2,57 @@
 
 Use this when staging is destroyed and needs to be rebuilt from local with minimal friction.
 
-## 1. Rebuild staging infrastructure from local Terraform
+## 1. Run one-command local staging rebuild
 
 Run from repo root:
+
+```powershell
+.\scripts\staging-rebuild-local.ps1
+```
+
+This script runs the full local staging flow in deterministic order:
+
+- applies Terraform for staging
+- auto-recovers APIM custom-domain state drift by importing `azurerm_api_management_custom_domain.editorial[0]` when needed, then re-applies
+- syncs Terraform-created Auth0 login app credentials into `.env.dev`
+- syncs Cloudflare Worker secrets using `set-github-secrets.ps1`
+- deploys Worker via Wrangler
+- deploys Function App via `func ... --build remote`
+- verifies required Worker secrets and Function triggers exist
+
+This replaces the old manual sequence and eliminates the common "stuck stage" around APIM custom-domain/state mismatch.
+
+## 2. If you need to run steps manually
+
+Use this only for debugging. Default to step 1 above.
+
+### 2.1 Apply Terraform
 
 ```powershell
 .\scripts\terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove
 ```
 
-This applies Terraform using `.env.dev` values.
+### 2.2 Sync Worker secrets
 
-## 2. Sync Terraform-created Auth0 login app credentials into `.env.dev`
+```powershell
+.\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
+```
+
+### 2.3 Deploy Worker
+
+```powershell
+cd web
+npx wrangler deploy --config wrangler.jsonc --env staging
+```
+
+### 2.4 Deploy Function
+
+```powershell
+cd functions/editorial-api
+func azure functionapp publish freedomtimes-editorial-api-staging --javascript --build remote
+```
+
+## 3. Sync Terraform-created Auth0 login app credentials into `.env.dev`
 
 This is now automatic when step 1 succeeds.
 
@@ -23,7 +63,7 @@ This is now automatic when step 1 succeeds.
 
 No manual Auth0 dashboard copy is required for staging recovery.
 
-## 3. Sync Cloudflare Worker secrets for staging
+## 4. Sync Cloudflare Worker secrets for staging
 
 Run from repo root:
 
@@ -37,7 +77,7 @@ This writes Worker secrets:
 - `AUTH0_CLIENT_ID`
 - `AUTH0_CLIENT_SECRET`
 
-## 4. Deploy worker
+## 5. Deploy worker
 
 Run:
 
@@ -46,7 +86,7 @@ cd web
 npx wrangler deploy --config wrangler.jsonc --env staging
 ```
 
-## 5. Verify
+## 6. Verify
 
 - Secret names exist:
 
