@@ -13,63 +13,35 @@ provider "auth0" {
   client_secret = var.auth0_management_client_secret
 }
 
-provider "neon" {
-  api_key = var.neon_api_key
+provider "turso" {
+  api_token = var.turso_api_token
 }
 
-resource "neon_project" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  lifecycle {
-    prevent_destroy = true
-  }
+locals {
+  turso_database_group = trimspace(var.turso_database_group) != "" ? trimspace(var.turso_database_group) : null
+  turso_database_token_expiration = trimspace(var.turso_database_token_expiration) != "" ? trimspace(var.turso_database_token_expiration) : null
+  turso_database_size_limit = trimspace(var.turso_database_size_limit) != "" ? trimspace(var.turso_database_size_limit) : null
+  turso_database_url = format("libsql://%s", turso_database.emdash.hostname)
 }
 
-resource "neon_branch" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  name       = var.neon_branch_name
-
-  lifecycle {
-    prevent_destroy = true
-  }
+resource "turso_database" "emdash" {
+  organization_name = var.turso_organization
+  name              = var.turso_database_name
+  group             = local.turso_database_group
 }
 
-resource "neon_endpoint" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  branch_id  = neon_branch.emdash[0].id
-
-  lifecycle {
-    prevent_destroy = true
-  }
+resource "turso_database_configuration" "emdash" {
+  organization_slug = var.turso_organization
+  database_name     = turso_database.emdash.name
+  delete_protection = var.turso_database_delete_protection
+  size_limit        = local.turso_database_size_limit
 }
 
-resource "neon_role" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  branch_id  = neon_branch.emdash[0].id
-  name       = var.neon_role_name
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "neon_database" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  branch_id  = neon_branch.emdash[0].id
-  name       = var.neon_database_name
-  owner_name = neon_role.emdash[0].name
-
-  lifecycle {
-    prevent_destroy = true
-  }
+resource "turso_database_token" "emdash" {
+  organization_name = var.turso_organization
+  database_name     = turso_database.emdash.name
+  authorization     = var.turso_database_token_authorization
+  expiration        = local.turso_database_token_expiration
 }
 
 module "cloudflare_holding_page" {
@@ -89,6 +61,11 @@ module "cloudflare_holding_page" {
   holding_message = var.holding_message
   build_revision  = var.build_revision
   contact_email   = var.contact_email
+
+  worker_secrets = {
+    TURSO_DATABASE_URL = local.turso_database_url
+    TURSO_AUTH_TOKEN   = turso_database_token.emdash.jwt
+  }
 }
 
 module "auth0_app" {
@@ -129,7 +106,6 @@ module "azure_editorial_api" {
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
   manage_api_management_gateway_custom_domain  = false
   api_management_allowed_origins               = var.api_management_allowed_origins
-  emdash_database_url                                   = var.emdash_database_url
 
   tags = {
     project     = "freedomtimes"

@@ -72,3 +72,9 @@ variable "hyperdrive_config_id" {
   type        = string
   default     = ""
 }
+
+variable "worker_compatibility_date" {
+  description = "Cloudflare Workers compatibility date"
+  type        = string
+  default     = "2026-03-29"
+}

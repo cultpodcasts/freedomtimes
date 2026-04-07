@@ -20,60 +20,59 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
-variable "emdash_database_url" {
-  description = "External PostgreSQL connection string for EmDash in production (for example Neon)."
+variable "turso_api_token" {
+  description = "Turso API token used by Terraform to manage production EmDash resources"
   type        = string
   default     = ""
   sensitive   = true
 }
 
-variable "neon_api_key" {
-  description = "Neon API key for Terraform-managed Neon resources"
+variable "turso_organization" {
+  description = "Turso organization or user slug for production EmDash resources"
   type        = string
-  default     = ""
-  sensitive   = true
 }
 
-variable "manage_neon_resources" {
-  description = "Whether to manage existing Neon resources for EmDash in production"
+variable "turso_database_name" {
+  description = "Turso database name for production EmDash"
+  type        = string
+  default     = "freedomtimes-emdash-production"
+}
+
+variable "turso_database_group" {
+  description = "Optional Turso group for production EmDash database"
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_token_expiration" {
+  description = "Optional expiration for the production EmDash database token (for example 90d or 2w1d30m). Leave empty for no explicit expiration."
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_size_limit" {
+  description = "Optional size limit for the production EmDash database"
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_delete_protection" {
+  description = "Whether delete protection should be enabled for the production EmDash database"
   type        = bool
-  default     = false
+  default     = true
 }
 
-variable "neon_project_id" {
-  description = "Existing Neon project ID for production EmDash"
+variable "turso_database_token_authorization" {
+  description = "Authorization level for the production EmDash database token"
+  type        = string
+  default     = "full-access"
+}
+
+variable "turso_auth_token" {
+  description = "Deprecated: Turso auth token for EmDash production database. Ignored when Terraform manages the database token."
   type        = string
   default     = ""
-}
-
-variable "neon_branch_id" {
-  description = "Existing Neon branch ID for production EmDash"
-  type        = string
-  default     = ""
-}
-
-variable "neon_endpoint_id" {
-  description = "Existing Neon endpoint ID for production EmDash"
-  type        = string
-  default     = ""
-}
-
-variable "neon_branch_name" {
-  description = "Neon branch name for production EmDash"
-  type        = string
-  default     = "main"
-}
-
-variable "neon_role_name" {
-  description = "Neon role name for production EmDash database owner"
-  type        = string
-  default     = "neondb_owner"
-}
-
-variable "neon_database_name" {
-  description = "Neon database name for production EmDash"
-  type        = string
-  default     = "neondb"
+  sensitive   = true
 }
 
 variable "enable_editorial_gateway_policy" {

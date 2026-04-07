@@ -13,90 +13,37 @@ provider "auth0" {
   client_secret = var.auth0_management_client_secret
 }
 
-provider "neon" {
-  api_key = var.neon_api_key
+provider "turso" {
+  api_token = var.turso_api_token
 }
 
 locals {
-  emdash_database_url_pattern = "^postgres(?:ql)?://([^:]+):([^@]+)@([^:/?]+)(?::([0-9]+))?/([^?]+)"
-  emdash_database_url_parts   = try(regex(local.emdash_database_url_pattern, nonsensitive(var.emdash_database_url)), [])
+  turso_database_group = trimspace(var.turso_database_group) != "" ? trimspace(var.turso_database_group) : null
+  turso_database_token_expiration = trimspace(var.turso_database_token_expiration) != "" ? trimspace(var.turso_database_token_expiration) : null
+  turso_database_size_limit = trimspace(var.turso_database_size_limit) != "" ? trimspace(var.turso_database_size_limit) : null
+  turso_database_url = format("libsql://%s", turso_database.emdash.hostname)
 }
 
-resource "neon_project" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes  = all
-  }
+resource "turso_database" "emdash" {
+  organization_name = var.turso_organization
+  name              = var.turso_database_name
+  group             = local.turso_database_group
 }
 
-resource "neon_branch" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  name       = var.neon_branch_name
-
-  lifecycle {
-    prevent_destroy = true
-  }
+resource "turso_database_configuration" "emdash" {
+  organization_slug = var.turso_organization
+  database_name     = turso_database.emdash.name
+  delete_protection = var.turso_database_delete_protection
+  size_limit        = local.turso_database_size_limit
 }
 
-resource "neon_endpoint" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  branch_id  = neon_branch.emdash[0].id
-
-  lifecycle {
-    prevent_destroy = true
-  }
+resource "turso_database_token" "emdash" {
+  organization_name = var.turso_organization
+  database_name     = turso_database.emdash.name
+  authorization     = var.turso_database_token_authorization
+  expiration        = local.turso_database_token_expiration
 }
 
-resource "neon_role" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  branch_id  = neon_branch.emdash[0].id
-  name       = var.neon_role_name
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "neon_database" "emdash" {
-  count = var.manage_neon_resources ? 1 : 0
-
-  project_id = neon_project.emdash[0].id
-  branch_id  = neon_branch.emdash[0].id
-  name       = var.neon_database_name
-  owner_name = neon_role.emdash[0].name
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "cloudflare_hyperdrive_config" "emdash" {
-  count = var.enable_hyperdrive && length(local.emdash_database_url_parts) == 5 ? 1 : 0
-
-  account_id = var.cloudflare_account_id
-  name       = var.hyperdrive_name
-
-  origin = {
-    database = local.emdash_database_url_parts[4]
-    host     = local.emdash_database_url_parts[2]
-    password = local.emdash_database_url_parts[1]
-    port     = length(local.emdash_database_url_parts[3]) > 0 ? tonumber(local.emdash_database_url_parts[3]) : 5432
-    scheme   = "postgresql"
-    user     = local.emdash_database_url_parts[0]
-  }
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
 
 module "cloudflare_holding_page" {
   source = "../../modules/cloudflare_holding_page"
@@ -116,7 +63,10 @@ module "cloudflare_holding_page" {
   build_revision  = var.build_revision
   contact_email   = var.contact_email
 
-  hyperdrive_config_id = try(cloudflare_hyperdrive_config.emdash[0].id, "")
+  worker_secrets = {
+    TURSO_DATABASE_URL = local.turso_database_url
+    TURSO_AUTH_TOKEN   = turso_database_token.emdash.jwt
+  }
 }
 
 module "auth0_app" {
@@ -158,7 +108,6 @@ module "azure_editorial_api" {
   api_management_gateway_certificate_base64    = var.api_custom_hostname_certificate_base64
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
   manage_api_management_gateway_custom_domain  = false
-  emdash_database_url                                 = var.emdash_database_url
 
   tags = {
     project     = "freedomtimes"

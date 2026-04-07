@@ -73,7 +73,8 @@ function Invoke-EnvRemapping {
         "TF_VAR_auth0_management_client_id"     = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
         "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
         "TF_VAR_azure_location"                 = "TF_VAR_AZURE_LOCATION"
-        "TF_VAR_neon_api_key"                   = "TF_VAR_NEON_API_KEY"
+        "TF_VAR_turso_api_token"                = "TURSO_TOKEN"
+        "TF_VAR_turso_organization"             = "TF_VAR_TURSO_ORGANIZATION"
     }
     foreach ($target in $sharedAliases.Keys) {
         $src = [System.Environment]::GetEnvironmentVariable($sharedAliases[$target], "Process")
@@ -91,21 +92,15 @@ function Invoke-EnvRemapping {
             "TF_VAR_manage_apex_dns_record"                    = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
             "TF_VAR_apex_dns_record_content"                   = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
             "TF_VAR_apim_function_key"                         = "TF_VAR_APIM_FUNCTION_KEY$suffix"
-            "TF_VAR_enable_hyperdrive"                         = "TF_VAR_ENABLE_HYPERDRIVE$suffix"
-            "TF_VAR_hyperdrive_name"                           = "TF_VAR_HYPERDRIVE_NAME$suffix"
             "TF_VAR_api_custom_hostname"                       = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
             "TF_VAR_workspace_url"                             = "TF_VAR_WORKSPACE_URL$suffix"
             "TF_VAR_api_management_allowed_origins"            = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"    = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password"  = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
-            "TF_VAR_emdash_database_url"                       = "TF_VAR_EMDASH_DATABASE_URL$suffix"
-            "TF_VAR_manage_neon_resources"                     = "TF_VAR_MANAGE_NEON_RESOURCES$suffix"
-            "TF_VAR_neon_project_id"                           = "TF_VAR_NEON_PROJECT_ID$suffix"
-            "TF_VAR_neon_branch_id"                            = "TF_VAR_NEON_BRANCH_ID$suffix"
-            "TF_VAR_neon_endpoint_id"                          = "TF_VAR_NEON_ENDPOINT_ID$suffix"
-            "TF_VAR_neon_branch_name"                          = "TF_VAR_NEON_BRANCH_NAME$suffix"
-            "TF_VAR_neon_role_name"                            = "TF_VAR_NEON_ROLE_NAME$suffix"
-            "TF_VAR_neon_database_name"                        = "TF_VAR_NEON_DATABASE_NAME$suffix"
+            "TF_VAR_turso_database_name"                       = "TF_VAR_TURSO_DATABASE_NAME$suffix"
+            "TF_VAR_turso_database_group"                      = "TF_VAR_TURSO_DATABASE_GROUP$suffix"
+            "TF_VAR_turso_database_token_expiration"           = "TF_VAR_TURSO_DATABASE_TOKEN_EXPIRATION$suffix"
+            "TF_VAR_turso_database_size_limit"                 = "TF_VAR_TURSO_DATABASE_SIZE_LIMIT$suffix"
         }
         foreach ($target in $envSpecific.Keys) {
             $src = [System.Environment]::GetEnvironmentVariable($envSpecific[$target], "Process")
@@ -179,22 +174,17 @@ function Build-TerraformVarArgs {
             manage_apex_dns_record                  = @("TF_VAR_manage_apex_dns_record")
             apex_dns_record_content                 = @("TF_VAR_apex_dns_record_content")
             apim_function_key                       = @("TF_VAR_apim_function_key", "TF_VAR_APIM_FUNCTION_KEY")
-            enable_hyperdrive                       = @("TF_VAR_enable_hyperdrive")
-            hyperdrive_name                         = @("TF_VAR_hyperdrive_name")
             api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
             workspace_url                           = @("TF_VAR_workspace_url")
             api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
             api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
             api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
-            emdash_database_url                     = @("TF_VAR_emdash_database_url")
-            neon_api_key                            = @("TF_VAR_neon_api_key", "TF_VAR_NEON_API_KEY")
-            manage_neon_resources                   = @("TF_VAR_manage_neon_resources")
-            neon_project_id                         = @("TF_VAR_neon_project_id")
-            neon_branch_id                          = @("TF_VAR_neon_branch_id")
-            neon_endpoint_id                        = @("TF_VAR_neon_endpoint_id")
-            neon_branch_name                        = @("TF_VAR_neon_branch_name")
-            neon_role_name                          = @("TF_VAR_neon_role_name")
-            neon_database_name                      = @("TF_VAR_neon_database_name")
+            turso_api_token                         = @("TF_VAR_turso_api_token", "TURSO_TOKEN")
+            turso_organization                      = @("TF_VAR_turso_organization", "TF_VAR_TURSO_ORGANIZATION")
+            turso_database_name                     = @("TF_VAR_turso_database_name")
+            turso_database_group                    = @("TF_VAR_turso_database_group")
+            turso_database_token_expiration         = @("TF_VAR_turso_database_token_expiration")
+            turso_database_size_limit               = @("TF_VAR_turso_database_size_limit")
         }
     }
 

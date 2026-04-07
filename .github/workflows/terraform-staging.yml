@@ -61,6 +61,8 @@ jobs:
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_management_client_id: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID || secrets.TF_VAR_AUTH0_CLIENT_ID }}
       TF_VAR_auth0_management_client_secret: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET || secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
+      TF_VAR_turso_api_token: ${{ secrets.TURSO_TOKEN }}
+      TF_VAR_turso_organization: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
 
     steps:
       - uses: actions/checkout@v4
@@ -88,6 +90,8 @@ jobs:
             TF_VAR_auth0_domain
             TF_VAR_auth0_management_client_id
             TF_VAR_auth0_management_client_secret
+            TF_VAR_turso_api_token
+            TF_VAR_turso_organization
             TF_VAR_route_pattern
             TF_VAR_workspace_url
             TF_VAR_api_management_allowed_origins
@@ -322,13 +326,16 @@ jobs:
           FUNCTION_APP_NAME=$(terraform output -raw azure_function_app_name 2>/dev/null || echo "")
           RESOURCE_GROUP_NAME=$(terraform output -raw azure_resource_group_name 2>/dev/null || echo "")
           AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
-          HYPERDRIVE_CONFIG_ID=$(terraform output -raw hyperdrive_config_id 2>/dev/null || echo "")
+          TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
+          TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
 
           echo "api_base_url=$API_BASE_URL" >> $GITHUB_OUTPUT
           echo "function_app_name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
           echo "resource_group_name=$RESOURCE_GROUP_NAME" >> $GITHUB_OUTPUT
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
-          echo "hyperdrive_config_id=$HYPERDRIVE_CONFIG_ID" >> $GITHUB_OUTPUT
+          echo "turso_database_url=$TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "::add-mask::$TURSO_AUTH_TOKEN"
+          echo "turso_auth_token=$TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
 
       - name: Fetch Auth0 App Secret
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
@@ -361,7 +368,6 @@ jobs:
         run: |
           set -euo pipefail
           API_BASE_URL="${{ steps.tf_outputs.outputs.api_base_url }}"
-          HYPERDRIVE_CONFIG_ID="${{ steps.tf_outputs.outputs.hyperdrive_config_id }}"
           AUTH0_API_AUDIENCE="${{ vars.AUTH0_API_AUDIENCE_STAGING }}"
           COOKIE_BASE_DOMAIN="${{ vars.COOKIE_BASE_DOMAIN }}"
           AUTH0_ROLES_CLAIM_NAMESPACE="${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE }}"
@@ -383,11 +389,6 @@ jobs:
 
           if [ -z "$AUTH0_ROLES_CLAIM_NAMESPACE" ]; then
             echo "Missing required repository var: AUTH0_ROLES_CLAIM_NAMESPACE"
-            exit 1
-          fi
-
-          if [ -z "$HYPERDRIVE_CONFIG_ID" ] || [ "$HYPERDRIVE_CONFIG_ID" = "null" ]; then
-            echo "Missing required Terraform output: hyperdrive_config_id"
             exit 1
           fi
 
@@ -444,6 +445,9 @@ jobs:
 
       - name: Build Astro Worker
         working-directory: web
+        env:
+          TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
         run: npm run build
 
       - name: Deploy Astro Worker to Staging
@@ -452,7 +456,6 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-          HYPERDRIVE_CONFIG_ID: ${{ steps.tf_outputs.outputs.hyperdrive_config_id }}
           AUTH0_API_AUDIENCE: ${{ vars.AUTH0_API_AUDIENCE_STAGING }}
           API_BASE_URL: ${{ steps.tf_outputs.outputs.api_base_url }}
           COOKIE_BASE_DOMAIN: ${{ vars.COOKIE_BASE_DOMAIN }}
@@ -461,28 +464,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          cp wrangler.jsonc wrangler.staging.hyperdrive.jsonc
-          python3 - <<'PY'
-import os
-from pathlib import Path
-
-config_path = Path("wrangler.staging.hyperdrive.jsonc")
-placeholder = "__HYPERDRIVE_CONFIG_ID_STAGING__"
-hyperdrive_id = os.environ["HYPERDRIVE_CONFIG_ID"].strip()
-
-content = config_path.read_text(encoding="utf-8")
-if placeholder not in content:
-    raise SystemExit(f"Placeholder not found in {config_path}")
-
-config_path.write_text(content.replace(placeholder, hyperdrive_id), encoding="utf-8")
-PY
-
-          npx wrangler deploy --config wrangler.staging.hyperdrive.jsonc --env staging
-          --var AUTH0_API_AUDIENCE:$AUTH0_API_AUDIENCE
-          --var API_BASE_URL:$API_BASE_URL
-          --var COOKIE_BASE_DOMAIN:$COOKIE_BASE_DOMAIN
-          --var AUTH0_ROLES_CLAIM_NAMESPACE:$AUTH0_ROLES_CLAIM_NAMESPACE
-          --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
+          npx wrangler deploy --config wrangler.jsonc --env staging \
+            --var AUTH0_API_AUDIENCE:$AUTH0_API_AUDIENCE \
+            --var API_BASE_URL:$API_BASE_URL \
+            --var COOKIE_BASE_DOMAIN:$COOKIE_BASE_DOMAIN \
+            --var AUTH0_ROLES_CLAIM_NAMESPACE:$AUTH0_ROLES_CLAIM_NAMESPACE \
+            --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
 
       - name: Set Worker Secrets for Staging
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
@@ -496,10 +483,24 @@ PY
           AUTH0_DOMAIN_VALUE: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
           AUTH0_CLIENT_ID_VALUE: ${{ steps.tf_outputs.outputs.auth0_app_client_id }}
           AUTH0_CLIENT_SECRET_VALUE: ${{ steps.auth0_app_secret.outputs.auth0_app_client_secret }}
+          EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_STAGING }}
+          EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_STAGING }}
         run: |
+          set -euo pipefail
+
+          if [ -z "${EMDASH_AUTH_SECRET_VALUE:-}" ]; then
+            echo "Missing required secret: EMDASH_AUTH_SECRET_STAGING"
+            exit 1
+          fi
+
           printf '%s' "$AUTH0_DOMAIN_VALUE" | npx wrangler secret put AUTH0_DOMAIN --config wrangler.jsonc --env staging
           printf '%s' "$AUTH0_CLIENT_ID_VALUE" | npx wrangler secret put AUTH0_CLIENT_ID --config wrangler.jsonc --env staging
           printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.jsonc --env staging
+          printf '%s' "$EMDASH_AUTH_SECRET_VALUE" | npx wrangler secret put EMDASH_AUTH_SECRET --config wrangler.jsonc --env staging
+
+          if [ -n "${EMDASH_PREVIEW_SECRET_VALUE:-}" ]; then
+            printf '%s' "$EMDASH_PREVIEW_SECRET_VALUE" | npx wrangler secret put EMDASH_PREVIEW_SECRET --config wrangler.jsonc --env staging
+          fi
 
       - name: Cleanup Unlock TFC Workspace
         if: always()

@@ -20,72 +20,59 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
-variable "emdash_database_url" {
-  description = "External PostgreSQL connection string for EmDash in staging (for example Neon)."
+variable "turso_api_token" {
+  description = "Turso API token used by Terraform to manage staging EmDash resources"
   type        = string
   default     = ""
   sensitive   = true
 }
 
-variable "enable_hyperdrive" {
-  description = "Enable Cloudflare Hyperdrive for the EmDash staging database connection"
-  type        = bool
-  default     = false
+variable "turso_organization" {
+  description = "Turso organization or user slug for staging EmDash resources"
+  type        = string
 }
 
-variable "hyperdrive_name" {
-  description = "Cloudflare Hyperdrive config name for EmDash staging"
+variable "turso_database_name" {
+  description = "Turso database name for staging EmDash"
   type        = string
   default     = "freedomtimes-emdash-staging"
 }
 
-variable "neon_api_key" {
-  description = "Neon API key for Terraform-managed Neon resources"
+variable "turso_database_group" {
+  description = "Optional Turso group for staging EmDash database"
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_token_expiration" {
+  description = "Optional expiration for the staging EmDash database token (for example 90d or 2w1d30m). Leave empty for no explicit expiration."
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_size_limit" {
+  description = "Optional size limit for the staging EmDash database"
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_delete_protection" {
+  description = "Whether delete protection should be enabled for the staging EmDash database"
+  type        = bool
+  default     = true
+}
+
+variable "turso_database_token_authorization" {
+  description = "Authorization level for the staging EmDash database token"
+  type        = string
+  default     = "full-access"
+}
+
+variable "turso_auth_token" {
+  description = "Deprecated: Turso auth token for EmDash staging database. Ignored when Terraform manages the database token."
   type        = string
   default     = ""
   sensitive   = true
-}
-
-variable "manage_neon_resources" {
-  description = "Whether to manage existing Neon resources for EmDash in staging"
-  type        = bool
-  default     = false
-}
-
-variable "neon_project_id" {
-  description = "Existing Neon project ID for staging EmDash"
-  type        = string
-  default     = ""
-}
-
-variable "neon_branch_id" {
-  description = "Existing Neon branch ID for staging EmDash"
-  type        = string
-  default     = ""
-}
-
-variable "neon_endpoint_id" {
-  description = "Existing Neon endpoint ID for staging EmDash"
-  type        = string
-  default     = ""
-}
-
-variable "neon_branch_name" {
-  description = "Neon branch name for staging EmDash"
-  type        = string
-  default     = "production"
-}
-
-variable "neon_role_name" {
-  description = "Neon role name for staging EmDash database owner"
-  type        = string
-  default     = "neondb_owner"
-}
-
-variable "neon_database_name" {
-  description = "Neon database name for staging EmDash"
-  type        = string
-  default     = "neondb"
 }
 
 variable "enable_editorial_gateway_policy" {

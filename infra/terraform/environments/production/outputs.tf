@@ -54,17 +54,18 @@ output "azure_editorial_api_public_base_url" {
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)
 }
 
-output "neon_project_id" {
-  description = "Neon project ID managed for production EmDash"
-  value       = try(neon_project.emdash[0].id, null)
+output "turso_database_name" {
+  description = "Turso database name for production EmDash"
+  value       = turso_database.emdash.name
 }
 
-output "neon_branch_id" {
-  description = "Neon branch ID managed for production EmDash"
-  value       = try(neon_branch.emdash[0].id, null)
+output "turso_database_url" {
+  description = "libSQL URL for the production EmDash database"
+  value       = local.turso_database_url
 }
 
-output "neon_endpoint_id" {
-  description = "Neon endpoint ID managed for production EmDash"
-  value       = try(neon_endpoint.emdash[0].id, null)
+output "turso_database_auth_token" {
+  description = "Application auth token for the production EmDash database"
+  value       = turso_database_token.emdash.jwt
+  sensitive   = true
 }

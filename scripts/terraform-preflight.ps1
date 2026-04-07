@@ -83,7 +83,8 @@ if ($LoadEnvFiles) {
         "TF_VAR_auth0_management_client_id"    = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
         "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
         "TF_VAR_azure_location"                = "TF_VAR_AZURE_LOCATION"
-        "TF_VAR_neon_api_key"                  = "TF_VAR_NEON_API_KEY"
+        "TF_VAR_turso_api_token"               = "TURSO_TOKEN"
+        "TF_VAR_turso_organization"            = "TF_VAR_TURSO_ORGANIZATION"
     }
     foreach ($targetKey in $sharedAliases.Keys) {
         $sourceKey = $sharedAliases[$targetKey]
@@ -110,14 +111,10 @@ if ($LoadEnvFiles) {
             "TF_VAR_api_management_allowed_origins"           = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
-            "TF_VAR_emdash_database_url"                      = "TF_VAR_EMDASH_DATABASE_URL$suffix"
-            "TF_VAR_manage_neon_resources"                    = "TF_VAR_MANAGE_NEON_RESOURCES$suffix"
-            "TF_VAR_neon_project_id"                          = "TF_VAR_NEON_PROJECT_ID$suffix"
-            "TF_VAR_neon_branch_id"                           = "TF_VAR_NEON_BRANCH_ID$suffix"
-            "TF_VAR_neon_endpoint_id"                         = "TF_VAR_NEON_ENDPOINT_ID$suffix"
-            "TF_VAR_neon_branch_name"                         = "TF_VAR_NEON_BRANCH_NAME$suffix"
-            "TF_VAR_neon_role_name"                           = "TF_VAR_NEON_ROLE_NAME$suffix"
-            "TF_VAR_neon_database_name"                       = "TF_VAR_NEON_DATABASE_NAME$suffix"
+            "TF_VAR_turso_database_name"                      = "TF_VAR_TURSO_DATABASE_NAME$suffix"
+            "TF_VAR_turso_database_group"                     = "TF_VAR_TURSO_DATABASE_GROUP$suffix"
+            "TF_VAR_turso_database_token_expiration"          = "TF_VAR_TURSO_DATABASE_TOKEN_EXPIRATION$suffix"
+            "TF_VAR_turso_database_size_limit"                = "TF_VAR_TURSO_DATABASE_SIZE_LIMIT$suffix"
         }
         foreach ($tfVar in $envSpecificKeys.Keys) {
             $sourceKey = $envSpecificKeys[$tfVar]
@@ -230,35 +227,16 @@ if ($missing.Count -gt 0) {
 }
 
 if ($Environment -eq "staging" -or $Environment -eq "production") {
-    $emdashDatabaseUrl = [System.Environment]::GetEnvironmentVariable("TF_VAR_emdash_database_url", "Process")
-    if ([string]::IsNullOrWhiteSpace([string]$emdashDatabaseUrl)) {
-        Write-Error ("Missing EmDash database configuration for {0}: provide TF_VAR_EMDASH_DATABASE_URL_{1}." -f $Environment, $Environment.ToUpperInvariant())
+    $tursoApiToken = [System.Environment]::GetEnvironmentVariable("TF_VAR_turso_api_token", "Process")
+    if ([string]::IsNullOrWhiteSpace([string]$tursoApiToken)) {
+        Write-Error ("Missing Turso API token for {0}: provide TURSO_TOKEN." -f $Environment)
         exit 1
     }
 
-    $manageNeonResourcesRaw = [System.Environment]::GetEnvironmentVariable("TF_VAR_manage_neon_resources", "Process")
-    $manageNeonResources = -not [string]::IsNullOrWhiteSpace([string]$manageNeonResourcesRaw) -and ($manageNeonResourcesRaw -match '^(?i:true|1|yes)$')
-    if ($manageNeonResources) {
-        $requiredNeon = @(
-            "TF_VAR_neon_api_key",
-            "TF_VAR_neon_project_id",
-            "TF_VAR_neon_branch_id",
-            "TF_VAR_neon_endpoint_id",
-            "TF_VAR_neon_branch_name",
-            "TF_VAR_neon_role_name",
-            "TF_VAR_neon_database_name"
-        )
-        $missingNeon = New-Object System.Collections.Generic.List[string]
-        foreach ($name in $requiredNeon) {
-            $value = [System.Environment]::GetEnvironmentVariable($name, "Process")
-            if ([string]::IsNullOrWhiteSpace([string]$value)) {
-                [void]$missingNeon.Add($name)
-            }
-        }
-        if ($missingNeon.Count -gt 0) {
-            Write-Error ("Missing required Neon variables for {0} with TF_VAR_manage_neon_resources=true: {1}" -f $Environment, ($missingNeon -join ", "))
-            exit 1
-        }
+    $tursoOrganization = [System.Environment]::GetEnvironmentVariable("TF_VAR_turso_organization", "Process")
+    if ([string]::IsNullOrWhiteSpace([string]$tursoOrganization)) {
+        Write-Error ("Missing Turso organization for {0}: provide TF_VAR_TURSO_ORGANIZATION." -f $Environment)
+        exit 1
     }
 }
 

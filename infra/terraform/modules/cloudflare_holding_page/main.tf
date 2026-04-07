@@ -21,6 +21,8 @@ resource "cloudflare_workers_script" "holding_page" {
   account_id = var.account_id
   name       = var.worker_name
   content    = local.worker_script
+  module     = true
+  compatibility_date = var.worker_compatibility_date
   logpush    = true
 
   dynamic "hyperdrive_config_binding" {
