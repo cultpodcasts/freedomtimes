@@ -31,6 +31,8 @@ resource "turso_database" "emdash" {
 }
 
 resource "turso_database_configuration" "emdash" {
+  count = var.turso_database_delete_protection || local.turso_database_size_limit != null ? 1 : 0
+
   organization_slug = var.turso_organization
   database_name     = turso_database.emdash.name
   delete_protection = var.turso_database_delete_protection

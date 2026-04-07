@@ -67,12 +67,6 @@ variable "worker_secrets" {
   sensitive   = true
 }
 
-variable "hyperdrive_config_id" {
-  description = "Optional Hyperdrive config ID to bind as HYPERDRIVE on the Worker"
-  type        = string
-  default     = ""
-}
-
 variable "worker_compatibility_date" {
   description = "Cloudflare Workers compatibility date"
   type        = string

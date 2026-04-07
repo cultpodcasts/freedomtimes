@@ -59,7 +59,7 @@ variable "turso_database_size_limit" {
 variable "turso_database_delete_protection" {
   description = "Whether delete protection should be enabled for the staging EmDash database"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "turso_database_token_authorization" {

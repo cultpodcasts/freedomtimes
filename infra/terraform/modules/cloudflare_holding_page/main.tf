@@ -25,19 +25,12 @@ resource "cloudflare_workers_script" "holding_page" {
   compatibility_date = var.worker_compatibility_date
   logpush    = true
 
-  dynamic "hyperdrive_config_binding" {
-    for_each = length(trimspace(var.hyperdrive_config_id)) > 0 ? [1] : []
-    content {
-      binding = "HYPERDRIVE"
-      id      = trimspace(var.hyperdrive_config_id)
-    }
-  }
-
   # Wrangler owns deployed Worker bundle content; Terraform manages routing/domain bindings.
   lifecycle {
     ignore_changes = [
       content,
       plain_text_binding,
+      r2_bucket_binding,
     ]
   }
 }

@@ -33,6 +33,12 @@
 		},
 		"staging": {
 			"name": "freedomtimes-holding-staging",
+			"kv_namespaces": [
+				{
+					"binding": "SESSION",
+					"id": "86dbef45deff49e4a12bff11b9148706"
+				}
+			],
 			"r2_buckets": [
 				{
 					"binding": "MEDIA",
