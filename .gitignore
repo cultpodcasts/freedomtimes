@@ -4,7 +4,8 @@ node_modules/
 *.tfstate
 *.tfstate.*
 *.tfplan
-tfplan-local
+tfplan
+tfplan-*
 crash.log
 *.tfvars
 *.tfvars.json
