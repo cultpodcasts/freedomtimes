@@ -22,8 +22,6 @@ crash.log
 
 # Local env files
 .env.dev
-.env.staging
-.env.production
 *.har
 certs/*
 infra/terraform/environments/staging/.wrangler/cache/wrangler-account.json

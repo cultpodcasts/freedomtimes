@@ -4,8 +4,6 @@ param(
     [ValidateSet("staging", "production", "auth0-shared")]
     [string]$Environment,
     [string]$BaseEnvFile = ".env.dev",
-    [string]$StagingEnvFile = ".env.staging",
-    [string]$ProductionEnvFile = ".env.production",
     [switch]$LoadEnvFiles
 )
 
@@ -14,16 +12,6 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $baseEnvPath = Join-Path $repoRoot $BaseEnvFile
-$overlayFile = if ($Environment -eq "staging") {
-    $StagingEnvFile
-}
-elseif ($Environment -eq "production") {
-    $ProductionEnvFile
-}
-else {
-    $null
-}
-$overlayEnvPath = Join-Path $repoRoot $overlayFile
 
 function Parse-EnvFile {
     param([string]$Path)
@@ -48,23 +36,6 @@ function Parse-EnvFile {
     }
 
     return $values
-}
-
-function Merge-Hashtable {
-    param(
-        [hashtable]$Base,
-        [hashtable]$Overlay
-    )
-
-    $merged = @{}
-    foreach ($key in $Base.Keys) {
-        $merged[$key] = $Base[$key]
-    }
-    foreach ($key in $Overlay.Keys) {
-        $merged[$key] = $Overlay[$key]
-    }
-
-    return $merged
 }
 
 function Set-ProcessEnvFromHashtable {
@@ -95,12 +66,10 @@ if ($LoadEnvFiles) {
         throw "Base env file not found: $baseEnvPath"
     }
 
-    $baseValues = Parse-EnvFile -Path $baseEnvPath
-    $overlayValues = if ($overlayFile) { Parse-EnvFile -Path $overlayEnvPath } else { @{} }
-    $merged = Merge-Hashtable -Base $baseValues -Overlay $overlayValues
-    Set-ProcessEnvFromHashtable -Values $merged
+    $values = Parse-EnvFile -Path $baseEnvPath
+    Set-ProcessEnvFromHashtable -Values $values
 
-    Write-Host "Loaded env values from $BaseEnvFile + $overlayFile" -ForegroundColor DarkGray
+    Write-Host "Loaded env values from $BaseEnvFile" -ForegroundColor DarkGray
 }
 
 # Normalize shared vars from canonical uppercase names in .env.dev to the
