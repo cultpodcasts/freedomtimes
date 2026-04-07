@@ -81,8 +81,6 @@ az monitor action-group delete --resource-group $rg --name "Application Insights
 
 ```bash
 # Staging
-cd c:\users\jonbr\source\repos\freedomtimes
-
 .\scripts\terraform-run.ps1 `
   -Environment staging `
   -Operation destroy `
@@ -121,8 +119,6 @@ terraform -chdir=infra/terraform/environments/staging state list  # No output
 #### Step 1: Load Environment Variables
 
 ```bash
-cd c:\users\jonbr\source\repos\freedomtimes
-
 # Load .env.dev, .env.staging, and merge into process environment
 Get-Content .env.dev | Where-Object { $_ -match '^[A-Za-z_][A-Za-z0-9_]*=' -and $_ -notmatch '^#' } | ForEach-Object { $p = $_ -split '=',2; [System.Environment]::SetEnvironmentVariable($p[0].Trim(), $p[1].Trim(), 'Process') }
 
@@ -194,8 +190,6 @@ This script:
 #### Step 5: Deploy the Function App
 
 ```bash
-cd c:\users\jonbr\source\repos\freedomtimes\functions\editorial-api
-
 # Get the function app name from Terraform output
 $appName = (terraform -chdir=..\..\infra\terraform\environments\staging output -json | ConvertFrom-Json).azure_function_app_name.value
 
@@ -206,8 +200,6 @@ func azure functionapp publish $appName --build remote --javascript
 #### Step 6: Deploy the Cloudflare Worker
 
 ```bash
-cd c:\users\jonbr\source\repos\freedomtimes\web
-
 npm install
 npm run build
 
