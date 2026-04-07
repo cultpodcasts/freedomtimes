@@ -64,6 +64,11 @@ function Main {
         $ghRepo = "cultpodcasts/freedomtimes"
         Write-Host "`nSyncing GitHub secrets and variables from .env.dev to $ghRepo..." -ForegroundColor Cyan
 
+        # Hardcoded list of sensitive values synced as GitHub Actions secrets.
+        # Secrets are never logged by GitHub Actions and must never be displayed.
+        # Includes: Azure credentials (Terraform provider), Cloudflare API tokens, Auth0 management client,
+        # TLS certificates for custom domains, and Auth0 login app credentials for each environment.
+        # See ENVIRONMENT_SETUP.md "Syncing Secrets & Variables" for the complete categorization rationale.
         $secrets = @(
             "ARM_CLIENT_ID",
             "ARM_CLIENT_SECRET",
@@ -90,6 +95,11 @@ function Main {
             Set-GhSecret -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun
         }
 
+        # Hardcoded list of non-sensitive configuration synced as GitHub Actions variables.
+        # Variables are plaintext and visible to anyone with repo access.
+        # Includes: Terraform vars (Azure location, DNS routing, custom domains), Auth0 configuration,
+        # and app-specific settings (API modes, CORS origins, domain cookies).
+        # See ENVIRONMENT_SETUP.md "Syncing Secrets & Variables" for the complete categorization rationale.
         $variables = @(
             "TF_VAR_AZURE_LOCATION",
             "API_UPSTREAM_MODE",
