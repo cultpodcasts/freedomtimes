@@ -66,3 +66,9 @@ variable "worker_secrets" {
   default     = {}
   sensitive   = true
 }
+
+variable "hyperdrive_config_id" {
+  description = "Optional Hyperdrive config ID to bind as HYPERDRIVE on the Worker"
+  type        = string
+  default     = ""
+}

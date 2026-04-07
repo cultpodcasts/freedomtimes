@@ -20,6 +20,62 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
+variable "emdash_database_url" {
+  description = "External PostgreSQL connection string for EmDash in production (for example Neon)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "neon_api_key" {
+  description = "Neon API key for Terraform-managed Neon resources"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "manage_neon_resources" {
+  description = "Whether to manage existing Neon resources for EmDash in production"
+  type        = bool
+  default     = false
+}
+
+variable "neon_project_id" {
+  description = "Existing Neon project ID for production EmDash"
+  type        = string
+  default     = ""
+}
+
+variable "neon_branch_id" {
+  description = "Existing Neon branch ID for production EmDash"
+  type        = string
+  default     = ""
+}
+
+variable "neon_endpoint_id" {
+  description = "Existing Neon endpoint ID for production EmDash"
+  type        = string
+  default     = ""
+}
+
+variable "neon_branch_name" {
+  description = "Neon branch name for production EmDash"
+  type        = string
+  default     = "main"
+}
+
+variable "neon_role_name" {
+  description = "Neon role name for production EmDash database owner"
+  type        = string
+  default     = "neondb_owner"
+}
+
+variable "neon_database_name" {
+  description = "Neon database name for production EmDash"
+  type        = string
+  default     = "neondb"
+}
+
 variable "enable_editorial_gateway_policy" {
   description = "Enable APIM gateway JWT/role policy for production editorial API"
   type        = bool

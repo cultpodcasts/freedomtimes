@@ -13,6 +13,65 @@ provider "auth0" {
   client_secret = var.auth0_management_client_secret
 }
 
+provider "neon" {
+  api_key = var.neon_api_key
+}
+
+resource "neon_project" "emdash" {
+  count = var.manage_neon_resources ? 1 : 0
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "neon_branch" "emdash" {
+  count = var.manage_neon_resources ? 1 : 0
+
+  project_id = neon_project.emdash[0].id
+  name       = var.neon_branch_name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "neon_endpoint" "emdash" {
+  count = var.manage_neon_resources ? 1 : 0
+
+  project_id = neon_project.emdash[0].id
+  branch_id  = neon_branch.emdash[0].id
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "neon_role" "emdash" {
+  count = var.manage_neon_resources ? 1 : 0
+
+  project_id = neon_project.emdash[0].id
+  branch_id  = neon_branch.emdash[0].id
+  name       = var.neon_role_name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "neon_database" "emdash" {
+  count = var.manage_neon_resources ? 1 : 0
+
+  project_id = neon_project.emdash[0].id
+  branch_id  = neon_branch.emdash[0].id
+  name       = var.neon_database_name
+  owner_name = neon_role.emdash[0].name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 module "cloudflare_holding_page" {
   source = "../../modules/cloudflare_holding_page"
 
@@ -44,6 +103,7 @@ module "auth0_app" {
   auth0_domain          = var.auth0_domain
   create_shared_resources = false
   create_api_resource_server = true
+  enable_machine_to_machine_grant = true
 }
 
 module "azure_editorial_api" {
@@ -69,6 +129,7 @@ module "azure_editorial_api" {
   api_management_gateway_certificate_password  = var.api_custom_hostname_certificate_password
   manage_api_management_gateway_custom_domain  = false
   api_management_allowed_origins               = var.api_management_allowed_origins
+  emdash_database_url                                   = var.emdash_database_url
 
   tags = {
     project     = "freedomtimes"

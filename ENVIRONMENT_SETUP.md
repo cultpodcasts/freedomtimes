@@ -262,6 +262,9 @@ Use `scripts/set-github-secrets.ps1` to push secrets and variables to GitHub Act
 - `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`
 - `AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION`
 - `AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION`
+- `TF_VAR_NEON_API_KEY`
+- `TF_VAR_EMDASH_DATABASE_URL_STAGING`
+- `TF_VAR_EMDASH_DATABASE_URL_PRODUCTION`
 
 **Variables synced (from `.env.dev`):**
 - `TF_VAR_AZURE_LOCATION`
@@ -284,6 +287,61 @@ Use `scripts/set-github-secrets.ps1` to push secrets and variables to GitHub Act
 - `TF_VAR_WORKSPACE_URL_PRODUCTION`
 - `TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING`
 - `TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_PRODUCTION`
+
+---
+
+### Obtain a Staging Auth0 M2M Token (client_credentials)
+
+Use this when you need a non-interactive API token for `https://api-staging.freedomtimes.news`.
+
+#### Prerequisites
+
+1. Staging Terraform has been applied after Auth0 changes.
+2. `.env.dev` contains the current Terraform-managed staging app credentials:
+   - `AUTH0_LOGIN_APP_CLIENT_ID_STAGING`
+   - `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`
+   - `TF_VAR_AUTH0_DOMAIN`
+
+#### Sync local staging Auth0 app credentials from Terraform outputs
+
+```powershell
+$clientId = 'module.auth0_app.application_id' | terraform -chdir=infra/terraform/environments/staging console
+$clientSecret = 'nonsensitive(module.auth0_app.client_secret)' | terraform -chdir=infra/terraform/environments/staging console
+
+$clientId = $clientId.Trim('"')
+$clientSecret = $clientSecret.Trim('"')
+
+$path = '.env.dev'
+$content = Get-Content $path -Raw
+$content = [regex]::Replace($content, '(?m)^AUTH0_LOGIN_APP_CLIENT_ID_STAGING=.*$', "AUTH0_LOGIN_APP_CLIENT_ID_STAGING=$clientId")
+$content = [regex]::Replace($content, '(?m)^AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING=.*$', "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING=$clientSecret")
+Set-Content -Path $path -Value $content -NoNewline
+```
+
+#### Request a token (without printing the token value)
+
+```powershell
+$pairs = @{}
+Get-Content .env.dev |
+  Where-Object { $_ -match '=' -and $_ -notmatch '^\s*#' } |
+  ForEach-Object { $k,$v = $_ -split '=',2; $pairs[$k.Trim()] = $v.Trim() }
+
+$domain = $pairs['TF_VAR_AUTH0_DOMAIN']
+if ($domain -notmatch '^https?://') { $domain = "https://$domain" }
+$domain = $domain.TrimEnd('/')
+
+$body = @{
+  grant_type = 'client_credentials'
+  client_id = $pairs['AUTH0_LOGIN_APP_CLIENT_ID_STAGING']
+  client_secret = $pairs['AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING']
+  audience = 'https://api-staging.freedomtimes.news'
+}
+
+$resp = Invoke-RestMethod -Method Post -Uri "$domain/oauth/token" -ContentType 'application/json' -Body ($body | ConvertTo-Json -Compress)
+"token_type=$($resp.token_type) expires_in=$($resp.expires_in)"
+```
+
+If this returns `401 Unauthorized`, local credentials are stale. Re-run the credential sync step above.
 
 #### Dry Run (Preview)
 

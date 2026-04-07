@@ -22,5 +22,9 @@ terraform {
       source  = "auth0/auth0"
       version = "~> 1.0"
     }
+    neon = {
+      source  = "kislerdm/neon"
+      version = "~> 0.6"
+    }
   }
 }

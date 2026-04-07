@@ -93,3 +93,9 @@ output "subscribers_container_name" {
   description = "Cosmos DB subscribers container name"
   value       = azurerm_cosmosdb_sql_container.subscribers.name
 }
+
+output "emdash_database_url_effective" {
+  description = "Effective EmDash PostgreSQL connection string"
+  value       = local.emdash_database_url != "" ? local.emdash_database_url : null
+  sensitive = true
+}

@@ -27,3 +27,16 @@ api_custom_hostname             = "api.example.com"
 
 # Node.js version for Azure Functions
 node_version = "24"
+
+# Provide EmDash database URL via environment variable (for example Neon):
+# TF_VAR_emdash_database_url = "postgresql://user:password@ep-...neon.tech/dbname?sslmode=require"
+
+# Import existing Neon resources before enabling management.
+manage_neon_resources = false
+neon_branch_name      = "main"
+neon_role_name        = "neondb_owner"
+neon_database_name    = "neondb"
+# TF_VAR_neon_api_key = "<neon-api-key>"
+# TF_VAR_neon_project_id = "<project-id>"
+# TF_VAR_neon_branch_id = "<branch-id>"
+# TF_VAR_neon_endpoint_id = "<endpoint-id>"

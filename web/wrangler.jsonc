@@ -33,6 +33,12 @@
 		"staging": {
 			"name": "freedomtimes-holding-staging",
 			// Staging is also used as preview
+			"hyperdrive": [
+				{
+					"binding": "HYPERDRIVE",
+					"id": "__HYPERDRIVE_CONFIG_ID_STAGING__"
+				}
+			],
 			"vars": {
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",

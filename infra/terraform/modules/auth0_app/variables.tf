@@ -59,3 +59,9 @@ variable "jwt_signing_alg" {
   type        = string
   default     = "HS256"
 }
+
+variable "enable_machine_to_machine_grant" {
+  description = "Enable client_credentials grant type for the login app so it can request M2M tokens for the API audience"
+  type        = bool
+  default     = false
+}

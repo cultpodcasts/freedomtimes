@@ -53,3 +53,18 @@ output "azure_editorial_api_public_base_url" {
   description = "Public API base URL through APIM for production editorial API"
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)
 }
+
+output "neon_project_id" {
+  description = "Neon project ID managed for production EmDash"
+  value       = try(neon_project.emdash[0].id, null)
+}
+
+output "neon_branch_id" {
+  description = "Neon branch ID managed for production EmDash"
+  value       = try(neon_branch.emdash[0].id, null)
+}
+
+output "neon_endpoint_id" {
+  description = "Neon endpoint ID managed for production EmDash"
+  value       = try(neon_endpoint.emdash[0].id, null)
+}

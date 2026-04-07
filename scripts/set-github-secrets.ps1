@@ -87,7 +87,10 @@ function Main {
             "AUTH0_LOGIN_APP_CLIENT_ID_STAGING",
             "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING",
             "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION",
-            "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION"
+            "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION",
+            "TF_VAR_NEON_API_KEY",
+            "TF_VAR_EMDASH_DATABASE_URL_STAGING",
+            "TF_VAR_EMDASH_DATABASE_URL_PRODUCTION"
         )
         Write-Host "  Syncing secrets..." -ForegroundColor Gray
         foreach ($name in $secrets) {

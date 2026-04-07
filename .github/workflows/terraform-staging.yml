@@ -322,11 +322,13 @@ jobs:
           FUNCTION_APP_NAME=$(terraform output -raw azure_function_app_name 2>/dev/null || echo "")
           RESOURCE_GROUP_NAME=$(terraform output -raw azure_resource_group_name 2>/dev/null || echo "")
           AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
+          HYPERDRIVE_CONFIG_ID=$(terraform output -raw hyperdrive_config_id 2>/dev/null || echo "")
 
           echo "api_base_url=$API_BASE_URL" >> $GITHUB_OUTPUT
           echo "function_app_name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
           echo "resource_group_name=$RESOURCE_GROUP_NAME" >> $GITHUB_OUTPUT
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
+          echo "hyperdrive_config_id=$HYPERDRIVE_CONFIG_ID" >> $GITHUB_OUTPUT
 
       - name: Fetch Auth0 App Secret
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
@@ -359,6 +361,7 @@ jobs:
         run: |
           set -euo pipefail
           API_BASE_URL="${{ steps.tf_outputs.outputs.api_base_url }}"
+          HYPERDRIVE_CONFIG_ID="${{ steps.tf_outputs.outputs.hyperdrive_config_id }}"
           AUTH0_API_AUDIENCE="${{ vars.AUTH0_API_AUDIENCE_STAGING }}"
           COOKIE_BASE_DOMAIN="${{ vars.COOKIE_BASE_DOMAIN }}"
           AUTH0_ROLES_CLAIM_NAMESPACE="${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE }}"
@@ -380,6 +383,11 @@ jobs:
 
           if [ -z "$AUTH0_ROLES_CLAIM_NAMESPACE" ]; then
             echo "Missing required repository var: AUTH0_ROLES_CLAIM_NAMESPACE"
+            exit 1
+          fi
+
+          if [ -z "$HYPERDRIVE_CONFIG_ID" ] || [ "$HYPERDRIVE_CONFIG_ID" = "null" ]; then
+            echo "Missing required Terraform output: hyperdrive_config_id"
             exit 1
           fi
 
@@ -444,13 +452,32 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          HYPERDRIVE_CONFIG_ID: ${{ steps.tf_outputs.outputs.hyperdrive_config_id }}
           AUTH0_API_AUDIENCE: ${{ vars.AUTH0_API_AUDIENCE_STAGING }}
           API_BASE_URL: ${{ steps.tf_outputs.outputs.api_base_url }}
           COOKIE_BASE_DOMAIN: ${{ vars.COOKIE_BASE_DOMAIN }}
           AUTH0_ROLES_CLAIM_NAMESPACE: ${{ vars.AUTH0_ROLES_CLAIM_NAMESPACE }}
           API_UPSTREAM_MODE: ${{ vars.API_UPSTREAM_MODE }}
-        run: >
-          npx wrangler deploy --config wrangler.jsonc --env staging
+        run: |
+          set -euo pipefail
+
+          cp wrangler.jsonc wrangler.staging.hyperdrive.jsonc
+          python3 - <<'PY'
+import os
+from pathlib import Path
+
+config_path = Path("wrangler.staging.hyperdrive.jsonc")
+placeholder = "__HYPERDRIVE_CONFIG_ID_STAGING__"
+hyperdrive_id = os.environ["HYPERDRIVE_CONFIG_ID"].strip()
+
+content = config_path.read_text(encoding="utf-8")
+if placeholder not in content:
+    raise SystemExit(f"Placeholder not found in {config_path}")
+
+config_path.write_text(content.replace(placeholder, hyperdrive_id), encoding="utf-8")
+PY
+
+          npx wrangler deploy --config wrangler.staging.hyperdrive.jsonc --env staging
           --var AUTH0_API_AUDIENCE:$AUTH0_API_AUDIENCE
           --var API_BASE_URL:$API_BASE_URL
           --var COOKIE_BASE_DOMAIN:$COOKIE_BASE_DOMAIN

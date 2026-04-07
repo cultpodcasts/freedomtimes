@@ -107,7 +107,7 @@ export const GET: APIRoute = async (ctx) => {
 
     console.info('[auth.callback] login successful', { requestId });
 
-    return ctx.redirect('/signed-in');
+    return ctx.redirect('/homepage');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[auth.callback] login failed during token exchange/verification', {

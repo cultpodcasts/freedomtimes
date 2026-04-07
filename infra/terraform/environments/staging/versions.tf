@@ -22,6 +22,10 @@ terraform {
       source  = "auth0/auth0"
       version = "~> 1.0"
     }
+    neon = {
+      source  = "kislerdm/neon"
+      version = "~> 0.6"
+    }
     time = {
       source  = "hashicorp/time"
       version = "~> 0.12"

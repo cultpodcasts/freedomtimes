@@ -32,3 +32,4 @@ infra/terraform/environments/production/tfplan
 .wrangler/cache/wrangler-account.json
 infra/terraform/environments/production/.wrangler/cache/wrangler-account.json
 .tmp/*
+logs/*

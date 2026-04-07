@@ -13,6 +13,12 @@ output "auth0_app_client_id" {
   value       = module.auth0_app.application_id
 }
 
+output "auth0_app_client_secret" {
+  description = "Auth0 login application client secret for staging (sensitive)"
+  value       = module.auth0_app.client_secret
+  sensitive   = true
+}
+
 output "auth0_api_identifier" {
   description = "Auth0 API audience/identifier for staging tokens"
   value       = module.auth0_app.api_identifier
@@ -51,4 +57,29 @@ output "azure_log_analytics_workspace_name" {
 output "azure_editorial_api_public_base_url" {
   description = "Public API base URL through APIM for staging editorial API"
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)
+}
+
+output "neon_project_id" {
+  description = "Neon project ID managed for staging EmDash"
+  value       = try(neon_project.emdash[0].id, null)
+}
+
+output "neon_branch_id" {
+  description = "Neon branch ID managed for staging EmDash"
+  value       = try(neon_branch.emdash[0].id, null)
+}
+
+output "neon_endpoint_id" {
+  description = "Neon endpoint ID managed for staging EmDash"
+  value       = try(neon_endpoint.emdash[0].id, null)
+}
+
+output "hyperdrive_config_id" {
+  description = "Cloudflare Hyperdrive config ID for staging EmDash"
+  value       = try(cloudflare_hyperdrive_config.emdash[0].id, null)
+}
+
+output "hyperdrive_config_name" {
+  description = "Cloudflare Hyperdrive config name for staging EmDash"
+  value       = try(cloudflare_hyperdrive_config.emdash[0].name, null)
 }

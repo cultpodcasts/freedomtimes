@@ -4,7 +4,7 @@ param(
     [ValidateSet("staging", "production", "auth0-shared")]
     [string]$Environment,
     [Parameter(Mandatory = $true)]
-    [ValidateSet("init", "validate", "plan", "apply", "destroy", "import")]
+    [ValidateSet("init", "validate", "plan", "apply", "destroy", "import", "output")]
     [string]$Operation,
     [switch]$LoadEnvFiles,
     [string]$LockTimeout = "5m",
@@ -12,7 +12,8 @@ param(
     [switch]$AutoApprove,
     [switch]$UsePlanFile,
     [string]$ImportAddress,
-    [string]$ImportId
+    [string]$ImportId,
+    [string]$OutputName
 )
 
 Set-StrictMode -Version Latest
@@ -72,6 +73,7 @@ function Invoke-EnvRemapping {
         "TF_VAR_auth0_management_client_id"     = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
         "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
         "TF_VAR_azure_location"                 = "TF_VAR_AZURE_LOCATION"
+        "TF_VAR_neon_api_key"                   = "TF_VAR_NEON_API_KEY"
     }
     foreach ($target in $sharedAliases.Keys) {
         $src = [System.Environment]::GetEnvironmentVariable($sharedAliases[$target], "Process")
@@ -88,11 +90,22 @@ function Invoke-EnvRemapping {
             "TF_VAR_worker_name"                               = "TF_VAR_WORKER_NAME$suffix"
             "TF_VAR_manage_apex_dns_record"                    = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
             "TF_VAR_apex_dns_record_content"                   = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
+            "TF_VAR_apim_function_key"                         = "TF_VAR_APIM_FUNCTION_KEY$suffix"
+            "TF_VAR_enable_hyperdrive"                         = "TF_VAR_ENABLE_HYPERDRIVE$suffix"
+            "TF_VAR_hyperdrive_name"                           = "TF_VAR_HYPERDRIVE_NAME$suffix"
             "TF_VAR_api_custom_hostname"                       = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
             "TF_VAR_workspace_url"                             = "TF_VAR_WORKSPACE_URL$suffix"
             "TF_VAR_api_management_allowed_origins"            = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"    = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password"  = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
+            "TF_VAR_emdash_database_url"                       = "TF_VAR_EMDASH_DATABASE_URL$suffix"
+            "TF_VAR_manage_neon_resources"                     = "TF_VAR_MANAGE_NEON_RESOURCES$suffix"
+            "TF_VAR_neon_project_id"                           = "TF_VAR_NEON_PROJECT_ID$suffix"
+            "TF_VAR_neon_branch_id"                            = "TF_VAR_NEON_BRANCH_ID$suffix"
+            "TF_VAR_neon_endpoint_id"                          = "TF_VAR_NEON_ENDPOINT_ID$suffix"
+            "TF_VAR_neon_branch_name"                          = "TF_VAR_NEON_BRANCH_NAME$suffix"
+            "TF_VAR_neon_role_name"                            = "TF_VAR_NEON_ROLE_NAME$suffix"
+            "TF_VAR_neon_database_name"                        = "TF_VAR_NEON_DATABASE_NAME$suffix"
         }
         foreach ($target in $envSpecific.Keys) {
             $src = [System.Environment]::GetEnvironmentVariable($envSpecific[$target], "Process")
@@ -165,11 +178,23 @@ function Build-TerraformVarArgs {
             worker_name                             = @("TF_VAR_worker_name")
             manage_apex_dns_record                  = @("TF_VAR_manage_apex_dns_record")
             apex_dns_record_content                 = @("TF_VAR_apex_dns_record_content")
+            apim_function_key                       = @("TF_VAR_apim_function_key", "TF_VAR_APIM_FUNCTION_KEY")
+            enable_hyperdrive                       = @("TF_VAR_enable_hyperdrive")
+            hyperdrive_name                         = @("TF_VAR_hyperdrive_name")
             api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
             workspace_url                           = @("TF_VAR_workspace_url")
             api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
             api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
             api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
+            emdash_database_url                     = @("TF_VAR_emdash_database_url")
+            neon_api_key                            = @("TF_VAR_neon_api_key", "TF_VAR_NEON_API_KEY")
+            manage_neon_resources                   = @("TF_VAR_manage_neon_resources")
+            neon_project_id                         = @("TF_VAR_neon_project_id")
+            neon_branch_id                          = @("TF_VAR_neon_branch_id")
+            neon_endpoint_id                        = @("TF_VAR_neon_endpoint_id")
+            neon_branch_name                        = @("TF_VAR_neon_branch_name")
+            neon_role_name                          = @("TF_VAR_neon_role_name")
+            neon_database_name                      = @("TF_VAR_neon_database_name")
         }
     }
 
@@ -369,6 +394,17 @@ try {
 
         $importArgs = @("import", "-input=false", "-lock-timeout=$LockTimeout", "-no-color") + $varArgs + @($ImportAddress, $ImportId)
         $exitCode = Invoke-TerraformCommand -CommandArgs $importArgs
+        exit $exitCode
+    }
+
+    if ($Operation -eq "output") {
+        Write-Host "DEBUG: Running output operation" -ForegroundColor DarkGray
+        if ([string]::IsNullOrWhiteSpace($OutputName)) {
+            $exitCode = Invoke-TerraformCommand -CommandArgs @("output", "-no-color")
+            exit $exitCode
+        }
+
+        $exitCode = Invoke-TerraformCommand -CommandArgs @("output", "-raw", $OutputName)
         exit $exitCode
     }
 }

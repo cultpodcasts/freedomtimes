@@ -20,6 +20,74 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
+variable "emdash_database_url" {
+  description = "External PostgreSQL connection string for EmDash in staging (for example Neon)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "enable_hyperdrive" {
+  description = "Enable Cloudflare Hyperdrive for the EmDash staging database connection"
+  type        = bool
+  default     = false
+}
+
+variable "hyperdrive_name" {
+  description = "Cloudflare Hyperdrive config name for EmDash staging"
+  type        = string
+  default     = "freedomtimes-emdash-staging"
+}
+
+variable "neon_api_key" {
+  description = "Neon API key for Terraform-managed Neon resources"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "manage_neon_resources" {
+  description = "Whether to manage existing Neon resources for EmDash in staging"
+  type        = bool
+  default     = false
+}
+
+variable "neon_project_id" {
+  description = "Existing Neon project ID for staging EmDash"
+  type        = string
+  default     = ""
+}
+
+variable "neon_branch_id" {
+  description = "Existing Neon branch ID for staging EmDash"
+  type        = string
+  default     = ""
+}
+
+variable "neon_endpoint_id" {
+  description = "Existing Neon endpoint ID for staging EmDash"
+  type        = string
+  default     = ""
+}
+
+variable "neon_branch_name" {
+  description = "Neon branch name for staging EmDash"
+  type        = string
+  default     = "production"
+}
+
+variable "neon_role_name" {
+  description = "Neon role name for staging EmDash database owner"
+  type        = string
+  default     = "neondb_owner"
+}
+
+variable "neon_database_name" {
+  description = "Neon database name for staging EmDash"
+  type        = string
+  default     = "neondb"
+}
+
 variable "enable_editorial_gateway_policy" {
   description = "Enable APIM gateway JWT/role policy for staging editorial API"
   type        = bool
