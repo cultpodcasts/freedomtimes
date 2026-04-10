@@ -4,20 +4,25 @@ import { fileURLToPath } from 'node:url';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import emdash from 'emdash/astro';
-import { libsql } from 'emdash/db';
 import { r2 } from '@emdash-cms/cloudflare';
 
 if (!process.env.TURSO_DATABASE_URL) {
 	throw new Error('TURSO_DATABASE_URL is required for build');
 }
 
-const emdashDatabase = libsql({
-	url: process.env.TURSO_DATABASE_URL,
-	authToken: process.env.TURSO_AUTH_TOKEN,
-});
+const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.js', import.meta.url));
+const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.js', import.meta.url).href;
+
+const emdashDatabase = {
+	entrypoint: libsqlShimEntryUrl,
+	config: {
+		url: process.env.TURSO_DATABASE_URL,
+		authToken: process.env.TURSO_AUTH_TOKEN,
+	},
+	type: 'sqlite',
+};
 
 const emdashStorage = r2({ binding: 'MEDIA' });
-const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.js', import.meta.url));
 const libsqlClientWebPath = fileURLToPath(
 	new URL('./node_modules/@libsql/client/lib-esm/web.js', import.meta.url),
 );

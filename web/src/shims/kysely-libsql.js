@@ -63,6 +63,13 @@ export class LibsqlDialect {
   }
 }
 
+export function createDialect(config) {
+  return new LibsqlDialect({
+    url: config.url,
+    authToken: config.authToken,
+  });
+}
+
 class LibsqlDriver {
   constructor(client, closeClient) {
     this.client = client;
