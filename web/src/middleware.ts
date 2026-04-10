@@ -13,10 +13,7 @@ type PathRule = {
 const AUTH_BYPASS_RULES: PathRule[] = [
   { path: '/_emdash', mode: PathMode.Exact },
   { path: '/_emdash/', mode: PathMode.StartsWith },
-  { path: '/.well-known/oauth-protected-resource', mode: PathMode.Exact },
-  { path: '/.well-known/oauth-authorization-server', mode: PathMode.Exact },
-  { path: '/.well-known/oauth-protected-resource/_emdash/api/mcp', mode: PathMode.Exact },
-  { path: '/.well-known/oauth-authorization-server/_emdash', mode: PathMode.Exact },
+  { path: '/.well-known/', mode: PathMode.StartsWith },
 ];
 
 const DEFAULT_MCP_SCOPES = 'content:read content:write media:read media:write schema:read schema:write admin';
@@ -66,6 +63,32 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // Global log to confirm middleware execution for all requests
     console.info('[middleware] onRequest called', { path: context.url.pathname, full: context.url.href });
   const path = context.url.pathname;
+  const normalizedPath = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
+
+  // VS Code MCP clients may start with an unauthenticated initialize POST.
+  // Return OAuth challenge (401) instead of letting downstream CSRF checks emit 403.
+  if (normalizedPath === '/_emdash/api/mcp' && context.request.method !== 'GET') {
+    const authHeader = context.request.headers.get('authorization')?.trim() ?? '';
+    const cookieHeader = context.request.headers.get('cookie')?.trim() ?? '';
+    if (!authHeader && !cookieHeader) {
+      const resourceMetadata = `${context.url.origin}/.well-known/oauth-protected-resource`;
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 'NOT_AUTHENTICATED',
+            message: 'Not authenticated',
+          },
+        }),
+        {
+          status: 401,
+          headers: {
+            'content-type': 'application/json',
+            'www-authenticate': `Bearer resource_metadata="${resourceMetadata}"`,
+          },
+        },
+      );
+    }
+  }
 
   // Some OAuth clients use RFC 8414 path variants for issuers/resources with paths.
   // EmDash serves metadata under /_emdash; expose compatibility aliases at root.
@@ -73,13 +96,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
     path === '/.well-known/oauth-authorization-server'
     || path === '/.well-known/oauth-authorization-server/_emdash'
   ) {
-    return fetch(new URL('/_emdash/.well-known/oauth-authorization-server', context.url));
+    return context.redirect('/_emdash/.well-known/oauth-authorization-server', 302);
   }
 
   if (
     path === '/.well-known/oauth-protected-resource/_emdash/api/mcp'
   ) {
-    return fetch(new URL('/.well-known/oauth-protected-resource', context.url));
+    return context.redirect('/.well-known/oauth-protected-resource', 302);
   }
 
   // Some MCP clients do not send scope/slug on authorize, which EmDash rejects.

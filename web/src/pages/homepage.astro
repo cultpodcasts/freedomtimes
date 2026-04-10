@@ -1,14 +1,15 @@
 ---
+import { getEmDashCollection } from 'emdash';
+
 import Layout from '../layouts/Layout.astro';
 import { requireEditorialSession } from '../lib/editorial-session';
 
 type Story = {
   slug: string;
   title: string;
-  dek: string;
-  section: string;
-  author: string;
-  minutes: number;
+  dek: string | null;
+  status: string | null;
+  updatedAt: string | null;
 };
 
 const session = await requireEditorialSession({
@@ -24,59 +25,45 @@ if (session instanceof Response) {
 
 const name = session.displayName;
 
-const stories: Story[] = [
-  {
-    slug: 'cabinet-culture-briefing',
-    title: 'Cabinet Culture Briefing: How fringe narratives reached Whitehall corridors',
-    dek: 'A weeklong investigation into influence channels, donor networks, and the new language of authority.',
-    section: 'Politics',
-    author: 'Martha Ellison',
-    minutes: 8,
-  },
-  {
-    slug: 'docklands-quiet-money',
-    title: 'The Quiet Money of Docklands: shell companies, empty floors, and invisible ownership',
-    dek: 'Property filings and leaked prospectuses reveal a hidden market reshaping east London.',
-    section: 'Investigations',
-    author: 'Daniel Reeve',
-    minutes: 11,
-  },
-  {
-    slug: 'church-square-network',
-    title: 'Inside the Church Square Network that feeds Britain\'s viral moral panics',
-    dek: 'From Telegram channels to breakfast TV scripts, one media chain is setting the daily tone.',
-    section: 'Media',
-    author: 'Aisha Khan',
-    minutes: 7,
-  },
-  {
-    slug: 'north-sea-farms',
-    title: 'North Sea Wind Farms Face Local Revolt as Compensation Talks Collapse',
-    dek: 'Village councils are demanding long-term rate guarantees before new construction starts.',
-    section: 'Britain',
-    author: 'Oliver Page',
-    minutes: 5,
-  },
-  {
-    slug: 'city-after-dark-economy',
-    title: 'The City After Dark: private members\' clubs become the new policy salons',
-    dek: 'Ministers, advisors, and platform founders now prefer invitation-only venues over public forums.',
-    section: 'Business',
-    author: 'Nadia Porter',
-    minutes: 6,
-  },
-  {
-    slug: 'schools-curriculum-wave',
-    title: 'Schools Brace for a New Curriculum Wave as Pilot Rules Leak',
-    dek: 'Teachers say proposed standards compress arts and civic studies in favor of competency blocks.',
-    section: 'Education',
-    author: 'Jacob Finch',
-    minutes: 4,
-  },
-];
+const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
+  status: 'published',
+  limit: 12,
+  orderBy: { published_at: 'desc', updated_at: 'desc' },
+});
 
-const lead = stories[0];
-const secondLead = stories[1];
+if (postsError) {
+  throw postsError;
+}
+
+const stories: Story[] = postEntries.map((entry) => {
+  const data = entry.data as Record<string, unknown>;
+
+  const slug = typeof data.slug === 'string' && data.slug.length > 0
+    ? data.slug
+    : entry.id;
+
+  const title = typeof data.title === 'string' && data.title.length > 0
+    ? data.title
+    : 'Untitled post';
+
+  const dek = typeof data.excerpt === 'string' && data.excerpt.length > 0
+    ? data.excerpt
+    : null;
+
+  const status = typeof data.status === 'string' ? data.status : null;
+  const updatedAt = typeof data.updatedAt === 'string' ? data.updatedAt : null;
+
+  return {
+    slug,
+    title,
+    dek,
+    status,
+    updatedAt,
+  };
+});
+
+const lead = stories[0] ?? null;
+const secondLead = stories[1] ?? null;
 const rails = stories.slice(2);
 ---
 
@@ -99,29 +86,56 @@ const rails = stories.slice(2);
     </header>
 
     <main class="front-grid">
-      <article class="lead">
-        <p class="kicker">{lead.section}</p>
-        <h2>{lead.title}</h2>
-        <p>{lead.dek}</p>
-        <p class="meta">By {lead.author} | {lead.minutes} min read</p>
-      </article>
-
-      <article class="secondary">
-        <p class="kicker">{secondLead.section}</p>
-        <h3>{secondLead.title}</h3>
-        <p>{secondLead.dek}</p>
-        <p class="meta">By {secondLead.author} | {secondLead.minutes} min read</p>
-      </article>
-
-      <section class="rail">
-        {rails.map((story) => (
-          <article>
-            <p class="kicker">{story.section}</p>
-            <h4>{story.title}</h4>
-            <p>{story.dek}</p>
+      {lead ? (
+        <>
+          <article class="lead">
+            <p class="kicker">{lead.status ?? 'Published'}</p>
+            <h2><a href={`/posts/${lead.slug}`}>{lead.title}</a></h2>
+            {lead.dek && <p>{lead.dek}</p>}
+            <p class="meta">{lead.updatedAt ? `Updated ${new Date(lead.updatedAt).toLocaleString()}` : 'Published story'}</p>
           </article>
-        ))}
-      </section>
+
+          <article class="secondary">
+            {secondLead ? (
+              <>
+                <p class="kicker">{secondLead.status ?? 'Published'}</p>
+                <h3><a href={`/posts/${secondLead.slug}`}>{secondLead.title}</a></h3>
+                {secondLead.dek && <p>{secondLead.dek}</p>}
+                <p class="meta">{secondLead.updatedAt ? `Updated ${new Date(secondLead.updatedAt).toLocaleString()}` : 'Published story'}</p>
+              </>
+            ) : (
+              <>
+                <p class="kicker">Newsroom</p>
+                <h3>Only one published post is available right now.</h3>
+                <p>Publish another post in EmDash to populate this slot.</p>
+              </>
+            )}
+          </article>
+
+          <section class="rail">
+            {rails.length > 0 ? (
+              rails.map((story) => (
+                <article>
+                  <p class="kicker">{story.status ?? 'Published'}</p>
+                  <h4><a href={`/posts/${story.slug}`}>{story.title}</a></h4>
+                  {story.dek && <p>{story.dek}</p>}
+                </article>
+              ))
+            ) : (
+              <article>
+                <p class="kicker">Newsroom</p>
+                <h4>No additional published posts yet.</h4>
+              </article>
+            )}
+          </section>
+        </>
+      ) : (
+        <article class="lead" style="grid-column: 1 / -1;">
+          <p class="kicker">Newsroom</p>
+          <h2>No published posts yet.</h2>
+          <p>Publish posts in EmDash and they will appear here automatically.</p>
+        </article>
+      )}
     </main>
   </div>
 </Layout>

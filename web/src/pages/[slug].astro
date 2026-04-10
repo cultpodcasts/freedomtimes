@@ -20,20 +20,63 @@ if (!slug) {
 	return new Response('Missing slug', { status: 400 });
 }
 
-const { entry, error, isPreview } = await getEmDashEntry('pages', slug);
+const collections = [
+	{ key: 'pages', label: 'Page' },
+	{ key: 'posts', label: 'Post' },
+] as const;
 
-if (error) {
-	throw error;
+let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
+let resolvedIsPreview = false;
+let resolvedLabel = 'Page';
+let lastUnexpectedError: string | null = null;
+
+for (const collection of collections) {
+	const { entry, error, isPreview } = await getEmDashEntry(collection.key, slug);
+
+	if (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		const lower = message.toLowerCase();
+
+		const isExpectedLookupMiss =
+			lower.includes('not found')
+			|| lower.includes('no row')
+			|| lower.includes('missing')
+			|| lower.includes('no such table')
+			|| lower.includes('does not exist')
+			|| lower.includes('unknown collection');
+
+		if (!isExpectedLookupMiss) {
+			lastUnexpectedError = message;
+			console.error('[page.slug] failed to resolve entry', {
+				slug,
+				collection: collection.key,
+				message,
+			});
+		}
+
+		continue;
+	}
+
+	if (entry) {
+		resolvedEntry = entry;
+		resolvedIsPreview = isPreview;
+		resolvedLabel = collection.label;
+		break;
+	}
 }
 
-if (!entry) {
+if (!resolvedEntry) {
+	if (lastUnexpectedError) {
+		return new Response('Unable to load page right now', { status: 500 });
+	}
+
 	return new Response('Page not found', { status: 404 });
 }
 ---
 
 <EmDashContentView
-	entry={entry}
-	collectionLabel="Page"
+	entry={resolvedEntry}
+	collectionLabel={resolvedLabel}
 	displayName={session.displayName}
-	isPreview={isPreview}
+	isPreview={resolvedIsPreview}
 />
