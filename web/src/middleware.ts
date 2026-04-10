@@ -14,7 +14,10 @@ const AUTH_BYPASS_RULES: PathRule[] = [
   { path: '/_emdash', mode: PathMode.Exact },
   { path: '/_emdash/', mode: PathMode.StartsWith },
   { path: '/.well-known/oauth-protected-resource', mode: PathMode.Exact },
+  { path: '/.well-known/oauth-authorization-server', mode: PathMode.Exact },
 ];
+
+const DEFAULT_MCP_SCOPES = 'content:read content:write media:read media:write schema:read schema:write admin';
 
 function validatePathRules(rules: PathRule[]): void {
   for (const rule of rules) {
@@ -61,6 +64,34 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // Global log to confirm middleware execution for all requests
     console.info('[middleware] onRequest called', { path: context.url.pathname, full: context.url.href });
   const path = context.url.pathname;
+
+  // Some MCP clients do not send scope/slug on authorize, which EmDash rejects.
+  // Normalize these query params so OAuth can complete.
+  if (path === '/_emdash/oauth/authorize') {
+    const url = new URL(context.url.href);
+    const scope = url.searchParams.get('scope')?.trim() ?? '';
+    const slug = url.searchParams.get('slug')?.trim() ?? '';
+    let shouldRedirect = false;
+
+    if (!scope) {
+      url.searchParams.set('scope', DEFAULT_MCP_SCOPES);
+      shouldRedirect = true;
+    }
+
+    if (!slug) {
+      url.searchParams.set('slug', 'default');
+      shouldRedirect = true;
+    }
+
+    if (shouldRedirect) {
+      const redirectUrl = `${url.pathname}${url.search}`;
+      console.info('[middleware] normalized emdash oauth authorize params', {
+        originalUrl: context.url.href,
+        redirectUrl,
+      });
+      return context.redirect(redirectUrl, 302);
+    }
+  }
 
   // Always inject a default slug param for /authorize, even if other params are present
   if (path === '/authorize') {

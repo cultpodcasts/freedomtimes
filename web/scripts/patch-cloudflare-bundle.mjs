@@ -44,6 +44,23 @@ for (const fullPath of files) {
 
   updated = updated.replaceAll('createRequire(import.meta.url)', "createRequire('/')");
 
+  // Some EmDash/OAuth responses can arrive with immutable headers in Workers.
+  // Ensure baseline security headers are applied to a writable response clone.
+  updated = updated.replace(
+    'function setBaselineSecurityHeaders(response) {\n  response.headers.set("X-Content-Type-Options", "nosniff");\n  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");\n  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");\n  if (!response.headers.has("Content-Security-Policy")) response.headers.set("X-Frame-Options", "SAMEORIGIN");\n}',
+    'function setBaselineSecurityHeaders(response) {\n  let writable = response;\n  try {\n    writable.headers.set("X-Content-Type-Options", "nosniff");\n  } catch {\n    writable = new Response(response.body, response);\n  }\n  writable.headers.set("X-Content-Type-Options", "nosniff");\n  writable.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");\n  writable.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");\n  if (!writable.headers.has("Content-Security-Policy")) writable.headers.set("X-Frame-Options", "SAMEORIGIN");\n  return writable;\n}'
+  );
+
+  updated = updated.replace(
+    '      const response = await next();\n      setBaselineSecurityHeaders(response);\n      return response;',
+    '      const response = await next();\n      return setBaselineSecurityHeaders(response);'
+  );
+
+  updated = updated.replace(
+    '    const response = await next();\n    setBaselineSecurityHeaders(response);\n    return response;',
+    '    const response = await next();\n    return setBaselineSecurityHeaders(response);'
+  );
+
   if (name.startsWith('worker-entry_')) {
     updated = updated
       .replace(

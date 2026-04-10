@@ -31,6 +31,7 @@ resource "cloudflare_workers_script" "holding_page" {
       content,
       plain_text_binding,
       r2_bucket_binding,
+      kv_namespace_binding,
     ]
   }
 }
