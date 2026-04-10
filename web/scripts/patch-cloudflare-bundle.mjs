@@ -42,9 +42,7 @@ for (const fullPath of files) {
     'Path=/_emdash/oauth/authorize'
   );
 
-  if (name.startsWith('adapt-sandbox-entry_')) {
-    updated = updated.replaceAll('createRequire(import.meta.url)', "createRequire('/')");
-  }
+  updated = updated.replaceAll('createRequire(import.meta.url)', "createRequire('/')");
 
   if (name.startsWith('worker-entry_')) {
     updated = updated
