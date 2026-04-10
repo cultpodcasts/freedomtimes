@@ -15,6 +15,8 @@ const AUTH_BYPASS_RULES: PathRule[] = [
   { path: '/_emdash/', mode: PathMode.StartsWith },
   { path: '/.well-known/oauth-protected-resource', mode: PathMode.Exact },
   { path: '/.well-known/oauth-authorization-server', mode: PathMode.Exact },
+  { path: '/.well-known/oauth-protected-resource/_emdash/api/mcp', mode: PathMode.Exact },
+  { path: '/.well-known/oauth-authorization-server/_emdash', mode: PathMode.Exact },
 ];
 
 const DEFAULT_MCP_SCOPES = 'content:read content:write media:read media:write schema:read schema:write admin';
@@ -64,6 +66,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // Global log to confirm middleware execution for all requests
     console.info('[middleware] onRequest called', { path: context.url.pathname, full: context.url.href });
   const path = context.url.pathname;
+
+  // Some OAuth clients use RFC 8414 path variants for issuers/resources with paths.
+  // EmDash serves metadata under /_emdash; expose compatibility aliases at root.
+  if (
+    path === '/.well-known/oauth-authorization-server'
+    || path === '/.well-known/oauth-authorization-server/_emdash'
+  ) {
+    return fetch(new URL('/_emdash/.well-known/oauth-authorization-server', context.url));
+  }
+
+  if (
+    path === '/.well-known/oauth-protected-resource/_emdash/api/mcp'
+  ) {
+    return fetch(new URL('/.well-known/oauth-protected-resource', context.url));
+  }
 
   // Some MCP clients do not send scope/slug on authorize, which EmDash rejects.
   // Normalize these query params so OAuth can complete.

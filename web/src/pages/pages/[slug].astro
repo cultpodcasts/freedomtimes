@@ -1,0 +1,15 @@
+---
+const slug = Astro.params.slug;
+
+if (!slug) {
+  return new Response('Missing slug', { status: 400 });
+}
+
+const redirectUrl = new URL(`/${slug}`, Astro.url);
+
+if (Astro.url.search) {
+  redirectUrl.search = Astro.url.search;
+}
+
+return Astro.redirect(`${redirectUrl.pathname}${redirectUrl.search}`, 308);
+---
