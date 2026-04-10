@@ -46,6 +46,7 @@ export default defineConfig({
 	integrations: [
 		react(),
 		emdash({
+			mcp: true,
 			database: emdashDatabase,
 			storage: emdashStorage,
 		}),

@@ -75,7 +75,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // Check Auth0 roles for admin routes
     const isAdminRoute = path.startsWith('/_emdash/admin');
     const userRoles = getRolesFromRequest(context);
-    const hasEditorialRole = userRoles.includes('editorial') || userRoles.includes('admin');
+    const hasEditorialRole = userRoles.includes('editor') || userRoles.includes('admin');
 
     console.info('[emdash.bootstrap]', {
       path,

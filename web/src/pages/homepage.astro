@@ -1,16 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import {
-  ACCESS_TOKEN_COOKIE,
-  CSRF_COOKIE,
-  SESSION_COOKIE,
-  getAuthConfig,
-  getCookieDeleteOptionsForHost,
-  getDisplayName,
-  getRoleClaimDebug,
-  hasEditorialRole,
-  verifyIdToken,
-} from '../lib/auth';
+import { requireEditorialSession } from '../lib/editorial-session';
 
 type Story = {
   slug: string;
@@ -21,45 +11,18 @@ type Story = {
   minutes: number;
 };
 
-const requestId = Astro.request.headers.get('cf-ray') ?? crypto.randomUUID();
-const token = Astro.cookies.get(SESSION_COOKIE)?.value;
+const session = await requireEditorialSession({
+  cookies: Astro.cookies,
+  url: Astro.url,
+  request: Astro.request,
+  redirect: Astro.redirect,
+});
 
-if (!token) {
-  console.warn('[homepage] missing session cookie', { requestId });
-  return Astro.redirect('/');
+if (session instanceof Response) {
+  return session;
 }
 
-const deleteOptionsList = getCookieDeleteOptionsForHost(Astro.url.hostname);
-let name = '';
-
-try {
-  const payload = await verifyIdToken(token, getAuthConfig());
-  if (!hasEditorialRole(payload)) {
-    console.warn('[homepage] token verified but role check failed', {
-      requestId,
-      roleDebug: getRoleClaimDebug(payload),
-    });
-    for (const deleteOptions of deleteOptionsList) {
-      Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
-      Astro.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-      Astro.cookies.delete(CSRF_COOKIE, deleteOptions);
-    }
-    return Astro.redirect('/?denied=1');
-  }
-
-  name = getDisplayName(payload);
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  console.warn('[homepage] token verification failed', { requestId, message });
-
-  for (const deleteOptions of deleteOptionsList) {
-    Astro.cookies.delete(SESSION_COOKIE, deleteOptions);
-    Astro.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-    Astro.cookies.delete(CSRF_COOKIE, deleteOptions);
-  }
-
-  return Astro.redirect('/');
-}
+const name = session.displayName;
 
 const stories: Story[] = [
   {

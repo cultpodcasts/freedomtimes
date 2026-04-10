@@ -1,0 +1,39 @@
+---
+import { getEmDashEntry } from 'emdash';
+
+import EmDashContentView from '../components/EmDashContentView.astro';
+import { requireEditorialSession } from '../lib/editorial-session';
+
+const session = await requireEditorialSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+
+const slug = Astro.params.slug;
+if (!slug) {
+	return new Response('Missing slug', { status: 400 });
+}
+
+const { entry, error, isPreview } = await getEmDashEntry('pages', slug);
+
+if (error) {
+	throw error;
+}
+
+if (!entry) {
+	return new Response('Page not found', { status: 404 });
+}
+---
+
+<EmDashContentView
+	entry={entry}
+	collectionLabel="Page"
+	displayName={session.displayName}
+	isPreview={isPreview}
+/>

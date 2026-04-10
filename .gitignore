@@ -32,3 +32,6 @@ infra/terraform/environments/production/tfplan
 infra/terraform/environments/production/.wrangler/cache/wrangler-account.json
 .tmp/*
 logs/*
+
+# Local VS Code workspace MCP config
+.vscode/mcp.json
