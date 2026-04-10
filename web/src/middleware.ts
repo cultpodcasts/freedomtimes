@@ -1,5 +1,40 @@
 import { defineMiddleware } from 'astro:middleware';
 
+enum PathMode {
+  Exact = 'exact',
+  StartsWith = 'startsWith',
+}
+
+type PathRule = {
+  path: string;
+  mode: PathMode;
+};
+
+const AUTH_BYPASS_RULES: PathRule[] = [
+  { path: '/_emdash', mode: PathMode.Exact },
+  { path: '/_emdash/', mode: PathMode.StartsWith },
+  { path: '/.well-known/oauth-protected-resource', mode: PathMode.Exact },
+];
+
+function validatePathRules(rules: PathRule[]): void {
+  for (const rule of rules) {
+    if (rule.mode === PathMode.StartsWith && !rule.path.endsWith('/')) {
+      throw new Error(`startsWith rule must end with '/': ${rule.path}`);
+    }
+  }
+}
+
+validatePathRules(AUTH_BYPASS_RULES);
+
+function isAuthBypassPath(path: string): boolean {
+  return AUTH_BYPASS_RULES.some((rule) => {
+    if (rule.mode === PathMode.Exact) {
+      return path === rule.path;
+    }
+    return path.startsWith(rule.path);
+  });
+}
+
 function getRolesFromRequest(context: any): string[] {
   // EmDash auth is handled by the CMS integration itself via EMDASH_AUTH_SECRET
   // This middleware provides an additional layer for admin route protection
@@ -24,6 +59,12 @@ function getRolesFromRequest(context: any): string[] {
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
+
+  // Keep EmDash and MCP OAuth endpoints free of outer Auth0 gating.
+  // EmDash handles its own auth and token validation for these routes.
+  if (isAuthBypassPath(path)) {
+    return next();
+  }
 
   if (path.startsWith('/_emdash')) {
     const env = import.meta.env as Record<string, string | undefined>;
