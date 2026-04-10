@@ -140,3 +140,14 @@ Expected names:
 - Run from repo root so relative paths resolve correctly.
 - Ensure Wrangler auth is active (`npx wrangler whoami`).
 - Secret values are intentionally not printed by the sync script; only names/actions are logged.
+
+## Cloudflare Token Permissions (CI)
+
+For GitHub Actions staging deploys, `TF_VAR_CLOUDFLARE_API_TOKEN` must include all permissions needed by both Terraform and Wrangler.
+
+Minimum Worker deploy permissions:
+
+- `Workers Scripts:Edit`
+- `Workers KV Storage:Edit` (required because staging worker config binds `SESSION` KV)
+
+Without KV write permission, the `Deploy Astro Worker to Staging` step fails with Cloudflare API error `10023` (`kv bindings require kv write perms`).

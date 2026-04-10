@@ -454,6 +454,8 @@ jobs:
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
         working-directory: web
         env:
+          # This token must include Workers Scripts edit + KV Storage write permissions
+          # because staging deploy uses a SESSION KV namespace binding.
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
           AUTH0_API_AUDIENCE: ${{ vars.AUTH0_API_AUDIENCE_STAGING }}
