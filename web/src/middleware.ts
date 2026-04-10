@@ -58,7 +58,20 @@ function getRolesFromRequest(context: any): string[] {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+    // Global log to confirm middleware execution for all requests
+    console.info('[middleware] onRequest called', { path: context.url.pathname, full: context.url.href });
   const path = context.url.pathname;
+
+  // Always inject a default slug param for /authorize, even if other params are present
+  if (path === '/authorize') {
+    // Logging for debug
+    console.info('[middleware] /authorize hit', { originalUrl: context.url.href });
+    const url = new URL(context.url.href);
+    url.searchParams.set('slug', 'default'); // Change 'default' if a specific slug is required
+    const redirectUrl = '/_emdash/oauth/authorize' + url.search;
+    console.info('[middleware] redirecting to', { redirectUrl });
+    return context.redirect(redirectUrl, 302);
+  }
 
   // Keep EmDash and MCP OAuth endpoints free of outer Auth0 gating.
   // EmDash handles its own auth and token validation for these routes.
