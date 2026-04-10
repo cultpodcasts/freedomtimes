@@ -1,20 +1,46 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const chunksDir = path.resolve('dist/server/chunks');
+const serverDir = path.resolve('dist/server');
 
-if (!fs.existsSync(chunksDir)) {
-  console.warn('[patch-cloudflare-bundle] chunks directory not found, skipping');
+if (!fs.existsSync(serverDir)) {
+  console.warn('[patch-cloudflare-bundle] server directory not found, skipping');
   process.exit(0);
 }
 
-const files = fs.readdirSync(chunksDir).filter((name) => name.endsWith('.mjs'));
+function collectMjsFiles(dir) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectMjsFiles(fullPath));
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith('.mjs')) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
+const files = collectMjsFiles(serverDir);
 
 let patched = 0;
-for (const name of files) {
-  const fullPath = path.join(chunksDir, name);
+for (const fullPath of files) {
+  const name = path.basename(fullPath);
   const original = fs.readFileSync(fullPath, 'utf8');
   let updated = original;
+
+  // EmDash OAuth authorize route is /_emdash/oauth/authorize.
+  // Older bundles set CSRF cookie path to /_emdash/api/oauth/authorize,
+  // which prevents cookie roundtrip and breaks consent POST with CSRF errors.
+  updated = updated.replaceAll(
+    'Path=/_emdash/api/oauth/authorize',
+    'Path=/_emdash/oauth/authorize'
+  );
 
   if (name.startsWith('adapt-sandbox-entry_')) {
     updated = updated.replaceAll('createRequire(import.meta.url)', "createRequire('/')");
