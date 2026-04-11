@@ -220,9 +220,15 @@ function Invoke-WorkerDeploy {
 function Invoke-FunctionDeploy {
     param([string]$FunctionAppName)
 
-    Write-Step "Deploying staging Function App code (remote build)"
+    Write-Step "Building staging Function App from TypeScript sources"
     Push-Location (Join-Path $repoRoot "functions/editorial-api")
     try {
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "Function App TypeScript build failed."
+        }
+
+        Write-Step "Deploying staging Function App code (remote build)"
         & func azure functionapp publish $FunctionAppName --javascript --build remote
         if ($LASTEXITCODE -ne 0) {
             throw "Function App deploy failed."
