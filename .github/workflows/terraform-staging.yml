@@ -61,7 +61,7 @@ jobs:
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_management_client_id: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID || secrets.TF_VAR_AUTH0_CLIENT_ID }}
       TF_VAR_auth0_management_client_secret: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET || secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
-      TF_VAR_turso_api_token: ${{ secrets.TURSO_TOKEN }}
+      TF_VAR_turso_api_token: ${{ secrets.TURSO_TOKEN_STAGING }}
       TF_VAR_turso_organization: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
       TF_VAR_turso_database_group: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_STAGING }}
 
