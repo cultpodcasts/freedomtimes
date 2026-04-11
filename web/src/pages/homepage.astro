@@ -8,9 +8,29 @@ type Story = {
   slug: string;
   title: string;
   dek: string | null;
+  imageSrc: string | null;
   status: string | null;
   updatedAt: string | null;
 };
+
+function readImageSrc(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (value && typeof value === 'object') {
+    const candidate = value as Record<string, unknown>;
+    if (typeof candidate.src === 'string' && candidate.src.trim().length > 0) {
+      return candidate.src;
+    }
+    if (typeof candidate.url === 'string' && candidate.url.trim().length > 0) {
+      return candidate.url;
+    }
+  }
+
+  return null;
+}
 
 const session = await requireEditorialSession({
   cookies: Astro.cookies,
@@ -50,6 +70,8 @@ const stories: Story[] = postEntries.map((entry) => {
     ? data.excerpt
     : null;
 
+  const imageSrc = readImageSrc(data.featured_image);
+
   const status = typeof data.status === 'string' ? data.status : null;
   const updatedAt = typeof data.updatedAt === 'string' ? data.updatedAt : null;
 
@@ -57,6 +79,7 @@ const stories: Story[] = postEntries.map((entry) => {
     slug,
     title,
     dek,
+    imageSrc,
     status,
     updatedAt,
   };
@@ -89,6 +112,7 @@ const rails = stories.slice(2);
       {lead ? (
         <>
           <article class="lead">
+            {lead.imageSrc && <img class="story-image" src={lead.imageSrc} alt={lead.title} loading="lazy" decoding="async" />}
             <p class="kicker">{lead.status ?? 'Published'}</p>
             <h2><a href={`/posts/${lead.slug}`}>{lead.title}</a></h2>
             {lead.dek && <p>{lead.dek}</p>}
@@ -98,6 +122,7 @@ const rails = stories.slice(2);
           <article class="secondary">
             {secondLead ? (
               <>
+                {secondLead.imageSrc && <img class="story-image" src={secondLead.imageSrc} alt={secondLead.title} loading="lazy" decoding="async" />}
                 <p class="kicker">{secondLead.status ?? 'Published'}</p>
                 <h3><a href={`/posts/${secondLead.slug}`}>{secondLead.title}</a></h3>
                 {secondLead.dek && <p>{secondLead.dek}</p>}
@@ -116,6 +141,7 @@ const rails = stories.slice(2);
             {rails.length > 0 ? (
               rails.map((story) => (
                 <article>
+                  {story.imageSrc && <img class="story-image" src={story.imageSrc} alt={story.title} loading="lazy" decoding="async" />}
                   <p class="kicker">{story.status ?? 'Published'}</p>
                   <h4><a href={`/posts/${story.slug}`}>{story.title}</a></h4>
                   {story.dek && <p>{story.dek}</p>}
@@ -239,6 +265,15 @@ const rails = stories.slice(2);
     background: linear-gradient(170deg, #faf5ea 0%, #efe3cf 100%);
     border: 1px solid #2e2418;
     padding: 0.95rem;
+  }
+
+  .story-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    margin-bottom: 0.7rem;
+    border: 1px solid #3a2d20;
+    background: #f4ecdd;
   }
 
   .lead h2 {

@@ -19,6 +19,20 @@ function readString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
+function readFeaturedImageSrc(value: unknown): string | null {
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}
+
+	if (value && typeof value === 'object') {
+		const candidate = value as Record<string, unknown>;
+		return readString(candidate.src) ?? readString(candidate.url) ?? null;
+	}
+
+	return null;
+}
+
 const data = entry.data;
 const title =
 	readString(data.title) ??
@@ -30,6 +44,8 @@ const summary =
 	readString(data.dek) ?? readString(data.excerpt) ?? readString(data.description) ?? null;
 const portableContent = Array.isArray(data.content) ? data.content : null;
 const textContent = portableContent ? null : readString(data.content);
+const featuredImageSrc = readFeaturedImageSrc(data.featured_image);
+const featuredImageAlt = readString(data.featured_image_alt) ?? `${title} featured image`;
 const publishedAt = readString(data.publishedAt);
 const updatedAt = readString(data.updatedAt);
 ---
@@ -56,6 +72,11 @@ const updatedAt = readString(data.updatedAt);
 		</header>
 
 		<section class="content-card">
+			{featuredImageSrc && (
+				<figure class="hero">
+					<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
+				</figure>
+			)}
 			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} />}
 			{!portableContent && textContent && <p>{textContent}</p>}
 			{!portableContent && !textContent && (
@@ -150,6 +171,19 @@ const updatedAt = readString(data.updatedAt);
 		border-radius: 18px;
 		line-height: 1.75;
 		font-size: 1.05rem;
+	}
+
+	.hero {
+		margin: 0 0 1.2rem;
+	}
+
+	.hero img {
+		display: block;
+		width: 100%;
+		height: auto;
+		border-radius: 12px;
+		border: 1px solid rgba(61, 44, 27, 0.2);
+		background: #f2ebde;
 	}
 
 	.content-card :global(p) {
