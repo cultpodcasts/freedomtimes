@@ -11,6 +11,7 @@ param(
     [string]$PlanFile = "tfplan",
     [switch]$AutoApprove,
     [switch]$UsePlanFile,
+    [string[]]$Target,
     [string]$ImportAddress,
     [string]$ImportId,
     [string]$OutputName
@@ -329,7 +330,15 @@ try {
 
     if ($Operation -eq "plan") {
         Write-Host "DEBUG: Running plan operation" -ForegroundColor DarkGray
-        $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile") + $varArgs
+        $targetArgs = @()
+        if ($Target) {
+            foreach ($resource in $Target) {
+                if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                    $targetArgs += "-target=$resource"
+                }
+            }
+        }
+        $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile") + $targetArgs + $varArgs
         $exitCode = Invoke-TerraformCommand -CommandArgs $planArgs
         exit $exitCode
     }
@@ -347,7 +356,15 @@ try {
 
         if ($AutoApprove) {
             Write-Host "DEBUG: AutoApprove enabled, running apply with $($varArgs.Count) var args" -ForegroundColor DarkGray
-            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $varArgs
+            $targetArgs = @()
+            if ($Target) {
+                foreach ($resource in $Target) {
+                    if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                        $targetArgs += "-target=$resource"
+                    }
+                }
+            }
+            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $varArgs
             Write-Host "DEBUG: applyArgs count: $($applyArgs.Count)" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs $applyArgs
             if ($exitCode -eq 0 -and ($Environment -eq "staging" -or $Environment -eq "production")) {
@@ -371,7 +388,16 @@ try {
             throw "Destroy requires -AutoApprove to ensure non-interactive execution."
         }
 
-        $destroyArgs = @("destroy", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $varArgs
+        $targetArgs = @()
+        if ($Target) {
+            foreach ($resource in $Target) {
+                if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                    $targetArgs += "-target=$resource"
+                }
+            }
+        }
+
+        $destroyArgs = @("destroy", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $varArgs
         $exitCode = Invoke-TerraformCommand -CommandArgs $destroyArgs
         exit $exitCode
     }

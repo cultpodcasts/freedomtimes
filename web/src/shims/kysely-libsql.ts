@@ -1,4 +1,5 @@
 import * as libsql from '@libsql/client/web';
+import { env as cfEnv } from 'cloudflare:workers';
 import {
   SqliteAdapter,
   SqliteIntrospector,
@@ -44,10 +45,16 @@ export class LibsqlDialect {
     let client: any;
     let closeClient: boolean;
 
+    const runtimeEnv = cfEnv as Record<string, string | undefined>;
+    const runtimeUrl = runtimeEnv.TURSO_DATABASE_URL?.trim();
+    const runtimeAuthToken = runtimeEnv.TURSO_AUTH_TOKEN?.trim();
+    const effectiveUrl = runtimeUrl || this.#config.url;
+    const effectiveAuthToken = runtimeAuthToken || this.#config.authToken;
+
     if ('client' in this.#config && this.#config.client) {
       client = this.#config.client;
       closeClient = false;
-    } else if (this.#config.url !== undefined) {
+    } else if (effectiveUrl !== undefined) {
       const fetchImpl =
         typeof globalThis.fetch === 'function'
           ? (input: RequestInfo | URL, init?: RequestInit) => {
@@ -66,8 +73,8 @@ export class LibsqlDialect {
             }
           : undefined;
       client = libsql.createClient({
-        url: this.#config.url,
-        authToken: this.#config.authToken,
+        url: effectiveUrl,
+        authToken: effectiveAuthToken,
         fetch: fetchImpl,
       });
       closeClient = true;
