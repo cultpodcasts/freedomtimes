@@ -66,7 +66,8 @@ export class LibsqlDialect {
             }
           : undefined;
       client = libsql.createClient({
-        ...this.#config,
+        url: this.#config.url,
+        authToken: this.#config.authToken,
         fetch: fetchImpl,
       });
       closeClient = true;
