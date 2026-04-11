@@ -13,14 +13,14 @@ if (!process.env.TURSO_DATABASE_URL) {
 const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.ts', import.meta.url));
 const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
-const emdashDatabase = {
+const emdashDatabase = /** @type {const} */ ({
 	entrypoint: libsqlShimEntryUrl,
 	config: {
 		url: process.env.TURSO_DATABASE_URL,
 		authToken: process.env.TURSO_AUTH_TOKEN,
 	},
 	type: 'sqlite',
-};
+});
 
 const emdashStorage = r2({ binding: 'MEDIA' });
 const libsqlClientWebPath = fileURLToPath(
