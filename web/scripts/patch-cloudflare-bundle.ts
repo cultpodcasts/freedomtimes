@@ -1,6 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+type ReplacementCounter = {
+  found: number;
+  applied: number;
+};
+
+type PublishPatchReport = {
+  syncDataColumnsGuard: ReplacementCounter;
+  publishErrorDiagnostics: ReplacementCounter;
+};
+
 const serverDir = path.resolve('dist/server');
 
 if (!fs.existsSync(serverDir)) {
@@ -8,9 +18,9 @@ if (!fs.existsSync(serverDir)) {
   process.exit(0);
 }
 
-function collectMjsFiles(dir) {
+function collectMjsFiles(dir: string): string[] {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
-  const files = [];
+  const files: string[] = [];
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
@@ -28,7 +38,7 @@ function collectMjsFiles(dir) {
 
 const files = collectMjsFiles(serverDir);
 
-const publishPatchReport = {
+const publishPatchReport: PublishPatchReport = {
   syncDataColumnsGuard: { found: 0, applied: 0 },
   publishErrorDiagnostics: { found: 0, applied: 0 },
 };
