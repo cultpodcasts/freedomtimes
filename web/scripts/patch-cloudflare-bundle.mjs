@@ -28,6 +28,11 @@ function collectMjsFiles(dir) {
 
 const files = collectMjsFiles(serverDir);
 
+const publishPatchReport = {
+  syncDataColumnsGuard: { found: 0, applied: 0 },
+  publishErrorDiagnostics: { found: 0, applied: 0 },
+};
+
 let patched = 0;
 for (const fullPath of files) {
   const name = path.basename(fullPath);
@@ -61,6 +66,38 @@ for (const fullPath of files) {
     '    const response = await next();\n    return setBaselineSecurityHeaders(response);'
   );
 
+  // Defensive workaround for EmDash publish: tolerate schema drift where
+  // draft revision data includes keys for columns removed from ec_* tables.
+  // This prevents publish from hard-failing with "no such column".
+  const syncGuardNeedle =
+    '        if (revision) {\n            await this.syncDataColumns(type, id, revision.data);\n            if (typeof revision.data._slug === "string") {';
+  const syncGuardReplacement =
+    '        if (revision) {\n            try {\n                await this.syncDataColumns(type, id, revision.data);\n            } catch (err) {\n                const msg = err instanceof Error ? err.message : String(err);\n                const lower = msg.toLowerCase();\n                const isColumnDrift = lower.includes("no such column") || lower.includes("unknown column");\n                if (!isColumnDrift) throw err;\n                console.warn("[patch-cloudflare-bundle] Ignoring publish column drift during syncDataColumns:", msg);\n            }\n            if (typeof revision.data._slug === "string") {';
+
+  if (updated.includes(syncGuardNeedle)) {
+    publishPatchReport.syncDataColumnsGuard.found += 1;
+    const before = updated;
+    updated = updated.replace(syncGuardNeedle, syncGuardReplacement);
+    if (updated !== before) {
+      publishPatchReport.syncDataColumnsGuard.applied += 1;
+    }
+  }
+
+  // Improve MCP diagnostics so publish failures include actionable detail.
+  const publishErrorNeedle =
+    '      return {\n        success: false,\n        error: {\n          code: "CONTENT_PUBLISH_ERROR",\n          message: "Failed to publish content"\n        }\n      };';
+  const publishErrorReplacement =
+    '      const detail = error instanceof Error ? error.message : String(error);\n      return {\n        success: false,\n        error: {\n          code: "CONTENT_PUBLISH_ERROR",\n          message: `Failed to publish content: ${detail}`\n        }\n      };';
+
+  if (updated.includes(publishErrorNeedle)) {
+    publishPatchReport.publishErrorDiagnostics.found += 1;
+    const before = updated;
+    updated = updated.replace(publishErrorNeedle, publishErrorReplacement);
+    if (updated !== before) {
+      publishPatchReport.publishErrorDiagnostics.applied += 1;
+    }
+  }
+
   if (name.startsWith('worker-entry_')) {
     updated = updated
       .replace(
@@ -84,3 +121,9 @@ for (const fullPath of files) {
 }
 
 console.log(`[patch-cloudflare-bundle] patched ${patched} file(s)`);
+console.log(
+  `[patch-cloudflare-bundle] publish syncDataColumns guard: found=${publishPatchReport.syncDataColumnsGuard.found}, applied=${publishPatchReport.syncDataColumnsGuard.applied}`
+);
+console.log(
+  `[patch-cloudflare-bundle] publish error diagnostics: found=${publishPatchReport.publishErrorDiagnostics.found}, applied=${publishPatchReport.publishErrorDiagnostics.applied}`
+);
