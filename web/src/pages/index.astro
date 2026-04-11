@@ -5,15 +5,23 @@ const denied = Astro.url.searchParams.get('denied') === '1';
 ---
 
 <Layout>
-	<section class="card">
-		<h1>Freedom Times</h1>
-		<p class="lead">A secure holding page for early access.</p>
-		{denied && <p class="warn">You must have an admin or editor role to continue.</p>}
-		<a class="button" href="/auth/login">Log in with Google</a>
-	</section>
+	<div class="holding-shell">
+		<section class="card">
+			<h1>Freedom Times</h1>
+			<p class="lead">A secure holding page for early access.</p>
+			{denied && <p class="warn">You must have an admin or editor role to continue.</p>}
+			<a class="button" href="/auth/login">Log in with Google</a>
+		</section>
+	</div>
 </Layout>
 
 <style>
+	.holding-shell {
+		min-height: calc(100vh - 2.5rem);
+		display: grid;
+		place-items: center;
+	}
+
 	.card {
 		width: min(640px, 94vw);
 		padding: 2.5rem 2rem;
@@ -52,5 +60,11 @@ const denied = Astro.url.searchParams.get('denied') === '1';
 
 	.button:hover {
 		background: #13372d;
+	}
+
+	@media (max-width: 720px) {
+		.holding-shell {
+			min-height: calc(100vh - 2rem);
+		}
 	}
 </style>

@@ -12,6 +12,7 @@ param(
     [switch]$AutoApprove,
     [switch]$UsePlanFile,
     [string[]]$Target,
+    [string[]]$Replace,
     [string]$ImportAddress,
     [string]$ImportId,
     [string]$OutputName
@@ -338,7 +339,15 @@ try {
                 }
             }
         }
-        $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile") + $targetArgs + $varArgs
+        $replaceArgs = @()
+        if ($Replace) {
+            foreach ($resource in $Replace) {
+                if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                    $replaceArgs += "-replace=$resource"
+                }
+            }
+        }
+        $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile") + $targetArgs + $replaceArgs + $varArgs
         $exitCode = Invoke-TerraformCommand -CommandArgs $planArgs
         exit $exitCode
     }
@@ -364,7 +373,15 @@ try {
                     }
                 }
             }
-            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $varArgs
+            $replaceArgs = @()
+            if ($Replace) {
+                foreach ($resource in $Replace) {
+                    if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                        $replaceArgs += "-replace=$resource"
+                    }
+                }
+            }
+            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $replaceArgs + $varArgs
             Write-Host "DEBUG: applyArgs count: $($applyArgs.Count)" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs $applyArgs
             if ($exitCode -eq 0 -and ($Environment -eq "staging" -or $Environment -eq "production")) {
