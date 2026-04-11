@@ -54,7 +54,7 @@ export class LibsqlDialect {
     if ('client' in this.#config && this.#config.client) {
       client = this.#config.client;
       closeClient = false;
-    } else if (effectiveUrl !== undefined) {
+    } else if (effectiveUrl) {
       const fetchImpl =
         typeof globalThis.fetch === 'function'
           ? (input: RequestInfo | URL, init?: RequestInit) => {
@@ -154,7 +154,7 @@ class LibsqlConnection {
 
     return {
       insertId: result.lastInsertRowid,
-      numAffectedRows: BigInt(result.rowsAffected),
+      numAffectedRows: BigInt(result.rowsAffected ?? 0),
       rows: result.rows,
     };
   }
