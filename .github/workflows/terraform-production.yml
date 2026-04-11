@@ -61,6 +61,9 @@ jobs:
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_management_client_id: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID || secrets.TF_VAR_AUTH0_CLIENT_ID }}
       TF_VAR_auth0_management_client_secret: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET || secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
+      TF_VAR_turso_api_token: ${{ secrets.TURSO_TOKEN }}
+      TF_VAR_turso_organization: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
+      TF_VAR_turso_database_group: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}
 
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +90,9 @@ jobs:
             TF_VAR_auth0_domain
             TF_VAR_auth0_management_client_id
             TF_VAR_auth0_management_client_secret
+            TF_VAR_turso_api_token
+            TF_VAR_turso_organization
+            TF_VAR_turso_database_group
             TF_VAR_route_pattern
             TF_VAR_workspace_url
             TF_VAR_api_management_allowed_origins
@@ -247,11 +253,16 @@ jobs:
           API_BASE_URL=$(terraform output -raw azure_editorial_api_public_base_url 2>/dev/null || echo "")
           FUNCTION_APP_NAME=$(terraform output -raw azure_function_app_name 2>/dev/null || echo "")
           RESOURCE_GROUP_NAME=$(terraform output -raw azure_resource_group_name 2>/dev/null || echo "")
+          TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
+          TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
 
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
           echo "api_base_url=$API_BASE_URL" >> $GITHUB_OUTPUT
           echo "function_app_name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
           echo "resource_group_name=$RESOURCE_GROUP_NAME" >> $GITHUB_OUTPUT
+          echo "turso_database_url=$TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "::add-mask::$TURSO_AUTH_TOKEN"
+          echo "turso_auth_token=$TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
 
       - name: Fetch Auth0 App Secret
         id: auth0_app_secret
@@ -312,6 +323,10 @@ jobs:
         working-directory: functions/editorial-api
         run: npm ci
 
+      - name: Build Function App (TypeScript)
+        working-directory: functions/editorial-api
+        run: npm run build
+
       - name: Azure Login for Function Deploy
         if: steps.tf_outputs.outputs.function_app_name != '' && steps.tf_outputs.outputs.function_app_name != 'null'
         uses: azure/login@v2
@@ -325,7 +340,7 @@ jobs:
         with:
           app-name: ${{ steps.tf_outputs.outputs.function_app_name }}
           package: ./functions/editorial-api
-          remote-build: true
+          remote-build: false
           respect-funcignore: true
 
       - name: Function App Deploy Complete
@@ -367,7 +382,23 @@ jobs:
 
       - name: Build Astro Worker
         working-directory: web
-        run: npm run build
+        env:
+          TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TURSO_DATABASE_URL}" ]; then
+            echo "ERROR: TURSO_DATABASE_URL is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          if [ -z "${TURSO_AUTH_TOKEN}" ]; then
+            echo "ERROR: TURSO_AUTH_TOKEN is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          npm run build
 
       - name: Deploy Astro Worker to Production
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
@@ -400,10 +431,28 @@ jobs:
           AUTH0_DOMAIN_VALUE: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
           AUTH0_CLIENT_ID_VALUE: ${{ steps.tf_outputs.outputs.auth0_app_client_id }}
           AUTH0_CLIENT_SECRET_VALUE: ${{ steps.auth0_app_secret.outputs.auth0_app_client_secret }}
+          TURSO_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+          EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
+          EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_PRODUCTION }}
         run: |
+          set -euo pipefail
+
+          if [ -z "${EMDASH_AUTH_SECRET_VALUE:-}" ]; then
+            echo "Missing required secret: EMDASH_AUTH_SECRET_PRODUCTION"
+            exit 1
+          fi
+
           printf '%s' "$AUTH0_DOMAIN_VALUE" | npx wrangler secret put AUTH0_DOMAIN --config wrangler.jsonc --env production
           printf '%s' "$AUTH0_CLIENT_ID_VALUE" | npx wrangler secret put AUTH0_CLIENT_ID --config wrangler.jsonc --env production
           printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_DATABASE_URL --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_AUTH_TOKEN --config wrangler.jsonc --env production
+          printf '%s' "$EMDASH_AUTH_SECRET_VALUE" | npx wrangler secret put EMDASH_AUTH_SECRET --config wrangler.jsonc --env production
+
+          if [ -n "${EMDASH_PREVIEW_SECRET_VALUE:-}" ]; then
+            printf '%s' "$EMDASH_PREVIEW_SECRET_VALUE" | npx wrangler secret put EMDASH_PREVIEW_SECRET --config wrangler.jsonc --env production
+          fi
 
       - name: Cleanup Unlock TFC Workspace
         if: always()

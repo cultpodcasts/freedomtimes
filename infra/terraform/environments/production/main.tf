@@ -13,6 +13,39 @@ provider "auth0" {
   client_secret = var.auth0_management_client_secret
 }
 
+provider "turso" {
+  api_token = var.turso_api_token
+}
+
+locals {
+  turso_database_group = trimspace(var.turso_database_group) != "" ? trimspace(var.turso_database_group) : null
+  turso_database_token_expiration = trimspace(var.turso_database_token_expiration) != "" ? trimspace(var.turso_database_token_expiration) : null
+  turso_database_size_limit = trimspace(var.turso_database_size_limit) != "" ? trimspace(var.turso_database_size_limit) : null
+  turso_database_url = format("libsql://%s", turso_database.emdash.hostname)
+}
+
+resource "turso_database" "emdash" {
+  organization_name = var.turso_organization
+  name              = var.turso_database_name
+  group             = local.turso_database_group
+}
+
+resource "turso_database_configuration" "emdash" {
+  count = var.turso_database_delete_protection || local.turso_database_size_limit != null ? 1 : 0
+
+  organization_slug = var.turso_organization
+  database_name     = turso_database.emdash.name
+  delete_protection = var.turso_database_delete_protection
+  size_limit        = local.turso_database_size_limit
+}
+
+resource "turso_database_token" "emdash" {
+  organization_name = var.turso_organization
+  database_name     = turso_database.emdash.name
+  authorization     = var.turso_database_token_authorization
+  expiration        = local.turso_database_token_expiration
+}
+
 module "cloudflare_holding_page" {
   source = "../../modules/cloudflare_holding_page"
 
@@ -30,6 +63,11 @@ module "cloudflare_holding_page" {
   holding_message = var.holding_message
   build_revision  = var.build_revision
   contact_email   = var.contact_email
+
+  worker_secrets = {
+    TURSO_DATABASE_URL = local.turso_database_url
+    TURSO_AUTH_TOKEN   = turso_database_token.emdash.jwt
+  }
 }
 
 module "auth0_app" {
@@ -44,6 +82,7 @@ module "auth0_app" {
   auth0_domain          = var.auth0_domain
   create_shared_resources = false
   create_api_resource_server = true
+  enable_machine_to_machine_grant = true
 }
 
 module "azure_editorial_api" {

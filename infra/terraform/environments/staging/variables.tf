@@ -20,6 +20,61 @@ variable "azure_location" {
   default     = "uksouth"
 }
 
+variable "turso_api_token" {
+  description = "Turso API token used by Terraform to manage staging EmDash resources"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "turso_organization" {
+  description = "Turso organization or user slug for staging EmDash resources"
+  type        = string
+}
+
+variable "turso_database_name" {
+  description = "Turso database name for staging EmDash"
+  type        = string
+  default     = "freedomtimes-emdash-staging"
+}
+
+variable "turso_database_group" {
+  description = "Optional Turso group for staging EmDash database"
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_token_expiration" {
+  description = "Optional expiration for the staging EmDash database token (for example 90d or 2w1d30m). Leave empty for no explicit expiration."
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_size_limit" {
+  description = "Optional size limit for the staging EmDash database"
+  type        = string
+  default     = ""
+}
+
+variable "turso_database_delete_protection" {
+  description = "Whether delete protection should be enabled for the staging EmDash database"
+  type        = bool
+  default     = false
+}
+
+variable "turso_database_token_authorization" {
+  description = "Authorization level for the staging EmDash database token"
+  type        = string
+  default     = "full-access"
+}
+
+variable "turso_auth_token" {
+  description = "Deprecated: Turso auth token for EmDash staging database. Ignored when Terraform manages the database token."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "enable_editorial_gateway_policy" {
   description = "Enable APIM gateway JWT/role policy for staging editorial API"
   type        = bool

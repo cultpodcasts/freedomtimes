@@ -21,6 +21,8 @@ resource "cloudflare_workers_script" "holding_page" {
   account_id = var.account_id
   name       = var.worker_name
   content    = local.worker_script
+  module     = true
+  compatibility_date = var.worker_compatibility_date
   logpush    = true
 
   # Wrangler owns deployed Worker bundle content; Terraform manages routing/domain bindings.
@@ -28,6 +30,8 @@ resource "cloudflare_workers_script" "holding_page" {
     ignore_changes = [
       content,
       plain_text_binding,
+      r2_bucket_binding,
+      kv_namespace_binding,
     ]
   }
 }

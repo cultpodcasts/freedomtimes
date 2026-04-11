@@ -22,5 +22,9 @@ terraform {
       source  = "auth0/auth0"
       version = "~> 1.0"
     }
+    turso = {
+      source  = "jpedroh/turso"
+      version = "~> 1.2"
+    }
   }
 }

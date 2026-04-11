@@ -36,10 +36,14 @@ function Main {
             Write-Host "[LOG] Setting AUTH0_DOMAIN for staging: '$stagingAuth0Domain'" -ForegroundColor Magenta
             $stagingClientId = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_STAGING") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_ID_STAGING for staging Worker secret sync."
             $stagingClientSecret = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING for staging Worker secret sync."
-            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for staging" -ForegroundColor Yellow
+            $stagingEmdashAuthSecret = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("EMDASH_AUTH_SECRET_STAGING") -ErrorMessage "Missing EMDASH_AUTH_SECRET_STAGING for staging Worker secret sync."
+            $stagingEmdashPreviewSecret = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("EMDASH_PREVIEW_SECRET_STAGING") -ErrorMessage "Missing EMDASH_PREVIEW_SECRET_STAGING for staging Worker secret sync."
+            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, EMDASH_AUTH_SECRET, EMDASH_PREVIEW_SECRET for staging" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_DOMAIN" -Value $stagingAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $stagingClientId -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $stagingClientSecret -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "EMDASH_AUTH_SECRET" -Value $stagingEmdashAuthSecret -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "EMDASH_PREVIEW_SECRET" -Value $stagingEmdashPreviewSecret -WhatIfOnly:$DryRun
         }
         elseif ($Target -eq "Production") {
             Write-Host "\nSyncing Cloudflare Worker secrets for PRODUCTION..." -ForegroundColor Red
@@ -87,7 +91,12 @@ function Main {
             "AUTH0_LOGIN_APP_CLIENT_ID_STAGING",
             "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING",
             "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION",
-            "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION"
+            "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION",
+            "TURSO_TOKEN",
+            "EMDASH_AUTH_SECRET_STAGING",
+            "EMDASH_PREVIEW_SECRET_STAGING",
+            "EMDASH_AUTH_SECRET_PRODUCTION",
+            "EMDASH_PREVIEW_SECRET_PRODUCTION"
         )
         Write-Host "  Syncing secrets..." -ForegroundColor Gray
         foreach ($name in $secrets) {
@@ -107,6 +116,7 @@ function Main {
             "AUTH0_API_AUDIENCE_STAGING",
             "COOKIE_BASE_DOMAIN",
             "AUTH0_ROLES_CLAIM_NAMESPACE",
+            "TF_VAR_TURSO_ORGANIZATION",
             "TF_VAR_ROUTE_PATTERN_STAGING",
             "TF_VAR_ROUTE_PATTERN_PRODUCTION",
             "TF_VAR_WORKER_NAME_STAGING",

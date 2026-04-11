@@ -4,10 +4,17 @@ param()
 
 function Invoke-FunctionDeploy {
     param([string]$FunctionAppName)
-    Write-Step "Deploying production Function App code (remote build)"
+
+    Write-Step "Building production Function App from TypeScript sources"
     Push-Location (Join-Path $repoRoot "functions/editorial-api")
     try {
-        & func azure functionapp publish $FunctionAppName --javascript --build remote
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "Function App TypeScript build failed."
+        }
+
+        Write-Step "Deploying production Function App code (local build artifact)"
+        & func azure functionapp publish $FunctionAppName --javascript --build local
         if ($LASTEXITCODE -ne 0) {
             throw "Function App deploy failed."
         }
@@ -179,6 +186,25 @@ function Invoke-WorkerDeploy {
     }
 }
 
+function Invoke-WorkerBuild {
+    Write-Step "Building production Worker"
+
+    # Set build-time env vars required by astro.config.ts from Terraform outputs
+    $env:TURSO_DATABASE_URL = Get-TerraformOutputRaw -Name "turso_database_url"
+    $env:TURSO_AUTH_TOKEN   = Get-TerraformOutputRaw -Name "turso_database_auth_token"
+
+    Push-Location (Join-Path $repoRoot "web")
+    try {
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "Worker build failed."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 Write-Step "Starting local production rebuild workflow"
 Invoke-TerraformApplyWithRecovery
 
@@ -200,6 +226,7 @@ $prodClientSecret = Get-TerraformOutputRaw -Name "auth0_app_client_secret"
 
 Assert-Auth0SyncToEnv
 Invoke-SecretSync
+Invoke-WorkerBuild
 Invoke-WorkerDeploy
 
 # Deploy Function App code to production

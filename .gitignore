@@ -1,10 +1,13 @@
 .terraform/
+dist/
+**/dist/
 node_modules/
 **/node_modules/
 *.tfstate
 *.tfstate.*
 *.tfplan
-tfplan-local
+tfplan
+tfplan-*
 crash.log
 *.tfvars
 *.tfvars.json
@@ -21,8 +24,6 @@ crash.log
 
 # Local env files
 .env.dev
-.env.staging
-.env.production
 *.har
 certs/*
 infra/terraform/environments/staging/.wrangler/cache/wrangler-account.json
@@ -32,3 +33,8 @@ infra/terraform/environments/production/tfplan
 .wrangler/cache/wrangler-account.json
 infra/terraform/environments/production/.wrangler/cache/wrangler-account.json
 .tmp/*
+logs/*
+
+# Local VS Code workspace MCP config
+.vscode/mcp.json
+request-headers

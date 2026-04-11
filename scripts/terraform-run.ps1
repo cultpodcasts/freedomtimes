@@ -4,15 +4,18 @@ param(
     [ValidateSet("staging", "production", "auth0-shared")]
     [string]$Environment,
     [Parameter(Mandatory = $true)]
-    [ValidateSet("init", "validate", "plan", "apply", "destroy", "import")]
+    [ValidateSet("init", "validate", "plan", "apply", "destroy", "import", "output")]
     [string]$Operation,
     [switch]$LoadEnvFiles,
     [string]$LockTimeout = "5m",
     [string]$PlanFile = "tfplan",
     [switch]$AutoApprove,
     [switch]$UsePlanFile,
+    [string[]]$Target,
+    [string[]]$Replace,
     [string]$ImportAddress,
-    [string]$ImportId
+    [string]$ImportId,
+    [string]$OutputName
 )
 
 Set-StrictMode -Version Latest
@@ -72,6 +75,8 @@ function Invoke-EnvRemapping {
         "TF_VAR_auth0_management_client_id"     = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
         "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
         "TF_VAR_azure_location"                 = "TF_VAR_AZURE_LOCATION"
+        "TF_VAR_turso_api_token"                = "TURSO_TOKEN"
+        "TF_VAR_turso_organization"             = "TF_VAR_TURSO_ORGANIZATION"
     }
     foreach ($target in $sharedAliases.Keys) {
         $src = [System.Environment]::GetEnvironmentVariable($sharedAliases[$target], "Process")
@@ -88,11 +93,16 @@ function Invoke-EnvRemapping {
             "TF_VAR_worker_name"                               = "TF_VAR_WORKER_NAME$suffix"
             "TF_VAR_manage_apex_dns_record"                    = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
             "TF_VAR_apex_dns_record_content"                   = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
+            "TF_VAR_apim_function_key"                         = "TF_VAR_APIM_FUNCTION_KEY$suffix"
             "TF_VAR_api_custom_hostname"                       = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
             "TF_VAR_workspace_url"                             = "TF_VAR_WORKSPACE_URL$suffix"
             "TF_VAR_api_management_allowed_origins"            = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"    = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password"  = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
+            "TF_VAR_turso_database_name"                       = "TF_VAR_TURSO_DATABASE_NAME$suffix"
+            "TF_VAR_turso_database_group"                      = "TF_VAR_TURSO_DATABASE_GROUP$suffix"
+            "TF_VAR_turso_database_token_expiration"           = "TF_VAR_TURSO_DATABASE_TOKEN_EXPIRATION$suffix"
+            "TF_VAR_turso_database_size_limit"                 = "TF_VAR_TURSO_DATABASE_SIZE_LIMIT$suffix"
         }
         foreach ($target in $envSpecific.Keys) {
             $src = [System.Environment]::GetEnvironmentVariable($envSpecific[$target], "Process")
@@ -165,11 +175,18 @@ function Build-TerraformVarArgs {
             worker_name                             = @("TF_VAR_worker_name")
             manage_apex_dns_record                  = @("TF_VAR_manage_apex_dns_record")
             apex_dns_record_content                 = @("TF_VAR_apex_dns_record_content")
+            apim_function_key                       = @("TF_VAR_apim_function_key", "TF_VAR_APIM_FUNCTION_KEY")
             api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
             workspace_url                           = @("TF_VAR_workspace_url")
             api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
             api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
             api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
+            turso_api_token                         = @("TF_VAR_turso_api_token", "TURSO_TOKEN")
+            turso_organization                      = @("TF_VAR_turso_organization", "TF_VAR_TURSO_ORGANIZATION")
+            turso_database_name                     = @("TF_VAR_turso_database_name")
+            turso_database_group                    = @("TF_VAR_turso_database_group")
+            turso_database_token_expiration         = @("TF_VAR_turso_database_token_expiration")
+            turso_database_size_limit               = @("TF_VAR_turso_database_size_limit")
         }
     }
 
@@ -314,7 +331,23 @@ try {
 
     if ($Operation -eq "plan") {
         Write-Host "DEBUG: Running plan operation" -ForegroundColor DarkGray
-        $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile") + $varArgs
+        $targetArgs = @()
+        if ($Target) {
+            foreach ($resource in $Target) {
+                if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                    $targetArgs += "-target=$resource"
+                }
+            }
+        }
+        $replaceArgs = @()
+        if ($Replace) {
+            foreach ($resource in $Replace) {
+                if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                    $replaceArgs += "-replace=$resource"
+                }
+            }
+        }
+        $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$PlanFile") + $targetArgs + $replaceArgs + $varArgs
         $exitCode = Invoke-TerraformCommand -CommandArgs $planArgs
         exit $exitCode
     }
@@ -332,7 +365,23 @@ try {
 
         if ($AutoApprove) {
             Write-Host "DEBUG: AutoApprove enabled, running apply with $($varArgs.Count) var args" -ForegroundColor DarkGray
-            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $varArgs
+            $targetArgs = @()
+            if ($Target) {
+                foreach ($resource in $Target) {
+                    if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                        $targetArgs += "-target=$resource"
+                    }
+                }
+            }
+            $replaceArgs = @()
+            if ($Replace) {
+                foreach ($resource in $Replace) {
+                    if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                        $replaceArgs += "-replace=$resource"
+                    }
+                }
+            }
+            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $replaceArgs + $varArgs
             Write-Host "DEBUG: applyArgs count: $($applyArgs.Count)" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs $applyArgs
             if ($exitCode -eq 0 -and ($Environment -eq "staging" -or $Environment -eq "production")) {
@@ -356,7 +405,16 @@ try {
             throw "Destroy requires -AutoApprove to ensure non-interactive execution."
         }
 
-        $destroyArgs = @("destroy", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $varArgs
+        $targetArgs = @()
+        if ($Target) {
+            foreach ($resource in $Target) {
+                if (-not [string]::IsNullOrWhiteSpace($resource)) {
+                    $targetArgs += "-target=$resource"
+                }
+            }
+        }
+
+        $destroyArgs = @("destroy", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $varArgs
         $exitCode = Invoke-TerraformCommand -CommandArgs $destroyArgs
         exit $exitCode
     }
@@ -369,6 +427,17 @@ try {
 
         $importArgs = @("import", "-input=false", "-lock-timeout=$LockTimeout", "-no-color") + $varArgs + @($ImportAddress, $ImportId)
         $exitCode = Invoke-TerraformCommand -CommandArgs $importArgs
+        exit $exitCode
+    }
+
+    if ($Operation -eq "output") {
+        Write-Host "DEBUG: Running output operation" -ForegroundColor DarkGray
+        if ([string]::IsNullOrWhiteSpace($OutputName)) {
+            $exitCode = Invoke-TerraformCommand -CommandArgs @("output", "-no-color")
+            exit $exitCode
+        }
+
+        $exitCode = Invoke-TerraformCommand -CommandArgs @("output", "-raw", $OutputName)
         exit $exitCode
     }
 }

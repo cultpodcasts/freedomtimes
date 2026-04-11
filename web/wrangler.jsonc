@@ -3,6 +3,7 @@
 	"main": "dist/server/entry.mjs",
 	"compatibility_date": "2026-03-29",
 	"logpush": true,
+	"compatibility_flags": ["nodejs_compat"],
 	"observability": {
 		"enabled": true,
 		"head_sampling_rate": 1
@@ -32,7 +33,18 @@
 		},
 		"staging": {
 			"name": "freedomtimes-holding-staging",
-			// Staging is also used as preview
+			"kv_namespaces": [
+				{
+					"binding": "SESSION",
+					"id": "86dbef45deff49e4a12bff11b9148706"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "MEDIA",
+					"bucket_name": "freedomtimes-media-staging"
+				}
+			],
 			"vars": {
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",

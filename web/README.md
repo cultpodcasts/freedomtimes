@@ -4,7 +4,7 @@ This app implements the current staging auth gate flow:
 
 1. Holding page with a `Log in with Google` button
 2. Auth0 login through Google SSO
-3. If role includes `admin` or `editor`, user is sent to `/signed-in`
+3. If role includes `admin` or `editor`, user is sent to `/homepage`
 4. If no required role is present, user is redirected back to the holding page
 
 ## Environment Variables
@@ -58,6 +58,7 @@ Run all commands from `web/`:
 ## Routes
 
 - `/` holding page
+- `/homepage` protected broadsheet homepage (requires valid session and `admin` or `editor` role)
 - `/auth/login` starts Auth0 login
 - `/auth/callback` handles code exchange + role check
 - `/auth/logout` clears app session + logs out at Auth0
@@ -77,7 +78,7 @@ Expected end-to-end behavior on your configured staging workspace URL:
 2. Redirect to Auth0 authorize endpoint
 3. `GET /auth/callback?code=...&state=...`
 4. Role check passes for `admin` or `editor`
-5. Redirect to `GET /signed-in`
+5. Redirect to `GET /homepage`
 6. Token verifies and page renders
 
 Primary cookie names used by web auth:

@@ -162,14 +162,44 @@ function Assert-Auth0SyncToEnv {
 
 function Invoke-SecretSync {
     Write-Step "Syncing Cloudflare Worker secrets for staging"
-    $result = Invoke-ChildPwsh -Arguments @(
+
+    # Ensure CLOUDFLARE_ACCOUNT_ID is set so wrangler can run non-interactively
+    if (-not $env:CLOUDFLARE_ACCOUNT_ID) {
+        $accountId = Get-EnvFileValue -Path $baseEnvPath -Key "TF_VAR_CLOUDFLARE_ACCOUNT_ID"
+        if ($accountId) {
+            $env:CLOUDFLARE_ACCOUNT_ID = $accountId
+        }
+    }
+
+    $result = Invoke-ChildPwsh -CaptureOutput -Arguments @(
         "-File", $secretSyncScript,
         "-Target", "Staging",
         "-SyncCloudflareWorkerSecrets"
     )
 
+    $result.Output | ForEach-Object { $_ }
+
     if ($result.ExitCode -ne 0) {
         throw "Cloudflare Worker secret sync failed."
+    }
+}
+
+function Invoke-WorkerBuild {
+    Write-Step "Building staging Worker"
+
+    # Set build-time env vars required by astro.config.mjs from Terraform outputs
+    $env:TURSO_DATABASE_URL = Get-TerraformOutputRaw -Name "turso_database_url"
+    $env:TURSO_AUTH_TOKEN   = Get-TerraformOutputRaw -Name "turso_database_auth_token"
+
+    Push-Location (Join-Path $repoRoot "web")
+    try {
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "Worker build failed."
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 
@@ -190,10 +220,16 @@ function Invoke-WorkerDeploy {
 function Invoke-FunctionDeploy {
     param([string]$FunctionAppName)
 
-    Write-Step "Deploying staging Function App code (remote build)"
+    Write-Step "Building staging Function App from TypeScript sources"
     Push-Location (Join-Path $repoRoot "functions/editorial-api")
     try {
-        & func azure functionapp publish $FunctionAppName --javascript --build remote
+        & npm run build
+        if ($LASTEXITCODE -ne 0) {
+            throw "Function App TypeScript build failed."
+        }
+
+        Write-Step "Deploying staging Function App code (local build artifact)"
+        & func azure functionapp publish $FunctionAppName --javascript --build local
         if ($LASTEXITCODE -ne 0) {
             throw "Function App deploy failed."
         }
@@ -214,7 +250,7 @@ function Invoke-Verification {
             throw "Failed to list staging worker secrets."
         }
 
-        $requiredSecrets = @("AUTH0_DOMAIN", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET")
+        $requiredSecrets = @("AUTH0_DOMAIN", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "EMDASH_AUTH_SECRET", "EMDASH_PREVIEW_SECRET")
         foreach ($secretName in $requiredSecrets) {
             if (-not ($secretOutput -match $secretName)) {
                 throw "Expected worker secret '$secretName' was not found."
@@ -247,6 +283,7 @@ $apiBaseUrl = Get-TerraformOutputRaw -Name "azure_editorial_api_public_base_url"
 $workerName = Get-TerraformOutputRaw -Name "worker_name"
 
 Invoke-SecretSync
+Invoke-WorkerBuild
 Invoke-WorkerDeploy
 Invoke-FunctionDeploy -FunctionAppName $functionAppName
 Invoke-Verification -FunctionAppName $functionAppName

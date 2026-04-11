@@ -13,6 +13,12 @@ output "auth0_app_client_id" {
   value       = module.auth0_app.application_id
 }
 
+output "auth0_app_client_secret" {
+  description = "Auth0 login application client secret for staging (sensitive)"
+  value       = module.auth0_app.client_secret
+  sensitive   = true
+}
+
 output "auth0_api_identifier" {
   description = "Auth0 API audience/identifier for staging tokens"
   value       = module.auth0_app.api_identifier
@@ -51,4 +57,20 @@ output "azure_log_analytics_workspace_name" {
 output "azure_editorial_api_public_base_url" {
   description = "Public API base URL through APIM for staging editorial API"
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)
+}
+
+output "turso_database_name" {
+  description = "Turso database name for staging EmDash"
+  value       = turso_database.emdash.name
+}
+
+output "turso_database_url" {
+  description = "libSQL URL for the staging EmDash database"
+  value       = local.turso_database_url
+}
+
+output "turso_database_auth_token" {
+  description = "Application auth token for the staging EmDash database"
+  value       = turso_database_token.emdash.jwt
+  sensitive   = true
 }

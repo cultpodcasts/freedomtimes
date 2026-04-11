@@ -1,0 +1,82 @@
+---
+import { getEmDashEntry } from 'emdash';
+
+import EmDashContentView from '../components/EmDashContentView.astro';
+import { requireEditorialSession } from '../lib/editorial-session';
+
+const session = await requireEditorialSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+
+const slug = Astro.params.slug;
+if (!slug) {
+	return new Response('Missing slug', { status: 400 });
+}
+
+const collections = [
+	{ key: 'pages', label: 'Page' },
+	{ key: 'posts', label: 'Post' },
+] as const;
+
+let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
+let resolvedIsPreview = false;
+let resolvedLabel = 'Page';
+let lastUnexpectedError: string | null = null;
+
+for (const collection of collections) {
+	const { entry, error, isPreview } = await getEmDashEntry(collection.key, slug);
+
+	if (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		const lower = message.toLowerCase();
+
+		const isExpectedLookupMiss =
+			lower.includes('not found')
+			|| lower.includes('no row')
+			|| lower.includes('missing')
+			|| lower.includes('no such table')
+			|| lower.includes('does not exist')
+			|| lower.includes('unknown collection');
+
+		if (!isExpectedLookupMiss) {
+			lastUnexpectedError = message;
+			console.error('[page.slug] failed to resolve entry', {
+				slug,
+				collection: collection.key,
+				message,
+			});
+		}
+
+		continue;
+	}
+
+	if (entry) {
+		resolvedEntry = entry;
+		resolvedIsPreview = isPreview;
+		resolvedLabel = collection.label;
+		break;
+	}
+}
+
+if (!resolvedEntry) {
+	if (lastUnexpectedError) {
+		return new Response('Unable to load page right now', { status: 500 });
+	}
+
+	return new Response('Page not found', { status: 404 });
+}
+---
+
+<EmDashContentView
+	entry={resolvedEntry}
+	collectionLabel={resolvedLabel}
+	displayName={session.displayName}
+	isPreview={resolvedIsPreview}
+/>

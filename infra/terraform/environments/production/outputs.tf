@@ -53,3 +53,19 @@ output "azure_editorial_api_public_base_url" {
   description = "Public API base URL through APIM for production editorial API"
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)
 }
+
+output "turso_database_name" {
+  description = "Turso database name for production EmDash"
+  value       = turso_database.emdash.name
+}
+
+output "turso_database_url" {
+  description = "libSQL URL for the production EmDash database"
+  value       = local.turso_database_url
+}
+
+output "turso_database_auth_token" {
+  description = "Application auth token for the production EmDash database"
+  value       = turso_database_token.emdash.jwt
+  sensitive   = true
+}

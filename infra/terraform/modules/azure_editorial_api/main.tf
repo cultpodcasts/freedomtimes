@@ -6,6 +6,7 @@ locals {
   cosmos_account_name = coalesce(var.cosmos_account_name, "${var.project_name}-${var.environment}-${local.hash}")
   service_plan_name   = coalesce(var.service_plan_name, "${var.project_name}-func-${var.environment}")
   api_management_name = coalesce(var.api_management_name, "${var.project_name}-${var.environment}-apim-${local.hash}")
+  emdash_database_url = trimspace(var.emdash_database_url)
 
   normalized_storage_name = lower(replace("${var.project_name}${var.environment}${local.hash}", "-", ""))
   storage_account_name    = coalesce(var.storage_account_name, substr(local.normalized_storage_name, 0, 24))
@@ -33,8 +34,14 @@ locals {
     COSMOSDB_CONNECTION_STRING      = azurerm_cosmosdb_account.editorial.primary_sql_connection_string
   }
 
+  emdash_app_settings = local.emdash_database_url != "" ? {
+    EMDASH_DATABASE_URL  = local.emdash_database_url
+    EMDASH_DATABASE_KIND = "postgres"
+  } : {}
+
   function_app_settings = merge(
     local.base_app_settings,
+    local.emdash_app_settings,
     {
       DEPLOYMENT_STORAGE_CONNECTION_STRING = local.storage_connection_string
     }

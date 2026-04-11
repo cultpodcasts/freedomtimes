@@ -33,6 +33,13 @@ variable "cosmos_account_name" {
   default     = null
 }
 
+variable "emdash_database_url" {
+  description = "External PostgreSQL connection string for EmDash (for example Neon). When set, Azure PostgreSQL provisioning is skipped."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "storage_account_name" {
   description = "Optional override for the Storage Account name"
   type        = string

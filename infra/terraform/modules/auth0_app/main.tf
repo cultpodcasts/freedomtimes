@@ -1,6 +1,7 @@
 locals {
   base_urls = distinct(concat([var.workspace_url], var.extra_workspace_urls))
   create_api_resource_server = var.create_shared_resources || var.create_api_resource_server
+  login_app_grant_types = var.enable_machine_to_machine_grant ? ["authorization_code", "refresh_token", "client_credentials"] : ["authorization_code", "refresh_token"]
 }
 
 # Auth0 Client (Regular Web App for server-side code exchange)
@@ -8,6 +9,7 @@ resource "auth0_client" "admin_ui" {
   count           = var.create_login_app ? 1 : 0
   name            = var.app_name
   app_type        = "regular_web"
+  grant_types     = local.login_app_grant_types
 
   callbacks             = [for url in local.base_urls : "${url}/auth/callback"]
   allowed_logout_urls   = local.base_urls
