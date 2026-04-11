@@ -63,6 +63,7 @@ jobs:
       TF_VAR_auth0_management_client_secret: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET || secrets.TF_VAR_AUTH0_CLIENT_SECRET }}
       TF_VAR_turso_api_token: ${{ secrets.TURSO_TOKEN }}
       TF_VAR_turso_organization: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
+      TF_VAR_turso_database_group: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}
 
     steps:
       - uses: actions/checkout@v4
@@ -91,6 +92,7 @@ jobs:
             TF_VAR_auth0_management_client_secret
             TF_VAR_turso_api_token
             TF_VAR_turso_organization
+            TF_VAR_turso_database_group
             TF_VAR_route_pattern
             TF_VAR_workspace_url
             TF_VAR_api_management_allowed_origins
