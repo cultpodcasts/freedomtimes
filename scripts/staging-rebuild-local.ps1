@@ -228,8 +228,8 @@ function Invoke-FunctionDeploy {
             throw "Function App TypeScript build failed."
         }
 
-        Write-Step "Deploying staging Function App code (remote build)"
-        & func azure functionapp publish $FunctionAppName --javascript --build remote
+        Write-Step "Deploying staging Function App code (local build artifact)"
+        & func azure functionapp publish $FunctionAppName --javascript --build local
         if ($LASTEXITCODE -ne 0) {
             throw "Function App deploy failed."
         }

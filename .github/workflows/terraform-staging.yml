@@ -409,6 +409,10 @@ jobs:
         working-directory: functions/editorial-api
         run: npm ci
 
+      - name: Build Function App (TypeScript)
+        working-directory: functions/editorial-api
+        run: npm run build
+
       - name: Azure Login for Function Deploy
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
         uses: azure/login@v2
@@ -422,7 +426,7 @@ jobs:
         with:
           app-name: ${{ steps.tf_outputs.outputs.function_app_name }}
           package: ./functions/editorial-api
-          remote-build: true
+          remote-build: false
           respect-funcignore: true
 
       - name: Function App Deploy Complete
