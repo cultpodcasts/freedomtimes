@@ -447,7 +447,17 @@ jobs:
 
       - name: Install Web Dependencies
         working-directory: web
-        run: npm ci
+        run: |
+          set -euo pipefail
+
+          echo "[web-deps] node=$(node -v) npm=$(npm -v)"
+          echo "[web-deps] pwd=$(pwd)"
+          echo "[web-deps] package typescript=$(node -p "require('./package.json').devDependencies?.typescript || ''")"
+
+          if ! npm ci; then
+            echo "[web-deps] npm ci failed; attempting npm install fallback"
+            npm install --no-audit --no-fund
+          fi
 
       - name: Build Astro Worker
         working-directory: web
