@@ -10,8 +10,8 @@ if (!process.env.TURSO_DATABASE_URL) {
 	throw new Error('TURSO_DATABASE_URL is required for build');
 }
 
-const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.js', import.meta.url));
-const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.js', import.meta.url).href;
+const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.ts', import.meta.url));
+const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
 const emdashDatabase = {
 	entrypoint: libsqlShimEntryUrl,
@@ -26,8 +26,8 @@ const emdashStorage = r2({ binding: 'MEDIA' });
 const libsqlClientWebPath = fileURLToPath(
 	new URL('./node_modules/@libsql/client/lib-esm/web.js', import.meta.url),
 );
-const sqliteShimPath = fileURLToPath(new URL('./src/shims/better-sqlite3.js', import.meta.url));
-const bindingsShimPath = fileURLToPath(new URL('./src/shims/bindings.js', import.meta.url));
+const sqliteShimPath = fileURLToPath(new URL('./src/shims/better-sqlite3.ts', import.meta.url));
+const bindingsShimPath = fileURLToPath(new URL('./src/shims/bindings.ts', import.meta.url));
 
 // https://astro.build/config
 export default defineConfig({

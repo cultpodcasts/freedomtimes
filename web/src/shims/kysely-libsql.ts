@@ -7,10 +7,32 @@ import {
 
 export { libsql };
 
-export class LibsqlDialect {
-  #config;
+type DialectConfig = {
+  url?: string;
+  authToken?: string;
+  client?: {
+    execute: (args: { sql: string; args?: readonly unknown[] }) => Promise<{
+      lastInsertRowid?: bigint | number | string | null;
+      rowsAffected?: number;
+      rows: unknown[];
+    }>;
+    transaction: () => Promise<{
+      execute: (args: { sql: string; args?: readonly unknown[] }) => Promise<{
+        lastInsertRowid?: bigint | number | string | null;
+        rowsAffected?: number;
+        rows: unknown[];
+      }>;
+      commit: () => Promise<void>;
+      rollback: () => Promise<void>;
+    }>;
+    close: () => void;
+  };
+};
 
-  constructor(config) {
+export class LibsqlDialect {
+  #config: DialectConfig;
+
+  constructor(config: DialectConfig) {
     this.#config = config;
   }
 
@@ -19,23 +41,24 @@ export class LibsqlDialect {
   }
 
   createDriver() {
-    let client;
-    let closeClient;
+    let client: any;
+    let closeClient: boolean;
 
-    if ('client' in this.#config) {
+    if ('client' in this.#config && this.#config.client) {
       client = this.#config.client;
       closeClient = false;
     } else if (this.#config.url !== undefined) {
       const fetchImpl =
         typeof globalThis.fetch === 'function'
-          ? (input, init) => {
+          ? (input: RequestInfo | URL, init?: RequestInit) => {
               if (input && typeof input === 'object' && 'url' in input) {
-                return globalThis.fetch(input.url, {
-                  method: input.method,
-                  headers: input.headers,
-                  body: input.body,
-                  redirect: input.redirect,
-                  signal: input.signal,
+                const request = input as Request;
+                return globalThis.fetch(request.url, {
+                  method: request.method,
+                  headers: request.headers,
+                  body: request.body,
+                  redirect: request.redirect,
+                  signal: request.signal,
                   ...(init || {}),
                 });
               }
@@ -54,8 +77,8 @@ export class LibsqlDialect {
     return new LibsqlDriver(client, closeClient);
   }
 
-  createIntrospector(db) {
-    return new SqliteIntrospector(db);
+  createIntrospector(db: unknown) {
+    return new SqliteIntrospector(db as any);
   }
 
   createQueryCompiler() {
@@ -63,7 +86,7 @@ export class LibsqlDialect {
   }
 }
 
-export function createDialect(config) {
+export function createDialect(config: { url?: string; authToken?: string }) {
   return new LibsqlDialect({
     url: config.url,
     authToken: config.authToken,
@@ -71,7 +94,10 @@ export function createDialect(config) {
 }
 
 class LibsqlDriver {
-  constructor(client, closeClient) {
+  private client: any;
+  private closeClient: boolean;
+
+  constructor(client: any, closeClient: boolean) {
     this.client = client;
     this.closeClient = closeClient;
   }
@@ -82,15 +108,15 @@ class LibsqlDriver {
     return new LibsqlConnection(this.client);
   }
 
-  async beginTransaction(connection) {
+  async beginTransaction(connection: LibsqlConnection) {
     await connection.beginTransaction();
   }
 
-  async commitTransaction(connection) {
+  async commitTransaction(connection: LibsqlConnection) {
     await connection.commitTransaction();
   }
 
-  async rollbackTransaction(connection) {
+  async rollbackTransaction(connection: LibsqlConnection) {
     await connection.rollbackTransaction();
   }
 
@@ -104,13 +130,14 @@ class LibsqlDriver {
 }
 
 class LibsqlConnection {
-  #transaction;
+  #transaction: any;
+  private client: any;
 
-  constructor(client) {
+  constructor(client: any) {
     this.client = client;
   }
 
-  async executeQuery(compiledQuery) {
+  async executeQuery(compiledQuery: { sql: string; parameters: readonly unknown[] }) {
     const target = this.#transaction ?? this.client;
     const result = await target.execute({
       sql: compiledQuery.sql,
