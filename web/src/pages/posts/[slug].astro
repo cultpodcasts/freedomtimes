@@ -48,7 +48,6 @@ if (!slug) {
 	if (result.error) {
 		if (isExpectedLookupMiss(result.error)) {
 			const { entries, error } = await getEmDashCollection('posts', {
-				status: 'published',
 				limit: 100,
 				orderBy: { updated_at: 'desc' },
 			});
@@ -64,7 +63,7 @@ if (!slug) {
 				const fallback = entries.find((candidate) => {
 					const data = candidate.data as Record<string, unknown>;
 					const candidateDataSlug = readSlug(data);
-					return candidate.id === slug || candidate.slug === slug || candidateDataSlug === slug;
+					return candidate.id === slug || candidateDataSlug === slug;
 				});
 
 				if (fallback) {
