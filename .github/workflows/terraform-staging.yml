@@ -454,7 +454,20 @@ jobs:
         env:
           TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
           TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
-        run: npm run build
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TURSO_DATABASE_URL}" ]; then
+            echo "ERROR: TURSO_DATABASE_URL is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          if [ -z "${TURSO_AUTH_TOKEN}" ]; then
+            echo "ERROR: TURSO_AUTH_TOKEN is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          npm run build
 
       - name: Deploy Astro Worker to Staging
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
@@ -491,6 +504,8 @@ jobs:
           AUTH0_DOMAIN_VALUE: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
           AUTH0_CLIENT_ID_VALUE: ${{ steps.tf_outputs.outputs.auth0_app_client_id }}
           AUTH0_CLIENT_SECRET_VALUE: ${{ steps.auth0_app_secret.outputs.auth0_app_client_secret }}
+          TURSO_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_STAGING }}
           EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_STAGING }}
         run: |
@@ -504,6 +519,8 @@ jobs:
           printf '%s' "$AUTH0_DOMAIN_VALUE" | npx wrangler secret put AUTH0_DOMAIN --config wrangler.jsonc --env staging
           printf '%s' "$AUTH0_CLIENT_ID_VALUE" | npx wrangler secret put AUTH0_CLIENT_ID --config wrangler.jsonc --env staging
           printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.jsonc --env staging
+          printf '%s' "$TURSO_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_DATABASE_URL --config wrangler.jsonc --env staging
+          printf '%s' "$TURSO_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_AUTH_TOKEN --config wrangler.jsonc --env staging
           printf '%s' "$EMDASH_AUTH_SECRET_VALUE" | npx wrangler secret put EMDASH_AUTH_SECRET --config wrangler.jsonc --env staging
 
           if [ -n "${EMDASH_PREVIEW_SECRET_VALUE:-}" ]; then
