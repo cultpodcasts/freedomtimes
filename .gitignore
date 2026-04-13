@@ -38,3 +38,4 @@ logs/*
 # Local VS Code workspace MCP config
 .vscode/mcp.json
 request-headers
+agents/uk-and-europe-cults-columnist/reports/*.html
