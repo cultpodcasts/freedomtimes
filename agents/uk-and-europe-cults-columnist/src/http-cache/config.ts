@@ -1,0 +1,23 @@
+const DEFAULT_HTTP_CACHE_TTL_MINUTES = 180;
+const DEFAULT_HTTP_CACHE_MAX_ENTRIES = 5000;
+const DEFAULT_HTTP_FETCH_TIMEOUT_MS = 15000;
+
+export const HTTP_CACHE_ENABLED = (process.env.HTTP_CACHE_ENABLED ?? 'true').toLowerCase() !== 'false';
+
+export const HTTP_CACHE_TTL_MINUTES = Math.max(
+  1,
+  Number.parseInt(process.env.HTTP_CACHE_TTL_MINUTES ?? `${DEFAULT_HTTP_CACHE_TTL_MINUTES}`, 10) ||
+    DEFAULT_HTTP_CACHE_TTL_MINUTES,
+);
+
+export const HTTP_CACHE_MAX_ENTRIES = Math.max(
+  100,
+  Number.parseInt(process.env.HTTP_CACHE_MAX_ENTRIES ?? `${DEFAULT_HTTP_CACHE_MAX_ENTRIES}`, 10) ||
+    DEFAULT_HTTP_CACHE_MAX_ENTRIES,
+);
+
+export const HTTP_FETCH_TIMEOUT_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.HTTP_FETCH_TIMEOUT_MS ?? `${DEFAULT_HTTP_FETCH_TIMEOUT_MS}`, 10) ||
+    DEFAULT_HTTP_FETCH_TIMEOUT_MS,
+);

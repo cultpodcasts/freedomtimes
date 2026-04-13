@@ -23,10 +23,18 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+function logProgress(stage: string, data: Record<string, unknown>): void {
+  console.log(`[agent][progress] ${JSON.stringify({ scope: 'pipeline', stage, ...data })}`);
+}
+
 async function main(): Promise<void> {
   const config = loadConfig();
   const url = getArg('url');
   const maxApproved = parsePositiveInt(getArg('max'), 8);
+  const defaultConcurrency = Math.max(
+    1,
+    Number.parseInt(process.env.CANDIDATE_PROCESS_CONCURRENCY ?? '6', 10) || 6,
+  );
 
   console.log('[agent] starting run', {
     env: config.env,
@@ -47,7 +55,7 @@ async function main(): Promise<void> {
       requiresUrlResolution: false,
     });
   } else {
-    const discoveryPoolSize = Math.max(maxApproved * 5, 30);
+    const discoveryPoolSize = Math.max(maxApproved * 20, 300);
     const discovered = await discoverCandidateStories(discoveryPoolSize, config.allowedSourceHosts);
     for (const item of discovered) {
       candidatesByUrl.set(item.url, item);
@@ -92,56 +100,95 @@ async function main(): Promise<void> {
   }
 
   let drafted = 0;
+  let accepted = 0;
+  let acceptedNotDrafted = 0;
   let rejected = 0;
   let errored = 0;
+  const totalCandidates = candidatesByUrl.size;
+  const concurrency = Math.min(totalCandidates, parsePositiveInt(getArg('concurrency'), defaultConcurrency));
+  let processed = 0;
+  let nextIndex = 0;
+  const candidates = Array.from(candidatesByUrl.values());
 
-  for (const candidate of candidatesByUrl.values()) {
-    if (drafted >= maxApproved) {
-      break;
-    }
+  logProgress('processing-start', {
+    candidatePool: totalCandidates,
+    targetApproved: maxApproved,
+    concurrency,
+  });
 
-    try {
-      const result = await runPipeline(candidate.url, config.allowedSourceHosts, {
-        requiresUrlResolution: candidate.requiresUrlResolution,
-      });
+  async function worker(): Promise<void> {
+    while (true) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
 
-      if (result.status === 'rejected') {
-        rejected += 1;
-        console.log('[agent] rejected', {
-          url: candidate.url,
-          reason: result.reason,
-          source: result.source,
-          relevance: result.relevance,
+      if (currentIndex >= candidates.length) {
+        return;
+      }
+
+      const candidate = candidates[currentIndex];
+      if (!candidate) {
+        continue;
+      }
+
+      try {
+        const result = await runPipeline(candidate.url, config.allowedSourceHosts, {
+          requiresUrlResolution: candidate.requiresUrlResolution,
         });
-        continue;
+
+        if (result.status === 'rejected') {
+          rejected += 1;
+        } else {
+          accepted += 1;
+
+          if (drafted >= maxApproved) {
+            acceptedNotDrafted += 1;
+          } else {
+            drafted += 1;
+
+            if (config.dryRun) {
+              console.log('[agent] draft (dry-run)', result.draft);
+            } else {
+              const response = await createDraftViaMcp(result.draft);
+              console.log('[agent] draft created via MCP', {
+                url: candidate.url,
+                response,
+              });
+            }
+          }
+        }
+      } catch (error) {
+        errored += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn('[agent] candidate processing failed', {
+          url: candidate.url,
+          message,
+        });
+      } finally {
+        processed += 1;
+
+        if (processed === 1 || processed % 10 === 0 || processed === totalCandidates) {
+          logProgress('processing-running', {
+            processed,
+            totalCandidates,
+            completionPct: Number(((processed / totalCandidates) * 100).toFixed(1)),
+            accepted,
+            drafted,
+            rejected,
+            errored,
+          });
+        }
       }
-
-      drafted += 1;
-
-      if (config.dryRun) {
-        console.log('[agent] draft (dry-run)', result.draft);
-        continue;
-      }
-
-      const response = await createDraftViaMcp(result.draft);
-      console.log('[agent] draft created via MCP', {
-        url: candidate.url,
-        response,
-      });
-    } catch (error) {
-      errored += 1;
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn('[agent] candidate processing failed', {
-        url: candidate.url,
-        message,
-      });
     }
   }
 
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
   console.log('[agent] run summary', {
-    processed: drafted + rejected + errored,
+    processed,
     candidatePool: candidatesByUrl.size,
-    targetApproved: maxApproved,
+    draftCap: maxApproved,
+    accepted,
+    acceptedNotDrafted,
     drafted,
     rejected,
     errored,

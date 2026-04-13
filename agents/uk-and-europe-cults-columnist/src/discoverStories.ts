@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.js';
+import { fetchJsonWithCache, fetchTextWithCache } from './httpCache.js';
 import {
   GOOGLE_NEWS_COUNTRY_TERMS,
   GOOGLE_NEWS_GENERIC_QUERIES,
@@ -14,6 +15,7 @@ import {
 export type DiscoveredStory = {
   url: string;
   title: string;
+  publishedAt?: string;
   discoveryScore?: number;
   discoveryScoreBreakdown?: Record<string, number>;
   sourceFeed: string;
@@ -70,12 +72,38 @@ const NEWSDATA_ENABLED = (process.env.NEWSDATA_ENABLED ?? 'false').toLowerCase()
 const NEWSIO_API_KEY = process.env.NEWSIO_API_KEY ?? process.env.NEWSDATA_API_KEY;
 const NEWSDATA_BASE_URL = 'https://newsdata.io/api/1/latest';
 const NEWSDATA_QUERY_LIMIT = 10;
+const DEFAULT_DISCOVERY_MAX_AGE_HOURS = 24;
+const DISCOVERY_MAX_AGE_HOURS = Math.max(
+  1,
+  Number.parseInt(process.env.DISCOVERY_MAX_AGE_HOURS ?? `${DEFAULT_DISCOVERY_MAX_AGE_HOURS}`, 10) ||
+    DEFAULT_DISCOVERY_MAX_AGE_HOURS,
+);
+const DEFAULT_DISCOVERY_PUBLISHED_AT_LOOKUP_LIMIT = 120;
+const DISCOVERY_PUBLISHED_AT_LOOKUP_LIMIT = Math.max(
+  0,
+  Number.parseInt(
+    process.env.DISCOVERY_PUBLISHED_AT_LOOKUP_LIMIT ?? `${DEFAULT_DISCOVERY_PUBLISHED_AT_LOOKUP_LIMIT}`,
+    10,
+  ) || DEFAULT_DISCOVERY_PUBLISHED_AT_LOOKUP_LIMIT,
+);
+const NEWSIO_CACHE_ENABLED = (process.env.NEWSIO_CACHE_ENABLED ?? 'true').toLowerCase() !== 'false';
+const DEFAULT_NEWSIO_CACHE_TTL_MINUTES = 360;
+const NEWSIO_CACHE_TTL_MINUTES = Math.max(
+  1,
+  Number.parseInt(process.env.NEWSIO_CACHE_TTL_MINUTES ?? `${DEFAULT_NEWSIO_CACHE_TTL_MINUTES}`, 10) ||
+    DEFAULT_NEWSIO_CACHE_TTL_MINUTES,
+);
+const NEWSDATA_CACHE_PATH = new URL('../.cache/newsdata-cache.json', import.meta.url);
 const DEFAULT_NEWSIO_MAX_CREDITS_PER_RUN = 6;
 const NEWSIO_MAX_CREDITS_PER_RUN = Math.max(
   1,
   Number.parseInt(process.env.NEWSIO_MAX_CREDITS_PER_RUN ?? `${DEFAULT_NEWSIO_MAX_CREDITS_PER_RUN}`, 10) ||
     DEFAULT_NEWSIO_MAX_CREDITS_PER_RUN,
 );
+
+function logDiscoveryProgress(stage: string, data: Record<string, unknown>): void {
+  console.log(`[agent][progress] ${JSON.stringify({ scope: 'discovery', stage, ...data })}`);
+}
 
 function buildWatchlistQueries(): string[] {
   const queries: string[] = [];
@@ -121,9 +149,138 @@ function extractAtomLink(block: string): string | undefined {
   return linkMatch?.[1];
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function containsPhrase(text: string, phrase: string): boolean {
+  const escaped = escapeRegExp(phrase.toLowerCase());
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, 'iu');
+  return pattern.test(text);
+}
+
 function containsTerm(text: string, terms: string[]): boolean {
   const normalized = text.toLowerCase();
-  return terms.some((term) => normalized.includes(term));
+  return terms.some((term) => containsPhrase(normalized, term));
+}
+
+function normalizePublishedAt(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+
+  return new Date(parsed).toISOString();
+}
+
+function isWithinFreshnessWindow(publishedAt: string | undefined): boolean {
+  if (!publishedAt) {
+    return true;
+  }
+
+  const publishedAtEpochMs = Date.parse(publishedAt);
+  if (!Number.isFinite(publishedAtEpochMs)) {
+    return false;
+  }
+
+  const ageMs = Date.now() - publishedAtEpochMs;
+  if (ageMs < 0) {
+    return true;
+  }
+
+  const maxAgeMs = DISCOVERY_MAX_AGE_HOURS * 60 * 60 * 1000;
+  return ageMs <= maxAgeMs;
+}
+
+function detectPublishedAtFromHtml(html: string): string | undefined {
+  const patterns = [
+    /<meta[^>]+property=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+name=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+property=["']og:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+name=["']pubdate["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+name=["']publishdate["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]+itemprop=["']datePublished["'][^>]+content=["']([^"']+)["'][^>]*>/i,
+    /<time[^>]+datetime=["']([^"']+)["'][^>]*>/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    const normalized = normalizePublishedAt(match?.[1]);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return undefined;
+}
+
+async function lookupPublishedAtFromArticle(url: string): Promise<string | undefined> {
+  try {
+    const response = await fetchTextWithCache(url, {
+      headers: {
+        'User-Agent': 'FreedomTimes-Local-Agent/0.1',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const contentType = response.headers['content-type']?.toLowerCase() ?? '';
+    if (contentType && !contentType.includes('html') && !contentType.includes('xml')) {
+      return undefined;
+    }
+
+    return detectPublishedAtFromHtml(response.text);
+  } catch {
+    return undefined;
+  }
+}
+
+async function enrichPublishedAtForMissing(stories: DiscoveredStory[]): Promise<DiscoveredStory[]> {
+  const missing = stories.filter((story) => !story.publishedAt).slice(0, DISCOVERY_PUBLISHED_AT_LOOKUP_LIMIT);
+
+  if (missing.length === 0) {
+    return stories;
+  }
+
+  const lookedUp = new Map<string, string | undefined>();
+
+  await Promise.all(
+    missing.map(async (story) => {
+      const publishedAt = await lookupPublishedAtFromArticle(story.url);
+      lookedUp.set(story.url, publishedAt);
+    }),
+  );
+
+  const resolvedCount = Array.from(lookedUp.values()).filter((value) => Boolean(value)).length;
+  console.log('[agent] discovery publication date enrichment', {
+    attempted: missing.length,
+    resolved: resolvedCount,
+    unresolved: missing.length - resolvedCount,
+    lookupLimit: DISCOVERY_PUBLISHED_AT_LOOKUP_LIMIT,
+  });
+
+  return stories.map((story) => {
+    if (story.publishedAt) {
+      return story;
+    }
+
+    const lookedUpPublishedAt = lookedUp.get(story.url);
+    if (!lookedUpPublishedAt) {
+      return story;
+    }
+
+    return {
+      ...story,
+      publishedAt: lookedUpPublishedAt,
+    };
+  });
 }
 
 function parseFeed(
@@ -135,29 +292,21 @@ function parseFeed(
   const blocks = [...itemBlocks, ...entryBlocks];
 
   const stories: DiscoveredStory[] = [];
-  const languageCultTerms = getCultTermsForLanguage(feed.language);
-
   for (const block of blocks) {
     const title = extractTag(block, 'title') ?? '';
-    const description = extractTag(block, 'description') ?? extractTag(block, 'summary') ?? '';
     const link = extractTag(block, 'link') ?? extractAtomLink(block);
+    const publishedAt = normalizePublishedAt(
+      extractTag(block, 'pubDate') ?? extractTag(block, 'published') ?? extractTag(block, 'updated'),
+    );
 
-    if (!title || !link) {
-      continue;
-    }
-
-    const haystack = `${title} ${description}`;
-    if (!containsTerm(haystack, languageCultTerms)) {
-      continue;
-    }
-
-    if (!containsTerm(haystack, REGION_TERMS)) {
+    if (!title || !link || !isWithinFreshnessWindow(publishedAt)) {
       continue;
     }
 
     stories.push({
       url: link.trim(),
       title: title.trim(),
+      publishedAt,
       sourceFeed: feed.url,
       sourceFormat: feed.sourceFormat,
       sourceCategory: feed.sourceCategory,
@@ -172,6 +321,7 @@ function parseFeed(
 type GoogleNewsFeedItem = {
   title: string;
   link: string;
+  publishedAt?: string;
   publisherName?: string;
   publisherUrl?: string;
   originalUrlFromMetadata?: string;
@@ -228,6 +378,7 @@ function parseGoogleNewsFeed(xml: string): GoogleNewsFeedItem[] {
     items.push({
       title: title.trim(),
       link: link.trim(),
+      publishedAt: normalizePublishedAt(extractTag(block, 'pubDate')),
       publisherName: source.publisherName,
       publisherUrl: source.publisherUrl,
       originalUrlFromMetadata: extractOriginalUrlFromDescription(description),
@@ -248,9 +399,82 @@ type NewsDataResult = {
   source_name?: string;
   source_url?: string;
   description?: string;
+  pubDate?: string;
+  pub_date?: string;
+  publishedAt?: string;
 };
 
+type NewsDataCacheEntry = {
+  fetchedAt: string;
+  results: NewsDataResult[];
+};
+
+type NewsDataCache = {
+  version: 1;
+  entries: Record<string, NewsDataCacheEntry>;
+};
+
+function loadNewsDataCache(): NewsDataCache {
+  if (!NEWSIO_CACHE_ENABLED) {
+    return { version: 1, entries: {} };
+  }
+
+  try {
+    const raw = readFileSync(NEWSDATA_CACHE_PATH, 'utf-8');
+    const parsed = JSON.parse(raw) as { version?: number; entries?: Record<string, NewsDataCacheEntry> };
+    if (parsed.version === 1 && parsed.entries && typeof parsed.entries === 'object') {
+      return { version: 1, entries: parsed.entries };
+    }
+  } catch {
+    // Missing or invalid cache file should not break discovery.
+  }
+
+  return { version: 1, entries: {} };
+}
+
+function saveNewsDataCache(cache: NewsDataCache): void {
+  if (!NEWSIO_CACHE_ENABLED) {
+    return;
+  }
+
+  try {
+    mkdirSync(new URL('../.cache/', import.meta.url), { recursive: true });
+    writeFileSync(NEWSDATA_CACHE_PATH, `${JSON.stringify(cache, null, 2)}\n`, 'utf-8');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[agent] failed to write newsdata cache', { message });
+  }
+}
+
+function isNewsDataCacheEntryFresh(entry: NewsDataCacheEntry): boolean {
+  const fetchedAtEpochMs = Date.parse(entry.fetchedAt);
+  if (!Number.isFinite(fetchedAtEpochMs)) {
+    return false;
+  }
+
+  const ageMs = Date.now() - fetchedAtEpochMs;
+  const ttlMs = NEWSIO_CACHE_TTL_MINUTES * 60 * 1000;
+  return ageMs >= 0 && ageMs <= ttlMs;
+}
+
+function getCachedNewsDataResults(cache: NewsDataCache, query: string): NewsDataResult[] | undefined {
+  const entry = cache.entries[query];
+  if (!entry || !isNewsDataCacheEntryFresh(entry)) {
+    return undefined;
+  }
+
+  return entry.results;
+}
+
+function setCachedNewsDataResults(cache: NewsDataCache, query: string, results: NewsDataResult[]): void {
+  cache.entries[query] = {
+    fetchedAt: new Date().toISOString(),
+    results,
+  };
+}
+
 function buildNewsDataUrl(query: string): string {
+  const fromDate = new Date(Date.now() - DISCOVERY_MAX_AGE_HOURS * 60 * 60 * 1000).toISOString().slice(0, 10);
   const params = new URLSearchParams({
     apikey: NEWSIO_API_KEY ?? '',
     q: query,
@@ -258,6 +482,8 @@ function buildNewsDataUrl(query: string): string {
     language: NEWSDATA_LANGUAGES,
     size: String(NEWSDATA_QUERY_LIMIT),
     removeduplicate: '1',
+    timeframe: String(DISCOVERY_MAX_AGE_HOURS),
+    from_date: fromDate,
   });
 
   return `${NEWSDATA_BASE_URL}?${params.toString()}`;
@@ -287,74 +513,117 @@ async function discoverFromNewsData(maxItems: number): Promise<DiscoveredStory[]
 
   const discovered: DiscoveredStory[] = [];
   const queries = NEWSDATA_QUERIES.slice(0, NEWSIO_MAX_CREDITS_PER_RUN);
+  const cache = loadNewsDataCache();
+  let cacheUpdated = false;
+  let queryIndex = 0;
+
+  logDiscoveryProgress('newsdata-start', {
+    queryCount: queries.length,
+    maxItems,
+  });
 
   for (const query of queries) {
+    queryIndex += 1;
+
     if (discovered.length >= maxItems) {
       break;
     }
 
-    const url = buildNewsDataUrl(query);
-
-    try {
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'FreedomTimes-Local-Agent/0.1',
-          Accept: 'application/json',
-        },
+    if (queryIndex === 1 || queryIndex % 3 === 0) {
+      logDiscoveryProgress('newsdata-running', {
+        queryIndex,
+        queryCount: queries.length,
+        discovered: discovered.length,
       });
+    }
 
-      if (!response.ok) {
-        console.warn('[agent] newsdata fetch failed', { status: response.status, query });
+    const cachedResults = getCachedNewsDataResults(cache, query);
+    let results: NewsDataResult[];
+
+    if (cachedResults) {
+      console.log('[agent] newsdata cache hit', { query, resultCount: cachedResults.length });
+      results = cachedResults;
+    } else {
+      const url = buildNewsDataUrl(query);
+
+      try {
+        const response = await fetchJsonWithCache<{ results?: NewsDataResult[] }>(url, {
+          headers: {
+            'User-Agent': 'FreedomTimes-Local-Agent/0.1',
+            Accept: 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          console.warn('[agent] newsdata fetch failed', { status: response.status, query });
+          continue;
+        }
+
+        const payload = response.json;
+        if (!payload) {
+          console.warn('[agent] newsdata parse error', { query });
+          continue;
+        }
+
+        results = payload.results ?? [];
+        setCachedNewsDataResults(cache, query, results);
+        cacheUpdated = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn('[agent] newsdata fetch error', { query, message });
+        continue;
+      }
+    }
+
+    for (const item of results) {
+      if (discovered.length >= maxItems) {
+        break;
+      }
+
+      const link = normalizePossibleUrl(item.link);
+      const title = (item.title ?? '').trim();
+
+      if (!link || !title) {
         continue;
       }
 
-      const payload = (await response.json()) as { results?: NewsDataResult[] };
-      const results = payload.results ?? [];
-
-      for (const item of results) {
-        if (discovered.length >= maxItems) {
-          break;
-        }
-
-        const link = normalizePossibleUrl(item.link);
-        const title = (item.title ?? '').trim();
-
-        if (!link || !title) {
-          continue;
-        }
-
-        if (!getHost(link)) {
-          continue;
-        }
-
-        const haystack = `${title} ${item.description ?? ''}`;
-        if (!containsTerm(haystack, CULT_TERMS) || !containsTerm(haystack, REGION_TERMS)) {
-          continue;
-        }
-
-        discovered.push({
-          url: link,
-          title,
-          sourceFeed: `newsdata:${query}`,
-          sourceFormat: 'newsio',
-          sourceCategory: 'api',
-          requiresUrlResolution: false,
-          publisherName: item.source_name,
-          publisherUrl: normalizePossibleUrl(item.source_url),
-        });
+      if (!getHost(link)) {
+        continue;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn('[agent] newsdata fetch error', { query, message });
+
+      const publishedAt = normalizePublishedAt(item.pubDate ?? item.pub_date ?? item.publishedAt);
+      if (!isWithinFreshnessWindow(publishedAt)) {
+        continue;
+      }
+
+      discovered.push({
+        url: link,
+        title,
+        publishedAt,
+        sourceFeed: `newsdata:${query}`,
+        sourceFormat: 'newsio',
+        sourceCategory: 'api',
+        requiresUrlResolution: false,
+        publisherName: item.source_name,
+        publisherUrl: normalizePossibleUrl(item.source_url),
+      });
     }
   }
+
+  if (cacheUpdated) {
+    saveNewsDataCache(cache);
+  }
+
+  logDiscoveryProgress('newsdata-complete', {
+    discovered: discovered.length,
+  });
 
   return discovered;
 }
 
 async function resolveGoogleNewsLink(url: string): Promise<string> {
   try {
-    const response = await fetch(url, {
+    const response = await fetchTextWithCache(url, {
       redirect: 'follow',
       headers: {
         'User-Agent': 'FreedomTimes-Local-Agent/0.1',
@@ -379,16 +648,32 @@ async function discoverFromGoogleNews(maxItems: number): Promise<DiscoveredStory
   const queries = [...boundedWatchlistQueries, ...GOOGLE_NEWS_GENERIC_QUERIES];
   const perQueryLimit = 2;
   const globalCeiling = Math.max(maxItems * 3, queries.length);
+  let queryIndex = 0;
+
+  logDiscoveryProgress('google-news-start', {
+    queryCount: queries.length,
+    globalCeiling,
+  });
 
   for (const query of queries) {
+    queryIndex += 1;
+
     if (discovered.length >= globalCeiling) {
       break;
+    }
+
+    if (queryIndex === 1 || queryIndex % 8 === 0) {
+      logDiscoveryProgress('google-news-running', {
+        queryIndex,
+        queryCount: queries.length,
+        discovered: discovered.length,
+      });
     }
 
     const rssUrl = buildGoogleNewsRssUrl(query);
 
     try {
-      const response = await fetch(rssUrl, {
+      const response = await fetchTextWithCache(rssUrl, {
         headers: {
           'User-Agent': 'FreedomTimes-Local-Agent/0.1',
           Accept: 'application/rss+xml, application/xml, text/xml',
@@ -399,14 +684,17 @@ async function discoverFromGoogleNews(maxItems: number): Promise<DiscoveredStory
         continue;
       }
 
-      const xml = await response.text();
-      const parsed = parseGoogleNewsFeed(xml);
+      const parsed = parseGoogleNewsFeed(response.text);
 
       let addedForQuery = 0;
 
       for (const item of parsed) {
         if (discovered.length >= globalCeiling || addedForQuery >= perQueryLimit) {
           break;
+        }
+
+        if (!isWithinFreshnessWindow(item.publishedAt)) {
+          continue;
         }
 
         let selectedUrl = item.originalUrlFromMetadata;
@@ -422,6 +710,7 @@ async function discoverFromGoogleNews(maxItems: number): Promise<DiscoveredStory
         discovered.push({
           url: selectedUrl,
           title: item.title,
+          publishedAt: item.publishedAt,
           sourceFeed: `google-news:${query}`,
           sourceFormat: 'rss',
           sourceCategory: 'aggregator-feed',
@@ -435,6 +724,10 @@ async function discoverFromGoogleNews(maxItems: number): Promise<DiscoveredStory
       // Continue with remaining queries.
     }
   }
+
+  logDiscoveryProgress('google-news-complete', {
+    discovered: discovered.length,
+  });
 
   return discovered;
 }
@@ -559,6 +852,11 @@ function isAllowedOrSubdomain(hostname: string, allowedHosts: Set<string>): bool
 export async function discoverCandidateStories(maxItems: number, allowedHosts: Set<string>): Promise<DiscoveredStory[]> {
   const discovered: DiscoveredStory[] = [];
 
+  logDiscoveryProgress('start', {
+    maxItems,
+    enabledFeedCount: FEEDS.filter((feed) => feed.enabled).length,
+  });
+
   try {
     discovered.push(...(await discoverFromNewsData(maxItems)));
   } catch (error) {
@@ -574,10 +872,25 @@ export async function discoverCandidateStories(maxItems: number, allowedHosts: S
   }
 
   const uniqueFeeds = Array.from(new Map(FEEDS.filter((feed) => feed.enabled).map((feed) => [feed.url, feed])).values());
+  let feedIndex = 0;
+
+  logDiscoveryProgress('feeds-start', {
+    feedCount: uniqueFeeds.length,
+  });
 
   for (const feed of uniqueFeeds) {
+    feedIndex += 1;
+
+    if (feedIndex === 1 || feedIndex % 25 === 0) {
+      logDiscoveryProgress('feeds-running', {
+        feedIndex,
+        feedCount: uniqueFeeds.length,
+        discovered: discovered.length,
+      });
+    }
+
     try {
-      const response = await fetch(feed.url, {
+      const response = await fetchTextWithCache(feed.url, {
         headers: {
           'User-Agent': 'FreedomTimes-Local-Agent/0.1',
           Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml',
@@ -589,16 +902,29 @@ export async function discoverCandidateStories(maxItems: number, allowedHosts: S
         continue;
       }
 
-      const xml = await response.text();
-      discovered.push(...parseFeed(xml, feed));
+      discovered.push(...parseFeed(response.text, feed));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn('[agent] feed fetch error', { feedUrl: feed.url, message });
     }
   }
 
+  logDiscoveryProgress('feeds-complete', {
+    discovered: discovered.length,
+  });
+
   const deduped = Array.from(new Map(discovered.map((item) => [item.url, item])).values());
-  const scored = deduped.map((item) => {
+  const enriched = await enrichPublishedAtForMissing(deduped);
+  const fresh = enriched.filter((item) => isWithinFreshnessWindow(item.publishedAt));
+
+  console.log('[agent] discovery freshness filter', {
+    maxAgeHours: DISCOVERY_MAX_AGE_HOURS,
+    input: enriched.length,
+    kept: fresh.length,
+    dropped: enriched.length - fresh.length,
+  });
+
+  const scored = fresh.map((item) => {
     const scoredStory = scoreDiscoveredStory(item, allowedHosts);
     return {
       ...item,
@@ -616,6 +942,13 @@ export async function discoverCandidateStories(maxItems: number, allowedHosts: S
     const aPriority = isPriorityWatchlistHost(a.url) ? 1 : 0;
     const bPriority = isPriorityWatchlistHost(b.url) ? 1 : 0;
     return bPriority - aPriority;
+  });
+
+  logDiscoveryProgress('complete', {
+    discoveredRaw: discovered.length,
+    deduped: deduped.length,
+    fresh: fresh.length,
+    returned: Math.max(1, Math.min(maxItems, scored.length)),
   });
 
   return scored.slice(0, Math.max(1, maxItems));

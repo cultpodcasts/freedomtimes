@@ -11,7 +11,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node --enable-source-maps dist/index.js",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "render:html": "tsx scripts/render-cult-news-html.tsx",
+    "render:cult-news": "tsx scripts/render-cult-news-html.tsx"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",

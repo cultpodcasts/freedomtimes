@@ -46,3 +46,4 @@ request-headers
 web/.generated/archive-import/*
 .cookie
 secrets/*
+agents/uk-and-europe-cults-columnist/reports/*.html
