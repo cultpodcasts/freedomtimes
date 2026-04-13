@@ -23,6 +23,12 @@
 	"env": {
 		"production": {
 			"name": "freedomtimes-holding",
+			"kv_namespaces": [
+				{
+					"binding": "SESSION",
+					"id": "962280ddb8f649b1a9482739fb295bdd"
+				}
+			],
 			"vars": {
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
