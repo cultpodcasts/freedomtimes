@@ -27,7 +27,12 @@ const schedulerAuthToken = getRequiredEnv([
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(currentDir, '..', '..');
-const sqlDir = path.join(repoRoot, 'infra', mode === 'migrate' ? 'migrations' : 'seeds');
+const sqlDir = path.join(
+  repoRoot,
+  'infra',
+  'scheduler-database',
+  mode === 'migrate' ? 'migrations' : 'seeds',
+);
 
 const client = createClient({
   url: schedulerUrl,
