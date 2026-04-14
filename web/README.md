@@ -354,3 +354,15 @@ For browser subscription capture, the web worker also needs:
 - deployed worker secret: `PUSH_SUBSCRIBE_PUBLIC_KEY`
 
 The first two are synced from Terraform outputs in CI. The public key is safe to expose to the browser, but it still needs to be set on the worker separately until VAPID key management is wired into deployment.
+
+The scheduler worker needs the matching VAPID delivery keys:
+
+- staging: `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`, `PUSH_STAGING_VAPID_PRIVATE_KEY`, `PUSH_STAGING_VAPID_SUBJECT`
+- production: `PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY`, `PUSH_PRODUCTION_VAPID_PRIVATE_KEY`, `PUSH_PRODUCTION_VAPID_SUBJECT`
+
+Generate a compatible keypair with:
+
+```powershell
+cd scheduler-worker
+npm run push:vapid:generate -- mailto:platform@freedomtimes.news
+```

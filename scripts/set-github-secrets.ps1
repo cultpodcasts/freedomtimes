@@ -95,8 +95,14 @@ function Main {
             "TURSO_TOKEN",
             "EMDASH_AUTH_SECRET_STAGING",
             "EMDASH_PREVIEW_SECRET_STAGING",
+            "PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY",
+            "PUSH_STAGING_VAPID_PRIVATE_KEY",
+            "PUSH_STAGING_VAPID_SUBJECT",
             "EMDASH_AUTH_SECRET_PRODUCTION",
-            "EMDASH_PREVIEW_SECRET_PRODUCTION"
+            "EMDASH_PREVIEW_SECRET_PRODUCTION",
+            "PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY",
+            "PUSH_PRODUCTION_VAPID_PRIVATE_KEY",
+            "PUSH_PRODUCTION_VAPID_SUBJECT"
         )
         Write-Host "  Syncing secrets..." -ForegroundColor Gray
         foreach ($name in $secrets) {

@@ -9,7 +9,8 @@
 		"head_sampling_rate": 1
 	},
 	"vars": {
-		"NOTIFICATION_DEFAULT_TITLE": "Freedom Times"
+		"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+		"NOTIFICATION_DEFAULT_URL": "/"
 	},
 	"env": {
 		"production": {
@@ -18,7 +19,8 @@
 				"crons": ["*/10 * * * *"]
 			},
 			"vars": {
-				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times"
+				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+				"NOTIFICATION_DEFAULT_URL": "/"
 			}
 		},
 		"staging": {
@@ -27,7 +29,8 @@
 				"crons": ["*/10 * * * *"]
 			},
 			"vars": {
-				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times Staging"
+				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times Staging",
+				"NOTIFICATION_DEFAULT_URL": "/"
 			}
 		}
 	}

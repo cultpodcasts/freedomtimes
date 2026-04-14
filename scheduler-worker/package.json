@@ -6,10 +6,12 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "push:vapid:generate": "node scripts/generate-vapid-keys.mjs",
     "deploy:staging": "wrangler deploy --config wrangler.jsonc --env staging",
     "deploy:production": "wrangler deploy --config wrangler.jsonc --env production"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.2"
+    "@libsql/client": "^0.17.2",
+    "webpush-webcrypto": "^1.0.5"
   }
 }
