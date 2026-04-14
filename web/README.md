@@ -345,3 +345,12 @@ cd web
 npm run scheduler:db:deploy
 npm run subscriptions:db:deploy
 ```
+
+For browser subscription capture, the web worker also needs:
+
+- `TURSO_SUBSCRIPTIONS_DATABASE_URL`
+- `TURSO_SUBSCRIPTIONS_AUTH_TOKEN`
+- local development: `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`
+- deployed worker secret: `PUSH_SUBSCRIBE_PUBLIC_KEY`
+
+The first two are synced from Terraform outputs in CI. The public key is safe to expose to the browser, but it still needs to be set on the worker separately until VAPID key management is wired into deployment.

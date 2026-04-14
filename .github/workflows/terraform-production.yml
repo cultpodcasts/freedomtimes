@@ -513,6 +513,8 @@ jobs:
           AUTH0_CLIENT_SECRET_VALUE: ${{ steps.auth0_app_secret.outputs.auth0_app_client_secret }}
           TURSO_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.turso_database_url }}
           TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+          TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
+          TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
           EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_PRODUCTION }}
         run: |
@@ -528,6 +530,8 @@ jobs:
           printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.jsonc --env production
           printf '%s' "$TURSO_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_DATABASE_URL --config wrangler.jsonc --env production
           printf '%s' "$TURSO_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_AUTH_TOKEN --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_DATABASE_URL --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_AUTH_TOKEN --config wrangler.jsonc --env production
           printf '%s' "$EMDASH_AUTH_SECRET_VALUE" | npx wrangler secret put EMDASH_AUTH_SECRET --config wrangler.jsonc --env production
 
           if [ -n "${EMDASH_PREVIEW_SECRET_VALUE:-}" ]; then

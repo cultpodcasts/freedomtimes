@@ -1,0 +1,152 @@
+---
+import { getPushSubscribePublicKey } from '../lib/push-subscriptions';
+
+const pushSubscribePublicKey = getPushSubscribePublicKey();
+---
+
+<section class="notifications" aria-labelledby="notifications-heading">
+	<div>
+		<p class="eyebrow">Reader Alerts</p>
+		<h2 id="notifications-heading">Get notified when major stories land</h2>
+		<p id="notification-status" class="notification-copy">
+			Enable browser notifications on this device to test PWA delivery from published EmDash content.
+		</p>
+	</div>
+	<button
+		id="notifications-enable"
+		type="button"
+		class="secondary-button"
+		data-public-key={pushSubscribePublicKey}
+		data-configured={pushSubscribePublicKey.length > 0 ? 'true' : 'false'}
+	>
+		Enable notifications
+	</button>
+</section>
+
+<script>
+	const button = document.querySelector('#notifications-enable');
+	const status = document.querySelector('#notification-status');
+
+	if (button instanceof HTMLButtonElement && status instanceof HTMLParagraphElement) {
+		const configured = button.dataset.configured === 'true';
+
+		if (!configured) {
+			button.disabled = true;
+			status.textContent = 'Notifications are waiting on the staging VAPID public key.';
+		} else if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+			button.disabled = true;
+			status.textContent = 'This browser does not support web push notifications.';
+		} else if (Notification.permission === 'granted') {
+			status.textContent = 'Notifications are already enabled in this browser.';
+		}
+
+		button.addEventListener('click', () => {
+			void subscribeToNotifications(button, status);
+		});
+	}
+
+	async function subscribeToNotifications(button, status) {
+		button.disabled = true;
+		status.textContent = 'Requesting notification permission...';
+
+		try {
+			const permission = await Notification.requestPermission();
+			if (permission !== 'granted') {
+				status.textContent = permission === 'denied'
+					? 'Notifications were blocked in the browser.'
+					: 'Notification permission was dismissed.';
+				button.disabled = false;
+				return;
+			}
+
+			status.textContent = 'Registering this device for push notifications...';
+			const registration = await navigator.serviceWorker.ready;
+			const existingSubscription = await registration.pushManager.getSubscription();
+			const publicKey = decodeBase64Url(button.dataset.publicKey || '');
+
+			const subscription = existingSubscription ?? await registration.pushManager.subscribe({
+				userVisibleOnly: true,
+				applicationServerKey: publicKey,
+			});
+
+			const response = await fetch('/api/push-subscriptions', {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json',
+				},
+				body: JSON.stringify(subscription.toJSON()),
+			});
+
+			if (!response.ok) {
+				throw new Error(`Subscription save failed with status ${response.status}`);
+			}
+
+			status.textContent = 'Notifications enabled for this browser.';
+		} catch (error) {
+			console.error('[notifications] subscribe failed', error);
+			status.textContent = 'Notification setup failed. Check the console and try again.';
+			button.disabled = false;
+		}
+	}
+
+	function decodeBase64Url(value) {
+		const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
+		const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+		const raw = atob(padded);
+		const bytes = new Uint8Array(raw.length);
+
+		for (let index = 0; index < raw.length; index += 1) {
+			bytes[index] = raw.charCodeAt(index);
+		}
+
+		return bytes;
+	}
+</script>
+
+<style>
+	.notifications {
+		margin-top: 1.2rem;
+		padding: 1rem 1.1rem;
+		border: 1px solid rgba(35, 77, 105, 0.18);
+		border-radius: 14px;
+		background: linear-gradient(180deg, rgba(35, 77, 105, 0.08), rgba(35, 77, 105, 0.03));
+		display: grid;
+		gap: 0.9rem;
+	}
+
+	.eyebrow {
+		margin: 0;
+		font-size: 0.72rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	h2 {
+		margin: 0.2rem 0 0;
+		font-size: clamp(1.1rem, 3vw, 1.45rem);
+		line-height: 1.1;
+	}
+
+	.notification-copy {
+		margin: 0.55rem 0 0;
+		font-size: 0.97rem;
+		line-height: 1.6;
+	}
+
+	.secondary-button {
+		justify-self: start;
+		padding: 0.72rem 1.05rem;
+		border: 1px solid #234d69;
+		border-radius: 999px;
+		background: #fffdf8;
+		color: #234d69;
+		font: inherit;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.secondary-button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+</style>

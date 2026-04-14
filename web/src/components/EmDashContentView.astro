@@ -2,6 +2,7 @@
 import { PortableText } from 'astro-portabletext';
 
 import Layout from '../layouts/Layout.astro';
+import PushNotificationsCallout from './PushNotificationsCallout.astro';
 
 const {
 	entry,
@@ -82,6 +83,7 @@ const updatedAt = readString(data.updatedAt);
 			{!portableContent && !textContent && (
 				<p class="empty-state">This entry is published but has no renderable body content yet.</p>
 			)}
+			<PushNotificationsCallout />
 		</section>
 	</article>
 </Layout>
