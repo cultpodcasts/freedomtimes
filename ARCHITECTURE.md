@@ -23,8 +23,8 @@ Freedom Times is a UK/Europe-focused news platform for cult survivors. It vets s
 | **Core Web Vitals / LCP** | Server-rendered HTML on first request; minimal JS shipped to the browser |
 | **SEO** | Full SSR; pages must be crawlable without executing JavaScript |
 | **Hosting** | Cloudflare Workers (not Pages) for full programmatic control; Workers can still serve static Assets |
-| **PWA / App** | Packagable via Google Bubblewrap as Android/iOS TWA apps; requires HTTPS, Web App Manifest, Service Worker |
-| **Push notifications** | Web Push API; note Apple only enabled this in iOS 16.4+ |
+| **PWA / App** | Web-first delivery with optional Android/iOS packaging via Capacitor; requires HTTPS, Web App Manifest, and Service Worker support |
+| **Push notifications** | Web Push API for the web experience, with native push integration available through Capacitor when app packaging requires it |
 | **Newsletter** | Email subscription + periodic digest |
 | **Infrastructure as Code** | All cloud resources (Azure, Cloudflare, Auth0) are defined in source-controlled declarative files and deployed via CI/CD; no manual portal drift |
 | **Privacy / GDPR** | Protect survivor and reader privacy by design; collect the minimum data required for journalism operations only; no secondary profiling/advertising use |
@@ -40,218 +40,130 @@ Freedom Times is a UK/Europe-focused news platform for cult survivors. It vets s
             │                             │
     Browser (Visitor)              Browser (Editor / Admin)
             │                             │
-            ▼                             │
-┌───────────────────────┐                 │
-│  Cloudflare Workers   │◄────────────────┘
-│  (SSR + Asset Serving)│
-│                       │  reads stories
-│  ┌─────────────────┐  │◄──────────────┐
-│  │ KV Store        │  │               │
-│  │ (published      │  │  ┌────────────┴──────────┐
-│  │  story cache)   │  │  │  Azure HTTP Functions  │
-│  └─────────────────┘  │  │  (CRUD API)            │
-│                       │  │                        │
-│  ┌─────────────────┐  │  │  ┌──────────────────┐  │
-│  │ R2 Bucket       │  │  │  │  Cosmos DB        │  │
-│  │ (images/videos/ │  │  │  │  (canonical store │  │
-│  │  static assets) │  │  │  │   for stories)   │  │
-│  └─────────────────┘  │  │  └──────────────────┘  │
-└───────────────────────┘  └────────────────────────┘
-                                       ▲
-                               Auth0 (RBAC)
-                                       ▲
-                               Editor's browser
+                ▼                             │
+          ┌──────────────────────────────┐         │
+          │ Cloudflare Workers           │◄────────┘
+          │ Astro app + EmDash runtime   │
+          │                              │
+          │  ┌────────────────────────┐  │
+          │  │ EmDash collections     │  │
+          │  │ posts / media / schema │  │
+          │  └─────────────┬──────────┘  │
+          │                │             │
+          │  ┌─────────────▼──────────┐  │
+          │  │ Turso / libSQL         │  │
+          │  │ content + revisions    │  │
+          │  └────────────────────────┘  │
+          │                              │
+          │  ┌────────────────────────┐  │
+          │  │ Cloudflare R2          │  │
+          │  │ media storage          │  │
+          │  └────────────────────────┘  │
+          └──────────────────────────────┘
+              ▲
+             Auth0 (editor auth)
+              ▲
+            Editor / MCP clients
 ```
 
 ---
 
 ## 4. Component Breakdown
 
-### 4.1 Cloudflare Workers — Public SSR Layer
+### 4.1 Cloudflare Workers — Astro App + EmDash Runtime
 
-**Role:** Receives every HTTP request from the public; renders HTML server-side using data pulled from KV; serves static assets from R2/Workers Assets.
+**Role:** Receives every HTTP request from both public readers and authenticated editors, serves the Astro site, and hosts the EmDash admin, OAuth, and MCP endpoints inside the same Worker deployment.
 
 **Recommended framework:** [Astro](https://astro.build/) with the [`@astrojs/cloudflare` adapter](https://docs.astro.build/en/guides/integrations-guide/cloudflare/).
 
-- Astro's **Islands architecture** ships zero JS to the browser by default — ideal for a content-heavy news site where most pages are essentially read-only.
-- Selective hydration means interactive widgets (search, subscribe form) are hydrated in isolation without blocking LCP.
-- Astro can use the Cloudflare Workers runtime natively (no Node.js emulation layer, no cold-start overhead — Cloudflare uses V8 isolates, not containers).
-- Astro generates a standard `manifest.webmanifest` and supports Service Worker injection, making PWA integration straightforward.
+- Astro's **Islands architecture** ships zero JS to the browser by default — still a good fit for a content-heavy publication.
+- The live site and CMS now share one deployment artifact rather than maintaining a separate public render path and custom editorial API.
+- Astro runs natively on the Cloudflare Workers runtime, and the current app integrates EmDash directly through the `emdash/astro` integration.
+- Public pages query EmDash collections directly at request time using helpers such as `getEmDashCollection('posts', { status: 'published' })` and `getEmDashEntry('posts', slug)`.
 
-**Alternative worth considering:** [SvelteKit](https://kit.svelte.dev/) with the Cloudflare adapter — slightly heavier default JS bundle than Astro but still excellent, and gives a richer reactive component model for the progressive Admin UI.
+**Current integration shape:**
 
-> **Discussion point:** Does the Admin UI need enough reactivity to tip the balance toward SvelteKit? If the admin surface is small (a few CRUD forms), Astro with a sprinkle of Svelte islands is likely the better trade-off.
-
-**Caching strategy:**
-
-Two caching layers work together (see §4.2 for full Cache API details):
-
+```ts
+emdash({
+  mcp: true,
+  database: {
+    type: 'sqlite',
+    entrypoint: '<libsql shim>',
+    config: {
+      url: process.env.TURSO_DATABASE_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    },
+  },
+  storage: r2({ binding: 'MEDIA' }),
+})
 ```
-Request → Worker
-  → Check caches.default (edge HTTP cache, per-datacenter)
-    → Cache hit  → stream HTML to client  (zero KV reads)
-    → Cache miss → Check KV for story JSON
-        → KV hit  → render HTML → store in caches.default → stream to client
-        → KV miss → fetch from Azure Function → render → store in KV + caches.default → stream to client
-```
 
-- **`caches.default`**: Caches the fully rendered HTML `Response` keyed by URL. A hit requires no KV reads and minimal CPU. Populated lazily per-datacenter; evicted automatically by Cloudflare.
-- **Cloudflare KV**: Stores the canonical story JSON payload. Persists until explicitly deleted, surviving edge cache evictions and acting as the durable source of truth for re-rendering.
-
-Published stories are written to KV by the Azure Function at publish time. When a story is published, updated, or deleted, the Azure Function both updates KV **and** calls the Cloudflare Cache Purge API to evict stale HTML from `caches.default` across all PoPs.
-
-**Concern — KV eventual consistency:** Cloudflare KV has eventual consistency across regions. A freshly published story could take up to 60 seconds to propagate globally. For a news agency this is acceptable; the Azure Function's KV write will propagate before editors share the link. If sub-second global consistency is required, [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects/) or direct R2 reads would need to be evaluated.
+This means the Worker is no longer built around a custom story projection layer. Published content is served from the CMS-backed data model directly.
 
 ---
 
-### 4.2 Cloudflare Cache API — Edge Response Cache
+### 4.2 EmDash — CMS, Content Store, and Published Reads
 
-Cloudflare Workers expose the [Cache API](https://developers.cloudflare.com/workers/runtime-apis/cache/) via `caches.default` — the shared HTTP response cache at each Cloudflare datacenter (point of presence). Unlike KV, the Cache API stores full `Response` objects keyed by URL, respects standard HTTP caching semantics, and has no per-read billing.
+EmDash is now the content-management system for Freedom Times.
 
-**`caches.default` vs Cloudflare KV:**
+What that means in practice:
 
-| Characteristic | `caches.default` | Cloudflare KV |
-|---|---|---|
-| Stores | Full `Response` objects (rendered HTML, JSON) | Arbitrary values (JSON, strings, binary) |
-| Key | Request URL | Arbitrary string |
-| Scope | Datacenter-local (each PoP holds its own copy) | Eventually consistent globally (~60 s propagation) |
-| Eviction | Automatic — Cloudflare may evict at any time | Explicit TTL or manual delete |
-| Cost | Free — no per-operation billing | Billed per read/write operation |
-| HTTP semantics | Respects `Cache-Control`, `Vary`, etc. | Not HTTP-aware |
-
-**Usage pattern inside the Worker:**
-
-```typescript
-export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
-    const cache = caches.default;
-    const cacheKey = new Request(request.url, { method: 'GET' });
-
-    // 1. Check edge cache — zero KV reads on a hit
-    let response = await cache.match(cacheKey);
-    if (response) return response;
-
-    // 2. Build the response (renders from KV data or Azure Function)
-    response = await buildStoryResponse(request, env);
-
-    // 3. Populate the local datacenter's edge cache (non-blocking)
-    ctx.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
-  }
-};
-```
-
-**Cache invalidation strategies:**
-
-`caches.default` is populated lazily per-datacenter and is **not** automatically cleared when KV is updated. Explicit invalidation is required to avoid serving stale HTML after a story is published, edited, or deleted.
-
-| Strategy | Mechanism | Plan / Cost |
-|---|---|---|
-| **TTL (`s-maxage`)** | `Cache-Control: s-maxage=3600, stale-while-revalidate=60` on each response. Auto-expiry is the safety-net baseline even when other strategies are in use. | Free |
-| **URL purge (Cloudflare Purge API)** | Azure Function calls `POST /client/v4/zones/:zone_id/purge_cache` with `{ "files": [...] }` after each publish/update/delete. Propagates globally within ~2 seconds. | Free |
-| **Prefix purge** | Purge all URLs under a path prefix (e.g., `/tag/trafficking/`). Useful when one story change invalidates many archive pages. | Free |
-| **Cache Tags (`Cache-Tag` header)** | Tag responses at serve time (`Cache-Tag: story-{slug}`). A single purge call then invalidates all derivatives (story page, tag pages, OG-image route) simultaneously. | **Cloudflare Pro** or higher |
-| **`caches.default.delete(url)` in Worker** | Removes from the current datacenter's cache only — **not** a global purge. Useful for self-healing within a request handler; not appropriate as a post-publish invalidation strategy. | Free |
-
-**Recommended invalidation flow for MVP:**
-
-```
-Azure Function — on publish / update / delete:
-  1. Write updated story JSON to KV  (or delete the KV entry on archive/delete)
-  2. Call Cloudflare Cache Purge API  (API token: Cache Purge permission only)
-       { "files": [ "https://freedomtimes.com/story/{slug}",
-                    "https://freedomtimes.com/" ] }
-  3. Return 200 to editor — stale HTML evicted at all PoPs within ~2 seconds
-```
-
-Use `s-maxage=3600` as the backstop for derivative URLs not explicitly named in the purge list (tag archives, sitemaps). Migrate to Cache Tags when per-story derivative pages multiply and maintaining a URL list becomes unwieldy.
-
-> **Security:** Scope the `CLOUDFLARE_CACHE_PURGE_TOKEN` API token to `Cache Purge` on this zone only — no Workers, KV, or R2 access required. Store it as an Azure Function application secret, not in source code.
+- Content lives in EmDash-managed collections, with revision history stored in the backing database.
+- Editors work in the EmDash admin under `/_emdash/admin`.
+- External editorial tooling can talk to the same CMS via the EmDash MCP endpoint under `/_emdash/api/mcp`.
+- The live site reads published entries directly from EmDash rather than from a separate KV projection or cache-specific read model.
+- The homepage currently lists the latest published posts with `getEmDashCollection('posts', { status: 'published', orderBy: { published_at: 'desc', updated_at: 'desc' } })`.
+- Post pages resolve individual entries with `getEmDashEntry('posts', slug)` and render the stored content through a shared EmDash-aware content view.
 
 ---
 
-### 4.3 Cloudflare KV — Published Story Cache
+### 4.3 Turso / libSQL — Canonical Content Database
 
-Stores pre-serialised story payloads (JSON) keyed by story `slug`. The Worker reads from KV on every public page request — sub-millisecond reads within the same region.
+The canonical content store is no longer described as Cosmos plus a projected publish cache. In the current implementation, EmDash is backed by Turso/libSQL.
 
-```
-Key:   story:{slug}
-Value: JSON blob (headline, body, author, tags, publishDate, images…)
+Current characteristics:
 
-Key:   index:homepage
-Value: JSON array of the latest N story summaries for the front page
-```
+- The Worker uses the libSQL client via a compatibility shim suitable for Cloudflare Workers.
+- EmDash stores collection data and revision state in database tables rather than in a bespoke application schema documented here.
+- Draft and published state are managed inside EmDash's own content lifecycle.
+- The site now depends on database-backed reads being consistent with EmDash's notion of live content, not on secondary cache invalidation.
 
-Index keys (homepage, by-tag, etc.) are rewritten by the Azure Function whenever a story changes.
+This is the effective source of truth for stories, metadata, and revision history.
 
 ---
 
 ### 4.4 Cloudflare R2 — Media Storage
 
-Stores:
-- Uploaded images and videos attached to stories
-- Static assets (fonts, icons) that are too large or binary for KV
+EmDash media storage is wired to Cloudflare R2 using `@emdash-cms/cloudflare`.
 
-R2 is S3-compatible and has no egress fees, making it well-suited for media. The Astro Worker can generate signed URLs or serve assets through a dedicated `assets.freedomtimes.com` Worker route.
+Stores:
+- uploaded images and other CMS-managed media assets
+- featured images referenced by homepage and post views
+- future media library assets reused across entries
+
+R2 remains the right fit for this part of the system because it is object storage, integrates cleanly with the Worker runtime, and matches the current EmDash storage adapter.
 
 ---
 
-### 4.5 Azure HTTP-Triggered Functions — CRUD API
+### 4.5 EmDash OAuth, MCP, and Publish Lifecycle
 
-**Language:** TypeScript (Node.js runtime on Azure Functions v4).
-
-Responsibilities:
-1. Authenticate the requesting editor via Auth0 JWT validation (JWKS endpoint).
-2. Validate role claims (`role: editor` or `role: admin`).
-3. Perform CRUD against Cosmos DB.
-4. On **publish** or **update**: serialise the story and write to Cloudflare KV via the [Cloudflare API](https://developers.cloudflare.com/api/operations/workers-kv-namespace-write-key-value-pair-with-metadata) (authenticated with a KV API token stored as a Function secret).
-5. On **delete**: remove the KV entry and update index keys.
-6. On **media upload**: accept the binary, store in R2 via the S3-compatible API, return the CDN URL.
-
-**Endpoints (sketch):**
-
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/stories` | List stories (drafts + published) — admin only |
-| `GET` | `/stories/{id}` | Get a single story by internal ID |
-| `POST` | `/stories` | Create a draft story |
-| `PUT` | `/stories/{id}` | Update headline/body/status/tags/etc. |
-| `DELETE` | `/stories/{id}` | Soft-delete (archive) |
-| `POST` | `/stories/{id}/publish` | Publish: writes to KV, sets `status=published` in Cosmos |
-| `GET` | `/stories/search` | Query published stories by date/author/subject/tag (proxied to Azure AI Search) |
-| `GET` | `/media/search` | Query canonical media by type/metadata/text (proxied to Azure AI Search) |
-| `POST` | `/media` | Create or register a canonical media record |
-| `POST` | `/media/upload` | Upload image, video, or document to R2 and attach to a canonical media record |
-| `GET` | `/metadata/suggest` | Suggest people/groups/institutions from managed taxonomy + entity matching |
-| `POST` | `/subscribers` | Register a newsletter subscriber |
-
-**Cosmos DB container design:**
+EmDash is not just a data library in this app; it is the editorial control plane.
 
 ```
-Database: freedomtimes
-  Container: stories        (partition key: /pk)
-  Container: media          (partition key: /mediaType)
-  Container: subscribers    (partition key: /email)
+Editor signs in via Auth0
+  -> accesses /_emdash/admin
+  -> creates or edits a draft revision in EmDash
+  -> publish promotes the current draft to the live revision
+  -> homepage and post routes query EmDash for published content
+  -> readers see the updated content without a separate KV projection step
 ```
 
-Use a **synthetic key** on each story document:
+Important current details:
 
-```typescript
-pk = `${status}|${publishYearMonth}`; // e.g. "published|2026-04"
-```
-
-This keeps hot write/read traffic for published stories distributed by month rather than concentrating all published documents in one partition.
-
-Important limitation: a single synthetic key can optimize one primary access pattern, but it does not make unrelated predicates (author/subject/tag) partition-local. Queries such as "get by author" or "get by subject" will still fan out across partitions unless those dimensions are included in the partition key.
-
-For flexible public and admin discovery (date ranges, author, subject, full-text), index published stories and canonical media in **Azure AI Search** and treat it as the query engine for read-heavy filtering while Cosmos remains the canonical transactional store.
-
-Recommended split:
-- Cosmos DB: source of truth, transactional CRUD, publish workflow.
-- Azure AI Search: `get-by-date`, `get-by-author`, `get-by-subject`, media search, tag filters, keyword search, relevance/ranking.
-- Cloudflare Worker: proxies `/stories/search` and `/media/search` to Azure AI Search to keep search admin keys off the client.
-
-**Cost and CPU consideration:** Azure Functions on the Consumption plan have a very generous free tier (1 million invocations/month). Because admin writes are infrequent (not in the hot read path), this adds negligible cost.
+- Middleware explicitly keeps `/_emdash/*` and related OAuth discovery paths outside the outer Auth0 gate so EmDash can complete its own OAuth and MCP flows.
+- The Worker currently normalizes some OAuth query parameters for EmDash clients and exposes compatibility redirects for `.well-known` metadata routes.
+- The build includes a small post-build patch step that improves EmDash publish diagnostics in Workers and guards against a known publish-time schema drift problem while upstream behavior is being validated.
+- Public rendering is driven by EmDash's published/live state, not by a manually maintained cache invalidation routine.
 
 ---
 
@@ -291,13 +203,13 @@ Admin surfaces needed for MVP:
 
 ---
 
-### 4.8 PWA, Service Worker & Bubblewrap
+### 4.8 PWA, Service Worker & Capacitor
 
 1. **Web App Manifest** (`manifest.webmanifest`): name, icons, `display: standalone`, `theme_color` matching the Times-inspired palette.
 2. **Service Worker**: pre-cache the shell (header, footer, fonts, CSS). Use a Stale-While-Revalidate strategy for story pages so they remain readable offline.
-3. **Web Push**: subscribe visitors to push notifications via the [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). Store only the technical subscription objects needed for message delivery in Cosmos DB (`subscribers` container). Notification preferences for Android/iOS app experiences should be stored locally on the device, not as a server-side behavioural profile. When a story is published, the Azure Function (or a secondary timer-triggered Function) sends push messages via VAPID.
-   - ⚠️ **iOS caveat**: Web Push is only available in iOS 16.4+ when the site is added to the Home Screen as a PWA. For earlier iOS the Bubblewrap TWA wrapping gives native push notifications via FCM.
-4. **Bubblewrap**: wraps the PWA as an Android TWA and an iOS WKWebView app. Both platforms use FCM/APNs via a thin native wrapper, bypassing the Web Push iOS limitation.
+3. **Web Push**: subscribe visitors to push notifications via the [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). Store only the technical subscription objects needed for message delivery in a minimal server-side subscriber store. Notification preferences for Android/iOS app experiences should be stored locally on the device, not as a server-side behavioural profile. When a story is published, a background delivery job can send push messages via VAPID or a native push provider.
+  - ⚠️ **iOS caveat**: Web Push is only available in iOS 16.4+ when the site is added to the Home Screen as a PWA. Where the packaged app needs broader notification support or tighter native lifecycle control, use Capacitor-native plugins rather than relying on Home Screen PWA behavior.
+4. **Capacitor**: packages the existing web app for Android and iOS while preserving a single web-first codebase. Native plugins can be introduced selectively for push notifications, deep linking, splash screens, and other device capabilities that are awkward or unavailable in the browser alone.
 
 For app notifications specifically, any category preferences, mute settings, or similar reader choices should be persisted in on-device storage and applied client-side where feasible. The server should only know the minimum required delivery subscription details, not a rich per-reader notification preference profile.
 
@@ -306,7 +218,7 @@ For app notifications specifically, any category preferences, mute settings, or 
 ### 4.9 Newsletter
 
 - Subscribers provide email via a form (POST `/subscribers`).
-- A **timer-triggered Azure Function** (e.g., weekly) queries recently published stories from Cosmos DB, renders an HTML email digest, and sends via a transactional email provider.
+- A scheduled background job queries recently published EmDash content, renders an HTML email digest, and sends via a transactional email provider.
 - **Recommended provider**: [SendGrid](https://sendgrid.com/) (free tier: 100 emails/day) or [Resend](https://resend.com/) (100/day free, modern API, TypeScript SDK). Resend is worth evaluating — simple API and good developer experience.
 - Double opt-in should be implemented (GDPR requirement for EU subscribers).
 
@@ -408,54 +320,38 @@ Each environment composes shared modules with environment-specific variables onl
 
 ---
 
-### 4.11 Data Contracts, Publish Consistency, and Reconciliation
+### 4.11 EmDash Data Contracts, Revision State, and Publish Consistency
 
-To avoid stale or contradictory public content, define explicit data contracts between the three read stores:
-- **Cosmos DB**: canonical transactional source for story state.
-- **Cloudflare KV**: denormalised read model for SSR rendering.
-- **Azure AI Search**: discovery index for filter/search operations.
+To avoid stale or contradictory public content, the architecture should now describe the contracts that matter in the current EmDash-backed system:
 
-**Canonical publish/update/delete workflow:**
+- **Turso / libSQL via EmDash**: canonical source for entries, schema, and revision state.
+- **Cloudflare R2**: canonical store for CMS-managed media assets.
+- **Astro routes using EmDash helpers**: the live read path for published content.
+
+**Canonical create/update/publish flow:**
 
 ```
-Editor action (publish/update/delete)
-  -> Azure Function validates auth + payload
-  -> Write canonical document to Cosmos DB (increment storyVersion)
-  -> Project read model to KV (story + affected index keys)
-  -> Upsert/delete Azure AI Search document
-  -> Purge Cloudflare edge cache URLs
-  -> Append audit event (operation, storyId, storyVersion, timestamp)
+Editor action in EmDash admin or MCP client
+  -> authenticate through Auth0 / EmDash OAuth flow
+  -> create or edit draft revision in EmDash
+  -> publish promotes draft revision to live revision
+  -> homepage and post routes query EmDash for published content
+  -> R2-backed media is resolved as part of rendered entries
 ```
 
-**Versioning and idempotency rules:**
+**Current consistency rules:**
 
-- Each story carries a monotonic `storyVersion` (or ETag-backed equivalent).
-- Downstream writes to KV/Search include `storyVersion`.
-- Replayed publish events are safe: if incoming `storyVersion` is older than the current projection, ignore.
-- Deletes use tombstone events so late-arriving retries cannot recreate stale records.
+- The site should treat EmDash's live revision as the only authoritative published version of an entry.
+- Homepage and article rendering should query for `status: 'published'` or a published entry lookup rather than maintaining a second publish projection.
+- Slug resolution must remain compatible with the CMS's own entry and revision model.
+- Media references should remain stable across draft and published revisions because the binary assets live in R2 outside the HTML render path.
 
-**Failure handling and retries:**
+**Current operational note:**
 
-- If Cosmos write fails: return error; no downstream updates attempted.
-- If KV or Search projection fails after Cosmos commit: mark `projectionStatus = pending` and enqueue retry.
-- Retry worker performs exponential backoff and dead-letter after max attempts.
-- Admin UI can display projection health for each story (`healthy`, `pending`, `failed`).
+- The current Worker build includes a compatibility patch that improves publish diagnostics and tolerates one known publish-time schema drift case in staging.
+- Until that underlying behavior is fully resolved upstream, publish reliability should be validated as an EmDash runtime concern rather than as a cache-invalidation or projection concern.
 
-**Freshness SLOs (initial targets):**
-
-- P95 publish-to-story-page freshness: under 5 seconds.
-- P95 publish-to-search freshness: under 30 seconds.
-- P99 projection retry completion: under 5 minutes.
-
-These SLOs should be instrumented and tracked in Application Insights dashboards with alerting on sustained breaches.
-
-**Reconciliation job (anti-drift control):**
-
-- Run a scheduled reconciliation function (for example, every 15 minutes).
-- Compare a rolling window of recently changed Cosmos stories against KV and Search projections.
-- Auto-repair mismatches by re-projecting from Cosmos; emit metrics and audit records.
-
-This keeps public rendering and search results consistent even when transient failures or partial outages occur.
+This keeps the document aligned with the actual system: one CMS-backed source of truth, revision-based publishing, and direct published reads from EmDash.
 
 ---
 
@@ -500,52 +396,31 @@ For readers specifically, telemetry must remain non-identifying and aggregated o
 
 ## 5. Story Data Model
 
-```typescript
-interface Story {
-  id: string;                  // UUID, Cosmos document ID
-  slug: string;                // URL-safe, human-readable, unique
-  headline: string;
-  subHeadline?: string;
-  summary?: string;            // 1–2 sentences for index pages / OG tags
-  body: string;                // Rich HTML or Markdown; can reference canonical media by `name`
-  authorAlias: string;         // Pseudonym to protect sources
-  status: 'draft' | 'published' | 'archived';
-  tags: string[];              // ["trafficking", "uk", "courts"]
-  metadata: ContentMetadata;
-  media: StoryMedia[];
-  publishDate?: string;        // ISO 8601, set on first publish
-  modifiedDate: string;        // ISO 8601, updated on every save
-}
+The application no longer relies on a hard-coded backend story model defined in application code.
 
-interface StoryMedia {
-  id: string;                  // UUID, canonical media record ID
-  name: string;                // Canonical globally unique identifier referenced from story body
-  mediaType: 'video' | 'youtube' | 'image' | 'document';
-  url: string;                 // R2 CDN URL or canonical external URL (e.g. YouTube)
-  title: string;               // Human-friendly canonical name
-  alt: string;
-  caption?: string;
-  width?: number;
-  height?: number;
-  metadata: ContentMetadata;
-  createdDate: string;
-  modifiedDate: string;
-}
+With EmDash, the content model is managed by the CMS itself:
 
-interface ContentMetadata {
-  people: string[];            // Canonical person names from managed taxonomy
-  groups: string[];            // Canonical cult/group names from managed taxonomy
-  institutions: string[];      // Canonical non-cult organisation names from managed taxonomy
-}
-```
+- collections and fields are defined in EmDash rather than in a C# or custom API contract layer
+- the Worker reads entries by collection name and field keys at runtime
+- editorial schema can evolve inside the CMS without requiring every content-type change to begin as a code-level model change
 
-`StoryMedia` is canonical and reusable across multiple stories. Each media record carries a canonical `name` that can be referenced directly from story body content.
+For the current site, the important contract is therefore behavioral rather than strongly typed:
 
-`StoryMedia.name` should be globally unique across the platform, not just within a single story. That makes embed resolution deterministic, allows direct lookup in search/admin tools, and removes the need for a separate slug field. Treat `name` as a stable identifier; if editorial display text changes, update `title` rather than renaming `name` unless a controlled migration is performed.
+- there is a `posts` collection used for homepage and article rendering
+- entries have a stable identifier plus a slug-like public lookup field
+- the rendered post shape includes title, summary or excerpt, main content, publish or update timestamps, and optional featured media
+- media assets are stored through EmDash in R2 and referenced from entry data rather than from a separate handwritten backend model
+- draft and published state are governed by EmDash revisions and live publication status
 
-The body embeds media by referencing `StoryMedia.name` tokens. At render time, the Worker or frontend component resolves the named media item and selects the correct renderer based on `mediaType` (for example, responsive `<img>`, hosted `<video>`, YouTube embed, or document link/download block).
+The frontend should treat EmDash entry data as CMS-owned content, then normalize only the fields it needs for rendering. That is already how the current Astro routes behave: they read published entries from EmDash and defensively extract values such as slug, title, excerpt, featured image, `publishedAt`, and `updatedAt`.
 
-Both `Story` and `StoryMedia` should be indexed for search. `ContentMetadata` values come from managed taxonomy lists for people, groups, and institutions. During article or media submission, the admin UI can prefill these fields using entity-matching heuristics against the maintained taxonomy, with the editor confirming or correcting suggestions before publish.
+This gives the project a better separation of concerns:
+
+- EmDash owns content-type definition, editorial workflow, and revision semantics
+- the Astro app owns presentation and minimal field normalization for pages
+- infrastructure owns database, media storage, auth, and deployment concerns
+
+Where stronger guarantees are needed, they should be expressed as CMS schema rules, editorial validation, or small route-level normalization helpers, not as a large handwritten application-wide content model that drifts from the CMS.
 
 ---
 
@@ -576,19 +451,20 @@ GitHub Actions CI
   ├── IaC validate/plan (Terraform fmt/validate/plan)
   ├── IaC apply (gated per environment approval)
   ├── Lint + type-check
-  ├── Build Astro → Workers bundle
+  ├── Build Astro + EmDash Workers bundle
+  ├── Apply Worker-compatible EmDash bundle patches
   ├── Deploy to Cloudflare Workers via Wrangler
-  └── Deploy Azure Functions (zip deploy / func action)
+  └── Verify runtime access to Turso + R2 bindings
         │
         ▼
 Cloudflare Workers (production)
         │
-        reads stories from
-        ▼
-Cloudflare KV  ◄───── Azure Function (publish event)
+  reads published entries from
+  ▼
+EmDash on Turso/libSQL
 ```
 
-Azure Functions are deployed separately (either via GitHub Actions + Azure CLI or VS Code Azure extension) and are independent of the Workers deployment.
+The current content-management path is contained within the Worker deployment plus its runtime bindings. Content publishing does not depend on a separate KV projection or cache purge stage.
 
 ---
 
@@ -598,15 +474,15 @@ Azure Functions are deployed separately (either via GitHub Actions + Azure CLI o
 |---|---|---|
 | 1 | **Astro vs SvelteKit** for the Worker? | Astro = less JS by default, simpler for content sites. SvelteKit = richer reactive admin UI. Can we use Astro + Svelte islands to get both? |
 | 2 | **Rich text format** for story body: HTML or Markdown? | Markdown is easier to diff/store; HTML gives editors more control. Markdown-to-HTML at render time (e.g., `marked`) adds ~0.1 ms CPU. |
-| 3 | **KV vs R2 for story cache**: KV values are limited to 25 MB; R2 objects are unlimited. For stories with many embedded images, should the canonical SSR source be R2 JSON files? | KV is fine for text payloads; R2 for blobs. Recommend KV for story JSON, R2 for media. |
+| 3 | **EmDash schema governance**: how much of the content model should remain inside EmDash collections versus custom app code? | Keep core editorial structure in EmDash collections and only move app-specific derived behavior into custom code when the CMS model cannot express it cleanly. |
 | 4 | **Admin UI same-origin vs subdomain?** | Same-origin simplifies auth; subdomain gives a clean separation of concerns. |
 | 5 | **Newsletter provider**: SendGrid vs Resend vs Mailchimp? | Resend recommended for developer simplicity; Mailchimp if list management UI is needed before admin is built. |
-| 6 | **Cosmos DB partition key**: synthetic key shape and search split? | Recommended: synthetic `/pk = ${status}|${publishYearMonth}` for balanced writes + Azure AI Search for author/subject/date filtering and full-text. A single partition key cannot simultaneously optimize all independent query dimensions. |
-| 7 | **GDPR / UK-GDPR compliance**: subscriber double opt-in, right to erasure, data residency? | Azure region should be `uksouth` or `northeurope`. Cosmos DB has point-in-time restore for accidental deletes. |
-| 8 | **Source protection**: stories about cult survivors require careful handling of author/source metadata in the DB. | Author aliases only in public-facing fields; real identities (if stored at all) in a separate, highly restricted Cosmos container. |
-| 9 | **Cache invalidation tier**: URL purge (free) vs Cache Tags (Cloudflare Pro) for post-publish freshness? | URL-based purge from the Azure Function covers MVP needs at no extra cost. Cache Tags enable single-call invalidation of all page derivatives (story, tag archives, OG routes) per story but require Cloudflare Pro (~$20/month). Recommended: URL purge for MVP; upgrade to Cache Tags if per-story derived-page count grows. |
+| 6 | **EmDash publish reliability**: should temporary Worker bundle patches remain in-repo until upstream fixes land? | Keep the patch while staging proves the publish path, but document each patch clearly and remove it once upstream behavior is reliable. |
+| 7 | **GDPR / UK-GDPR compliance**: subscriber double opt-in, right to erasure, data residency? | Keep editorial content and subscriber workflows aligned with UK/EU privacy expectations and document retention/export/delete procedures explicitly. |
+| 8 | **Source protection**: stories about cult survivors require careful handling of author/source metadata in the DB. | Author aliases only in public-facing fields; real identities (if stored at all) in a separate, highly restricted store with narrower access than the editorial CMS itself. |
+| 9 | **Slug and revision semantics**: how should the app behave when EmDash direct entry lookup misses but legacy or draft metadata still exists? | Prefer explicit published-entry behavior first, with narrowly scoped fallbacks only where routing or recovery workflows still require them. |
 | 10 | **IaC toolchain strategy**: Terraform-only vs mixed Terraform + specialist definitions? | Prefer Terraform-only for a single cross-platform graph. If provider gaps block delivery, keep Terraform as orchestrator and invoke specialist definitions (for example, Bicep) from CI while preserving full source-controlled declarative deployment. |
-| 11 | **Projection consistency design**: synchronous publish path vs queued eventual projections to KV/Search? | Hybrid recommended: synchronous best-effort projection in publish path + durable retry queue + reconciliation job. This provides fast freshness with resilience to downstream failures. |
+| 11 | **MCP editorial workflow**: how much operational publishing should happen via MCP clients versus inside the EmDash admin UI? | Use MCP for automation and assisted workflows, but keep the browser admin flow as the baseline path for editing, publishing, and troubleshooting. |
 | 12 | **Metadata taxonomy governance**: how are canonical people, groups, and institutions curated? | Maintain managed taxonomy lists with editor/admin approval, entity-match suggestions during submission, and audit history for merges/renames to preserve search consistency. |
 | 13 | **Privacy operating model**: what telemetry, analytics, and retention are acceptable? | Recommended: privacy-first defaults, minimal operational analytics only, explicit retention schedules, and no collection for advertising/profiling or unrelated secondary purposes. |
 
@@ -620,16 +496,16 @@ The following items are listed in priority order. Each should be completed and v
 2. Create IaC foundation (`/infra`): Terraform providers/backends/modules for Azure, Cloudflare, Auth0; configure remote state + environment separation.
 3. Implement secrets model: Key Vault + CI secret/OIDC wiring + least-privilege service principals/tokens.
 4. Design system: typography, colour palette, CSS Grid layout; homepage shell.
-5. KV integration: Worker reads story JSON from KV; story page template.
-6. Static story fixtures in KV; homepage + article page rendering; Core Web Vitals baseline.
+5. Integrate EmDash into the Astro Worker with Turso/libSQL and R2 bindings.
+6. Implement homepage + article page rendering against published EmDash entries; establish Core Web Vitals baseline.
 7. PWA: Web App Manifest + Service Worker; Lighthouse PWA audit.
-8. Azure Function scaffold; Cosmos DB containers; CRUD endpoints; deploy to Azure.
+8. Configure EmDash admin, OAuth, and MCP access inside the Worker deployment.
 9. Auth0 tenant setup via IaC; login flow in Astro Worker; JWT validation middleware.
-10. Admin UI: story list, create/edit form, publish action (writes to KV).
+10. Editorial UI: story list, create/edit form, publish action through EmDash.
 11. Canonical media library: create/search/reuse media records, upload to R2, and support canonical name-based embeds.
 12. Metadata taxonomy: managed lists for people, groups, and institutions with suggestion/prefill on submission.
 13. Newsletter subscribe form; email digest wiring (Resend/SendGrid).
-14. Implement story projection pipeline: `storyVersion`, KV/Search upsert flow, retry queue, dead-letter handling, and reconciliation timer job.
+14. Harden EmDash publish reliability in Workers and remove temporary compatibility patches once upstream fixes are no longer required.
 15. Define privacy controls: privacy notice, retention rules, consent capture, telemetry boundaries, and role-restricted handling of sensitive identity data.
 16. End-to-end smoke test; Lighthouse audit; MVP sign-off.
 
@@ -640,18 +516,15 @@ The following items are listed in priority order. Each should be completed and v
 | Layer | Technology | Rationale |
 |---|---|---|
 | SSR Framework | [Astro](https://astro.build/) + `@astrojs/cloudflare` | Zero-JS-by-default, Islands hydration, native Workers runtime |
-| Hosting | Cloudflare Workers | V8 isolates (no cold starts), global edge network, KV/R2 integration |
-| Story Cache | Cloudflare KV | Sub-millisecond reads, ideal for published story payloads |
-| Edge HTML Cache | Cloudflare Cache API (`caches.default`) | Per-datacenter HTTP response cache; zero read cost; programmatic invalidation via Cloudflare Purge API |
+| Hosting | Cloudflare Workers | V8 isolates, global edge deployment, and a single runtime for the public site plus EmDash |
+| CMS | [EmDash](https://www.npmjs.com/package/emdash) | Integrated admin, revision-based publishing, MCP support, and direct published-content reads inside the Astro app |
+| Content Database | Turso / libSQL | Managed SQLite-compatible backing store that works with the current Worker-compatible EmDash setup |
 | Media Storage | Cloudflare R2 | S3-compatible, zero egress fees |
-| CRUD API | Azure Functions (TypeScript, v4) | Serverless, Cosmos DB SDK, scalable |
-| Database | Azure Cosmos DB (NoSQL) | Low-latency, globally distributed, flexible schema |
-| Query/Search | Azure AI Search | Efficient filtered + full-text queries for stories and media (date, author, subject, tags, metadata taxonomy); avoids cross-partition fan-out for discovery queries |
-| Metadata Taxonomy | Managed canonical lists in Cosmos DB + suggestion service | Normalises people, groups, and institutions across stories/media and improves prefill, search, and editorial consistency |
+| Metadata Taxonomy | Managed canonical lists in CMS-backed content and supporting app logic | Normalises people, groups, and institutions across stories/media and improves prefill, search, and editorial consistency |
 | Auth | Auth0 | Managed OIDC/JWT, RBAC, SPA + API support |
 | Infrastructure as Code | Terraform (primary), Bicep/other specialist definitions (fallback) | Source-controlled, repeatable, auditable deployments across Azure + Cloudflare + Auth0 with a single preferred control plane |
 | Privacy / Compliance | Privacy-by-design controls + GDPR / UK-GDPR operating procedures | Minimises data collection, constrains access to sensitive information, and keeps processing limited to journalism and operational necessity |
 | Email | Resend (or SendGrid) | Simple API, TypeScript SDK, generous free tier |
-| Push Notifications | Web Push (VAPID) + FCM via Bubblewrap | Cross-platform; TWA bridges iOS Web Push gap |
-| App Packaging | Google Bubblewrap (TWA) | Wraps PWA as Android/iOS apps |
+| Push Notifications | Web Push (VAPID) with optional native push via Capacitor plugins | Keeps web push for the browser while leaving room for packaged-app notification support |
+| App Packaging | Capacitor | Packages the existing web app for Android/iOS without introducing a separate native application stack |
 | CI/CD | GitHub Actions + Wrangler | Automated lint/build/deploy on push |
