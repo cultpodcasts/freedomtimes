@@ -307,3 +307,26 @@ npx wrangler secret put AUTH0_CLIENT_SECRET
 ```
 
 You will be prompted for each value. These must match the values used in CI and production.
+
+## Scheduler Worker
+
+The notification scheduler runs as a separate Cloudflare Worker in the sibling [scheduler-worker](scheduler-worker) project, using [scheduler-worker/wrangler.jsonc](scheduler-worker/wrangler.jsonc).
+
+- It is intentionally separate from the Astro SSR worker.
+- It is triggered by a Cloudflare cron schedule every 10 minutes.
+- It reads recurring jobs from the scheduler Turso database and dispatches handlers from [scheduler-worker/src/scheduler.ts](scheduler-worker/src/scheduler.ts).
+
+Manual staging deploy example:
+
+```powershell
+cd scheduler-worker
+npx wrangler deploy --config wrangler.jsonc --env staging
+```
+
+Required scheduler secrets:
+
+```powershell
+cd scheduler-worker
+npx wrangler secret put TURSO_SCHEDULER_DATABASE_URL --config wrangler.jsonc --env staging
+npx wrangler secret put TURSO_SCHEDULER_AUTH_TOKEN --config wrangler.jsonc --env staging
+```

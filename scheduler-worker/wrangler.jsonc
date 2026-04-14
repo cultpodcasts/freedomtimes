@@ -1,0 +1,34 @@
+{
+	"name": "freedomtimes-scheduler",
+	"main": "src/scheduler.ts",
+	"compatibility_date": "2026-03-29",
+	"logpush": true,
+	"compatibility_flags": ["nodejs_compat"],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"vars": {
+		"NOTIFICATION_DEFAULT_TITLE": "Freedom Times"
+	},
+	"env": {
+		"production": {
+			"name": "freedomtimes-scheduler",
+			"triggers": {
+				"crons": ["*/10 * * * *"]
+			},
+			"vars": {
+				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times"
+			}
+		},
+		"staging": {
+			"name": "freedomtimes-scheduler-staging",
+			"triggers": {
+				"crons": ["*/10 * * * *"]
+			},
+			"vars": {
+				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times Staging"
+			}
+		}
+	}
+}

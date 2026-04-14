@@ -409,11 +409,17 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: |
+            scheduler-worker/package-lock.json
             web/package-lock.json
             functions/editorial-api/package-lock.json
 
       - name: Install Function App Dependencies
         working-directory: functions/editorial-api
+        run: npm ci
+
+      - name: Install Scheduler Worker Dependencies
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: scheduler-worker
         run: npm ci
 
       - name: Build Function App (TypeScript)
@@ -528,6 +534,17 @@ jobs:
             --var AUTH0_ROLES_CLAIM_NAMESPACE:$AUTH0_ROLES_CLAIM_NAMESPACE \
             --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
 
+      - name: Deploy Scheduler Worker to Staging
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: scheduler-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          npx wrangler deploy --config wrangler.jsonc --env staging
+
       - name: Set Worker Secrets for Staging
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
         working-directory: web
@@ -562,6 +579,20 @@ jobs:
           if [ -n "${EMDASH_PREVIEW_SECRET_VALUE:-}" ]; then
             printf '%s' "$EMDASH_PREVIEW_SECRET_VALUE" | npx wrangler secret put EMDASH_PREVIEW_SECRET --config wrangler.jsonc --env staging
           fi
+
+      - name: Set Scheduler Worker Secrets for Staging
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: scheduler-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          TURSO_SCHEDULER_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
+          TURSO_SCHEDULER_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$TURSO_SCHEDULER_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_SCHEDULER_DATABASE_URL --config wrangler.jsonc --env staging
+          printf '%s' "$TURSO_SCHEDULER_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_SCHEDULER_AUTH_TOKEN --config wrangler.jsonc --env staging
 
       - name: Cleanup Unlock TFC Workspace
         if: always()
