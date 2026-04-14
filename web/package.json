@@ -8,6 +8,9 @@
   "scripts": {
     "dev": "astro dev",
     "build": "tsx scripts/build-service-worker.ts && astro build && tsx scripts/patch-cloudflare-bundle.ts",
+    "scheduler:db:migrate": "tsx scripts/apply-scheduler-sql.ts migrate",
+    "scheduler:db:seed": "tsx scripts/apply-scheduler-sql.ts seed",
+    "scheduler:db:deploy": "tsx scripts/apply-scheduler-sql.ts migrate && tsx scripts/apply-scheduler-sql.ts seed",
     "preview": "astro preview",
     "astro": "astro",
     "build:service-worker": "tsx scripts/build-service-worker.ts",

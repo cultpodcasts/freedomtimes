@@ -330,6 +330,8 @@ jobs:
           AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
           TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
           TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
+          SCHEDULER_TURSO_DATABASE_URL=$(terraform output -raw scheduler_turso_database_url 2>/dev/null || echo "")
+          SCHEDULER_TURSO_AUTH_TOKEN=$(terraform output -raw scheduler_turso_database_auth_token 2>/dev/null || echo "")
 
           echo "api_base_url=$API_BASE_URL" >> $GITHUB_OUTPUT
           echo "function_app_name=$FUNCTION_APP_NAME" >> $GITHUB_OUTPUT
@@ -338,6 +340,9 @@ jobs:
           echo "turso_database_url=$TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
           echo "::add-mask::$TURSO_AUTH_TOKEN"
           echo "turso_auth_token=$TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
+          echo "scheduler_turso_database_url=$SCHEDULER_TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "::add-mask::$SCHEDULER_TURSO_AUTH_TOKEN"
+          echo "scheduler_turso_auth_token=$SCHEDULER_TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
 
       - name: Fetch Auth0 App Secret
         if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
@@ -458,6 +463,27 @@ jobs:
             echo "[web-deps] npm ci failed; attempting npm install fallback"
             npm install --no-audit --no-fund
           fi
+
+      - name: Apply Scheduler Database Migration and Seed
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: web
+        env:
+          TURSO_SCHEDULER_DATABASE_URL: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
+          TURSO_SCHEDULER_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TURSO_SCHEDULER_DATABASE_URL}" ]; then
+            echo "ERROR: TURSO_SCHEDULER_DATABASE_URL is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          if [ -z "${TURSO_SCHEDULER_AUTH_TOKEN}" ]; then
+            echo "ERROR: TURSO_SCHEDULER_AUTH_TOKEN is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          npm run scheduler:db:deploy
 
       - name: Build Astro Worker
         working-directory: web
