@@ -1,4 +1,4 @@
-import { createClient } from '@libsql/client';
+import { createClient } from '@libsql/client/web';
 import { readEnv, readOptionalEnv } from './auth';
 
 export type PushSubscriptionRecord = {
@@ -90,5 +90,30 @@ function createSubscriptionsClient() {
   return createClient({
     url: readEnv('TURSO_SUBSCRIPTIONS_DATABASE_URL'),
     authToken: readEnv('TURSO_SUBSCRIPTIONS_AUTH_TOKEN'),
+    fetch: createWorkerSafeFetch(),
   });
+}
+
+function createWorkerSafeFetch():
+  | ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>)
+  | undefined {
+  if (typeof globalThis.fetch !== 'function') {
+    return undefined;
+  }
+
+  return (input: RequestInfo | URL, init?: RequestInit) => {
+    if (input && typeof input === 'object' && 'url' in input) {
+      const request = input as Request;
+      return globalThis.fetch(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body,
+        redirect: request.redirect,
+        signal: request.signal,
+        ...(init || {}),
+      });
+    }
+
+    return globalThis.fetch(input, init);
+  };
 }
