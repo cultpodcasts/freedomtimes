@@ -38,12 +38,29 @@ function Main {
             $stagingClientSecret = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING for staging Worker secret sync."
             $stagingEmdashAuthSecret = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("EMDASH_AUTH_SECRET_STAGING") -ErrorMessage "Missing EMDASH_AUTH_SECRET_STAGING for staging Worker secret sync."
             $stagingEmdashPreviewSecret = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("EMDASH_PREVIEW_SECRET_STAGING") -ErrorMessage "Missing EMDASH_PREVIEW_SECRET_STAGING for staging Worker secret sync."
+            $stagingSubscriptionsDbUrl = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("TURSO_STAGING_SUBSCRIPTIONS_DB_URL") -ErrorMessage "Missing TURSO_STAGING_SUBSCRIPTIONS_DB_URL for staging Worker secret sync."
+            $stagingSubscriptionsDbToken = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN") -ErrorMessage "Missing TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN for staging Worker secret sync."
+            $stagingSchedulerDbUrl = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("TURSO_STAGING_SCHEDULER_DB_URL") -ErrorMessage "Missing TURSO_STAGING_SCHEDULER_DB_URL for staging scheduler Worker secret sync."
+            $stagingSchedulerDbToken = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("TURSO_STAGING_SCHEDULER_DB_TOKEN") -ErrorMessage "Missing TURSO_STAGING_SCHEDULER_DB_TOKEN for staging scheduler Worker secret sync."
+            $stagingPushPublicKey = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY") -ErrorMessage "Missing PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY for staging Worker secret sync."
+            $stagingPushPrivateKey = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_VAPID_PRIVATE_KEY") -ErrorMessage "Missing PUSH_STAGING_VAPID_PRIVATE_KEY for staging scheduler Worker secret sync."
+            $stagingPushSubject = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_VAPID_SUBJECT") -ErrorMessage "Missing PUSH_STAGING_VAPID_SUBJECT for staging scheduler Worker secret sync."
             Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, EMDASH_AUTH_SECRET, EMDASH_PREVIEW_SECRET for staging" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_DOMAIN" -Value $stagingAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $stagingClientId -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $stagingClientSecret -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $stagingSubscriptionsDbUrl -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "TURSO_SUBSCRIPTIONS_AUTH_TOKEN" -Value $stagingSubscriptionsDbToken -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "PUSH_SUBSCRIBE_PUBLIC_KEY" -Value $stagingPushPublicKey -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "EMDASH_AUTH_SECRET" -Value $stagingEmdashAuthSecret -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "EMDASH_PREVIEW_SECRET" -Value $stagingEmdashPreviewSecret -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "TURSO_SCHEDULER_DATABASE_URL" -Value $stagingSchedulerDbUrl -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "TURSO_SCHEDULER_AUTH_TOKEN" -Value $stagingSchedulerDbToken -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $stagingSubscriptionsDbUrl -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "TURSO_SUBSCRIPTIONS_AUTH_TOKEN" -Value $stagingSubscriptionsDbToken -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_VAPID_PUBLIC_KEY" -Value $stagingPushPublicKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_VAPID_PRIVATE_KEY" -Value $stagingPushPrivateKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_VAPID_SUBJECT" -Value $stagingPushSubject -WhatIfOnly:$DryRun
         }
         elseif ($Target -eq "Production") {
             Write-Host "\nSyncing Cloudflare Worker secrets for PRODUCTION..." -ForegroundColor Red
@@ -53,10 +70,27 @@ function Main {
             Write-Host "[LOG] Setting AUTH0_DOMAIN for production: '$productionAuth0Domain'" -ForegroundColor Magenta
             $productionClientId = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION for production Worker secret sync."
             $productionClientSecret = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION for production Worker secret sync."
+            $productionPushPublicKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY")
+            $productionPushPrivateKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_VAPID_PRIVATE_KEY")
+            $productionPushSubject = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_VAPID_SUBJECT")
+            $productionSubscriptionsDbUrl = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL")
+            $productionSubscriptionsDbToken = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SUBSCRIPTIONS_DB_TOKEN")
+            $productionSchedulerDbUrl = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_URL")
+            $productionSchedulerDbToken = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_TOKEN")
             Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for production" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $productionSubscriptionsDbUrl -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_SUBSCRIPTIONS_AUTH_TOKEN" -Value $productionSubscriptionsDbToken -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "PUSH_SUBSCRIBE_PUBLIC_KEY" -Value $productionPushPublicKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SCHEDULER_DATABASE_URL" -Value $productionSchedulerDbUrl -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SCHEDULER_AUTH_TOKEN" -Value $productionSchedulerDbToken -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $productionSubscriptionsDbUrl -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SUBSCRIPTIONS_AUTH_TOKEN" -Value $productionSubscriptionsDbToken -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "PUSH_VAPID_PUBLIC_KEY" -Value $productionPushPublicKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "PUSH_VAPID_PRIVATE_KEY" -Value $productionPushPrivateKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "PUSH_VAPID_SUBJECT" -Value $productionPushSubject -WhatIfOnly:$DryRun
         }
     }
 
@@ -328,6 +362,8 @@ $stagingEnvPath = Join-Path $repoRoot ".env.staging"
 $productionEnvPath = Join-Path $repoRoot ".env.production"
 $stagingWranglerConfig = Join-Path $repoRoot "web/wrangler.jsonc --env staging"
 $productionWranglerConfig = Join-Path $repoRoot "web/wrangler.jsonc --env production"
+$stagingSchedulerWranglerConfig = Join-Path $repoRoot "scheduler-worker/wrangler.jsonc --env staging"
+$productionSchedulerWranglerConfig = Join-Path $repoRoot "scheduler-worker/wrangler.jsonc --env production"
 
 $baseEnvValues = if (Test-Path $baseEnvPath) { Parse-EnvFile -Path $baseEnvPath } else { @{} }
 $stagingOverlayValues = if (Test-Path $stagingEnvPath) { Parse-EnvFile -Path $stagingEnvPath } else { @{} }
