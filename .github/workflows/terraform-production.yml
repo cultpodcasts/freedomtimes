@@ -515,7 +515,7 @@ jobs:
           TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
-          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets['PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY'] }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
           EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_PRODUCTION }}
         run: |
@@ -552,9 +552,9 @@ jobs:
           TURSO_SCHEDULER_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
-          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
-          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
-          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}
+          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets['PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY'] }}
+          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets['PUSH_PRODUCTION_VAPID_PRIVATE_KEY'] }}
+          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets['PUSH_PRODUCTION_VAPID_SUBJECT'] }}
         run: |
           set -euo pipefail
 

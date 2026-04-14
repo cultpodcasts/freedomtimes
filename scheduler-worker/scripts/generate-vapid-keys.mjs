@@ -1,4 +1,7 @@
-import { ApplicationServerKeys } from 'webpush-webcrypto';
+import { webcrypto } from 'node:crypto';
+import { ApplicationServerKeys, setWebCrypto } from 'webpush-webcrypto';
+
+setWebCrypto(webcrypto);
 
 const subject = process.argv[2] || 'mailto:platform@freedomtimes.news';
 const keys = await ApplicationServerKeys.generate();
