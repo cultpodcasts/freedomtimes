@@ -4,6 +4,8 @@ import {
   CSRF_COOKIE,
   SESSION_COOKIE,
   exchangeCodeForTokens,
+  getAuthFlowCookieName,
+  getAuthRedirectUri,
   getCookieDeleteOptionsForHost,
   getCookieDomainForHost,
   getRoleClaimDebug,
@@ -11,6 +13,7 @@ import {
   makeState,
   getStateCookieName,
   hasEditorialRole,
+  isNativeAuthFlow,
   verifyIdToken,
 } from '../../lib/auth';
 
@@ -22,6 +25,7 @@ export const GET: APIRoute = async (ctx) => {
   const stateParam = ctx.url.searchParams.get('state');
   const code = ctx.url.searchParams.get('code');
   const expectedState = ctx.cookies.get(getStateCookieName())?.value;
+  const usesNativeAuth = isNativeAuthFlow(ctx.cookies.get(getAuthFlowCookieName())?.value);
 
   console.info('[auth.callback] callback received', {
     requestId,
@@ -32,6 +36,7 @@ export const GET: APIRoute = async (ctx) => {
 
   for (const deleteOptions of deleteOptionsList) {
     ctx.cookies.delete(getStateCookieName(), deleteOptions);
+    ctx.cookies.delete(getAuthFlowCookieName(), deleteOptions);
   }
 
   if (!code || !stateParam || !expectedState || stateParam !== expectedState) {
@@ -46,7 +51,7 @@ export const GET: APIRoute = async (ctx) => {
   }
 
   try {
-    const redirectUri = `${ctx.url.origin}/auth/callback`;
+    const redirectUri = getAuthRedirectUri(ctx.url.origin, usesNativeAuth);
     const { idToken, accessToken } = await exchangeCodeForTokens({ code, redirectUri, config });
     const payload = await verifyIdToken(idToken, config);
 

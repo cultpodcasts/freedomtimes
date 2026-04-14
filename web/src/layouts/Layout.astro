@@ -16,5 +16,10 @@ import '../styles/global.css';
 		<main class="shell">
 			<slot />
 		</main>
+		<script>
+			import { initializeNativeAuthBridge } from '../lib/native-auth-bridge';
+
+			void initializeNativeAuthBridge();
+		</script>
 	</body>
 </html>

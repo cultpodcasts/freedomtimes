@@ -203,6 +203,7 @@ This path is intended for Mac-based install/signing validation. It is separate f
 - Login requests `scope=openid` for minimal identity claims.
 - Login also requests the configured API audience so Auth0 issues an API access token used by the cookie-to-APIM flow.
 - The Auth0 API is configured to skip first-party consent prompts, so normal staging/production login should not show the consent screen.
+- For the Android Capacitor shell, Auth0 must also allow the native callback URL `news.freedomtimes.app://auth/callback` so the browser can hand the user back to the app after Google sign-in.
 
 ## Staging Login Flow Runbook
 

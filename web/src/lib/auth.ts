@@ -5,6 +5,9 @@ export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
 export const CSRF_COOKIE = 'ft_csrf';
 const STATE_COOKIE = 'ft_state';
+const NATIVE_APP_COOKIE = 'ft_native_app';
+const AUTH_FLOW_COOKIE = 'ft_auth_flow';
+const NATIVE_AUTH_CALLBACK_URL = 'news.freedomtimes.app://auth/callback';
 
 function getRoleClaims(): string[] {
   const namespace = readOptionalEnv('AUTH0_ROLES_CLAIM_NAMESPACE').trim().replace(/\/$/, '');
@@ -59,6 +62,26 @@ export function makeState(): string {
 
 export function getStateCookieName(): string {
   return STATE_COOKIE;
+}
+
+export function getNativeAppCookieName(): string {
+  return NATIVE_APP_COOKIE;
+}
+
+export function getAuthFlowCookieName(): string {
+  return AUTH_FLOW_COOKIE;
+}
+
+export function isNativeAppContext(value: string | undefined): boolean {
+  return value === '1';
+}
+
+export function isNativeAuthFlow(value: string | undefined): boolean {
+  return value === 'native';
+}
+
+export function getAuthRedirectUri(origin: string, useNativeApp: boolean): string {
+  return useNativeApp ? NATIVE_AUTH_CALLBACK_URL : `${origin}/auth/callback`;
 }
 
 export function getCookieDomainForHost(hostname: string): string | undefined {
