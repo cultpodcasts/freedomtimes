@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { getNotificationSupportState, enableNotificationsForCurrentDevice } from '../lib/device-notifications';
 import { getPushSubscribePublicKey } from '../lib/push-subscriptions';
 
@@ -11,6 +12,11 @@ export default function NotificationPermission() {
 
   useEffect(() => {
     const initialize = async () => {
+      if (Capacitor.isNativePlatform()) {
+        setState('unsupported');
+        return;
+      }
+
       try {
         const publicKey = getPushSubscribePublicKey();
         const supportState = await getNotificationSupportState(publicKey);

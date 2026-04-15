@@ -16,7 +16,7 @@ type Story = {
 
 function isLikelyNativeShellRequest(request: Request): boolean {
   const userAgent = request.headers.get('user-agent')?.toLowerCase() ?? '';
-  return userAgent.includes('; wv') || userAgent.includes(' version/4.0');
+  return userAgent.includes('freedomtimescapacitorapp');
 }
 
 function readImageSrc(value: unknown): string | null {
@@ -115,7 +115,7 @@ const rails = stories.slice(2);
       <p class="welcome">Signed in as {name}</p>
     </header>
 
-    {showWebNotificationPanel && <NotificationPermission client:load />}
+    {showWebNotificationPanel && <NotificationPermission client:only="react" />}
 
     <main class="front-grid">
       {lead ? (
