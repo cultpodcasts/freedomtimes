@@ -21,6 +21,7 @@ jobs:
 
     env:
       CAPACITOR_SERVER_URL: https://staging.freedomtimes.news
+      PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
 
     steps:
       - uses: actions/checkout@v6
@@ -44,6 +45,23 @@ jobs:
 
       - name: Install Web Dependencies
         run: npm ci
+
+      - name: Materialize Firebase Android Config
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
+            echo "Missing required secret: PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64"
+            exit 1
+          fi
+
+          mkdir -p android/app
+          printf '%s' "$PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
+
+          if [ ! -s android/app/google-services.json ]; then
+            echo "google-services.json was not created correctly"
+            exit 1
+          fi
 
       - name: Install Android SDK Packages
         run: |
