@@ -420,7 +420,7 @@ jobs:
           TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
-          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets[format('PUSH_{0}_SUBSCRIBE_PUBLIC_KEY', 'STAGING')] }}
+          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_STAGING }}
         run: |
           set -euo pipefail
@@ -456,16 +456,16 @@ jobs:
           TURSO_SCHEDULER_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
-          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets[format('PUSH_{0}_SUBSCRIBE_PUBLIC_KEY', 'STAGING')] }}
-          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets[format('PUSH_{0}_VAPID_PRIVATE_KEY', 'STAGING')] }}
-          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets[format('PUSH_{0}_VAPID_SUBJECT', 'STAGING')] }}
-          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets[format('PUSH_{0}_ANDROID_FCM_PROJECT_ID', 'STAGING')] }}
-          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets[format('PUSH_{0}_ANDROID_FCM_CLIENT_EMAIL', 'STAGING')] }}
-          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets[format('PUSH_{0}_ANDROID_FCM_PRIVATE_KEY', 'STAGING')] }}
-          PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_TEAM_ID', 'STAGING')] }}
-          PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_KEY_ID', 'STAGING')] }}
-          PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_PRIVATE_KEY', 'STAGING')] }}
-          PUSH_IOS_APNS_BUNDLE_ID_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_BUNDLE_ID', 'STAGING')] }}
+          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_STAGING_VAPID_SUBJECT }}
+          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PROJECT_ID }}
+          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL }}
+          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY }}
+          PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_TEAM_ID }}
+          PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_KEY_ID }}
+          PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_PRIVATE_KEY }}
+          PUSH_IOS_APNS_BUNDLE_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_BUNDLE_ID }}
         run: |
           set -euo pipefail
 
@@ -696,7 +696,7 @@ jobs:
           TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
-          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets[format('PUSH_{0}_SUBSCRIBE_PUBLIC_KEY', 'STAGING')] }}
+          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_STAGING }}
           EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_STAGING }}
         run: |
@@ -731,16 +731,16 @@ jobs:
           TURSO_SCHEDULER_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
-          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets[format('PUSH_{0}_SUBSCRIBE_PUBLIC_KEY', 'STAGING')] }}
-          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets[format('PUSH_{0}_VAPID_PRIVATE_KEY', 'STAGING')] }}
-          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets[format('PUSH_{0}_VAPID_SUBJECT', 'STAGING')] }}
-          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets[format('PUSH_{0}_ANDROID_FCM_PROJECT_ID', 'STAGING')] }}
-          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets[format('PUSH_{0}_ANDROID_FCM_CLIENT_EMAIL', 'STAGING')] }}
-          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets[format('PUSH_{0}_ANDROID_FCM_PRIVATE_KEY', 'STAGING')] }}
-          PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_TEAM_ID', 'STAGING')] }}
-          PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_KEY_ID', 'STAGING')] }}
-          PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_PRIVATE_KEY', 'STAGING')] }}
-          PUSH_IOS_APNS_BUNDLE_ID_VALUE: ${{ secrets[format('PUSH_{0}_IOS_APNS_BUNDLE_ID', 'STAGING')] }}
+          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_STAGING_VAPID_SUBJECT }}
+          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PROJECT_ID }}
+          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL }}
+          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY }}
+          PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_TEAM_ID }}
+          PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_KEY_ID }}
+          PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_PRIVATE_KEY }}
+          PUSH_IOS_APNS_BUNDLE_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_BUNDLE_ID }}
         run: |
           set -euo pipefail
 
