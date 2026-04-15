@@ -62,5 +62,14 @@ export const GET: APIRoute = async (ctx) => {
     useNativeApp,
   });
 
+  // Native app fetches this endpoint with Accept: application/json so the authorize URL can be
+  // opened in the system browser (Chrome Custom Tabs) rather than inside the WebView.
+  // Google blocks OAuth initiated from WebViews and falls back to device authorization flow.
+  if (ctx.request.headers.get('accept')?.includes('application/json')) {
+    return new Response(JSON.stringify({ url: authorizeUrl.toString() }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
   return ctx.redirect(authorizeUrl.toString());
 };

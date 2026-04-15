@@ -1,4 +1,5 @@
 import { App } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 
 const APP_SCHEME = 'news.freedomtimes.app';
@@ -42,6 +43,25 @@ function rewriteNativeLoginLinks(): void {
   }
 }
 
+async function openLoginInSystemBrowser(): Promise<void> {
+  try {
+    const response = await fetch(NATIVE_LOGIN_PATH, {
+      headers: { accept: 'application/json' },
+      credentials: 'same-origin',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Login URL fetch failed: ${response.status}`);
+    }
+
+    const { url } = await response.json() as { url: string };
+    await Browser.open({ url });
+  } catch {
+    // Fallback: navigate the WebView directly (will work but may trigger device flow on some accounts)
+    window.location.assign(new URL(NATIVE_LOGIN_PATH, window.location.origin).toString());
+  }
+}
+
 function installNativeLoginInterceptor(): void {
   document.addEventListener('click', (event) => {
     if (event.defaultPrevented) {
@@ -71,7 +91,7 @@ function installNativeLoginInterceptor(): void {
     }
 
     event.preventDefault();
-    window.location.assign(new URL(NATIVE_LOGIN_PATH, window.location.origin).toString());
+    openLoginInSystemBrowser();
   });
 }
 
@@ -104,6 +124,8 @@ async function handleAuthCallback(appUrl: string): Promise<void> {
     return;
   }
 
+  // Close the system browser (Chrome Custom Tabs) before navigating the WebView.
+  await Browser.close().catch(() => undefined);
   window.location.replace(callbackUrl);
 }
 

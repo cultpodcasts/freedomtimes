@@ -30,6 +30,7 @@
     "@astrojs/react": "^5.0.3",
     "@capacitor/android": "^8.3.0",
     "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.0",
     "@capacitor/push-notifications": "^8.0.3",
