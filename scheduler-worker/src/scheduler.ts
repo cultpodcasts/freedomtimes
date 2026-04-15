@@ -232,6 +232,7 @@ async function deliverNotification(
       if (!target) {
         failed += 1;
         deactivated += 1;
+        console.warn(`[scheduler] ${jobId}: invalid subscription payload id=${stored.id} endpoint=${stored.endpoint}`);
         await markSubscriptionFailure(subscriptionsDb, stored.id, 'Invalid stored subscription payload', true);
         continue;
       }
@@ -276,6 +277,9 @@ async function deliverNotification(
         if (deliveryResult.deactivate) {
           deactivated += 1;
         }
+        console.warn(
+          `[scheduler] ${jobId}: delivery failed id=${stored.id} endpoint=${stored.endpoint} deactivate=${deliveryResult.deactivate} reason=${deliveryResult.reason ?? 'Push delivery failed'}`,
+        );
         await markSubscriptionFailure(
           subscriptionsDb,
           stored.id,
@@ -285,6 +289,7 @@ async function deliverNotification(
       } catch (error) {
         failed += 1;
         const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[scheduler] ${jobId}: delivery exception id=${stored.id} endpoint=${stored.endpoint} reason=${message}`);
         await markSubscriptionFailure(subscriptionsDb, stored.id, message, false);
       }
     }
@@ -681,7 +686,11 @@ function readIosPushConfig(env: Env): IosPushConfig | null {
 }
 
 function normalizePrivateKey(value: string): string {
-  return value.replace(/\\n/g, '\n').trim();
+  return value
+    .replace(/\\\\n/g, '\n') // handle \\n (double-escaped, from populate-android-fcm-env.ps1 bug)
+    .replace(/\\n/g, '\n')   // handle \n (correctly single-escaped)
+    .replace(/\r/g, '')      // strip stray carriage returns
+    .trim();
 }
 
 async function markSubscriptionSuccess(db: AppDb, id: string): Promise<void> {

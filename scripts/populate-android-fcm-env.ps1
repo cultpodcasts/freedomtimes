@@ -96,7 +96,7 @@ function Get-KeyMaterial {
 function Convert-ToEscapedPrivateKey {
     param([string]$PrivateKey)
 
-    return ($PrivateKey -replace "`r`n", "`n" -replace "`r", "`n" -replace "`n", "\\n").Trim()
+    return ($PrivateKey -replace "`r`n", "`n" -replace "`r", "`n" -replace "`n", "\n").Trim()
 }
 
 function Set-OrAppendEnvValue {
