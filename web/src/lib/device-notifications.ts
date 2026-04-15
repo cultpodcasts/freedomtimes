@@ -261,7 +261,7 @@ async function enableBrowserPushNotifications(publicKey: string): Promise<void> 
   await persistSubscription(subscription.toJSON());
 }
 
-async function persistSubscription(payload: Record<string, unknown>): Promise<void> {
+async function persistSubscription(payload: unknown): Promise<void> {
   const response = await fetch('/api/push-subscriptions', {
     method: 'POST',
     headers: {
@@ -345,7 +345,7 @@ function readNotificationTargetUrl(data: unknown): string | null {
   return new URL(rawUrl, window.location.origin).toString();
 }
 
-function decodeBase64Url(value: string): Uint8Array {
+function decodeBase64Url(value: string): ArrayBuffer {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
   const raw = atob(padded);
@@ -355,7 +355,7 @@ function decodeBase64Url(value: string): Uint8Array {
     bytes[index] = raw.charCodeAt(index);
   }
 
-  return bytes;
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 }
 
 async function isAndroidFirebaseConfigured(): Promise<boolean> {
