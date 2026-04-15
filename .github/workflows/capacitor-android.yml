@@ -22,6 +22,10 @@ jobs:
     env:
       CAPACITOR_SERVER_URL: https://staging.freedomtimes.news
       PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+      ANDROID_STAGING_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_STAGING_SIGNING_KEYSTORE_BASE64 }}
+      ANDROID_STAGING_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_STAGING_SIGNING_STORE_PASSWORD }}
+      ANDROID_STAGING_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_STAGING_SIGNING_KEY_ALIAS }}
+      ANDROID_STAGING_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_STAGING_SIGNING_KEY_PASSWORD }}
 
     steps:
       - uses: actions/checkout@v6
@@ -60,6 +64,29 @@ jobs:
 
           if [ ! -s android/app/google-services.json ]; then
             echo "google-services.json was not created correctly"
+            exit 1
+          fi
+
+      - name: Validate Android Signing Inputs
+        run: |
+          set -euo pipefail
+
+          required=(
+            ANDROID_STAGING_SIGNING_KEYSTORE_BASE64
+            ANDROID_STAGING_SIGNING_STORE_PASSWORD
+            ANDROID_STAGING_SIGNING_KEY_ALIAS
+            ANDROID_STAGING_SIGNING_KEY_PASSWORD
+          )
+
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required Android signing secrets: ${missing[*]}"
             exit 1
           fi
 

@@ -1,8 +1,88 @@
 apply plugin: 'com.android.application'
 
+def repoEnvValues = [:]
+def repoEnvFile = rootProject.file('../../.env.dev')
+if (repoEnvFile.exists()) {
+    repoEnvFile.eachLine { rawLine ->
+        def line = rawLine.trim()
+        if (!line || line.startsWith('#')) {
+            return
+        }
+
+        def matcher = (line =~ /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/)
+        if (matcher.matches()) {
+            repoEnvValues[matcher[0][1]] = matcher[0][2].trim()
+        }
+    }
+}
+
+def placeholderPattern = ~/^<[^>]+>$/
+def readConfigValue = { String name ->
+    def envValue = System.getenv(name)
+    if (envValue != null) {
+        def trimmed = envValue.trim()
+        if (trimmed && !(trimmed ==~ placeholderPattern)) {
+            return trimmed
+        }
+    }
+
+    def fileValue = repoEnvValues[name]
+    if (fileValue != null) {
+        def trimmed = fileValue.trim()
+        if (trimmed && !(trimmed ==~ placeholderPattern)) {
+            return trimmed
+        }
+    }
+
+    return null
+}
+
+def createMaterializedSigningFile = { String base64Value ->
+    try {
+        def outputDir = new File(buildDir, 'generated/signing')
+        outputDir.mkdirs()
+
+        def outputFile = new File(outputDir, 'android-staging-signing.jks')
+        outputFile.bytes = java.util.Base64.decoder.decode(base64Value)
+        return outputFile
+    } catch (IllegalArgumentException error) {
+        throw new GradleException('ANDROID_STAGING_SIGNING_KEYSTORE_BASE64 is not valid base64', error)
+    }
+}
+
+def androidStagingSigningStoreBase64 = readConfigValue('ANDROID_STAGING_SIGNING_KEYSTORE_BASE64')
+def androidStagingSigningStorePassword = readConfigValue('ANDROID_STAGING_SIGNING_STORE_PASSWORD')
+def androidStagingSigningKeyAlias = readConfigValue('ANDROID_STAGING_SIGNING_KEY_ALIAS')
+def androidStagingSigningKeyPassword = readConfigValue('ANDROID_STAGING_SIGNING_KEY_PASSWORD')
+def androidStagingSigningConfigured = [
+    androidStagingSigningStoreBase64,
+    androidStagingSigningStorePassword,
+    androidStagingSigningKeyAlias,
+    androidStagingSigningKeyPassword,
+].every { it != null }
+def androidStagingSigningFile = androidStagingSigningConfigured
+    ? createMaterializedSigningFile(androidStagingSigningStoreBase64)
+    : null
+
+if (androidStagingSigningConfigured) {
+    logger.lifecycle('Using shared staging Android signing config for local/CI builds')
+} else {
+    logger.lifecycle('Shared staging Android signing config not found; falling back to default debug keystore')
+}
+
 android {
     namespace = "news.freedomtimes.app"
     compileSdk = rootProject.ext.compileSdkVersion
+    signingConfigs {
+        if (androidStagingSigningConfigured) {
+            sharedStaging {
+                storeFile androidStagingSigningFile
+                storePassword androidStagingSigningStorePassword
+                keyAlias androidStagingSigningKeyAlias
+                keyPassword androidStagingSigningKeyPassword
+            }
+        }
+    }
     defaultConfig {
         applicationId "news.freedomtimes.app"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -17,6 +97,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (androidStagingSigningConfigured) {
+                signingConfig signingConfigs.sharedStaging
+            }
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
