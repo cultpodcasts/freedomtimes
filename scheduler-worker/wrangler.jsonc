@@ -11,7 +11,7 @@
 	},
 	"vars": {
 		"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
-		"NOTIFICATION_DEFAULT_URL": "/",
+		"NOTIFICATION_DEFAULT_URL": "/homepage",
 		"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 		"PUSH_IOS_APNS_HOST": "api.push.apple.com"
 	},
@@ -23,7 +23,7 @@
 			},
 			"vars": {
 				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
-				"NOTIFICATION_DEFAULT_URL": "/",
+				"NOTIFICATION_DEFAULT_URL": "/homepage",
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 				"PUSH_IOS_APNS_HOST": "api.push.apple.com"
 			}
@@ -35,7 +35,7 @@
 			},
 			"vars": {
 				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times Staging",
-				"NOTIFICATION_DEFAULT_URL": "/",
+				"NOTIFICATION_DEFAULT_URL": "/homepage",
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 				"PUSH_IOS_APNS_HOST": "api.sandbox.push.apple.com"
 			}

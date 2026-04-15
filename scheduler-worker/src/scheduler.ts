@@ -359,7 +359,7 @@ function toPushNotificationPayload(payload: Record<string, unknown>, env: Env): 
   return {
     title: readTrimmedString(payload.title) || env.NOTIFICATION_DEFAULT_TITLE?.trim() || 'Freedom Times',
     body: readTrimmedString(payload.body) || readTrimmedString(payload.message) || 'Scheduled notification',
-    url: readTrimmedString(payload.url) || env.NOTIFICATION_DEFAULT_URL?.trim() || '/',
+    url: readTrimmedString(payload.url) || env.NOTIFICATION_DEFAULT_URL?.trim() || '/homepage',
     icon: readTrimmedString(payload.icon) || '/favicon.svg',
     badge: readTrimmedString(payload.badge) || '/favicon.svg',
     tag: readTrimmedString(payload.tag) || 'freedomtimes-notification',

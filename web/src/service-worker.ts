@@ -71,7 +71,7 @@ workerScope.addEventListener('notificationclick', (event) => {
 
   const targetUrl = typeof event.notification.data?.url === 'string' && event.notification.data.url.length > 0
     ? event.notification.data.url
-    : '/';
+    : '/homepage';
 
   event.waitUntil(focusOrOpenClient(targetUrl));
 });
@@ -92,7 +92,7 @@ function defaultPushPayload(payload: PushNotificationPayload): Required<PushNoti
   return {
     title: payload.title?.trim() || 'Freedom Times',
     body: payload.body?.trim() || 'A new update is available.',
-    url: payload.url?.trim() || '/',
+    url: payload.url?.trim() || '/homepage',
     icon: payload.icon?.trim() || '/favicon.svg',
     badge: payload.badge?.trim() || '/favicon.svg',
     tag: payload.tag?.trim() || 'freedomtimes-notification',

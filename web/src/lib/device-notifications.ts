@@ -133,7 +133,7 @@ export async function initializeNativePushBridge(): Promise<void> {
   });
 
   await PushNotifications.addListener('pushNotificationActionPerformed', (event) => {
-    const targetUrl = readNotificationTargetUrl(event.notification?.data);
+    const targetUrl = readNotificationTargetUrl(event.notification);
     if (!targetUrl) {
       return;
     }
@@ -326,20 +326,28 @@ function getNativePlatform(): NativePlatform | null {
   return platform === 'android' || platform === 'ios' ? platform : null;
 }
 
-function readNotificationTargetUrl(data: unknown): string | null {
-  if (!data || typeof data !== 'object') {
+function readNotificationTargetUrl(notification: unknown): string | null {
+  if (!notification || typeof notification !== 'object') {
     return null;
   }
 
-  const candidate = data as Record<string, unknown>;
-  const rawUrl = typeof candidate.url === 'string'
-    ? candidate.url.trim()
-    : typeof candidate.link === 'string'
-      ? candidate.link.trim()
-      : '';
+  const candidate = notification as Record<string, unknown>;
+  const nestedData = candidate.data && typeof candidate.data === 'object'
+    ? candidate.data as Record<string, unknown>
+    : null;
+
+  const rawUrl = typeof candidate.link === 'string'
+    ? candidate.link.trim()
+    : typeof candidate.url === 'string'
+      ? candidate.url.trim()
+      : typeof nestedData?.url === 'string'
+        ? nestedData.url.trim()
+        : typeof nestedData?.link === 'string'
+          ? nestedData.link.trim()
+          : '';
 
   if (rawUrl.length === 0) {
-    return null;
+    return new URL('/homepage', window.location.origin).toString();
   }
 
   return new URL(rawUrl, window.location.origin).toString();
