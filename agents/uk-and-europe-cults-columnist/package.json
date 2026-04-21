@@ -19,5 +19,8 @@
     "@types/node": "^22.15.17",
     "tsx": "^4.20.3",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "google-news-url-decoder": "^1.2.1"
   }
 }

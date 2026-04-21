@@ -12,6 +12,10 @@ import {
   REGION_TERMS,
 } from './discoveryConfig.js';
 
+type GoogleNewsUrlDecoder = {
+  decode: (url: string) => Promise<{ status?: boolean; decoded_url?: string; message?: string }>;
+};
+
 export type DiscoveredStory = {
   url: string;
   title: string;
@@ -621,12 +625,92 @@ async function resolveGoogleNewsLink(url: string): Promise<string> {
       },
     });
 
+    if (!isGoogleNewsUrl(response.url)) {
+      return response.url;
+    }
+
+    const decoded = await decodeGoogleNewsWrapperUrl(url);
+    if (decoded) {
+      return decoded;
+    }
+
     return response.url;
   } catch {
     // Fallback to original URL.
   }
 
   return url;
+}
+
+const googleNewsDecodedUrlCache = new Map<string, string>();
+let googleNewsDecoder: GoogleNewsUrlDecoder | undefined;
+let googleNewsDecoderUnavailable = false;
+
+function isGoogleNewsUrl(value: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+    return host === 'news.google.com';
+  } catch {
+    return false;
+  }
+}
+
+async function getGoogleNewsDecoder(): Promise<GoogleNewsUrlDecoder | undefined> {
+  if (googleNewsDecoderUnavailable) {
+    return undefined;
+  }
+
+  if (googleNewsDecoder) {
+    return googleNewsDecoder;
+  }
+
+  try {
+    const module = (await import('google-news-url-decoder')) as {
+      GoogleDecoder?: new () => GoogleNewsUrlDecoder;
+      default?: { GoogleDecoder?: new () => GoogleNewsUrlDecoder };
+    };
+
+    const DecoderCtor = module.GoogleDecoder ?? module.default?.GoogleDecoder;
+    if (!DecoderCtor) {
+      googleNewsDecoderUnavailable = true;
+      return undefined;
+    }
+
+    googleNewsDecoder = new DecoderCtor();
+    return googleNewsDecoder;
+  } catch {
+    googleNewsDecoderUnavailable = true;
+    return undefined;
+  }
+}
+
+async function decodeGoogleNewsWrapperUrl(url: string): Promise<string | undefined> {
+  if (!isGoogleNewsUrl(url)) {
+    return undefined;
+  }
+
+  const cached = googleNewsDecodedUrlCache.get(url);
+  if (cached) {
+    return cached;
+  }
+
+  const decoder = await getGoogleNewsDecoder();
+  if (!decoder) {
+    return undefined;
+  }
+
+  try {
+    const decoded = await decoder.decode(url);
+    const decodedUrl = decoded.decoded_url?.trim();
+    if (!decoded.status || !decodedUrl || isGoogleNewsUrl(decodedUrl)) {
+      return undefined;
+    }
+
+    googleNewsDecodedUrlCache.set(url, decodedUrl);
+    return decodedUrl;
+  } catch {
+    return undefined;
+  }
 }
 
 async function discoverFromGoogleNews(): Promise<DiscoveredStory[]> {
