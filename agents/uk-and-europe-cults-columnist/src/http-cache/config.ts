@@ -33,7 +33,7 @@ export const HTTP_ERROR_CACHE_TTL_SECONDS = Math.max(
 );
 
 export const BROWSER_RENDER_FALLBACK_ENABLED =
-  (process.env.BROWSER_RENDER_FALLBACK_ENABLED ?? 'false').toLowerCase() === 'true';
+  (process.env.BROWSER_RENDER_FALLBACK_ENABLED ?? 'true').toLowerCase() === 'true';
 
 export const BROWSER_RENDER_TIMEOUT_MS = Math.max(
   1000,

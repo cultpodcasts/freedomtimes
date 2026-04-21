@@ -30,6 +30,58 @@ type StoryGroup = {
   stories: EnrichedStory[];
 };
 
+function canonicalizeStoryUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+    if (host !== 'cultnews.net') {
+      return parsed.toString();
+    }
+
+    const segments = parsed.pathname
+      .split('/')
+      .filter(Boolean)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    const embeddedHostIndex = segments.findIndex((segment) => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(segment));
+    if (embeddedHostIndex < 0 || embeddedHostIndex >= segments.length - 1) {
+      return parsed.toString();
+    }
+
+    const embeddedHost = segments[embeddedHostIndex].toLowerCase();
+    const embeddedPath = segments.slice(embeddedHostIndex + 1).join('/');
+    const canonical = new URL(`https://${embeddedHost}/${embeddedPath}`);
+    if (parsed.search) {
+      canonical.search = parsed.search;
+    }
+    if (parsed.hash) {
+      canonical.hash = parsed.hash;
+    }
+    return canonical.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function getHostname(rawUrl: string): string | undefined {
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./i, '').toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+function getSlug(rawUrl: string): string | undefined {
+  try {
+    const segments = new URL(rawUrl).pathname.split('/').filter(Boolean);
+    const slug = segments.at(-1)?.trim().toLowerCase();
+    return slug || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function renderCard(story: EnrichedStory) {
   const hostname = story.host || new URL(story.url).hostname.replace(/^www\./, '');
   const logo = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`;
@@ -296,22 +348,57 @@ async function main(): Promise<void> {
     JSON.parse(readFileSync(new URL('../data/render-exclude-urls.json', import.meta.url), 'utf-8')) as string[]
   );
 
-  // Deduplicate: same URL path on different hosts (e.g. independent.co.uk vs the-independent.com),
-  // and same title from different syndication outlets (e.g. AP wire stories).
-  const seenPaths = new Set<string>();
-  const seenTitles = new Set<string>();
-  const drafts = rawDrafts.filter((draft) => {
+  // Canonicalize known mirror URLs so dedupe collapses wrapped-source duplicates.
+  const canonicalDrafts = rawDrafts.map((draft) => {
+    const canonicalUrl = canonicalizeStoryUrl(draft.url);
+    const canonicalHost = (() => {
+      try {
+        return new URL(canonicalUrl).hostname.replace(/^www\./, '');
+      } catch {
+        return draft.host;
+      }
+    })();
+
+    return {
+      ...draft,
+      url: canonicalUrl,
+      host: canonicalHost,
+    };
+  });
+
+  const nonCultnewsSlugs = new Set<string>(
+    canonicalDrafts
+      .filter((draft) => {
+        if (excludeUrls.has(draft.url)) {
+          return false;
+        }
+        return getHostname(draft.url) !== 'cultnews.net';
+      })
+      .map((draft) => getSlug(draft.url))
+      .filter((slug): slug is string => Boolean(slug))
+  );
+
+  // Deduplicate by fully normalized canonical URL only. We keep cross-source
+  // coverage even when different publishers share the same slug/path.
+  const seenUrls = new Set<string>();
+  const drafts = canonicalDrafts.filter((draft) => {
     if (excludeUrls.has(draft.url)) return false;
-    let path: string;
-    try {
-      path = new URL(draft.url).pathname.toLowerCase();
-    } catch {
-      path = draft.url.toLowerCase();
+
+    const draftHost = getHostname(draft.url);
+    const draftSlug = getSlug(draft.url);
+    if (draftHost === 'cultnews.net' && draftSlug && nonCultnewsSlugs.has(draftSlug)) {
+      return false;
     }
-    const title = draft.title.trim().toLowerCase();
-    if (seenPaths.has(path) || seenTitles.has(title)) return false;
-    seenPaths.add(path);
-    seenTitles.add(title);
+
+    let normalizedUrl: string;
+    try {
+      normalizedUrl = new URL(draft.url).toString().toLowerCase();
+    } catch {
+      normalizedUrl = draft.url.toLowerCase();
+    }
+
+    if (seenUrls.has(normalizedUrl)) return false;
+    seenUrls.add(normalizedUrl);
     return true;
   });
 
