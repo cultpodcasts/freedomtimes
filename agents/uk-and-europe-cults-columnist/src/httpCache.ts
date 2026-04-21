@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import {
   HTTP_CACHE_ENABLED,
+  HTTP_ERROR_CACHE_TTL_SECONDS,
   HTTP_CACHE_MAX_ENTRIES,
   HTTP_CACHE_TTL_MINUTES,
   HTTP_FETCH_TIMEOUT_MS,
+  HTTP_USER_AGENT,
 } from './http-cache/config.js';
 import { buildCacheKey, normalizeHeaders } from './http-cache/key.js';
 import type { CachedEntry, CachedFetchResult } from './http-cache/types.js';
@@ -14,14 +16,58 @@ const LEGACY_HTTP_CACHE_PATH = new URL('../.cache/http-cache.json', import.meta.
 const inFlight = new Map<string, Promise<CachedFetchResult>>();
 let legacyMigrationAttempted = false;
 
+function getCacheTtlMs(status: number): number {
+  if (status >= 200 && status < 300) {
+    return HTTP_CACHE_TTL_MINUTES * 60 * 1000;
+  }
+
+  return HTTP_ERROR_CACHE_TTL_SECONDS * 1000;
+}
+
 function isFresh(entry: CachedEntry): boolean {
   const fetchedAt = Date.parse(entry.fetchedAt);
   if (!Number.isFinite(fetchedAt)) {
     return false;
   }
 
+  const ttlMs = getCacheTtlMs(entry.status);
+  if (ttlMs <= 0) {
+    return false;
+  }
+
   const ageMs = Date.now() - fetchedAt;
-  return ageMs >= 0 && ageMs <= HTTP_CACHE_TTL_MINUTES * 60 * 1000;
+  return ageMs >= 0 && ageMs <= ttlMs;
+}
+
+function shouldCacheStatus(status: number): boolean {
+  return status >= 200 && status < 300 ? true : HTTP_ERROR_CACHE_TTL_SECONDS > 0;
+}
+
+function mergeRequestHeaders(headersInit: HeadersInit | undefined): Headers {
+  const headers = new Headers(headersInit);
+  const existingUserAgent = headers.get('user-agent')?.trim() ?? '';
+
+  if (!existingUserAgent || existingUserAgent.startsWith('FreedomTimes-Local-Agent/')) {
+    headers.set('User-Agent', HTTP_USER_AGENT);
+  }
+
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8');
+  }
+
+  if (!headers.has('Accept-Language')) {
+    headers.set('Accept-Language', 'en-GB,en;q=0.9');
+  }
+
+  if (!headers.has('Cache-Control')) {
+    headers.set('Cache-Control', 'no-cache');
+  }
+
+  if (!headers.has('Pragma')) {
+    headers.set('Pragma', 'no-cache');
+  }
+
+  return headers;
 }
 
 function getCacheFileUrl(cacheKey: string): URL {
@@ -156,9 +202,12 @@ function migrateLegacyCacheIfNeeded(): void {
 }
 
 export async function fetchTextWithCache(url: string, init?: RequestInit): Promise<CachedFetchResult> {
+  const requestHeaders = mergeRequestHeaders(init?.headers);
+
   if (!HTTP_CACHE_ENABLED) {
     const response = await fetch(url, {
       ...init,
+      headers: requestHeaders,
       signal: init?.signal ?? AbortSignal.timeout(HTTP_FETCH_TIMEOUT_MS),
     });
     return {
@@ -195,24 +244,27 @@ export async function fetchTextWithCache(url: string, init?: RequestInit): Promi
   const fetchPromise = (async (): Promise<CachedFetchResult> => {
     const response = await fetch(url, {
       ...init,
+      headers: requestHeaders,
       signal: init?.signal ?? AbortSignal.timeout(HTTP_FETCH_TIMEOUT_MS),
     });
     const body = await response.text();
-    const headers = normalizeHeaders(response.headers);
+    const responseHeaders = normalizeHeaders(response.headers);
 
-    writeEntry(cacheKey, {
-      fetchedAt: new Date().toISOString(),
-      status: response.status,
-      finalUrl: response.url,
-      headers,
-      body,
-    });
+    if (shouldCacheStatus(response.status)) {
+      writeEntry(cacheKey, {
+        fetchedAt: new Date().toISOString(),
+        status: response.status,
+        finalUrl: response.url,
+        headers: responseHeaders,
+        body,
+      });
+    }
 
     return {
       ok: response.ok,
       status: response.status,
       url: response.url,
-      headers,
+      headers: responseHeaders,
       text: body,
       fromCache: false,
     };

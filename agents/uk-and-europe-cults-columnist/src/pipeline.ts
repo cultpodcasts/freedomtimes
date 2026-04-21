@@ -305,13 +305,28 @@ export async function runPipeline(
   url: string,
   allowedHosts: Set<string>,
   options: RunPipelineOptions = {},
+  archiveFallbackHosts: Set<string> = new Set(),
 ): Promise<PipelineResult> {
   let effectiveUrl = url;
-  let response = await fetchTextWithCache(effectiveUrl, {
-    headers: {
-      'User-Agent': 'FreedomTimes-Local-Agent/0.1',
-    },
-  });
+  let response = await fetchTextWithCache(effectiveUrl);
+
+  if (!response.ok && archiveFallbackHosts.size > 0) {
+    try {
+      const originalHost = normalizeHost(new URL(effectiveUrl).hostname);
+      const shouldTryArchive = Array.from(archiveFallbackHosts).some(
+        (h) => originalHost === h || originalHost.endsWith(`.${h}`),
+      );
+      if (shouldTryArchive) {
+        const archiveUrl = `https://archive.ph/newest/${effectiveUrl}`;
+        const archiveResponse = await fetchTextWithCache(archiveUrl);
+        if (archiveResponse.ok) {
+          response = archiveResponse;
+        }
+      }
+    } catch {
+      // Archive fallback failed; continue with original error response.
+    }
+  }
 
   if (!response.ok) {
     throw new Error(`Failed to fetch source URL: HTTP ${response.status}`);
@@ -325,11 +340,7 @@ export async function runPipeline(
     const resolvedUrl = resolver?.(html, effectiveUrl);
     if (resolvedUrl && resolvedUrl !== effectiveUrl) {
       try {
-        const resolvedResponse = await fetchTextWithCache(resolvedUrl, {
-          headers: {
-            'User-Agent': 'FreedomTimes-Local-Agent/0.1',
-          },
-        });
+        const resolvedResponse = await fetchTextWithCache(resolvedUrl);
 
         if (resolvedResponse.ok) {
           effectiveUrl = resolvedUrl;
