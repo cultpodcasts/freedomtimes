@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { evaluateRelevance } from './relevance.js';
 import { evaluateSourceReliability } from './sourceReliability.js';
-import { ALL_CULT_TERMS } from './cultTerms.js';
+import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.js';
 import { fetchTextWithBrowserRender } from './browserFetch.js';
 import {
   BROWSER_RENDER_FALLBACK_ENABLED,
@@ -47,6 +47,13 @@ const FIGURATIVE_CULT_PATTERNS = [
   new RegExp(`\\b(${figurativePhrasePattern})\\b`, 'iu'),
 ];
 
+// Per-language figurative patterns applied in addition to the shared patterns.
+// German: "Kult-" as a prefix is almost always figurative (Kult-Lokal, Kult-Film etc.).
+// A blanket prefix match covers all compounds without needing an exhaustive suffix list.
+const FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE: Record<string, RegExp[]> = {
+  de: [/\bkult-\w{2,}/iu],
+};
+
 const EXCLUDED_SOURCE_HOST_SET = new Set(EXCLUDED_SOURCE_HOSTS.map((host) => normalizeHost(host)));
 
 function containsPhrase(text: string, phrase: string): boolean {
@@ -72,18 +79,37 @@ function normalizeMatchingText(text: string): string {
     .replace(/\\'/g, "'");
 }
 
-function hasFigurativeCultUsage(text: string): boolean {
-  const normalized = normalizeMatchingText(text);
-  return FIGURATIVE_CULT_PATTERNS.some((pattern) => pattern.test(normalized));
+function detectLanguageFromHtml(html: string): string | undefined {
+  const match = html.match(/<html[^>]+lang=["']([^"']+)["']/i);
+  if (!match?.[1]) return undefined;
+  return match[1].toLowerCase().split('-')[0];
 }
 
-function isCultTopicPrecise(title: string, text: string, url: string): boolean {
+function hasFigurativeCultUsage(text: string, language?: string): boolean {
+  const normalized = normalizeMatchingText(text);
+  if (FIGURATIVE_CULT_PATTERNS.some((pattern) => pattern.test(normalized))) {
+    return true;
+  }
+  if (language) {
+    const langPatterns = FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE[language];
+    if (langPatterns?.some((pattern) => pattern.test(normalized))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isCultTopicPrecise(title: string, text: string, url: string, language?: string): boolean {
   const titleLower = normalizeMatchingText(title.toLowerCase());
   const bodyLeadLower = normalizeMatchingText(text.slice(0, 2800).toLowerCase());
   const urlLower = url.toLowerCase();
 
-  const titleSpecificMatch = findMatchingPhrase(titleLower, SPECIFIC_CULT_TERMS);
-  const bodySpecificMatch = findMatchingPhrase(bodyLeadLower, SPECIFIC_CULT_TERMS);
+  const languageCultTerms = getCultTermsForLanguage(language);
+  const languageSpecificTerms = languageCultTerms.filter((term) => !GENERIC_CULT_TERMS.includes(term));
+  const specificTerms = languageSpecificTerms.length > 0 ? languageSpecificTerms : SPECIFIC_CULT_TERMS;
+
+  const titleSpecificMatch = findMatchingPhrase(titleLower, specificTerms);
+  const bodySpecificMatch = findMatchingPhrase(bodyLeadLower, specificTerms);
   const titleSpecificSignal = Boolean(titleSpecificMatch);
   const bodySpecificSignal = Boolean(bodySpecificMatch);
   const titleGenericSignal = includesAnyPhrase(titleLower, GENERIC_CULT_TERMS);
@@ -106,7 +132,7 @@ function isCultTopicPrecise(title: string, text: string, url: string): boolean {
     return false;
   }
 
-  return !hasFigurativeCultUsage(`${titleLower} ${bodyLeadLower}`);
+  return !hasFigurativeCultUsage(`${titleLower} ${bodyLeadLower}`, language);
 }
 
 function normalizeHost(host: string): string {
@@ -576,12 +602,13 @@ export async function runPipeline(
     };
   }
 
+  const language = detectLanguageFromHtml(html);
   const title = detectTitle(html, 'Untitled source story');
   const text = stripHtml(html);
   const relevance = evaluateRelevance(`${title} ${text}`);
   const leadRegionSignal = hasUkOrEuSignalInText(`${title} ${text.slice(0, 2800)}`);
 
-  if (!isCultTopicPrecise(title, text, effectiveUrl)) {
+  if (!isCultTopicPrecise(title, text, effectiveUrl, language)) {
     return {
       status: 'rejected',
       source,
