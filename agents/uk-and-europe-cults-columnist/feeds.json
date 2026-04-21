@@ -211,16 +211,6 @@
       "language": "en"
     },
     {
-      "id": "politico-eu",
-      "title": "Politico EU",
-      "url": "https://www.politico.eu/feed/",
-      "sourceFormat": "rss",
-      "sourceCategory": "publisher-feed",
-      "requiresUrlResolution": false,
-      "enabled": true,
-      "language": "en"
-    },
-    {
       "id": "telegraph",
       "title": "Telegraph",
       "url": "https://www.telegraph.co.uk/rss.xml",
