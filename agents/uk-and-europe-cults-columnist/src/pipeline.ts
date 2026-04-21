@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { detect as detectLanguageText } from 'tinyld';
 import { evaluateRelevance } from './relevance.js';
 import { evaluateSourceReliability } from './sourceReliability.js';
 import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.js';
@@ -11,6 +12,7 @@ import {
   EXCLUDED_SOURCE_HOSTS,
   FIGURATIVE_CULT_CONTEXT_TERMS,
   FIGURATIVE_CULT_PHRASES,
+  FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE,
   GENERIC_CULT_TERMS,
   STRICT_CULT_TERM_EXTENSIONS,
 } from './pipelineTerms.js';
@@ -47,13 +49,6 @@ const FIGURATIVE_CULT_PATTERNS = [
   new RegExp(`\\b(${figurativePhrasePattern})\\b`, 'iu'),
 ];
 
-// Per-language figurative patterns applied in addition to the shared patterns.
-// German: "Kult-" as a prefix is almost always figurative (Kult-Lokal, Kult-Film etc.).
-// A blanket prefix match covers all compounds without needing an exhaustive suffix list.
-const FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE: Record<string, RegExp[]> = {
-  de: [/\bkult-\w{2,}/iu],
-};
-
 const EXCLUDED_SOURCE_HOST_SET = new Set(EXCLUDED_SOURCE_HOSTS.map((host) => normalizeHost(host)));
 
 function containsPhrase(text: string, phrase: string): boolean {
@@ -81,8 +76,18 @@ function normalizeMatchingText(text: string): string {
 
 function detectLanguageFromHtml(html: string): string | undefined {
   const match = html.match(/<html[^>]+lang=["']([^"']+)["']/i);
-  if (!match?.[1]) return undefined;
-  return match[1].toLowerCase().split('-')[0];
+  if (match?.[1]) return match[1].toLowerCase().split('-')[0];
+
+  // Fallback: use tinyld trigram detection on a plain-text sample of the article body.
+  const sample = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 2000);
+  const detected = detectLanguageText(sample);
+  return detected || undefined;
 }
 
 function hasFigurativeCultUsage(text: string, language?: string): boolean {
