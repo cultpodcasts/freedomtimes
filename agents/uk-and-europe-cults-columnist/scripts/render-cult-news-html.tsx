@@ -3,6 +3,7 @@
 /** @jsx h */
 /** @jsxFrag Fragment */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { detect as detectLanguage } from 'tinyld';
 import {
   Fragment,
   LOG_PATH,
@@ -26,9 +27,11 @@ declare global {
 
 type StoryGroup = {
   label: string;
-  type: 'streamer-seeded' | 'independent';
+  type: 'detected' | 'independent';
   stories: EnrichedStory[];
 };
+
+type DraftStory = ReturnType<typeof extractDraftsFromLog>[number];
 
 function canonicalizeStoryUrl(rawUrl: string): string {
   try {
@@ -79,6 +82,53 @@ function getSlug(rawUrl: string): string | undefined {
     return slug || undefined;
   } catch {
     return undefined;
+  }
+}
+
+function normalizeUrl(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).toString().toLowerCase();
+  } catch {
+    return rawUrl.trim().toLowerCase();
+  }
+}
+
+const MANUAL_RENDER_EXCLUSIONS: Array<{ url: string; reason: string }> = [
+  { url: 'https://www.mirror.co.uk/news/uk-news/best-paperbacks-read-now-including-37030837', reason: 'Book-list lifestyle content; cult term used figuratively.' },
+  { url: 'https://www.cityam.com/the-cult-of-cute-the-strange-drama-of-corporate-mascots/', reason: 'Figurative phrase: cult of cute.' },
+  { url: 'https://www.vogue.com/article/casa-milana-beni-rugs-laguna-b-glassware', reason: 'Lifestyle/design piece; cult term used figuratively.' },
+  { url: 'https://www.videogameschronicle.com/news/stay-tuned-it-sounds-like-cult-n64-shooter-buck-bumble-is-really-coming-back/', reason: 'Gaming news with figurative cult-classic wording.' },
+  { url: 'https://www.loudersound.com/bands-artists/savoy-brown-band-history', reason: 'Music history feature with figurative cult usage.' },
+  { url: 'https://www.timeout.com/london/news/this-american-cult-taco-chain-is-opening-its-first-london-restaurant-042126', reason: 'Restaurant opening; cult term used figuratively.' },
+  { url: 'https://www.parkrun.org.uk/stratforduponavon/news/2026/04/18/435-dont-do-it-its-a-cult/', reason: 'Community/joke usage, not a cult-reporting story.' },
+  { url: 'https://www.krone.at/4113641', reason: 'German Kult-* figurative entertainment/sports context.' },
+  { url: 'https://www.idealhome.co.uk/garden/outdoor-living/aldi-kamado-egg-bbq-may-2026', reason: 'Product/lifestyle coverage; not cult reporting.' },
+  { url: 'https://www.nhregister.com/news/world/article/philippine-president-says-key-suspect-in-22210233.php', reason: 'General corruption/politics report; not cult-specific.' },
+  { url: 'https://www.wral.com/news/ap/d9d49-philippine-president-says-key-suspect-in-corruption-scandal-has-been-arrested-in-prague/', reason: 'General corruption/politics report; not cult-specific.' },
+  { url: 'https://www.hospitalityandcateringnews.com/2026/04/cult-supper-club-concept-all-roads-opens-permanent-site-in-brixton/', reason: 'Hospitality business story with figurative cult branding.' },
+];
+
+const MANUAL_RENDER_EXCLUSION_REASON_BY_URL = new Map(
+  MANUAL_RENDER_EXCLUSIONS.map((entry) => [normalizeUrl(entry.url), entry.reason]),
+);
+
+function getManualRenderExclusionReason(draft: DraftStory): string | undefined {
+  return MANUAL_RENDER_EXCLUSION_REASON_BY_URL.get(normalizeUrl(draft.url));
+}
+
+function summarizeExclusions(excluded: Array<{ url: string; reason: string }>): void {
+  if (excluded.length === 0) {
+    return;
+  }
+
+  const counts = new Map<string, number>();
+  for (const item of excluded) {
+    counts.set(item.reason, (counts.get(item.reason) ?? 0) + 1);
+  }
+
+  console.log(`[agent] excluded ${excluded.length} stories from digest`);
+  for (const [reason, count] of counts.entries()) {
+    console.log(`[agent]   - ${reason}: ${count}`);
   }
 }
 
@@ -177,7 +227,7 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
             padding: 2px 7px;
             border-radius: 4px;
           }
-          .group-badge.streamer-seeded {
+          .group-badge.detected {
             background: #e8e0f4;
             color: #4a2e8a;
           }
@@ -276,7 +326,7 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
                 <div className="group-header">
                   <h3 className="group-label">{group.label}</h3>
                   <span className={`group-badge ${group.type}`}>
-                    {group.type === 'streamer-seeded' ? 'Streamer-seeded' : 'Independent'}
+                    {group.type === 'detected' ? 'Detected Cluster' : 'Independent'}
                   </span>
                   <span className="group-count">{group.stories.length} {group.stories.length === 1 ? 'article' : 'articles'}</span>
                 </div>
@@ -304,34 +354,269 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
   );
 }
 
-type GroupConfig = {
+type DetectedGroup = {
   label: string;
-  type: 'streamer-seeded' | 'independent';
-  patterns: string[];
+  storyIndexes: Set<number>;
 };
 
-function classifyStories(stories: EnrichedStory[], groupConfigs: GroupConfig[]): StoryGroup[] {
-  const compiled = groupConfigs.map((gc) => ({
-    ...gc,
-    regexes: gc.patterns.map((p) => new RegExp(p, 'i')),
-    stories: [] as EnrichedStory[],
-  }));
-  const ungrouped: EnrichedStory[] = [];
+type StopwordsByLanguage = Record<string, string[]>;
 
-  for (const story of stories) {
-    const haystack = `${story.title} ${story.url}`;
-    const matched = compiled.find((gc) => gc.regexes.some((re) => re.test(haystack)));
-    if (matched) {
-      matched.stories.push(story);
-    } else {
-      ungrouped.push(story);
+type StoryFeatures = {
+  index: number;
+  language: string;
+  termCounts: Map<string, number>;
+};
+
+const GROUP_STOPWORDS_BY_LANGUAGE: StopwordsByLanguage = (() => {
+  const raw = readFileSync(new URL('../data/group-stopwords-by-language.json', import.meta.url), 'utf-8');
+  const parsed = JSON.parse(raw) as unknown;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('group-stopwords-by-language.json must be a JSON object keyed by language code');
+  }
+
+  const entries = Object.entries(parsed as Record<string, unknown>).map(([lang, terms]) => {
+    if (!Array.isArray(terms) || !terms.every((value) => typeof value === 'string')) {
+      throw new Error(`Expected a string array for language "${lang}" in group-stopwords-by-language.json`);
+    }
+    return [lang.toLowerCase(), terms.map((value) => value.toLowerCase())] as const;
+  });
+
+  return Object.fromEntries(entries);
+})();
+
+function tokenize(value: string, stopwords: Set<string>): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length >= 3)
+    .filter((token) => !stopwords.has(token));
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .split(' ')
+    .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
+    .join(' ');
+}
+
+function buildStopwordSet(language: string): Set<string> {
+  const english = GROUP_STOPWORDS_BY_LANGUAGE.en ?? [];
+  const local = GROUP_STOPWORDS_BY_LANGUAGE[language] ?? [];
+  return new Set([...english, ...local]);
+}
+
+function detectStoryLanguage(story: EnrichedStory): string {
+  const sample = `${story.title} ${story.description ?? ''}`.slice(0, 1000);
+  const detected = detectLanguage(sample);
+  return detected || 'en';
+}
+
+function addTokens(termCounts: Map<string, number>, tokens: string[], weight: number): void {
+  for (const token of tokens) {
+    termCounts.set(token, (termCounts.get(token) ?? 0) + weight);
+  }
+}
+
+function addNgrams(termCounts: Map<string, number>, tokens: string[], n: number, weight: number): void {
+  for (let i = 0; i <= tokens.length - n; i += 1) {
+    const gram = tokens.slice(i, i + n).join(' ');
+    termCounts.set(gram, (termCounts.get(gram) ?? 0) + weight);
+  }
+}
+
+function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
+  return stories.map((story, index) => {
+    const language = detectStoryLanguage(story);
+    const stopwords = buildStopwordSet(language);
+    const termCounts = new Map<string, number>();
+
+    const titleTokens = tokenize(story.title, stopwords);
+    const descriptionTokens = tokenize(story.description ?? '', stopwords);
+    const slugTokens = tokenize(getSlug(story.url) ?? '', stopwords);
+
+    addTokens(termCounts, titleTokens, 3);
+    addTokens(termCounts, slugTokens, 2);
+    addTokens(termCounts, descriptionTokens, 1);
+
+    addNgrams(termCounts, titleTokens, 2, 2);
+    addNgrams(termCounts, titleTokens, 3, 1);
+
+    return { index, language, termCounts };
+  });
+}
+
+function buildIdf(features: StoryFeatures[]): Map<string, number> {
+  const df = new Map<string, number>();
+  for (const feature of features) {
+    for (const term of feature.termCounts.keys()) {
+      df.set(term, (df.get(term) ?? 0) + 1);
     }
   }
 
-  const result: StoryGroup[] = compiled
-    .filter((gc) => gc.stories.length > 0)
-    .map((gc) => ({ label: gc.label, type: gc.type, stories: gc.stories }));
+  const idf = new Map<string, number>();
+  const total = features.length;
+  for (const [term, frequency] of df.entries()) {
+    idf.set(term, Math.log((total + 1) / (frequency + 1)) + 1);
+  }
 
+  return idf;
+}
+
+function cosineSimilarity(a: StoryFeatures, b: StoryFeatures, idf: Map<string, number>): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (const [term, countA] of a.termCounts.entries()) {
+    const weight = idf.get(term) ?? 1;
+    const wa = countA * weight;
+    normA += wa * wa;
+
+    const countB = b.termCounts.get(term);
+    if (countB) {
+      dot += wa * (countB * weight);
+    }
+  }
+
+  for (const [term, countB] of b.termCounts.entries()) {
+    const weight = idf.get(term) ?? 1;
+    const wb = countB * weight;
+    normB += wb * wb;
+  }
+
+  if (normA === 0 || normB === 0) {
+    return 0;
+  }
+
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Map<number, Set<number>> {
+  const edges = new Map<number, Set<number>>();
+  const threshold = 0.3;
+
+  for (let i = 0; i < features.length; i += 1) {
+    for (let j = i + 1; j < features.length; j += 1) {
+      const similarity = cosineSimilarity(features[i], features[j], idf);
+      if (similarity < threshold) {
+        continue;
+      }
+
+      const left = edges.get(i) ?? new Set<number>();
+      const right = edges.get(j) ?? new Set<number>();
+      left.add(j);
+      right.add(i);
+      edges.set(i, left);
+      edges.set(j, right);
+    }
+  }
+
+  return edges;
+}
+
+function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[]): string {
+  const scoreByTerm = new Map<string, number>();
+  const seenByTerm = new Map<string, number>();
+
+  for (const idx of storyIndexes) {
+    const feature = features[idx];
+    if (!feature) continue;
+
+    const seenInStory = new Set<string>();
+    for (const [term, score] of feature.termCounts.entries()) {
+      if (term.length < 4) continue;
+      if (/^\d+$/u.test(term)) continue;
+
+      scoreByTerm.set(term, (scoreByTerm.get(term) ?? 0) + score);
+      seenInStory.add(term);
+    }
+
+    for (const term of seenInStory) {
+      seenByTerm.set(term, (seenByTerm.get(term) ?? 0) + 1);
+    }
+  }
+
+  const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.6));
+  const candidates = Array.from(scoreByTerm.entries())
+    .filter(([term]) => (seenByTerm.get(term) ?? 0) >= minimumCoverage)
+    .sort((a, b) => b[1] - a[1])
+    .map(([term]) => term);
+
+  const top = candidates.slice(0, 2);
+  if (top.length === 0) {
+    return 'Detected Cluster';
+  }
+
+  return toTitleCase(top.join(' '));
+}
+
+function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
+  const features = buildStoryFeatures(stories);
+  const idf = buildIdf(features);
+  const edges = buildAdjacency(features, idf);
+  const visited = new Set<number>();
+  const groups: DetectedGroup[] = [];
+
+  for (let i = 0; i < features.length; i += 1) {
+    if (visited.has(i)) continue;
+
+    const queue: number[] = [i];
+    const component: number[] = [];
+    visited.add(i);
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (current === undefined) continue;
+      component.push(current);
+
+      const neighbors = edges.get(current) ?? new Set<number>();
+      for (const next of neighbors) {
+        if (visited.has(next)) continue;
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+
+    if (component.length < 2) {
+      continue;
+    }
+
+    groups.push({
+      label: selectGroupLabel(features, component),
+      storyIndexes: new Set(component),
+    });
+  }
+
+  groups.sort((a, b) => b.storyIndexes.size - a.storyIndexes.size);
+  return groups;
+}
+
+function classifyStories(stories: EnrichedStory[]): StoryGroup[] {
+  const detectedGroups = detectStoryClusters(stories);
+  const groupedIndexes = new Set<number>();
+  const result: StoryGroup[] = [];
+
+  for (const group of detectedGroups) {
+    const groupedStories = Array.from(group.storyIndexes)
+      .map((idx) => stories[idx])
+      .filter((story): story is EnrichedStory => Boolean(story));
+
+    if (groupedStories.length < 2) {
+      continue;
+    }
+
+    result.push({
+      label: group.label,
+      type: 'detected',
+      stories: groupedStories,
+    });
+
+    for (const idx of group.storyIndexes) {
+      groupedIndexes.add(idx);
+    }
+  }
+
+  const ungrouped = stories.filter((_, idx) => !groupedIndexes.has(idx));
   if (ungrouped.length > 0) {
     result.push({ label: 'Independent Journalism', type: 'independent', stories: ungrouped });
   }
@@ -343,10 +628,6 @@ async function main(): Promise<void> {
   const logText = readFileSync(LOG_PATH, 'utf-8');
   const rawDrafts = extractDraftsFromLog(logText);
   const summary = extractRunSummary(logText);
-
-  const excludeUrls = new Set<string>(
-    JSON.parse(readFileSync(new URL('../data/render-exclude-urls.json', import.meta.url), 'utf-8')) as string[]
-  );
 
   // Canonicalize known mirror URLs so dedupe collapses wrapped-source duplicates.
   const canonicalDrafts = rawDrafts.map((draft) => {
@@ -366,14 +647,20 @@ async function main(): Promise<void> {
     };
   });
 
+  const excluded: Array<{ url: string; reason: string }> = [];
+  const eligibleDrafts = canonicalDrafts.filter((draft) => {
+    const reason = getManualRenderExclusionReason(draft);
+    if (!reason) {
+      return true;
+    }
+
+    excluded.push({ url: draft.url, reason });
+    return false;
+  });
+
   const nonCultnewsSlugs = new Set<string>(
-    canonicalDrafts
-      .filter((draft) => {
-        if (excludeUrls.has(draft.url)) {
-          return false;
-        }
-        return getHostname(draft.url) !== 'cultnews.net';
-      })
+    eligibleDrafts
+      .filter((draft) => getHostname(draft.url) !== 'cultnews.net')
       .map((draft) => getSlug(draft.url))
       .filter((slug): slug is string => Boolean(slug))
   );
@@ -381,26 +668,33 @@ async function main(): Promise<void> {
   // Deduplicate by fully normalized canonical URL only. We keep cross-source
   // coverage even when different publishers share the same slug/path.
   const seenUrls = new Set<string>();
-  const drafts = canonicalDrafts.filter((draft) => {
-    if (excludeUrls.has(draft.url)) return false;
+  const drafts = eligibleDrafts.filter((draft) => {
 
     const draftHost = getHostname(draft.url);
     const draftSlug = getSlug(draft.url);
     if (draftHost === 'cultnews.net' && draftSlug && nonCultnewsSlugs.has(draftSlug)) {
+      excluded.push({
+        url: draft.url,
+        reason: 'Cultnews mirror duplicate of a non-cultnews story slug.',
+      });
       return false;
     }
 
-    let normalizedUrl: string;
-    try {
-      normalizedUrl = new URL(draft.url).toString().toLowerCase();
-    } catch {
-      normalizedUrl = draft.url.toLowerCase();
+    const normalizedUrl = normalizeUrl(draft.url);
+
+    if (seenUrls.has(normalizedUrl)) {
+      excluded.push({
+        url: draft.url,
+        reason: 'Duplicate canonical URL in shortlisted drafts.',
+      });
+      return false;
     }
 
-    if (seenUrls.has(normalizedUrl)) return false;
     seenUrls.add(normalizedUrl);
     return true;
   });
+
+  summarizeExclusions(excluded);
 
   const stories: EnrichedStory[] = [];
   for (const draft of drafts) {
@@ -414,11 +708,7 @@ async function main(): Promise<void> {
     });
   }
 
-  const groupConfigs = JSON.parse(
-    readFileSync(new URL('../data/story-groups.json', import.meta.url), 'utf-8')
-  ) as GroupConfig[];
-
-  const groups = classifyStories(stories, groupConfigs);
+  const groups = classifyStories(stories);
 
   const html = renderDocument(buildPage(groups, stories.length, new Date().toISOString()));
   mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
