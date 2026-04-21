@@ -9,12 +9,13 @@ import {
   BROWSER_RENDER_FALLBACK_STATUS_CODES,
 } from './http-cache/config.js';
 import {
+  ALL_GENERIC_CULT_TERMS,
   EXCLUDED_SOURCE_HOSTS,
-  FIGURATIVE_CULT_CONTEXT_TERMS,
-  FIGURATIVE_CULT_PHRASES,
-  FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE,
-  GENERIC_CULT_TERMS,
-  STRICT_CULT_TERM_EXTENSIONS,
+  FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE,
+  FIGURATIVE_CULT_PHRASES_BY_LANGUAGE,
+  FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE,
+  GENERIC_CULT_TERMS_BY_LANGUAGE,
+  STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE,
 } from './pipelineTerms.js';
 import { fetchTextWithCache } from './httpCache.js';
 import type { DraftPayload, PipelineResult } from './types.js';
@@ -29,25 +30,69 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const figurativeContextPattern = FIGURATIVE_CULT_CONTEXT_TERMS.map((term) => escapeRegExp(term)).join('|');
-
-const STRICT_CULT_TERMS = Array.from(
-  new Set([
-    ...ALL_CULT_TERMS,
-    ...STRICT_CULT_TERM_EXTENSIONS,
-  ]),
-);
-
-const SPECIFIC_CULT_TERMS = STRICT_CULT_TERMS.filter((term) => !GENERIC_CULT_TERMS.includes(term));
-const AMBIGUOUS_SPECIFIC_CULT_TERMS = new Set(['lahko']);
-const genericCultUrlPattern = GENERIC_CULT_TERMS.map((term) => escapeRegExp(term)).join('|');
-const GENERIC_CULT_URL_SIGNAL_PATTERN = new RegExp(`/(${genericCultUrlPattern})([/-]|$)`, 'i');
-const figurativePhrasePattern = FIGURATIVE_CULT_PHRASES.map((phrase) => escapeRegExp(phrase)).join('|');
+// Shared (English) figurative patterns — applied to all articles regardless of language.
+const enContextTerms = FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE.en ?? [];
+const enPhrases = FIGURATIVE_CULT_PHRASES_BY_LANGUAGE.en ?? [];
+const figurativeContextPattern = enContextTerms.map((term) => escapeRegExp(term)).join('|');
+const figurativePhrasePattern = enPhrases.map((phrase) => escapeRegExp(phrase)).join('|');
 
 const FIGURATIVE_CULT_PATTERNS = [
   new RegExp(`cult[^\\p{L}\\p{N}]{0,24}(${figurativeContextPattern})`, 'iu'),
   new RegExp(`\\b(${figurativePhrasePattern})\\b`, 'iu'),
 ];
+
+// Per-language cult prefix word used when building figurative context-term patterns.
+const FIGURATIVE_CONTEXT_PREFIX_BY_LANGUAGE: Record<string, string> = {
+  de: 'kult',
+  fr: 'culte',
+};
+
+// Per-language figurative patterns: built from language-specific context terms + phrases,
+// then merged with the explicit regex patterns loaded from JSON.
+const FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE: Record<string, RegExp[]> = (() => {
+  const result: Record<string, RegExp[]> = {};
+  const allLanguages = new Set([
+    ...Object.keys(FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE),
+    ...Object.keys(FIGURATIVE_CULT_PHRASES_BY_LANGUAGE),
+    ...Object.keys(FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE),
+  ]);
+  for (const lang of allLanguages) {
+    if (lang === 'en') continue;
+    const contextTerms = FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE[lang] ?? [];
+    const phrases = FIGURATIVE_CULT_PHRASES_BY_LANGUAGE[lang] ?? [];
+    const patterns: RegExp[] = [...(FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE[lang] ?? [])];
+    if (contextTerms.length > 0) {
+      const prefix = escapeRegExp(FIGURATIVE_CONTEXT_PREFIX_BY_LANGUAGE[lang] ?? 'cult');
+      const ctx = contextTerms.map(escapeRegExp).join('|');
+      patterns.push(new RegExp(`${prefix}[^\\p{L}\\p{N}]{0,24}(${ctx})`, 'iu'));
+    }
+    if (phrases.length > 0) {
+      const phr = phrases.map(escapeRegExp).join('|');
+      patterns.push(new RegExp(`\\b(${phr})\\b`, 'iu'));
+    }
+    result[lang] = patterns;
+  }
+  return result;
+})();
+
+const STRICT_CULT_TERMS = Array.from(
+  new Set([
+    ...ALL_CULT_TERMS,
+    ...(STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE.en ?? []),
+  ]),
+);
+
+const SPECIFIC_CULT_TERMS = STRICT_CULT_TERMS.filter((term) => !ALL_GENERIC_CULT_TERMS.includes(term));
+const AMBIGUOUS_SPECIFIC_CULT_TERMS = new Set(['lahko']);
+const genericCultUrlPattern = ALL_GENERIC_CULT_TERMS.map((term) => escapeRegExp(term)).join('|');
+const GENERIC_CULT_URL_SIGNAL_PATTERN = new RegExp(`/(${genericCultUrlPattern})([/-]|$)`, 'i');
+
+function getGenericCultTermsForLanguage(language?: string): string[] {
+  const en = GENERIC_CULT_TERMS_BY_LANGUAGE.en ?? [];
+  if (!language || language === 'en') return en;
+  const langTerms = GENERIC_CULT_TERMS_BY_LANGUAGE[language] ?? [];
+  return Array.from(new Set([...langTerms, ...en]));
+}
 
 const EXCLUDED_SOURCE_HOST_SET = new Set(EXCLUDED_SOURCE_HOSTS.map((host) => normalizeHost(host)));
 
@@ -110,15 +155,16 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
   const urlLower = url.toLowerCase();
 
   const languageCultTerms = getCultTermsForLanguage(language);
-  const languageSpecificTerms = languageCultTerms.filter((term) => !GENERIC_CULT_TERMS.includes(term));
+  const languageSpecificTerms = languageCultTerms.filter((term) => !ALL_GENERIC_CULT_TERMS.includes(term));
   const specificTerms = languageSpecificTerms.length > 0 ? languageSpecificTerms : SPECIFIC_CULT_TERMS;
 
+  const genericTermsForLanguage = getGenericCultTermsForLanguage(language);
   const titleSpecificMatch = findMatchingPhrase(titleLower, specificTerms);
   const bodySpecificMatch = findMatchingPhrase(bodyLeadLower, specificTerms);
   const titleSpecificSignal = Boolean(titleSpecificMatch);
   const bodySpecificSignal = Boolean(bodySpecificMatch);
-  const titleGenericSignal = includesAnyPhrase(titleLower, GENERIC_CULT_TERMS);
-  const bodyGenericSignal = includesAnyPhrase(bodyLeadLower, GENERIC_CULT_TERMS);
+  const titleGenericSignal = includesAnyPhrase(titleLower, genericTermsForLanguage);
+  const bodyGenericSignal = includesAnyPhrase(bodyLeadLower, genericTermsForLanguage);
   const urlSignal = GENERIC_CULT_URL_SIGNAL_PATTERN.test(urlLower);
   const hasNonAmbiguousSpecific = [titleSpecificMatch, bodySpecificMatch].some(
     (match) => Boolean(match) && !AMBIGUOUS_SPECIFIC_CULT_TERMS.has(match ?? ''),
