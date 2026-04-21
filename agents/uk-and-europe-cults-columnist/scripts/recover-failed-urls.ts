@@ -14,7 +14,7 @@ type AttemptResult = {
   status: number;
   finalUrl: string;
   html: string;
-  strategy: 'direct' | 'archive' | 'browser';
+  strategy: 'direct' | 'archive' | 'browser' | 'jina';
 };
 
 type RecoveredRow = {
@@ -119,6 +119,11 @@ async function fetchBrowser(url: string, context: BrowserContext): Promise<Attem
       timeout: BROWSER_RENDER_TIMEOUT_MS,
     });
 
+    // Some anti-bot pages resolve after a short browser challenge delay.
+    await page.waitForTimeout(4500);
+    await page.mouse.wheel(0, 900);
+    await page.waitForTimeout(800);
+
     return {
       ok: (response?.status() ?? 200) >= 200 && (response?.status() ?? 200) < 300,
       status: response?.status() ?? 200,
@@ -129,6 +134,27 @@ async function fetchBrowser(url: string, context: BrowserContext): Promise<Attem
   } finally {
     await page.close();
   }
+}
+
+async function fetchJinaMirror(url: string): Promise<AttemptResult> {
+  const mirrorUrl = `https://r.jina.ai/http://${url.replace(/^https?:\/\//i, '')}`;
+  const response = await fetch(mirrorUrl, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept: 'text/plain,text/html;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-GB,en;q=0.9',
+    },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(BROWSER_RENDER_TIMEOUT_MS),
+  });
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    finalUrl: response.url,
+    html: await response.text(),
+    strategy: 'jina',
+  };
 }
 
 async function main(): Promise<void> {
@@ -162,7 +188,7 @@ async function main(): Promise<void> {
 
   const recovered: RecoveredRow[] = [];
   const unrecovered: Array<FailedUrlRow & { attempts: Array<{ strategy: string; status: number; finalUrl: string; error?: string }> }> = [];
-  const strategyCounts: Record<string, number> = { direct: 0, archive: 0, browser: 0 };
+  const strategyCounts: Record<string, number> = { direct: 0, archive: 0, browser: 0, jina: 0 };
 
   try {
     let processed = 0;
@@ -222,6 +248,32 @@ async function main(): Promise<void> {
             console.log(`[agent] recovered ${processed}/${selected.length}`, { strategy: 'browser', url: row.url, textLength: text.length });
             continue;
           }
+        }
+
+        try {
+          const jina = await fetchJinaMirror(row.url);
+          attempts.push({ strategy: jina.strategy, status: jina.status, finalUrl: jina.finalUrl });
+          if (jina.ok) {
+            const text = htmlToText(jina.html);
+            recovered.push({
+              ...row,
+              strategy: jina.strategy,
+              status: jina.status,
+              finalUrl: jina.finalUrl,
+              textLength: text.length,
+              textPreview: text.slice(0, 4000),
+            });
+            strategyCounts.jina += 1;
+            console.log(`[agent] recovered ${processed}/${selected.length}`, { strategy: 'jina', url: row.url, textLength: text.length });
+            continue;
+          }
+        } catch (error) {
+          attempts.push({
+            strategy: 'jina',
+            status: 0,
+            finalUrl: row.url,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
 
         unrecovered.push({ ...row, attempts });

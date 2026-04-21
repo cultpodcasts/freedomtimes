@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
 import { PRIORITY_WATCHLIST_HOSTS } from './discoveryConfig.js';
 import { type DiscoveredStory, discoverCandidateStories } from './discoverStories.js';
@@ -142,6 +143,7 @@ async function main(): Promise<void> {
   const sourceReliabilityReasonCounts = new Map<string, number>();
   const hostFailureCounts = new Map<string, number>();
   const blockedHosts = new Set<string>();
+  const failedUrls: Array<{ url: string; host: string | null; errorMessage: string; timestamp: string }> = [];
 
   logProgress('processing-start', {
     candidatePool: totalCandidates,
@@ -238,6 +240,13 @@ async function main(): Promise<void> {
           }
         }
 
+        failedUrls.push({
+          url: candidate.url,
+          host: candidateHost ?? null,
+          errorMessage: message,
+          timestamp: new Date().toISOString(),
+        });
+
         console.warn('[agent] candidate processing failed', {
           url: candidate.url,
           message,
@@ -264,6 +273,14 @@ async function main(): Promise<void> {
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  if (failedUrls.length > 0) {
+    mkdirSync('reports', { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const outPath = `reports/failed-urls-${ts}.json`;
+    writeFileSync(outPath, `${JSON.stringify(failedUrls, null, 2)}\n`, 'utf-8');
+    console.log('[agent] failed URLs written', { path: outPath, count: failedUrls.length });
+  }
 
   console.log('[agent] run summary', {
     processed,
