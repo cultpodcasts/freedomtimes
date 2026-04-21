@@ -124,9 +124,9 @@ export function extractDraftsFromLog(logText: string): DraftStory[] {
     const closes = (line.match(/\}/g) ?? []).length;
     braceDepth += opens - closes;
 
-    const titleMatch = line.match(/^\s*title:\s*'(.*)',\s*$/);
-    if (!title && titleMatch?.[1]) {
-      title = decodeLogText(titleMatch[1]);
+    const titleMatch = line.match(/^\s*title:\s*(['"])(.*)\1,\s*$/);
+    if (!title && titleMatch?.[2]) {
+      title = decodeLogText(titleMatch[2]);
     }
 
     if (line.match(/^\s*source:\s*\{\s*$/)) {
@@ -134,19 +134,19 @@ export function extractDraftsFromLog(logText: string): DraftStory[] {
     }
 
     if (inSourceBlock) {
-      const urlMatch = line.match(/^\s*url:\s*'(https?:\/\/[^']+)'/);
-      if (!sourceUrl && urlMatch?.[1]) {
-        sourceUrl = urlMatch[1].trim();
+      const urlMatch = line.match(/^\s*url:\s*(['"])(https?:\/\/[^'"]+)\1/);
+      if (!sourceUrl && urlMatch?.[2]) {
+        sourceUrl = urlMatch[2].trim();
       }
 
-      const hostMatch = line.match(/^\s*host:\s*'([^']+)'/);
-      if (!sourceHost && hostMatch?.[1]) {
-        sourceHost = hostMatch[1].trim();
+      const hostMatch = line.match(/^\s*host:\s*(['"])([^'"]+)\1/);
+      if (!sourceHost && hostMatch?.[2]) {
+        sourceHost = hostMatch[2].trim();
       }
 
-      const publishedMatch = line.match(/^\s*publishedAt:\s*'([^']+)'/);
-      if (!publishedAt && publishedMatch?.[1]) {
-        publishedAt = publishedMatch[1].trim();
+      const publishedMatch = line.match(/^\s*publishedAt:\s*(['"])([^'"]+)\1/);
+      if (!publishedAt && publishedMatch?.[2]) {
+        publishedAt = publishedMatch[2].trim();
       }
 
       if (line.match(/^\s*\},?\s*$/)) {

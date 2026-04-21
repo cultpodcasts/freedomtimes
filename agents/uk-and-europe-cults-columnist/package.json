@@ -13,7 +13,8 @@
     "start": "node --enable-source-maps dist/index.js",
     "dev": "tsx src/index.ts",
     "render:html": "tsx scripts/render-cult-news-html.tsx",
-    "render:cult-news": "tsx scripts/render-cult-news-html.tsx"
+    "render:cult-news": "tsx scripts/render-cult-news-html.tsx",
+    "recover:failed-urls": "tsx scripts/recover-failed-urls.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
