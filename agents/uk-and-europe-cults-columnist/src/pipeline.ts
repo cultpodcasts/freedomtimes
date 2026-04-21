@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { evaluateRelevance } from './relevance.js';
 import { evaluateSourceReliability } from './sourceReliability.js';
 import { ALL_CULT_TERMS } from './cultTerms.js';
@@ -12,6 +13,7 @@ import { fetchTextWithCache } from './httpCache.js';
 import type { DraftPayload, PipelineResult } from './types.js';
 
 type UrlResolver = (html: string, pageUrl: string) => string | undefined;
+type ResolverKey = 'republishedSourceLink';
 type RunPipelineOptions = {
   requiresUrlResolution?: boolean;
 };
@@ -30,6 +32,7 @@ const STRICT_CULT_TERMS = Array.from(
 );
 
 const SPECIFIC_CULT_TERMS = STRICT_CULT_TERMS.filter((term) => !GENERIC_CULT_TERMS.includes(term));
+const AMBIGUOUS_SPECIFIC_CULT_TERMS = new Set(['lahko']);
 const genericCultUrlPattern = GENERIC_CULT_TERMS.map((term) => escapeRegExp(term)).join('|');
 const GENERIC_CULT_URL_SIGNAL_PATTERN = new RegExp(`/(${genericCultUrlPattern})([/-]|$)`, 'i');
 const figurativePhrasePattern = FIGURATIVE_CULT_PHRASES.map((phrase) => escapeRegExp(phrase)).join('|');
@@ -51,6 +54,10 @@ function includesAnyPhrase(text: string, terms: string[]): boolean {
   return terms.some((term) => containsPhrase(text, term));
 }
 
+function findMatchingPhrase(text: string, terms: string[]): string | undefined {
+  return terms.find((term) => containsPhrase(text, term));
+}
+
 function normalizeMatchingText(text: string): string {
   return text
     .replace(/&quot;|&#34;|&#x22;/gi, '"')
@@ -70,13 +77,23 @@ function isCultTopicPrecise(title: string, text: string, url: string): boolean {
   const bodyLeadLower = normalizeMatchingText(text.slice(0, 2800).toLowerCase());
   const urlLower = url.toLowerCase();
 
-  const titleSpecificSignal = includesAnyPhrase(titleLower, SPECIFIC_CULT_TERMS);
-  const bodySpecificSignal = includesAnyPhrase(bodyLeadLower, SPECIFIC_CULT_TERMS);
+  const titleSpecificMatch = findMatchingPhrase(titleLower, SPECIFIC_CULT_TERMS);
+  const bodySpecificMatch = findMatchingPhrase(bodyLeadLower, SPECIFIC_CULT_TERMS);
+  const titleSpecificSignal = Boolean(titleSpecificMatch);
+  const bodySpecificSignal = Boolean(bodySpecificMatch);
   const titleGenericSignal = includesAnyPhrase(titleLower, GENERIC_CULT_TERMS);
   const bodyGenericSignal = includesAnyPhrase(bodyLeadLower, GENERIC_CULT_TERMS);
   const urlSignal = GENERIC_CULT_URL_SIGNAL_PATTERN.test(urlLower);
+  const hasNonAmbiguousSpecific = [titleSpecificMatch, bodySpecificMatch].some(
+    (match) => Boolean(match) && !AMBIGUOUS_SPECIFIC_CULT_TERMS.has(match ?? ''),
+  );
+  const hasOnlyAmbiguousSpecific = (titleSpecificSignal || bodySpecificSignal) && !hasNonAmbiguousSpecific;
 
-  if (titleSpecificSignal || bodySpecificSignal || urlSignal) {
+  if (hasOnlyAmbiguousSpecific && !titleGenericSignal && !bodyGenericSignal && !urlSignal) {
+    return false;
+  }
+
+  if (hasNonAmbiguousSpecific || urlSignal) {
     return true;
   }
 
@@ -91,6 +108,62 @@ function normalizeHost(host: string): string {
   return host.toLowerCase().replace(/^www\./, '');
 }
 
+function loadResolverHostConfigs(): Map<string, ResolverKey> {
+  try {
+    const feedsUrl = new URL('../feeds.json', import.meta.url);
+    const raw = readFileSync(feedsUrl, 'utf-8');
+    const parsed = JSON.parse(raw) as { feeds?: Array<{ url?: unknown; enabled?: unknown; urlResolver?: unknown }> };
+    const feeds = parsed.feeds ?? [];
+    const configs = new Map<string, ResolverKey>();
+
+    for (const feed of feeds) {
+      if (feed.enabled === false) {
+        continue;
+      }
+
+      if (typeof feed.url !== 'string' || typeof feed.urlResolver !== 'string') {
+        continue;
+      }
+
+      if (feed.urlResolver !== 'republishedSourceLink') {
+        continue;
+      }
+
+      try {
+        const host = normalizeHost(new URL(feed.url).hostname);
+        configs.set(host, feed.urlResolver);
+      } catch {
+        // Ignore malformed feed URLs.
+      }
+    }
+
+    return configs;
+  } catch {
+    return new Map();
+  }
+}
+
+const UK_EU_HOST_SUFFIXES = [
+  '.uk', '.ie', '.fr', '.de', '.es', '.it', '.nl', '.be', '.se', '.no', '.dk', '.pl', '.ro', '.pt', '.gr', '.cz', '.at', '.fi', '.ch',
+];
+
+const UK_EU_REGION_TERMS = [
+  'uk', 'united kingdom', 'england', 'scotland', 'wales', 'northern ireland', 'london',
+  'europe', 'european', 'france', 'germany', 'spain', 'italy', 'netherlands', 'belgium',
+  'sweden', 'norway', 'denmark', 'ireland', 'poland', 'romania', 'portugal', 'greece',
+  'czech republic', 'austria', 'finland', 'switzerland',
+];
+
+function isLikelyUkOrEuHost(host: string): boolean {
+  const normalized = normalizeHost(host);
+  return UK_EU_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
+}
+
+function hasUkOrEuSignalInText(text: string): boolean {
+  const normalized = normalizeMatchingText(text.toLowerCase());
+  return includesAnyPhrase(normalized, UK_EU_REGION_TERMS);
+}
+
 function decodeHtmlHref(value: string): string {
   return value
     .replace(/&amp;/g, '&')
@@ -99,9 +172,63 @@ function decodeHtmlHref(value: string): string {
     .trim();
 }
 
-function extractCultNews101SourceUrl(html: string, pageUrl: string): string | undefined {
+function extractRepublishedSourceUrl(html: string, pageUrl: string): string | undefined {
   const preferred: string[] = [];
   const fallback: string[] = [];
+  let pageHost: string | undefined;
+  try {
+    pageHost = normalizeHost(new URL(pageUrl).hostname);
+  } catch {
+    pageHost = undefined;
+  }
+  const pagePathTokens = (() => {
+    try {
+      return new URL(pageUrl)
+        .pathname.toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((token) => token.length >= 5);
+    } catch {
+      return [] as string[];
+    }
+  })();
+
+  function scoreSourceCandidate(candidateUrl: string): number {
+    let score = 0;
+
+    try {
+      const parsed = new URL(candidateUrl);
+      if (parsed.protocol === 'https:') {
+        score += 5;
+      }
+
+      if (parsed.pathname && parsed.pathname !== '/') {
+        score += 5;
+      }
+
+      const candidatePath = parsed.pathname.toLowerCase();
+      const overlap = pagePathTokens.reduce((acc, token) => (candidatePath.includes(token) ? acc + 1 : acc), 0);
+      score += overlap * 8;
+    } catch {
+      // Ignore malformed URLs during scoring.
+    }
+
+    return score;
+  }
+
+  function pickBest(candidates: string[]): string | undefined {
+    let bestUrl: string | undefined;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (const candidate of candidates) {
+      const score = scoreSourceCandidate(candidate);
+      if (score >= bestScore) {
+        bestScore = score;
+        bestUrl = candidate;
+      }
+    }
+
+    return bestUrl;
+  }
   const anchorRegex = /<a[^>]+href=["']([^"']+)["'][^>]*>/gi;
   let match: RegExpExecArray | null = anchorRegex.exec(html);
 
@@ -115,6 +242,11 @@ function extractCultNews101SourceUrl(html: string, pageUrl: string): string | un
     try {
       const absolute = new URL(rawHref, pageUrl).toString();
       const host = normalizeHost(new URL(absolute).hostname);
+
+      if (pageHost && (host === pageHost || host.endsWith(`.${pageHost}`))) {
+        match = anchorRegex.exec(html);
+        continue;
+      }
 
       if (Array.from(EXCLUDED_SOURCE_HOST_SET).some((excluded) => host === excluded || host.endsWith(`.${excluded}`))) {
         match = anchorRegex.exec(html);
@@ -140,20 +272,60 @@ function extractCultNews101SourceUrl(html: string, pageUrl: string): string | un
     match = anchorRegex.exec(html);
   }
 
-  const pick = preferred.length > 0 ? preferred[preferred.length - 1] : fallback[fallback.length - 1];
+  const plainUrlRegex = /https?:\/\/[^\s"'<>]+/gi;
+  let plainMatch: RegExpExecArray | null = plainUrlRegex.exec(html);
+  while (plainMatch) {
+    const rawUrl = decodeHtmlHref(plainMatch[0] ?? '').replace(/[),.;:]+$/g, '');
+
+    try {
+      const absolute = new URL(rawUrl, pageUrl).toString();
+      const host = normalizeHost(new URL(absolute).hostname);
+
+      if (pageHost && (host === pageHost || host.endsWith(`.${pageHost}`))) {
+        plainMatch = plainUrlRegex.exec(html);
+        continue;
+      }
+
+      if (Array.from(EXCLUDED_SOURCE_HOST_SET).some((excluded) => host === excluded || host.endsWith(`.${excluded}`))) {
+        plainMatch = plainUrlRegex.exec(html);
+        continue;
+      }
+
+      const contextStart = Math.max(0, plainMatch.index - 140);
+      const contextEnd = Math.min(html.length, plainMatch.index + 220);
+      const context = html.slice(contextStart, contextEnd).toLowerCase();
+      const hasSourceHint = /(source|original|via|read\s+(full|more)|full\s+article|article\s+at|from\s+the)/i.test(
+        context,
+      );
+
+      if (hasSourceHint) {
+        preferred.push(absolute);
+      } else {
+        fallback.push(absolute);
+      }
+    } catch {
+      // Ignore malformed plain URLs.
+    }
+
+    plainMatch = plainUrlRegex.exec(html);
+  }
+
+  const pick = preferred.length > 0 ? pickBest(preferred) : pickBest(fallback);
   return pick;
 }
 
-const URL_RESOLVERS_BY_HOST: Record<string, UrlResolver> = {
-  'cultnews101.com': extractCultNews101SourceUrl,
+const RESOLVER_BY_KEY: Record<ResolverKey, UrlResolver> = {
+  republishedSourceLink: extractRepublishedSourceUrl,
 };
+
+const URL_RESOLVER_HOST_CONFIGS = loadResolverHostConfigs();
 
 function getResolverForUrl(url: string): UrlResolver | undefined {
   try {
     const host = normalizeHost(new URL(url).hostname);
-    for (const [resolverHost, resolver] of Object.entries(URL_RESOLVERS_BY_HOST)) {
+    for (const [resolverHost, resolverKey] of URL_RESOLVER_HOST_CONFIGS.entries()) {
       if (host === resolverHost || host.endsWith(`.${resolverHost}`)) {
-        return resolver;
+        return RESOLVER_BY_KEY[resolverKey];
       }
     }
   } catch {
@@ -167,6 +339,8 @@ function removeNonArticleBlocks(html: string): string {
   return html
     .replace(/<aside[\s\S]*?<\/aside>/gi, ' ')
     .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
     .replace(
       /<div[^>]+class=["'][^"']*(article-readmore|read-more|readmore|related|recommended|most-read|popular)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
       ' ',
@@ -335,7 +509,7 @@ export async function runPipeline(
   let html = response.text;
   effectiveUrl = response.url;
 
-  if (options.requiresUrlResolution) {
+  if (options.requiresUrlResolution || Boolean(getResolverForUrl(effectiveUrl))) {
     const resolver = getResolverForUrl(effectiveUrl);
     const resolvedUrl = resolver?.(html, effectiveUrl);
     if (resolvedUrl && resolvedUrl !== effectiveUrl) {
@@ -377,6 +551,7 @@ export async function runPipeline(
   const title = detectTitle(html, 'Untitled source story');
   const text = stripHtml(html);
   const relevance = evaluateRelevance(`${title} ${text}`);
+  const leadRegionSignal = hasUkOrEuSignalInText(`${title} ${text.slice(0, 2800)}`);
 
   if (!isCultTopicPrecise(title, text, effectiveUrl)) {
     return {
@@ -393,6 +568,15 @@ export async function runPipeline(
       source,
       relevance,
       reason: 'Story does not meet UK/EU cult-topic relevance threshold',
+    };
+  }
+
+  if (!isLikelyUkOrEuHost(source.host) && !leadRegionSignal) {
+    return {
+      status: 'rejected',
+      source,
+      relevance,
+      reason: 'Story does not have a UK/EU source or UK/EU geographic signal',
     };
   }
 

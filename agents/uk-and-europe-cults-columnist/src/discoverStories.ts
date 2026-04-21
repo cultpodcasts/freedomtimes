@@ -501,7 +501,7 @@ function normalizePossibleUrl(value: string | undefined): string | undefined {
   }
 }
 
-async function discoverFromNewsData(maxItems: number): Promise<DiscoveredStory[]> {
+async function discoverFromNewsData(): Promise<DiscoveredStory[]> {
   if (!NEWSDATA_ENABLED) {
     return [];
   }
@@ -519,15 +519,10 @@ async function discoverFromNewsData(maxItems: number): Promise<DiscoveredStory[]
 
   logDiscoveryProgress('newsdata-start', {
     queryCount: queries.length,
-    maxItems,
   });
 
   for (const query of queries) {
     queryIndex += 1;
-
-    if (discovered.length >= maxItems) {
-      break;
-    }
 
     if (queryIndex === 1 || queryIndex % 3 === 0) {
       logDiscoveryProgress('newsdata-running', {
@@ -576,10 +571,6 @@ async function discoverFromNewsData(maxItems: number): Promise<DiscoveredStory[]
     }
 
     for (const item of results) {
-      if (discovered.length >= maxItems) {
-        break;
-      }
-
       const link = normalizePossibleUrl(item.link);
       const title = (item.title ?? '').trim();
 
@@ -638,7 +629,7 @@ async function resolveGoogleNewsLink(url: string): Promise<string> {
   return url;
 }
 
-async function discoverFromGoogleNews(maxItems: number): Promise<DiscoveredStory[]> {
+async function discoverFromGoogleNews(): Promise<DiscoveredStory[]> {
   const discovered: DiscoveredStory[] = [];
   const seen = new Set<string>();
   const watchlistQueries = buildWatchlistQueries();
@@ -647,7 +638,7 @@ async function discoverFromGoogleNews(maxItems: number): Promise<DiscoveredStory
   const boundedWatchlistQueries = rotatedWatchlistQueries.slice(0, MAX_WATCHLIST_GOOGLE_QUERIES_PER_RUN);
   const queries = [...boundedWatchlistQueries, ...GOOGLE_NEWS_GENERIC_QUERIES];
   const perQueryLimit = 2;
-  const globalCeiling = Math.max(maxItems * 3, queries.length);
+  const globalCeiling = Math.max(queries.length * perQueryLimit, queries.length);
   let queryIndex = 0;
 
   logDiscoveryProgress('google-news-start', {
@@ -849,23 +840,22 @@ function isAllowedOrSubdomain(hostname: string, allowedHosts: Set<string>): bool
   return false;
 }
 
-export async function discoverCandidateStories(maxItems: number, allowedHosts: Set<string>): Promise<DiscoveredStory[]> {
+export async function discoverCandidateStories(allowedHosts: Set<string>): Promise<DiscoveredStory[]> {
   const discovered: DiscoveredStory[] = [];
 
   logDiscoveryProgress('start', {
-    maxItems,
     enabledFeedCount: FEEDS.filter((feed) => feed.enabled).length,
   });
 
   try {
-    discovered.push(...(await discoverFromNewsData(maxItems)));
+    discovered.push(...(await discoverFromNewsData()));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn('[agent] newsdata discovery failed', { message });
   }
 
   try {
-    discovered.push(...(await discoverFromGoogleNews(maxItems * 2)));
+    discovered.push(...(await discoverFromGoogleNews()));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn('[agent] google-news discovery failed', { message });
@@ -948,8 +938,8 @@ export async function discoverCandidateStories(maxItems: number, allowedHosts: S
     discoveredRaw: discovered.length,
     deduped: deduped.length,
     fresh: fresh.length,
-    returned: Math.max(1, Math.min(maxItems, scored.length)),
+    returned: scored.length,
   });
 
-  return scored.slice(0, Math.max(1, maxItems));
+  return scored;
 }

@@ -6,6 +6,7 @@
       "url": "https://cultnews.net/feed/",
       "sourceFormat": "rss",
       "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
       "requiresUrlResolution": false,
       "enabled": true,
       "language": "en"
@@ -16,6 +17,7 @@
       "url": "https://cultnews.net/feed/atom",
       "sourceFormat": "atom",
       "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
       "requiresUrlResolution": false,
       "enabled": true,
       "language": "en"
@@ -26,6 +28,7 @@
       "url": "https://www.cultnews101.com/feeds/posts/default?alt=rss",
       "sourceFormat": "rss",
       "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
       "requiresUrlResolution": true,
       "enabled": true,
       "language": "en"
@@ -36,6 +39,7 @@
       "url": "https://www.cultnews101.com/feeds/posts/default",
       "sourceFormat": "atom",
       "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
       "requiresUrlResolution": true,
       "enabled": true,
       "language": "en"

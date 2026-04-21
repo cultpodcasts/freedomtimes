@@ -24,19 +24,6 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
-function parsePositiveNumber(value: string | undefined, fallback: number): number {
-  if (!value) {
-    return fallback;
-  }
-
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback;
-  }
-
-  return parsed;
-}
-
 function parseCandidateHost(url: string): string | undefined {
   try {
     return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
@@ -64,9 +51,6 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const url = getArg('url');
   const maxApproved = parsePositiveInt(getArg('max'), 8);
-  const discoveryPoolMultiplier = parsePositiveNumber(process.env.DISCOVERY_POOL_MULTIPLIER, 20);
-  const discoveryPoolMin = parsePositiveInt(process.env.DISCOVERY_POOL_MIN, 300);
-  const discoveryPoolMax = parsePositiveInt(process.env.DISCOVERY_POOL_MAX, 0);
   const hostBackoffEnabled = (process.env.HOST_FETCH_BACKOFF_ENABLED ?? 'true').toLowerCase() !== 'false';
   const hostFailureThreshold = parsePositiveInt(process.env.HOST_FETCH_FAILURE_THRESHOLD, 3);
   const hostBackoffStatusCodes = new Set(
@@ -100,12 +84,7 @@ async function main(): Promise<void> {
       requiresUrlResolution: false,
     });
   } else {
-    let discoveryPoolSize = Math.max(Math.ceil(maxApproved * discoveryPoolMultiplier), discoveryPoolMin);
-    if (discoveryPoolMax > 0) {
-      discoveryPoolSize = Math.min(discoveryPoolSize, discoveryPoolMax);
-    }
-
-    const discovered = await discoverCandidateStories(discoveryPoolSize, config.allowedSourceHosts);
+    const discovered = await discoverCandidateStories(config.allowedSourceHosts);
     for (const item of discovered) {
       candidatesByUrl.set(item.url, item);
     }
@@ -127,10 +106,6 @@ async function main(): Promise<void> {
     console.log('[agent] discovered candidate stories', {
       count: discovered.length,
       targetApproved: maxApproved,
-      discoveryPoolSize,
-      discoveryPoolMultiplier,
-      discoveryPoolMin,
-      discoveryPoolMax: discoveryPoolMax > 0 ? discoveryPoolMax : null,
       feedsScanned: true,
       sourceCounts,
       watchlistHitCount: watchlistHits.length,
