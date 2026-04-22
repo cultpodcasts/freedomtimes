@@ -11,6 +11,7 @@ import {
 import {
   ALL_GENERIC_CULT_TERMS,
   EXCLUDED_SOURCE_HOSTS,
+  FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE,
   FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE,
   FIGURATIVE_CULT_PHRASES_BY_LANGUAGE,
   FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE,
@@ -110,6 +111,17 @@ function findMatchingPhrase(text: string, terms: string[]): string | undefined {
   return terms.find((term) => containsPhrase(text, term));
 }
 
+function countMatchingPhrases(text: string, terms: string[]): number {
+  const uniqueTerms = new Set(terms);
+  let matches = 0;
+  for (const term of uniqueTerms) {
+    if (containsPhrase(text, term)) {
+      matches += 1;
+    }
+  }
+  return matches;
+}
+
 function normalizeMatchingText(text: string): string {
   return text
     .replace(/&quot;|&#34;|&#x22;/gi, '"')
@@ -149,6 +161,25 @@ function hasFigurativeCultUsage(text: string, language?: string): boolean {
   return false;
 }
 
+function hasCommercialFigurativeCultUsage(title: string, text: string, language?: string): boolean {
+  const localTerms = language ? (FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE[language] ?? []) : [];
+  const englishTerms = FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE.en ?? [];
+  const terms = Array.from(new Set([...englishTerms, ...localTerms]));
+  if (terms.length === 0) {
+    return false;
+  }
+
+  const normalizedTitle = normalizeMatchingText(title);
+  const normalizedLead = normalizeMatchingText(text.slice(0, 2800));
+  const titleMatches = countMatchingPhrases(normalizedTitle, terms);
+  if (titleMatches >= 1) {
+    return true;
+  }
+
+  const leadMatches = countMatchingPhrases(`${normalizedTitle} ${normalizedLead}`, terms);
+  return leadMatches >= 2;
+}
+
 function isCultTopicPrecise(title: string, text: string, url: string, language?: string): boolean {
   const titleLower = normalizeMatchingText(title.toLowerCase());
   const bodyLeadLower = normalizeMatchingText(text.slice(0, 2800).toLowerCase());
@@ -180,6 +211,10 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
   }
 
   if (!titleGenericSignal && !bodyGenericSignal) {
+    return false;
+  }
+
+  if (!hasNonAmbiguousSpecific && hasCommercialFigurativeCultUsage(titleLower, bodyLeadLower, language)) {
     return false;
   }
 

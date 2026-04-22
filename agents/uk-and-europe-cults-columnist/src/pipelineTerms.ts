@@ -53,6 +53,7 @@ function loadRegexPatternsByLanguage(path: string): Record<string, RegExp[]> {
 export const EXCLUDED_SOURCE_HOSTS = loadStringArrayFromJson('../data/excluded-source-hosts.json');
 
 export const FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE = loadStringArraysByLanguage('../data/figurative-cult-context-terms.json');
+export const FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE = loadStringArraysByLanguage('../data/figurative-cult-commercial-context-terms.json');
 export const FIGURATIVE_CULT_PHRASES_BY_LANGUAGE = loadStringArraysByLanguage('../data/figurative-cult-phrases.json');
 export const GENERIC_CULT_TERMS_BY_LANGUAGE = loadStringArraysByLanguage('../data/generic-cult-terms.json');
 export const STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE = loadStringArraysByLanguage('../data/strict-cult-term-extensions.json');

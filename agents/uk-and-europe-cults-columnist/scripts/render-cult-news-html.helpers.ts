@@ -12,11 +12,13 @@ export type StoryMeta = {
   description?: string;
   image?: string;
   publishedAt?: string;
+  articleText?: string;
 };
 
 export type EnrichedStory = DraftStory & {
   description: string;
   image?: string;
+  articleText: string;
 };
 
 export type RunSummary = Record<string, number>;
@@ -90,6 +92,25 @@ function normalizeIso(value: string | undefined): string | undefined {
   }
 
   return new Date(parsed).toISOString();
+}
+
+function extractArticleText(html: string): string {
+  const articleLikeHtml =
+    html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
+    html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
+    html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ??
+    html;
+
+  return decodeHtmlEntities(
+    articleLikeHtml
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<(nav|footer|aside|form|svg)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  ).slice(0, 6000);
 }
 
 export function extractDraftsFromLog(logText: string): DraftStory[] {
@@ -245,6 +266,7 @@ export async function fetchStoryMeta(url: string): Promise<StoryMeta> {
       description: description ? decodeHtmlEntities(description) : undefined,
       image,
       publishedAt,
+      articleText: extractArticleText(html),
     };
   } catch {
     return {};

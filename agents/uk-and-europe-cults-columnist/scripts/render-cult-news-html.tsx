@@ -33,11 +33,16 @@ type StoryGroup = {
 
 type DraftStory = ReturnType<typeof extractDraftsFromLog>[number];
 
+function normalizeHost(host: string): string {
+  return host.replace(/^www\./i, '').toLowerCase();
+}
+
 function canonicalizeStoryUrl(rawUrl: string): string {
   try {
     const parsed = new URL(rawUrl);
-    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+    const host = normalizeHost(parsed.hostname);
     if (host !== 'cultnews.net') {
+      parsed.hostname = host;
       return parsed.toString();
     }
 
@@ -93,6 +98,136 @@ function normalizeUrl(rawUrl: string): string {
   }
 }
 
+function createDedupeKey(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.hostname = normalizeHost(parsed.hostname);
+
+    // Remove common tracking params so publisher mirrors collapse correctly.
+    const trackingParams = [
+      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+      'gclid', 'fbclid', 'at_medium', 'at_campaign',
+    ];
+    for (const key of trackingParams) {
+      parsed.searchParams.delete(key);
+    }
+
+    if (!parsed.searchParams.toString()) {
+      parsed.search = '';
+    }
+
+    return parsed.toString().replace(/\/$/, '').toLowerCase();
+  } catch {
+    return rawUrl.trim().replace(/\/$/, '').toLowerCase();
+  }
+}
+
+const HOST_TOKEN_EXCLUSIONS = new Set(['www', 'com', 'co', 'uk', 'ie', 'org', 'net', 'news', 'the']);
+
+function tokenizeSimilarityText(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((token) => token.replace(/s$/u, ''))
+    .filter((token) => token.length >= 4);
+}
+
+function uniqueTokens(tokens: string[]): Set<string> {
+  return new Set(tokens.filter((token) => !HOST_TOKEN_EXCLUSIONS.has(token)));
+}
+
+function jaccardSimilarity(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 || right.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+  for (const value of left) {
+    if (right.has(value)) {
+      intersection += 1;
+    }
+  }
+
+  return intersection / (left.size + right.size - intersection);
+}
+
+function getPublicationHostSignature(rawUrl: string): Set<string> {
+  const host = getHostname(rawUrl);
+  if (!host) {
+    return new Set<string>();
+  }
+
+  return uniqueTokens(
+    host
+      .split('.')
+      .flatMap((label) => label.split(/[^a-z0-9]+/i))
+      .filter(Boolean),
+  );
+}
+
+function getNormalizedPath(rawUrl: string): string | undefined {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.pathname.replace(/\/+$/u, '').toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+function isLikelyAliasHostDuplicate(left: EnrichedStory, right: EnrichedStory): boolean {
+  const publicationSimilarity = jaccardSimilarity(
+    getPublicationHostSignature(left.url),
+    getPublicationHostSignature(right.url),
+  );
+  if (publicationSimilarity < 1) {
+    return false;
+  }
+
+  const samePath = getNormalizedPath(left.url) === getNormalizedPath(right.url);
+  const sameSlug = getSlug(left.url) === getSlug(right.url);
+  const titleSimilarity = jaccardSimilarity(
+    uniqueTokens(tokenizeSimilarityText(left.title)),
+    uniqueTokens(tokenizeSimilarityText(right.title)),
+  );
+  const articleSimilarity = jaccardSimilarity(
+    uniqueTokens(tokenizeSimilarityText(left.articleText)),
+    uniqueTokens(tokenizeSimilarityText(right.articleText)),
+  );
+
+  return samePath || sameSlug || titleSimilarity >= 0.88 || articleSimilarity >= 0.9 || (titleSimilarity >= 0.72 && articleSimilarity >= 0.72);
+}
+
+function dedupeStories(stories: EnrichedStory[]): { kept: EnrichedStory[]; excluded: Array<{ url: string; reason: string }> } {
+  const kept: EnrichedStory[] = [];
+  const excluded: Array<{ url: string; reason: string }> = [];
+  const seenUrls = new Set<string>();
+
+  for (const story of stories) {
+    const normalizedUrl = createDedupeKey(story.url);
+    if (seenUrls.has(normalizedUrl)) {
+      excluded.push({
+        url: story.url,
+        reason: 'Duplicate canonical URL in shortlisted drafts.',
+      });
+      continue;
+    }
+
+    const aliasDuplicate = kept.find((existing) => isLikelyAliasHostDuplicate(existing, story));
+    if (aliasDuplicate) {
+      excluded.push({
+        url: story.url,
+        reason: 'Likely alias-host duplicate based on URL, title, and article-text similarity.',
+      });
+      continue;
+    }
+
+    kept.push(story);
+    seenUrls.add(normalizedUrl);
+  }
+
+  return { kept, excluded };
+}
+
 const MANUAL_RENDER_EXCLUSIONS: Array<{ url: string; reason: string }> = [
   { url: 'https://www.mirror.co.uk/news/uk-news/best-paperbacks-read-now-including-37030837', reason: 'Book-list lifestyle content; cult term used figuratively.' },
   { url: 'https://www.cityam.com/the-cult-of-cute-the-strange-drama-of-corporate-mascots/', reason: 'Figurative phrase: cult of cute.' },
@@ -102,7 +237,6 @@ const MANUAL_RENDER_EXCLUSIONS: Array<{ url: string; reason: string }> = [
   { url: 'https://www.timeout.com/london/news/this-american-cult-taco-chain-is-opening-its-first-london-restaurant-042126', reason: 'Restaurant opening; cult term used figuratively.' },
   { url: 'https://www.parkrun.org.uk/stratforduponavon/news/2026/04/18/435-dont-do-it-its-a-cult/', reason: 'Community/joke usage, not a cult-reporting story.' },
   { url: 'https://www.krone.at/4113641', reason: 'German Kult-* figurative entertainment/sports context.' },
-  { url: 'https://www.idealhome.co.uk/garden/outdoor-living/aldi-kamado-egg-bbq-may-2026', reason: 'Product/lifestyle coverage; not cult reporting.' },
   { url: 'https://www.nhregister.com/news/world/article/philippine-president-says-key-suspect-in-22210233.php', reason: 'General corruption/politics report; not cult-specific.' },
   { url: 'https://www.wral.com/news/ap/d9d49-philippine-president-says-key-suspect-in-corruption-scandal-has-been-arrested-in-prague/', reason: 'General corruption/politics report; not cult-specific.' },
   { url: 'https://www.hospitalityandcateringnews.com/2026/04/cult-supper-club-concept-all-roads-opens-permanent-site-in-brixton/', reason: 'Hospitality business story with figurative cult branding.' },
@@ -364,8 +498,14 @@ type StopwordsByLanguage = Record<string, string[]>;
 type StoryFeatures = {
   index: number;
   language: string;
+  titleTerms: Set<string>;
   termCounts: Map<string, number>;
 };
+
+const CLUSTER_LABEL_EXCLUDED_TERMS = new Set([
+  'cult', 'cults', 'sect', 'sects', 'news', 'review', 'drama', 'thriller',
+  'story', 'stories', 'series', 'episode', 'episodes',
+]);
 
 const GROUP_STOPWORDS_BY_LANGUAGE: StopwordsByLanguage = (() => {
   const raw = readFileSync(new URL('../data/group-stopwords-by-language.json', import.meta.url), 'utf-8');
@@ -385,9 +525,19 @@ const GROUP_STOPWORDS_BY_LANGUAGE: StopwordsByLanguage = (() => {
 })();
 
 function tokenize(value: string, stopwords: Set<string>): string[] {
+  function normalizeToken(token: string): string {
+    // Collapse common possessive/plural headline variants: "unchosens" -> "unchosen".
+    if (token.length > 5 && token.endsWith('s') && !token.endsWith('ss')) {
+      return token.slice(0, -1);
+    }
+    return token;
+  }
+
   return value
     .toLowerCase()
     .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length >= 3)
+    .map((token) => normalizeToken(token))
     .filter((token) => token.length >= 3)
     .filter((token) => !stopwords.has(token));
 }
@@ -441,7 +591,7 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
     addNgrams(termCounts, titleTokens, 2, 2);
     addNgrams(termCounts, titleTokens, 3, 1);
 
-    return { index, language, termCounts };
+    return { index, language, titleTerms: new Set(titleTokens), termCounts };
   });
 }
 
@@ -491,14 +641,39 @@ function cosineSimilarity(a: StoryFeatures, b: StoryFeatures, idf: Map<string, n
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+function countSharedRareTitleTerms(a: StoryFeatures, b: StoryFeatures, idf: Map<string, number>): number {
+  let shared = 0;
+  for (const term of a.titleTerms) {
+    if (!b.titleTerms.has(term)) {
+      continue;
+    }
+    if ((idf.get(term) ?? 0) < 1.6) {
+      continue;
+    }
+    if (term.length < 5) {
+      continue;
+    }
+    shared += 1;
+  }
+
+  return shared;
+}
+
 function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Map<number, Set<number>> {
   const edges = new Map<number, Set<number>>();
-  const threshold = 0.3;
+  const strictThreshold = 0.24;
+  const relaxedThreshold = 0.10;
 
   for (let i = 0; i < features.length; i += 1) {
     for (let j = i + 1; j < features.length; j += 1) {
       const similarity = cosineSimilarity(features[i], features[j], idf);
-      if (similarity < threshold) {
+      const sharedRareTitleTerms = countSharedRareTitleTerms(features[i], features[j], idf);
+      const shouldLink =
+        similarity >= strictThreshold ||
+        sharedRareTitleTerms >= 2 ||
+        (similarity >= relaxedThreshold && sharedRareTitleTerms >= 1);
+
+      if (!shouldLink) {
         continue;
       }
 
@@ -514,7 +689,7 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Ma
   return edges;
 }
 
-function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[]): string {
+function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf: Map<string, number>): string {
   const scoreByTerm = new Map<string, number>();
   const seenByTerm = new Map<string, number>();
 
@@ -526,8 +701,10 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[]): st
     for (const [term, score] of feature.termCounts.entries()) {
       if (term.length < 4) continue;
       if (/^\d+$/u.test(term)) continue;
+      if (CLUSTER_LABEL_EXCLUDED_TERMS.has(term)) continue;
 
-      scoreByTerm.set(term, (scoreByTerm.get(term) ?? 0) + score);
+      const weighted = score * (idf.get(term) ?? 1);
+      scoreByTerm.set(term, (scoreByTerm.get(term) ?? 0) + weighted);
       seenInStory.add(term);
     }
 
@@ -536,7 +713,7 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[]): st
     }
   }
 
-  const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.6));
+  const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.5));
   const candidates = Array.from(scoreByTerm.entries())
     .filter(([term]) => (seenByTerm.get(term) ?? 0) >= minimumCoverage)
     .sort((a, b) => b[1] - a[1])
@@ -582,7 +759,7 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
     }
 
     groups.push({
-      label: selectGroupLabel(features, component),
+      label: selectGroupLabel(features, component, idf),
       storyIndexes: new Set(component),
     });
   }
@@ -665,9 +842,6 @@ async function main(): Promise<void> {
       .filter((slug): slug is string => Boolean(slug))
   );
 
-  // Deduplicate by fully normalized canonical URL only. We keep cross-source
-  // coverage even when different publishers share the same slug/path.
-  const seenUrls = new Set<string>();
   const drafts = eligibleDrafts.filter((draft) => {
 
     const draftHost = getHostname(draft.url);
@@ -680,33 +854,27 @@ async function main(): Promise<void> {
       return false;
     }
 
-    const normalizedUrl = normalizeUrl(draft.url);
-
-    if (seenUrls.has(normalizedUrl)) {
-      excluded.push({
-        url: draft.url,
-        reason: 'Duplicate canonical URL in shortlisted drafts.',
-      });
-      return false;
-    }
-
-    seenUrls.add(normalizedUrl);
     return true;
   });
 
-  summarizeExclusions(excluded);
-
-  const stories: EnrichedStory[] = [];
+  const fetchedStories: EnrichedStory[] = [];
   for (const draft of drafts) {
     const meta = await fetchStoryMeta(draft.url);
-    stories.push({
+    fetchedStories.push({
       ...draft,
       title: meta.title?.trim() || draft.title,
       description: meta.description?.trim() || '',
       image: meta.image,
       publishedAt: meta.publishedAt || draft.publishedAt,
+      articleText: meta.articleText?.trim() || '',
     });
   }
+
+  const dedupeResult = dedupeStories(fetchedStories);
+  excluded.push(...dedupeResult.excluded);
+  summarizeExclusions(excluded);
+
+  const stories = dedupeResult.kept;
 
   const groups = classifyStories(stories);
 
