@@ -1,9 +1,11 @@
 import { Agent, callable } from 'agents';
 import type { Env, StageName } from './types';
 import {
+  countPendingCandidateFetchWorkItems,
   createRun,
   deleteRunData,
   getRunSummary,
+  listPendingCandidateFetchWorkItems,
   logStageEvent,
   purgeExpiredHttpCache,
   recordStageReview,
@@ -11,6 +13,7 @@ import {
 } from './lib/db';
 import { runFeedFetchStage } from './stages/feedFetch';
 import { runCandidateExtractStage } from './stages/candidateExtract';
+import type { CandidateFetchQueueMessage } from './types';
 
 type AgentState = {
   activeRunId: string | null;
@@ -34,6 +37,99 @@ const STAGE_FLOW: Record<StageName, StageTransition> = {
 
 export class CultAgentOrchestrator extends Agent<Env, AgentState> {
   initialState: AgentState = { activeRunId: null };
+
+  private async continueRunInBackground(runId: string, nextStage: StageName): Promise<void> {
+    try {
+      if (nextStage === 'candidate_extract') {
+        const stageResult = await this.runFiber(`approve:${runId}:${nextStage}`, async (ctx) => {
+          const seedResult = await runCandidateExtractStage(this.env.AGENT_DB, this.env.AGENT_STORE, runId);
+          const pendingItems = await listPendingCandidateFetchWorkItems(this.env.AGENT_DB, runId);
+
+          if (pendingItems.length === 0) {
+            await setRunStatus(this.env.AGENT_DB, runId, 'awaiting_review_candidate_extract', nextStage);
+            await logStageEvent(this.env.AGENT_DB, {
+              runId,
+              stage: nextStage,
+              level: 'info',
+              message: 'candidate_extract seeded with no pending candidate fetch jobs',
+              data: seedResult,
+            });
+
+            ctx.stash({ runId, stage: nextStage, queued: 0 });
+            return { ...seedResult, queued: 0, batches: 0 };
+          }
+
+          const batchSize = 50;
+          let batches = 0;
+          for (let i = 0; i < pendingItems.length; i += batchSize) {
+            const slice = pendingItems.slice(i, i + batchSize);
+            const messages: MessageSendRequest<CandidateFetchQueueMessage>[] = slice.map((item) => ({
+              body: {
+                runId,
+                candidateId: item.candidateId,
+                rawUrl: item.rawUrl,
+                requiresUrlResolution: item.requiresUrlResolution,
+              },
+            }));
+
+            await this.env.CANDIDATE_FETCH_QUEUE.sendBatch(messages);
+            batches += 1;
+          }
+
+          await logStageEvent(this.env.AGENT_DB, {
+            runId,
+            stage: nextStage,
+            level: 'info',
+            message: 'candidate fetch jobs enqueued',
+            data: { queued: pendingItems.length, batches },
+          });
+
+          ctx.stash({ runId, stage: nextStage, queued: pendingItems.length, batches });
+          return { ...seedResult, queued: pendingItems.length, batches };
+        });
+
+        await logStageEvent(this.env.AGENT_DB, {
+          runId,
+          stage: 'orchestration',
+          level: 'info',
+          message: 'background stage seed/enqueue finished',
+          data: { nextStage, stageResult },
+        });
+        return;
+      }
+
+      const stageResult = await this.runFiber(`approve:${runId}:${nextStage}`, async (ctx) => {
+        const result = await this.runSingleStage(runId, nextStage);
+        await logStageEvent(this.env.AGENT_DB, {
+          runId,
+          stage: nextStage,
+          level: 'info',
+          message: `${nextStage} completed`,
+          data: result,
+        });
+        ctx.stash({ runId, stage: nextStage });
+        return result;
+      });
+
+      await logStageEvent(this.env.AGENT_DB, {
+        runId,
+        stage: 'orchestration',
+        level: 'info',
+        message: 'background stage run finished',
+        data: { nextStage, stageResult },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await logStageEvent(this.env.AGENT_DB, {
+        runId,
+        stage: nextStage,
+        level: 'error',
+        message: 'background stage run failed',
+        data: { error: message },
+      });
+      await setRunStatus(this.env.AGENT_DB, runId, 'failed', nextStage);
+    }
+  }
 
   private async runSingleStage(runId: string, stage: StageName): Promise<Record<string, unknown>> {
     if (stage === 'feed_fetch') {
@@ -187,24 +283,35 @@ export class CultAgentOrchestrator extends Agent<Env, AgentState> {
     }
 
     const nextStage = transition.next;
-    const stageResult = await this.runFiber(`approve:${runId}:${stage}`, async (ctx) => {
-      const result = await this.runSingleStage(runId, nextStage);
+    await setRunStatus(this.env.AGENT_DB, runId, 'started', nextStage);
+
+    if (nextStage === 'candidate_extract') {
+      const pendingBefore = await countPendingCandidateFetchWorkItems(this.env.AGENT_DB, runId);
       await logStageEvent(this.env.AGENT_DB, {
         runId,
-        stage: nextStage,
+        stage: 'orchestration',
         level: 'info',
-        message: `${nextStage} completed`,
-        data: result,
+        message: 'candidate_extract async queue fan-out requested',
+        data: { pendingBefore },
       });
-      ctx.stash({ runId, stage: nextStage });
-      return result;
+    }
+
+    await logStageEvent(this.env.AGENT_DB, {
+      runId,
+      stage: 'orchestration',
+      level: 'info',
+      message: 'background stage run queued',
+      data: { nextStage },
     });
+
+    void this.continueRunInBackground(runId, nextStage);
 
     return {
       runId,
       signal: 'approve',
       advancedTo: nextStage,
-      stageResult,
+      accepted: true,
+      processingMode: 'async',
     };
   }
 }

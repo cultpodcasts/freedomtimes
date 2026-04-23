@@ -215,6 +215,34 @@ export function describeDynamicSourceFromUrl(requestUrl: string): Omit<DynamicSo
   }
 }
 
+export function describeDynamicSourceFromId(sourceId: string): Omit<DynamicSource, 'kind'> | null {
+  if (sourceId.startsWith('google-news:')) {
+    const query = sourceId.slice('google-news:'.length).trim() || 'query';
+    return {
+      id: sourceId,
+      title: `Google News: ${truncateLabel(query)}`,
+      url: buildGoogleNewsRssUrl(query),
+      sourceCategory: 'aggregator-feed',
+      language: 'en',
+      requiresUrlResolution: 1,
+    };
+  }
+
+  if (sourceId.startsWith('newsdata:')) {
+    const query = sourceId.slice('newsdata:'.length).trim() || 'query';
+    return {
+      id: sourceId,
+      title: `NewsData: ${truncateLabel(query)}`,
+      url: '',
+      sourceCategory: 'api',
+      language: 'en',
+      requiresUrlResolution: 0,
+    };
+  }
+
+  return null;
+}
+
 export function newsDataResultsToRss(
   items: Array<{ title?: unknown; link?: unknown; pubDate?: unknown; pub_date?: unknown; publishedAt?: unknown }>,
 ): string {

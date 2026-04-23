@@ -1,6 +1,8 @@
 import type { JWTPayload } from 'jose';
 import type { Env, StageName } from './types';
+import type { CandidateFetchQueueMessage } from './types';
 import { runsListHtml, runDetailHtml, errorHtml } from './lib/ui';
+import { listPendingCandidateFetchWorkItems, logStageEvent } from './lib/db';
 import {
   ACCESS_TOKEN_COOKIE,
   UI_STATE_COOKIE,
@@ -35,6 +37,14 @@ export type FetchDeps = {
   requireEditor: (request: Request, env: Env) => Promise<JWTPayload>;
   getStageEvents: (database: Env['AGENT_DB'], runId: string) => Promise<unknown>;
   getFeedFetchResults: (database: Env['AGENT_DB']) => Promise<unknown>;
+  getCandidateExtractResults: (database: Env['AGENT_DB'], runId: string) => Promise<unknown>;
+  getCandidateArticleEntryById: (database: Env['AGENT_DB'], runId: string, candidateId: number) => Promise<{
+    id: number;
+    raw_url: string;
+    resolved_url: string | null;
+    title: string | null;
+    article_r2_key: string | null;
+  } | null>;
   getFeedFetchCacheEntryByRequestUrl: (database: Env['AGENT_DB'], requestUrl: string) => Promise<{
     feed_id: string;
     feed_title: string;
@@ -130,6 +140,11 @@ function parseStageFeedFetchPath(pathname: string): string | null {
   return m?.[1] ? decodeURIComponent(m[1]) : null;
 }
 
+function parseStageCandidateExtractPath(pathname: string): string | null {
+  const m = pathname.match(/^\/runs\/([^/]+)\/stages\/candidate_extract$/i);
+  return m?.[1] ? decodeURIComponent(m[1]) : null;
+}
+
 function parseStageFeedFetchCachePath(pathname: string): { runId: string; feedId: string } | null {
   const m = pathname.match(/^\/runs\/([^/]+)\/stages\/feed_fetch\/cache\/([^/]+)$/i);
   if (!m?.[1] || !m?.[2]) {
@@ -143,6 +158,23 @@ function parseStageFeedFetchCachePath(pathname: string): { runId: string; feedId
 
 function isStageFeedFetchCacheByUrlPath(pathname: string): boolean {
   return /^\/runs\/[^/]+\/stages\/feed_fetch\/cache$/i.test(pathname);
+}
+
+function parseStageCandidateExtractCachePath(pathname: string): { runId: string; candidateId: number } | null {
+  const m = pathname.match(/^\/runs\/([^/]+)\/stages\/candidate_extract\/cache\/([^/]+)$/i);
+  if (!m?.[1] || !m?.[2]) {
+    return null;
+  }
+
+  const candidateId = Number.parseInt(decodeURIComponent(m[2]), 10);
+  if (!Number.isFinite(candidateId) || candidateId <= 0) {
+    return null;
+  }
+
+  return {
+    runId: decodeURIComponent(m[1]),
+    candidateId,
+  };
 }
 
 function setTokenCookie(response: Response, token: string, secure: boolean): Response {
@@ -224,6 +256,10 @@ export function createFetchHandler(deps: FetchDeps) {
       return respond(routed);
     }
 
+    function parseCandidateExtractRequeuePath(pathname: string): string | null {
+      const m = pathname.match(/^\/runs\/([^/]+)\/stages\/candidate_extract\/requeue$/i);
+      return m?.[1] ? decodeURIComponent(m[1]) : null;
+    }
     try {
       const pathname = new URL(request.url).pathname;
 
@@ -233,6 +269,48 @@ export function createFetchHandler(deps: FetchDeps) {
 
       // ── UI auth routes ──────────────────────────────────────────────────────
       const isSecure = new URL(request.url).protocol === 'https:';
+
+          if (pathname.includes('/stages/candidate_extract/requeue') && request.method === 'POST') {
+            const runId = parseCandidateExtractRequeuePath(pathname);
+            if (!runId) {
+              return respond(json({ error: 'Invalid requeue path' }, 400));
+            }
+
+            const pendingItems = await listPendingCandidateFetchWorkItems(env.AGENT_DB, runId);
+            if (pendingItems.length === 0) {
+              return respond(json({ runId, requeued: 0, batches: 0, message: 'No pending candidate jobs to requeue.' }));
+            }
+
+            const batchSize = 50;
+            let batches = 0;
+            for (let i = 0; i < pendingItems.length; i += batchSize) {
+              const slice = pendingItems.slice(i, i + batchSize);
+              const messages: MessageSendRequest<CandidateFetchQueueMessage>[] = slice.map((item) => ({
+                body: {
+                  runId,
+                  candidateId: item.candidateId,
+                  rawUrl: item.rawUrl,
+                  requiresUrlResolution: item.requiresUrlResolution,
+                },
+              }));
+
+              await env.CANDIDATE_FETCH_QUEUE.sendBatch(messages);
+              batches += 1;
+            }
+
+            await logStageEvent(env.AGENT_DB, {
+              runId,
+              stage: 'candidate_extract',
+              level: 'info',
+              message: 'candidate requeue requested',
+              data: {
+                requeued: pendingItems.length,
+                batches,
+              },
+            });
+
+            return respond(json({ runId, requeued: pendingItems.length, batches }));
+          }
 
       if (pathname === '/ui/auth/login' && request.method === 'GET') {
         if (!env.AUTH0_CLIENT_ID) {
@@ -409,6 +487,32 @@ export function createFetchHandler(deps: FetchDeps) {
         return respond(new Response(object.body, { status: 200, headers }));
       }
 
+      if (pathname.includes('/stages/candidate_extract/cache/') && request.method === 'GET') {
+        const parsed = parseStageCandidateExtractCachePath(pathname);
+        if (!parsed) {
+          return respond(json({ error: 'Invalid candidate cache path' }, 400));
+        }
+
+        const candidate = await deps.getCandidateArticleEntryById(env.AGENT_DB, parsed.runId, parsed.candidateId);
+        if (!candidate) {
+          return respond(json({ error: 'Candidate not found' }, 404));
+        }
+        if (!candidate.article_r2_key) {
+          return respond(json({ error: 'Candidate has no cached article yet' }, 404));
+        }
+
+        const object = await env.AGENT_STORE.get(candidate.article_r2_key);
+        if (!object?.body) {
+          return respond(json({ error: 'Cached article not found in object store' }, 404));
+        }
+
+        const headers = new Headers();
+        headers.set('content-type', object.httpMetadata?.contentType ?? 'text/html; charset=utf-8');
+        headers.set('content-disposition', `inline; filename="candidate-${candidate.id}.html"`);
+        headers.set('x-cache-source', 'r2');
+        return respond(new Response(object.body, { status: 200, headers }));
+      }
+
       if (pathname.includes('/stages/feed_fetch') && request.method === 'GET') {
         const runId = parseStageFeedFetchPath(pathname);
         if (!runId) {
@@ -416,6 +520,16 @@ export function createFetchHandler(deps: FetchDeps) {
         }
         const run = await agent.getRun(runId);
         const results = await deps.getFeedFetchResults(env.AGENT_DB);
+        return respond(json({ runId, run, results }));
+      }
+
+      if (pathname.includes('/stages/candidate_extract') && request.method === 'GET') {
+        const runId = parseStageCandidateExtractPath(pathname);
+        if (!runId) {
+          return respond(json({ error: 'Invalid stage path' }, 400));
+        }
+        const run = await agent.getRun(runId);
+        const results = await deps.getCandidateExtractResults(env.AGENT_DB, runId);
         return respond(json({ runId, run, results }));
       }
 

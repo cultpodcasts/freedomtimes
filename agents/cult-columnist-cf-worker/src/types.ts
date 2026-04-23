@@ -4,6 +4,8 @@ import type { CultAgentOrchestrator } from './orchestrator';
 export type Env = {
   AGENT_DB: D1Database;
   AGENT_STORE: R2Bucket;
+  CANDIDATE_FETCH_QUEUE: Queue<CandidateFetchQueueMessage>;
+  RUN_PROGRESS_HUB: DurableObjectNamespace;
   ORCHESTRATOR: AgentNamespace<CultAgentOrchestrator>;
   AUTH0_DOMAIN: string;
   AUTH0_API_AUDIENCE: string;
@@ -51,3 +53,10 @@ export type CandidateInsert = {
 };
 
 export type StageName = 'feed_fetch' | 'candidate_extract';
+
+export type CandidateFetchQueueMessage = {
+  runId: string;
+  candidateId: number;
+  rawUrl: string;
+  requiresUrlResolution: number;
+};

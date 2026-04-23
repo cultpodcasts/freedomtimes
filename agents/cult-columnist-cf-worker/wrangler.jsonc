@@ -22,6 +22,10 @@
 			{
 				"name": "ORCHESTRATOR",
 				"class_name": "CultAgentOrchestrator"
+			},
+			{
+				"name": "RUN_PROGRESS_HUB",
+				"class_name": "RunProgressHub"
 			}
 		]
 	},
@@ -33,8 +37,27 @@
 		{
 			"tag": "v1",
 			"new_sqlite_classes": ["CultAgentOrchestrator"]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": ["RunProgressHub"]
 		}
 	],
+	"queues": {
+		"producers": [
+			{
+				"binding": "CANDIDATE_FETCH_QUEUE",
+				"queue": "cult-candidate-fetch-staging"
+			}
+		],
+		"consumers": [
+			{
+				"queue": "cult-candidate-fetch-staging",
+				"max_batch_size": 25,
+				"max_batch_timeout": 5
+			}
+		]
+	},
 
 	"env": {
 		"local": {
@@ -48,6 +71,10 @@
 					{
 						"name": "ORCHESTRATOR",
 						"class_name": "CultAgentOrchestrator"
+					},
+					{
+						"name": "RUN_PROGRESS_HUB",
+						"class_name": "RunProgressHub"
 					}
 				]
 			},
@@ -63,7 +90,22 @@
 					"binding": "AGENT_STORE",
 					"bucket_name": "cult-agent-store-local"
 				}
-			]
+			],
+			"queues": {
+				"producers": [
+					{
+						"binding": "CANDIDATE_FETCH_QUEUE",
+						"queue": "cult-candidate-fetch-local"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "cult-candidate-fetch-local",
+						"max_batch_size": 25,
+						"max_batch_timeout": 5
+					}
+				]
+			}
 		},
 		"staging": {
 			"name": "cult-columnist-cf-worker-staging",
@@ -83,7 +125,22 @@
 					"binding": "AGENT_STORE",
 					"bucket_name": "cult-agent-store-staging"
 				}
-			]
+			],
+			"queues": {
+				"producers": [
+					{
+						"binding": "CANDIDATE_FETCH_QUEUE",
+						"queue": "cult-candidate-fetch-staging"
+					}
+				],
+				"consumers": [
+					{
+						"queue": "cult-candidate-fetch-staging",
+						"max_batch_size": 25,
+						"max_batch_timeout": 5
+					}
+				]
+			}
 		}
 	}
 }

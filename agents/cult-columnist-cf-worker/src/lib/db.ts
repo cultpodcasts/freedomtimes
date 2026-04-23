@@ -1,5 +1,5 @@
 import type { CandidateInsert, FeedRow, RunStatus } from '../types';
-import { describeDynamicSourceFromUrl } from './dynamicSources';
+import { describeDynamicSourceFromId, describeDynamicSourceFromUrl } from './dynamicSources';
 
 export async function createRun(db: D1Database, runId: string): Promise<void> {
   await db
@@ -56,6 +56,36 @@ export async function insertFeedFetchCache(
     .run();
 }
 
+export type FreshHttpCacheEntry = {
+  request_url: string;
+  final_url: string | null;
+  status: number;
+  content_type: string | null;
+  r2_key: string;
+  fetched_at: string;
+  expires_at: string;
+};
+
+export async function getFreshHttpCacheEntryByRequestUrl(
+  db: D1Database,
+  requestUrl: string,
+): Promise<FreshHttpCacheEntry | null> {
+  const row = await db
+    .prepare(
+      `SELECT request_url, final_url, status, content_type, r2_key, fetched_at, expires_at
+       FROM http_cache_entries
+       WHERE request_url = ?
+         AND r2_key LIKE 'articles/%'
+         AND expires_at > datetime('now')
+       ORDER BY fetched_at DESC
+       LIMIT 1`,
+    )
+    .bind(requestUrl)
+    .first<FreshHttpCacheEntry>();
+
+  return row ?? null;
+}
+
 export async function insertCandidates(db: D1Database, items: CandidateInsert[]): Promise<void> {
   if (items.length === 0) {
     return;
@@ -80,6 +110,151 @@ export async function insertCandidates(db: D1Database, items: CandidateInsert[])
   );
 
   await db.batch(batch);
+}
+
+export async function insertCandidate(db: D1Database, item: CandidateInsert): Promise<number> {
+  const result = await db
+    .prepare(
+      `INSERT INTO candidates
+        (run_id, raw_url, title, pub_date, feed_id, source_language, requires_url_resolution, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    )
+    .bind(
+      item.runId,
+      item.rawUrl,
+      item.title,
+      item.pubDate,
+      item.feedId,
+      item.sourceLanguage,
+      item.requiresUrlResolution,
+    )
+    .run();
+
+  return Number(result.meta.last_row_id ?? 0);
+}
+
+export async function updateCandidateFetchState(
+  db: D1Database,
+  input: {
+    candidateId: number;
+    resolvedUrl: string | null;
+    resolveStatus: 'ok' | 'failed' | 'skipped';
+    articleR2Key: string | null;
+    articleStatus: 'ok' | 'failed' | 'blocked' | 'cached' | 'filtered';
+    articleHttpStatus: number | null;
+    decisionCode: string | null;
+    decisionDetail: string | null;
+  },
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE candidates
+       SET resolved_url = ?,
+           resolve_status = ?,
+           article_r2_key = ?,
+           article_status = ?,
+           article_http_status = ?,
+           decision_code = ?,
+           decision_detail = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`,
+    )
+    .bind(
+      input.resolvedUrl,
+      input.resolveStatus,
+      input.articleR2Key,
+      input.articleStatus,
+      input.articleHttpStatus,
+      input.decisionCode,
+      input.decisionDetail,
+      input.candidateId,
+    )
+    .run();
+}
+
+export async function setCandidateExcluded(
+  db: D1Database,
+  candidateId: number,
+  reason: string,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE candidates
+       SET excluded = 1,
+           dedupe_reason = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`,
+    )
+    .bind(reason, candidateId)
+    .run();
+}
+
+export async function listPendingCandidateFetchWorkItems(
+  db: D1Database,
+  runId: string,
+): Promise<Array<{ candidateId: number; rawUrl: string; requiresUrlResolution: number }>> {
+  const result = await db
+    .prepare(
+      `SELECT id, raw_url, requires_url_resolution
+       FROM candidates
+       WHERE run_id = ?
+         AND article_status IS NULL
+       ORDER BY id ASC`,
+    )
+    .bind(runId)
+    .all<{ id: number; raw_url: string; requires_url_resolution: number }>();
+
+  return (result.results ?? []).map((row) => ({
+    candidateId: row.id,
+    rawUrl: row.raw_url,
+    requiresUrlResolution: row.requires_url_resolution,
+  }));
+}
+
+export async function getCandidateFetchWorkItemById(
+  db: D1Database,
+  runId: string,
+  candidateId: number,
+): Promise<{
+  candidateId: number;
+  rawUrl: string;
+  requiresUrlResolution: number;
+  articleStatus: string | null;
+} | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, raw_url, requires_url_resolution, article_status
+       FROM candidates
+       WHERE run_id = ? AND id = ?
+       LIMIT 1`,
+    )
+    .bind(runId, candidateId)
+    .first<{ id: number; raw_url: string; requires_url_resolution: number; article_status: string | null }>();
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    candidateId: row.id,
+    rawUrl: row.raw_url,
+    requiresUrlResolution: row.requires_url_resolution,
+    articleStatus: row.article_status,
+  };
+}
+
+export async function countPendingCandidateFetchWorkItems(db: D1Database, runId: string): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) as count
+       FROM candidates
+       WHERE run_id = ?
+         AND article_status IS NULL`,
+    )
+    .bind(runId)
+    .first<{ count: number }>();
+
+  return Number(row?.count ?? 0);
 }
 
 export async function getRunSummary(db: D1Database, runId: string): Promise<Record<string, unknown>> {
@@ -376,6 +551,167 @@ export async function getFeedFetchCacheEntryByRequestUrl(db: D1Database, request
     r2_key: cacheRow.r2_key,
     fetched_at: cacheRow.fetched_at,
   };
+}
+
+export type CandidateExtractResult = {
+  id: number;
+  raw_url: string;
+  resolved_url: string | null;
+  title: string | null;
+  pub_date: string | null;
+  feed_id: string | null;
+  feed_title: string | null;
+  feed_url: string | null;
+  source_category: string | null;
+  source_language: string | null;
+  requires_url_resolution: number;
+  resolve_status: string | null;
+  article_r2_key: string | null;
+  article_status: string | null;
+  article_http_status: number | null;
+  decision_code: string | null;
+  decision_detail: string | null;
+  excluded: number;
+  score: number | null;
+  created_at: string;
+};
+
+export async function getCandidateExtractResults(db: D1Database, runId: string): Promise<CandidateExtractResult[]> {
+  const result = await db
+    .prepare(
+      `SELECT
+         c.id,
+         c.raw_url,
+         c.title,
+         c.pub_date,
+         c.feed_id,
+         f.title AS feed_title,
+         f.url AS feed_url,
+         f.source_category,
+         c.source_language,
+         c.requires_url_resolution,
+         c.resolved_url,
+         c.resolve_status,
+         c.article_r2_key,
+         c.article_status,
+         c.article_http_status,
+         c.decision_code,
+         c.decision_detail,
+         c.excluded,
+         c.score,
+         c.created_at
+       FROM candidates c
+       LEFT JOIN feeds f ON f.id = c.feed_id
+       WHERE c.run_id = ?
+       ORDER BY c.created_at ASC, c.id ASC`,
+    )
+    .bind(runId)
+    .all<CandidateExtractResult>();
+
+  return (result.results ?? []).map((row) => {
+    if (row.feed_title) {
+      return row;
+    }
+
+    const dynamicSource = row.feed_id ? describeDynamicSourceFromId(row.feed_id) : null;
+    if (!dynamicSource) {
+      return row;
+    }
+
+    return {
+      ...row,
+      feed_title: dynamicSource.title,
+      feed_url: dynamicSource.url || null,
+      source_category: dynamicSource.sourceCategory,
+    };
+  });
+}
+
+export async function getCandidateExtractResultById(
+  db: D1Database,
+  runId: string,
+  candidateId: number,
+): Promise<CandidateExtractResult | null> {
+  const row = await db
+    .prepare(
+      `SELECT
+         c.id,
+         c.raw_url,
+         c.resolved_url,
+         c.title,
+         c.pub_date,
+         c.feed_id,
+         f.title AS feed_title,
+         f.url AS feed_url,
+         f.source_category,
+         c.source_language,
+         c.requires_url_resolution,
+         c.resolve_status,
+         c.article_r2_key,
+         c.article_status,
+         c.article_http_status,
+         c.decision_code,
+         c.decision_detail,
+         c.excluded,
+         c.score,
+         c.created_at
+       FROM candidates c
+       LEFT JOIN feeds f ON f.id = c.feed_id
+       WHERE c.run_id = ? AND c.id = ?
+       LIMIT 1`,
+    )
+    .bind(runId, candidateId)
+    .first<CandidateExtractResult>();
+
+  if (!row) {
+    return null;
+  }
+
+  if (row.feed_title) {
+    return row;
+  }
+
+  const dynamicSource = row.feed_id ? describeDynamicSourceFromId(row.feed_id) : null;
+  if (!dynamicSource) {
+    return row;
+  }
+
+  return {
+    ...row,
+    feed_title: dynamicSource.title,
+    feed_url: dynamicSource.url || null,
+    source_category: dynamicSource.sourceCategory,
+  };
+}
+
+export async function getCandidateArticleEntryById(
+  db: D1Database,
+  runId: string,
+  candidateId: number,
+): Promise<{
+  id: number;
+  raw_url: string;
+  resolved_url: string | null;
+  title: string | null;
+  article_r2_key: string | null;
+} | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, raw_url, resolved_url, title, article_r2_key
+       FROM candidates
+       WHERE run_id = ? AND id = ?
+       LIMIT 1`,
+    )
+    .bind(runId, candidateId)
+    .first<{
+      id: number;
+      raw_url: string;
+      resolved_url: string | null;
+      title: string | null;
+      article_r2_key: string | null;
+    }>();
+
+  return row ?? null;
 }
 
 export async function getStageEvents(

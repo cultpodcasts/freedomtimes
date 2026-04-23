@@ -133,9 +133,9 @@ export function runsListHtml(): Response {
 
 export function runDetailHtml(runId: string): Response {
   const escaped = runId.replace(/[<>"'&]/g, c => ({ '<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','&':'&amp;' }[c] ?? c));
-  const html = HEAD('Stage 1 Review') + `
+  const html = HEAD('Run Review') + `
 <div class="page-header">
-  <h1>Stage 1 Review</h1>
+  <h1>Run Review</h1>
   <span class="muted mono">${escaped}</span>
   <a class="muted" href="/ui">← all runs</a>
 </div>
@@ -148,8 +148,102 @@ export function runDetailHtml(runId: string): Response {
 <script>
 (async function () {
   const runId = ${JSON.stringify(runId)};
+  let refreshTimer = null;
+  let loading = false;
+  let ws = null;
+  let wsConnected = false;
+  let wsReconnectTimer = null;
+  let stage2Initialized = false;
+  const stage2Rows = new Map();
+
+  function stopWsReconnect() {
+    if (wsReconnectTimer !== null) {
+      clearTimeout(wsReconnectTimer);
+      wsReconnectTimer = null;
+    }
+  }
+
+  function scheduleWsReconnect(ms) {
+    stopWsReconnect();
+    wsReconnectTimer = setTimeout(() => {
+      connectProgressSocket();
+    }, ms);
+  }
+
+  function closeProgressSocket() {
+    stopWsReconnect();
+    if (ws) {
+      try { ws.close(); } catch {}
+      ws = null;
+    }
+    wsConnected = false;
+  }
+
+  function connectProgressSocket() {
+    if (ws) {
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socketUrl = protocol + '//' + window.location.host + '/ui/ws/candidate-progress?runId=' + encodeURIComponent(runId);
+    try {
+      ws = new WebSocket(socketUrl);
+      ws.addEventListener('open', () => {
+        wsConnected = true;
+        stopAutoRefresh();
+      });
+      ws.addEventListener('message', (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type === 'candidate-update' && payload?.runId === runId && payload?.candidate && typeof payload.candidate.id === 'number') {
+            stage2Rows.set(payload.candidate.id, payload.candidate);
+            patchStage2Row(payload.candidate);
+            updateStage2StatsFromRows();
+            if (typeof payload.pendingRemaining === 'number' && payload.pendingRemaining === 0) {
+              void load();
+            }
+            return;
+          }
+        } catch {
+          // Fallback to standard refresh if payload is malformed.
+        }
+        void load();
+      });
+      ws.addEventListener('close', () => {
+        ws = null;
+        wsConnected = false;
+        scheduleWsReconnect(3000);
+      });
+      ws.addEventListener('error', () => {
+        wsConnected = false;
+        if (ws) {
+          try { ws.close(); } catch {}
+        }
+      });
+    } catch {
+      ws = null;
+      scheduleWsReconnect(3000);
+    }
+  }
+
+  function stopAutoRefresh() {
+    if (refreshTimer !== null) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
+  }
+
+  function scheduleAutoRefresh(ms) {
+    stopAutoRefresh();
+    refreshTimer = setTimeout(() => {
+      void load();
+    }, ms);
+  }
 
   function httpClass(s) { if (s === null) return 'http-pending'; if (s >= 200 && s < 300) return 'http-ok'; return 'http-err'; }
+  function esc(value) {
+    return String(value ?? '').replace(/[<>'"&]/g, c => ({ '<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','&':'&amp;' }[c] ?? c));
+  }
   function ctShort(ct) {
     if (!ct) return '—';
     if (ct.includes('xml'))  return 'XML';
@@ -165,37 +259,218 @@ export function runDetailHtml(runId: string): Response {
     return 'badge-neutral';
   }
 
+  function safeDecisionLabel(row) {
+    if (!row?.decision_code) {
+      return row?.article_status ? ('status_' + String(row.article_status)) : 'pending';
+    }
+    return String(row.decision_code);
+  }
+
+  function safeDecisionDetail(row) {
+    if (!row?.decision_detail) {
+      return '';
+    }
+    if (typeof row.decision_detail !== 'string') {
+      return String(row.decision_detail);
+    }
+    try {
+      const parsed = JSON.parse(row.decision_detail);
+      return JSON.stringify(parsed);
+    } catch {
+      return row.decision_detail;
+    }
+  }
+
+  function stage2RowHtml(r) {
+    const href = r.article_r2_key
+      ? ('/runs/' + encodeURIComponent(runId) + '/stages/candidate_extract/cache/' + encodeURIComponent(String(r.id)))
+      : esc(r.resolved_url ?? r.raw_url);
+    const resolve = esc(r.resolve_status ?? (r.requires_url_resolution === 1 ? 'pending' : 'skipped'));
+    const articleClass = r.article_status === 'ok' || r.article_status === 'cached'
+      ? 'http-ok'
+      : (r.article_status === 'blocked' || r.article_status === 'failed' || r.article_status === 'filtered' ? 'http-err' : 'http-pending');
+    const decisionLabel = safeDecisionLabel(r);
+    const decisionDetail = safeDecisionDetail(r);
+
+    return '<tr id="candidate-row-' + String(r.id) + '">' +
+      '<td class="mono">' + String(r.id) + '</td>' +
+      '<td class="overflow" title="' + esc(r.resolved_url ?? r.raw_url) + '"><a href="' + href + '" target="_blank" rel="noopener noreferrer">' + esc(r.title ?? r.resolved_url ?? r.raw_url) + '</a></td>' +
+      '<td>' + esc(r.feed_title ?? r.feed_id ?? '—') + '</td>' +
+      '<td>' + esc(r.source_category ?? '—') + '</td>' +
+      '<td>' + esc(r.source_language ?? '—') + '</td>' +
+      '<td>' + resolve + '</td>' +
+      '<td class="' + articleClass + '">' + esc(r.article_status ?? 'pending') + '</td>' +
+      '<td>' + esc(r.article_http_status ?? '—') + '</td>' +
+        '<td class="overflow" title="' + esc(decisionDetail) + '">' + esc(decisionLabel) + '</td>' +
+      '<td>' + esc(r.pub_date ? new Date(r.pub_date).toLocaleString() : '—') + '</td>' +
+      '<td>' + (r.excluded === 1 ? 'yes' : 'no') + '</td>' +
+      '</tr>';
+  }
+
+  function patchStage2Row(r) {
+    const emptyRow = document.getElementById('candidate-empty-row');
+    if (emptyRow) {
+      emptyRow.remove();
+    }
+
+    const existing = document.getElementById('candidate-row-' + String(r.id));
+    if (existing) {
+      existing.outerHTML = stage2RowHtml(r);
+      return;
+    }
+
+    const body = document.getElementById('stage2-table-body');
+    if (body) {
+      body.insertAdjacentHTML('beforeend', stage2RowHtml(r));
+    }
+  }
+
+  function renderStage2TableOnce(results) {
+    stage2Rows.clear();
+    for (const r of results) {
+      stage2Rows.set(r.id, r);
+    }
+
+    const rows = Array.from(stage2Rows.values())
+      .sort((a, b) => a.id - b.id)
+      .map((r) => stage2RowHtml(r))
+      .join('');
+
+    const feedsEl = document.getElementById('feeds');
+    feedsEl.innerHTML = '<table><thead><tr><th>ID</th><th>Candidate</th><th>Source</th><th>Category</th><th>Lang</th><th>Resolve</th><th>Article</th><th>HTTP</th><th>Decision</th><th>Published</th><th>Excluded</th></tr></thead><tbody id="stage2-table-body">' + rows + '</tbody></table>';
+    if (!rows) {
+      const body = document.getElementById('stage2-table-body');
+      if (body) {
+        body.insertAdjacentHTML('beforeend', '<tr id="candidate-empty-row"><td colspan="11" class="empty">No candidates extracted for this run yet.</td></tr>');
+      }
+    }
+    stage2Initialized = true;
+  }
+
+  function updateStage2StatsFromRows() {
+    const statsEl = document.getElementById('stats');
+    const values = Array.from(stage2Rows.values());
+    if (values.length === 0) {
+      return;
+    }
+
+    const unresolved = values.filter(r => r.resolve_status !== 'ok' && r.requires_url_resolution === 1).length;
+    const okArticles = values.filter(r => r.article_status === 'ok').length;
+    const cachedArticles = values.filter(r => r.article_status === 'cached').length;
+    const blockedArticles = values.filter(r => r.article_status === 'blocked').length;
+    const failedArticles = values.filter(r => r.article_status === 'failed').length;
+    const filteredArticles = values.filter(r => r.article_status === 'filtered').length;
+    const excluded = values.filter(r => r.excluded === 1).length;
+
+    const runBadge = document.getElementById('run-status-badge');
+    const runStatus = runBadge ? runBadge.textContent : 'started';
+
+    statsEl.innerHTML =
+      '<div class="status-bar">' +
+      '<div class="stat"><div class="stat-num">' + String(values.length) + '</div><div class="stat-label">Candidates</div></div>' +
+      '<div class="stat"><div class="stat-num num-pending">' + String(unresolved) + '</div><div class="stat-label">Need URL Resolve</div></div>' +
+      '<div class="stat"><div class="stat-num num-ok">' + String(okArticles + cachedArticles) + '</div><div class="stat-label">Article Ready</div></div>' +
+      '<div class="stat"><div class="stat-num num-err">' + String(blockedArticles + failedArticles + filteredArticles) + '</div><div class="stat-label">Rejected/Errors</div></div>' +
+      '<div class="stat"><div class="stat-num">' + String(excluded) + '</div><div class="stat-label">Excluded</div></div>' +
+      '</div>' +
+      '<p class="muted">' +
+      '<span class="badge badge-ok">ok ' + String(okArticles) + '</span>' +
+      '<span class="badge badge-neutral" style="margin-left:0.35rem">cached ' + String(cachedArticles) + '</span>' +
+      '<span class="badge badge-error" style="margin-left:0.35rem">filtered ' + String(filteredArticles) + '</span>' +
+      '<span class="badge badge-error" style="margin-left:0.35rem">blocked ' + String(blockedArticles) + '</span>' +
+      '<span class="badge badge-error" style="margin-left:0.35rem">failed ' + String(failedArticles) + '</span>' +
+      '</p>' +
+      '<p class="muted">Stage: Stage 2 candidate extract</p>' +
+      '<p class="muted">Status: <span class="badge ' + badgeClass((runStatus || '').replace(/ /g, '_')) + '" id="run-status-badge">' + esc(runStatus || 'started') + '</span></p>';
+  }
+
   async function load() {
+    if (loading) {
+      return;
+    }
+    loading = true;
+
     const statsEl  = document.getElementById('stats');
     const actionsEl = document.getElementById('run-actions');
     const reviewEl = document.getElementById('review');
     const feedsEl  = document.getElementById('feeds');
 
     try {
-      const res = await fetch('/runs/' + encodeURIComponent(runId) + '/stages/feed_fetch');
-      if (res.status === 401) {
+      const runRes = await fetch('/runs/' + encodeURIComponent(runId));
+      if (runRes.status === 401) {
         window.location.assign('/ui/auth/login');
         return;
       }
-      if (!res.ok) { statsEl.innerHTML = '<div class="error-box">Error ' + res.status + '</div>'; return; }
+      if (!runRes.ok) { statsEl.innerHTML = '<div class="error-box">Error ' + runRes.status + '</div>'; return; }
 
-      const data   = await res.json();
-      const run    = data.run?.run ?? null;
-      const results = data.results ?? [];
+      const runData = await runRes.json();
+      const run = runData.run ?? null;
+      const shouldAutoRefresh = Boolean(run?.status === 'started' || run?.status === 'no_stories');
+      const stageName = run?.current_stage === 'candidate_extract' || run?.status === 'awaiting_review_candidate_extract'
+        ? 'candidate_extract'
+        : 'feed_fetch';
 
-      const fetched = results.filter(r => r.status !== null && r.status >= 200 && r.status < 300).length;
-      const failed  = results.filter(r => r.status !== null && (r.status < 200 || r.status >= 300)).length;
-      const pending = results.filter(r => r.status === null).length;
+      const isStage1 = stageName === 'feed_fetch';
+      const isStage2 = stageName === 'candidate_extract';
+      let results = [];
 
-      statsEl.innerHTML = run ? \`
-        <div class="status-bar">
-          <div class="stat"><div class="stat-num num-ok">\${fetched}</div><div class="stat-label">Fetched</div></div>
-          <div class="stat"><div class="stat-num num-err">\${failed}</div><div class="stat-label">Failed</div></div>
-          <div class="stat"><div class="stat-num num-pending">\${pending}</div><div class="stat-label">Not cached</div></div>
-          <div class="stat"><div class="stat-num">\${results.length}</div><div class="stat-label">Total</div></div>
-        </div>
-        <p class="muted">Status: <span class="badge \${badgeClass(run.status)}">\${(run.status ?? '—').replace(/_/g,' ')}</span></p>
-      \` : '';
+      if (!(isStage2 && stage2Initialized)) {
+        const res = await fetch('/runs/' + encodeURIComponent(runId) + '/stages/' + stageName);
+        if (res.status === 401) {
+          window.location.assign('/ui/auth/login');
+          return;
+        }
+        if (!res.ok) { statsEl.innerHTML = '<div class="error-box">Error ' + res.status + '</div>'; return; }
+
+        const data   = await res.json();
+        results = data.results ?? [];
+      } else {
+        results = Array.from(stage2Rows.values());
+      }
+
+      if (isStage1) {
+        const fetched = results.filter(r => r.status !== null && r.status >= 200 && r.status < 300).length;
+        const failed  = results.filter(r => r.status !== null && (r.status < 200 || r.status >= 300)).length;
+        const pending = results.filter(r => r.status === null).length;
+
+        statsEl.innerHTML = run ?
+          \`<div class="status-bar">
+            <div class="stat"><div class="stat-num num-ok">\${fetched}</div><div class="stat-label">Fetched</div></div>
+            <div class="stat"><div class="stat-num num-err">\${failed}</div><div class="stat-label">Failed</div></div>
+            <div class="stat"><div class="stat-num num-pending">\${pending}</div><div class="stat-label">Not cached</div></div>
+            <div class="stat"><div class="stat-num">\${results.length}</div><div class="stat-label">Total</div></div>
+          </div>
+          <p class="muted">Stage: Stage 1 feed fetch</p>
+          <p class="muted">Status: <span class="badge \${badgeClass(run.status)}" id="run-status-badge">\${(run.status ?? '—').replace(/_/g,' ')}</span></p>
+        \` : '';
+      } else {
+        const unresolved = results.filter(r => r.resolve_status !== 'ok' && r.requires_url_resolution === 1).length;
+        const okArticles = results.filter(r => r.article_status === 'ok').length;
+        const cachedArticles = results.filter(r => r.article_status === 'cached').length;
+        const blockedArticles = results.filter(r => r.article_status === 'blocked').length;
+        const failedArticles = results.filter(r => r.article_status === 'failed').length;
+        const filteredArticles = results.filter(r => r.article_status === 'filtered').length;
+        const excluded = results.filter(r => r.excluded === 1).length;
+
+        statsEl.innerHTML = run ?
+          \`<div class="status-bar">
+            <div class="stat"><div class="stat-num">\${results.length}</div><div class="stat-label">Candidates</div></div>
+            <div class="stat"><div class="stat-num num-pending">\${unresolved}</div><div class="stat-label">Need URL Resolve</div></div>
+            <div class="stat"><div class="stat-num num-ok">\${okArticles + cachedArticles}</div><div class="stat-label">Article Ready</div></div>
+            <div class="stat"><div class="stat-num num-err">\${blockedArticles + failedArticles + filteredArticles}</div><div class="stat-label">Rejected/Errors</div></div>
+            <div class="stat"><div class="stat-num">\${excluded}</div><div class="stat-label">Excluded</div></div>
+          </div>
+          <p class="muted">
+            <span class="badge badge-ok">ok \${okArticles}</span>
+            <span class="badge badge-neutral" style="margin-left:0.35rem">cached \${cachedArticles}</span>
+            <span class="badge badge-error" style="margin-left:0.35rem">filtered \${filteredArticles}</span>
+            <span class="badge badge-error" style="margin-left:0.35rem">blocked \${blockedArticles}</span>
+            <span class="badge badge-error" style="margin-left:0.35rem">failed \${failedArticles}</span>
+          </p>
+          <p class="muted">Stage: Stage 2 candidate extract</p>
+          <p class="muted">Status: <span class="badge \${badgeClass(run.status)}" id="run-status-badge">\${(run.status ?? '—').replace(/_/g,' ')}</span></p>
+        \` : '';
+      }
 
       actionsEl.innerHTML = run ? \`
         <div class="review-panel">
@@ -238,13 +513,21 @@ export function runDetailHtml(runId: string): Response {
         });
       }
 
-      const isAwaiting = run?.status === 'awaiting_review_feed_fetch';
+      const isAwaiting = isStage1
+        ? run?.status === 'awaiting_review_feed_fetch'
+        : run?.status === 'awaiting_review_candidate_extract';
+
+      if (isStage2 && run?.status === 'started') {
+        connectProgressSocket();
+      } else {
+        closeProgressSocket();
+      }
       reviewEl.innerHTML = isAwaiting ? \`
         <div class="review-panel">
           <h2>Approve or reject to continue</h2>
           <textarea id="notes" rows="2" placeholder="Optional notes…"></textarea>
           <div class="btn-row">
-            <button class="btn btn-primary" id="btn-approve" type="button">Approve → Stage 2</button>
+            <button class="btn btn-primary" id="btn-approve" type="button">\${isStage1 ? 'Approve → Stage 2' : 'Approve final stage'}</button>
             <button class="btn btn-danger"  id="btn-reject"  type="button">Reject</button>
             <span id="review-status" class="muted"></span>
           </div>
@@ -252,6 +535,7 @@ export function runDetailHtml(runId: string): Response {
       \` : '';
 
       if (isAwaiting) {
+        stopAutoRefresh();
         async function submitReview(action) {
           const notes = document.getElementById('notes')?.value.trim() || null;
           const btnA  = document.getElementById('btn-approve');
@@ -260,14 +544,16 @@ export function runDetailHtml(runId: string): Response {
           btnA.disabled = btnR.disabled = true;
           st.textContent = 'Submitting…';
           try {
-            const r = await fetch('/runs/' + encodeURIComponent(runId) + '/stages/feed_fetch/' + action, {
+            const r = await fetch('/runs/' + encodeURIComponent(runId) + '/stages/' + stageName + '/' + action, {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ notes }),
             });
             const d = await r.json();
             if (r.ok) {
-              st.textContent = action === 'approve' ? '✓ Approved — Stage 2 running…' : '✗ Rejected';
+              st.textContent = action === 'approve'
+                ? (isStage1 ? '✓ Approved — Stage 2 processing in background…' : '✓ Approved — run complete')
+                : '✗ Rejected';
               setTimeout(() => window.location.reload(), 2000);
             } else {
               st.textContent = 'Error: ' + (d.error ?? r.status);
@@ -277,9 +563,13 @@ export function runDetailHtml(runId: string): Response {
         }
         document.getElementById('btn-approve').addEventListener('click', () => submitReview('approve'));
         document.getElementById('btn-reject').addEventListener('click',  () => submitReview('reject'));
+      } else if (shouldAutoRefresh && !(isStage2 && wsConnected)) {
+        scheduleAutoRefresh(4000);
+      } else {
+        stopAutoRefresh();
       }
 
-      if (results.length > 0) {
+      if (isStage1 && results.length > 0) {
         const rows = results.map(r => \`<tr>
           <td class="overflow" title="\${r.feed_url ?? ''}"><a href="\${r.r2_key ? ('/runs/' + encodeURIComponent(runId) + '/stages/feed_fetch/cache?u=' + encodeURIComponent(r.feed_url ?? '')) : (r.feed_url ?? '#')}" target="_blank" rel="noopener noreferrer">\${r.feed_title ?? r.feed_id}</a></td>
           <td>\${r.source_category ?? '—'}</td>
@@ -291,8 +581,17 @@ export function runDetailHtml(runId: string): Response {
         </tr>\`).join('');
         feedsEl.innerHTML = '<table><thead><tr><th>Feed</th><th>Category</th><th>Lang</th><th>HTTP</th><th>Content-Type</th><th>Fetched</th><th>Expires</th></tr></thead><tbody>' + rows + '</tbody></table>';
       }
+
+      if (isStage2) {
+        if (!stage2Initialized) {
+          renderStage2TableOnce(results);
+        }
+      }
     } catch (e) {
+      scheduleAutoRefresh(5000);
       document.getElementById('stats').innerHTML = '<div class="error-box">' + e.message + '</div>';
+    } finally {
+      loading = false;
     }
   }
 
