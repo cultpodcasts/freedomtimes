@@ -39,3 +39,4 @@ logs/*
 .vscode/mcp.json
 request-headers
 web/.generated/archive-import/*
+.cookie

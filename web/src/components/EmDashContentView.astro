@@ -27,7 +27,57 @@ function readFeaturedImageSrc(value: unknown): string | null {
 
 	if (value && typeof value === 'object') {
 		const candidate = value as Record<string, unknown>;
-		return readString(candidate.src) ?? readString(candidate.url) ?? null;
+		const src = readString(candidate.src) ?? readString(candidate.url);
+		if (src) {
+			return src;
+		}
+
+		const meta =
+			candidate.meta && typeof candidate.meta === 'object'
+				? (candidate.meta as Record<string, unknown>)
+				: null;
+		const storageKey = readString(meta?.storageKey) ?? readString(candidate.storageKey);
+		if (storageKey) {
+			return `/_emdash/api/media/file/${storageKey}`;
+		}
+
+		const mediaId = readString(candidate.id);
+		if (mediaId) {
+			return `/_emdash/api/media/file/${mediaId}`;
+		}
+
+		return null;
+	}
+
+	return null;
+}
+
+function readMediaFileUrl(value: unknown): string | null {
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}
+
+	if (value && typeof value === 'object') {
+		const candidate = value as Record<string, unknown>;
+		const url = readString(candidate.url) ?? readString(candidate.src);
+		if (url) {
+			return url;
+		}
+
+		const meta =
+			candidate.meta && typeof candidate.meta === 'object'
+				? (candidate.meta as Record<string, unknown>)
+				: null;
+		const storageKey = readString(meta?.storageKey) ?? readString(candidate.storageKey);
+		if (storageKey) {
+			return `/_emdash/api/media/file/${storageKey}`;
+		}
+
+		const mediaId = readString(candidate.id);
+		if (mediaId) {
+			return `/_emdash/api/media/file/${mediaId}`;
+		}
 	}
 
 	return null;
@@ -51,6 +101,7 @@ const textContent = portableContent ? null : readString(data.content);
 const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 const featuredImageAlt =
 	readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
+const pdfFileUrl = readMediaFileUrl(data.pdf_file);
 const issueDate = readString(data.date);
 const publishedAt = readString(data.publishedAt);
 const updatedAt = readString(data.updatedAt);
@@ -83,6 +134,11 @@ const updatedAt = readString(data.updatedAt);
 				<figure class="hero">
 					<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
 				</figure>
+			)}
+			{pdfFileUrl && (
+				<p class="pdf-link-wrap">
+					<a class="pdf-link" href={pdfFileUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
+				</p>
 			)}
 			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} />}
 			{!portableContent && textContent && <p>{textContent}</p>}
@@ -182,6 +238,17 @@ const updatedAt = readString(data.updatedAt);
 
 	.hero {
 		margin: 0 0 1.2rem;
+	}
+
+	.pdf-link-wrap {
+		margin: 0 0 1rem;
+	}
+
+	.pdf-link {
+		display: inline-block;
+		font-weight: 700;
+		text-decoration: underline;
+		text-underline-offset: 0.14em;
 	}
 
 	.hero img {
