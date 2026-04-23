@@ -233,6 +233,26 @@ function Set-Or-AddEnvFileValue {
     Set-Content -Path $Path -Value $lines -Encoding UTF8
 }
 
+function Expand-ResourceList {
+    param([string[]]$Values)
+
+    $expanded = New-Object System.Collections.Generic.List[string]
+    foreach ($value in $Values) {
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            continue
+        }
+
+        foreach ($part in ($value -split ',')) {
+            $trimmed = $part.Trim()
+            if (-not [string]::IsNullOrWhiteSpace($trimmed)) {
+                [void]$expanded.Add($trimmed)
+            }
+        }
+    }
+
+    return $expanded.ToArray()
+}
+
 function Sync-Auth0LoginAppEnvFromState {
     param(
         [string]$Env,
@@ -332,16 +352,18 @@ try {
     if ($Operation -eq "plan") {
         Write-Host "DEBUG: Running plan operation" -ForegroundColor DarkGray
         $targetArgs = @()
-        if ($Target) {
-            foreach ($resource in $Target) {
+        $targets = Expand-ResourceList -Values $Target
+        if ($targets) {
+            foreach ($resource in $targets) {
                 if (-not [string]::IsNullOrWhiteSpace($resource)) {
                     $targetArgs += "-target=$resource"
                 }
             }
         }
         $replaceArgs = @()
-        if ($Replace) {
-            foreach ($resource in $Replace) {
+        $replacements = Expand-ResourceList -Values $Replace
+        if ($replacements) {
+            foreach ($resource in $replacements) {
                 if (-not [string]::IsNullOrWhiteSpace($resource)) {
                     $replaceArgs += "-replace=$resource"
                 }
@@ -366,16 +388,18 @@ try {
         if ($AutoApprove) {
             Write-Host "DEBUG: AutoApprove enabled, running apply with $($varArgs.Count) var args" -ForegroundColor DarkGray
             $targetArgs = @()
-            if ($Target) {
-                foreach ($resource in $Target) {
+            $targets = Expand-ResourceList -Values $Target
+            if ($targets) {
+                foreach ($resource in $targets) {
                     if (-not [string]::IsNullOrWhiteSpace($resource)) {
                         $targetArgs += "-target=$resource"
                     }
                 }
             }
             $replaceArgs = @()
-            if ($Replace) {
-                foreach ($resource in $Replace) {
+            $replacements = Expand-ResourceList -Values $Replace
+            if ($replacements) {
+                foreach ($resource in $replacements) {
                     if (-not [string]::IsNullOrWhiteSpace($resource)) {
                         $replaceArgs += "-replace=$resource"
                     }
@@ -406,8 +430,9 @@ try {
         }
 
         $targetArgs = @()
-        if ($Target) {
-            foreach ($resource in $Target) {
+        $targets = Expand-ResourceList -Values $Target
+        if ($targets) {
+            foreach ($resource in $targets) {
                 if (-not [string]::IsNullOrWhiteSpace($resource)) {
                     $targetArgs += "-target=$resource"
                 }

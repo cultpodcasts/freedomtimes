@@ -24,6 +24,7 @@ output "auth0_api_identifier" {
   value       = module.auth0_app.api_identifier
 }
 
+/*
 output "azure_resource_group_name" {
   description = "Resource Group name for staging editorial API resources"
   value       = module.azure_editorial_api.resource_group_name
@@ -58,6 +59,7 @@ output "azure_editorial_api_public_base_url" {
   description = "Public API base URL through APIM for staging editorial API"
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)
 }
+*/
 
 output "turso_database_name" {
   description = "Turso database name for staging EmDash"

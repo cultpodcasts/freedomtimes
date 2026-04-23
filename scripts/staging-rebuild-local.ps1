@@ -42,13 +42,15 @@ function Invoke-ChildPwsh {
 
 function Invoke-TerraformApplyWithRecovery {
     Write-Step "Applying staging Terraform (attempt 1)"
-    $apply1 = Invoke-ChildPwsh -CaptureOutput -Arguments @(
+    $arguments = @(
         "-File", $terraformRunScript,
         "-Environment", "staging",
         "-Operation", "apply",
         "-LoadEnvFiles",
         "-AutoApprove"
     )
+
+    $apply1 = Invoke-ChildPwsh -CaptureOutput -Arguments $arguments
 
     $apply1.Output | ForEach-Object { $_ }
 
@@ -57,53 +59,7 @@ function Invoke-TerraformApplyWithRecovery {
         return
     }
 
-    $combined = ($apply1.Output -join "`n")
-    $importNeeded = $combined -match "azurerm_api_management_custom_domain" -and $combined -match "already exists - to be managed via Terraform"
-
-    if (-not $importNeeded) {
-        throw "Terraform apply failed and did not match the APIM custom-domain import recovery path."
-    }
-
-    $apimIdMatch = [regex]::Match($combined, '/subscriptions/[^\s"]+/providers/Microsoft\.ApiManagement/service/[^\s"]+')
-    if (-not $apimIdMatch.Success) {
-        throw "Terraform apply indicated custom-domain import is needed, but APIM service ID was not found in output."
-    }
-
-    $apimId = $apimIdMatch.Value
-    $customDomainImportId = "$apimId/customDomains/default"
-
-    Write-Step "Importing existing APIM custom-domain resource into Terraform state"
-    $importResult = Invoke-ChildPwsh -CaptureOutput -Arguments @(
-        "-File", $terraformRunScript,
-        "-Environment", "staging",
-        "-Operation", "import",
-        "-LoadEnvFiles",
-        "-ImportAddress", "azurerm_api_management_custom_domain.editorial[0]",
-        "-ImportId", $customDomainImportId
-    )
-
-    $importResult.Output | ForEach-Object { $_ }
-
-    if ($importResult.ExitCode -ne 0) {
-        throw "Terraform import for APIM custom-domain failed."
-    }
-
-    Write-Step "Re-running staging Terraform apply (attempt 2 after import)"
-    $apply2 = Invoke-ChildPwsh -CaptureOutput -Arguments @(
-        "-File", $terraformRunScript,
-        "-Environment", "staging",
-        "-Operation", "apply",
-        "-LoadEnvFiles",
-        "-AutoApprove"
-    )
-
-    $apply2.Output | ForEach-Object { $_ }
-
-    if ($apply2.ExitCode -ne 0) {
-        throw "Terraform apply failed after APIM custom-domain import recovery."
-    }
-
-    Write-Step "Terraform apply succeeded after APIM import recovery"
+    throw "Terraform apply failed."
 }
 
 function Get-TerraformOutputRaw {
@@ -217,31 +173,7 @@ function Invoke-WorkerDeploy {
     }
 }
 
-function Invoke-FunctionDeploy {
-    param([string]$FunctionAppName)
-
-    Write-Step "Building staging Function App from TypeScript sources"
-    Push-Location (Join-Path $repoRoot "functions/editorial-api")
-    try {
-        & npm run build
-        if ($LASTEXITCODE -ne 0) {
-            throw "Function App TypeScript build failed."
-        }
-
-        Write-Step "Deploying staging Function App code (local build artifact)"
-        & func azure functionapp publish $FunctionAppName --javascript --build local
-        if ($LASTEXITCODE -ne 0) {
-            throw "Function App deploy failed."
-        }
-    }
-    finally {
-        Pop-Location
-    }
-}
-
 function Invoke-Verification {
-    param([string]$FunctionAppName)
-
     Write-Step "Verifying staging Worker secrets"
     Push-Location $repoRoot
     try {
@@ -260,35 +192,18 @@ function Invoke-Verification {
     finally {
         Pop-Location
     }
-
-    Write-Step "Verifying staging Function triggers"
-    $functions = & az functionapp function list --name $FunctionAppName --resource-group freedomtimes-staging-rg --query "[].name" -o tsv
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to query Function App triggers."
-    }
-
-    if ([string]::IsNullOrWhiteSpace(($functions -join ""))) {
-        throw "Function App reports no discovered functions after deploy."
-    }
-
-    Write-Host $functions
 }
 
 Write-Step "Starting local staging rebuild workflow"
 Invoke-TerraformApplyWithRecovery
 Assert-Auth0SyncToEnv
 
-$functionAppName = Get-TerraformOutputRaw -Name "azure_function_app_name"
-$apiBaseUrl = Get-TerraformOutputRaw -Name "azure_editorial_api_public_base_url"
 $workerName = Get-TerraformOutputRaw -Name "worker_name"
 
 Invoke-SecretSync
 Invoke-WorkerBuild
 Invoke-WorkerDeploy
-Invoke-FunctionDeploy -FunctionAppName $functionAppName
-Invoke-Verification -FunctionAppName $functionAppName
+Invoke-Verification
 
 Write-Step "Staging rebuild complete"
-Write-Host "Function App: $functionAppName"
 Write-Host "Worker: $workerName"
-Write-Host "API Base URL: $apiBaseUrl"

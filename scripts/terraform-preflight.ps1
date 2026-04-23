@@ -183,10 +183,6 @@ $requiredCommon = @(
 
 $requiredByEnvironment = @{
     staging = @(
-    "ARM_CLIENT_ID",
-    "ARM_CLIENT_SECRET",
-    "ARM_SUBSCRIPTION_ID",
-    "ARM_TENANT_ID",
     "TF_VAR_cloudflare_api_token",
     "TF_VAR_cloudflare_account_id",
     "TF_VAR_cloudflare_zone_id",
@@ -194,10 +190,6 @@ $requiredByEnvironment = @{
     "TF_VAR_auth0_api_identifier"
     )
     production = @(
-        "ARM_CLIENT_ID",
-        "ARM_CLIENT_SECRET",
-        "ARM_SUBSCRIPTION_ID",
-        "ARM_TENANT_ID",
         "TF_VAR_cloudflare_api_token",
         "TF_VAR_cloudflare_account_id",
         "TF_VAR_cloudflare_zone_id",

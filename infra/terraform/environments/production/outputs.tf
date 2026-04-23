@@ -19,6 +19,7 @@ output "auth0_app_client_secret" {
   sensitive   = true
 }
 
+/*
 output "azure_resource_group_name" {
   description = "Resource Group name for production editorial API resources"
   value       = module.azure_editorial_api.resource_group_name
@@ -53,6 +54,7 @@ output "azure_editorial_api_public_base_url" {
   description = "Public API base URL through APIM for production editorial API"
   value       = nonsensitive(module.azure_editorial_api.editorial_api_public_base_url)
 }
+*/
 
 output "turso_database_name" {
   description = "Turso database name for production EmDash"

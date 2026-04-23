@@ -2,9 +2,11 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
+/*
 provider "azurerm" {
   features {}
 }
+*/
 
 provider "auth0" {
   # Management client credentials: used only for Terraform to manage Auth0 resources
@@ -85,6 +87,7 @@ module "auth0_app" {
   enable_machine_to_machine_grant = true
 }
 
+/*
 module "azure_editorial_api" {
   source = "../../modules/azure_editorial_api"
 
@@ -149,3 +152,4 @@ resource "azurerm_api_management_custom_domain" "editorial" {
 
   depends_on = [time_sleep.wait_for_api_custom_hostname_dns]
 }
+*/
