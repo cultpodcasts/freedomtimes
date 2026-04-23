@@ -41,11 +41,17 @@ const title =
 	readString(entry.slug) ??
 	'Untitled';
 const summary =
-	readString(data.dek) ?? readString(data.excerpt) ?? readString(data.description) ?? null;
+	readString(data.dek) ??
+	readString(data.excerpt) ??
+	readString(data.abstract) ??
+	readString(data.description) ??
+	null;
 const portableContent = Array.isArray(data.content) ? data.content : null;
 const textContent = portableContent ? null : readString(data.content);
-const featuredImageSrc = readFeaturedImageSrc(data.featured_image);
-const featuredImageAlt = readString(data.featured_image_alt) ?? `${title} featured image`;
+const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
+const featuredImageAlt =
+	readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
+const issueDate = readString(data.date);
 const publishedAt = readString(data.publishedAt);
 const updatedAt = readString(data.updatedAt);
 ---
@@ -60,6 +66,7 @@ const updatedAt = readString(data.updatedAt);
 			</div>
 			<div class="meta-block">
 				<p>Signed in as {displayName}</p>
+				{issueDate && <p>Issue date {new Date(issueDate).toLocaleDateString()}</p>}
 				{publishedAt && <p>Published {new Date(publishedAt).toLocaleString()}</p>}
 				{!publishedAt && updatedAt && <p>Updated {new Date(updatedAt).toLocaleString()}</p>}
 				{isPreview && <p class="preview">Preview mode</p>}

@@ -1,5 +1,9 @@
 # Freedom Times Web (Astro + Cloudflare Workers)
 
+## Operations Runbooks
+
+- Content promotion (staging -> production): [CONTENT_PROMOTION_RUNBOOK.md](CONTENT_PROMOTION_RUNBOOK.md)
+
 This app implements the current staging auth gate flow:
 
 1. Holding page with a `Log in with Google` button

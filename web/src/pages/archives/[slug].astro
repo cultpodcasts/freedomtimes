@@ -1,0 +1,155 @@
+---
+import { getEmDashCollection, getEmDashEntry } from 'emdash';
+
+import EmDashContentView from '../../components/EmDashContentView.astro';
+import Layout from '../../layouts/Layout.astro';
+import { requireEditorialSession } from '../../lib/editorial-session';
+
+const session = await requireEditorialSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+
+const slug = Astro.params.slug;
+let entry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
+let isPreview = false;
+let notFound = false;
+
+function isExpectedLookupMiss(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	const lower = message.toLowerCase();
+
+	return lower.includes('not found')
+		|| lower.includes('no row')
+		|| lower.includes('missing')
+		|| lower.includes('no such table')
+		|| lower.includes('does not exist')
+		|| lower.includes('unknown collection');
+}
+
+function readSlug(data: Record<string, unknown>): string | null {
+	return typeof data.slug === 'string' && data.slug.length > 0 ? data.slug : null;
+}
+
+if (!slug) {
+	notFound = true;
+	Astro.response.status = 404;
+} else {
+	const result = await getEmDashEntry('archives', slug);
+	entry = result.entry;
+	isPreview = result.isPreview;
+
+	if (result.error) {
+		if (isExpectedLookupMiss(result.error)) {
+			const { entries, error } = await getEmDashCollection('archives', {
+				limit: 200,
+				orderBy: { updated_at: 'desc' },
+			});
+
+			if (error) {
+				if (isExpectedLookupMiss(error)) {
+					notFound = true;
+					Astro.response.status = 404;
+				} else {
+					throw error;
+				}
+			} else {
+				const fallback = entries.find((candidate) => {
+					const data = candidate.data as Record<string, unknown>;
+					const candidateDataSlug = readSlug(data);
+					return candidate.id === slug || candidateDataSlug === slug;
+				});
+
+				if (fallback) {
+					entry = fallback;
+					notFound = false;
+				} else {
+					notFound = true;
+					Astro.response.status = 404;
+				}
+			}
+		} else {
+			throw result.error;
+		}
+	}
+
+	if (!entry && !notFound) {
+		notFound = true;
+		Astro.response.status = 404;
+	}
+}
+---
+
+{notFound || !entry ? (
+	<Layout>
+		<article class="not-found-wrap">
+			<header class="masthead">
+				<p class="eyebrow">Archive</p>
+				<h1>Archive not found</h1>
+				<p class="summary">The requested archive issue may have been unpublished, moved, or removed.</p>
+			</header>
+			<nav>
+				<a href="/homepage">Back to homepage</a>
+				<a href="/_emdash/admin">Open CMS</a>
+			</nav>
+		</article>
+	</Layout>
+) : (
+	<EmDashContentView
+		entry={entry}
+		collectionLabel="Archive"
+		displayName={session.displayName}
+		isPreview={isPreview}
+	/>
+)}
+
+<style>
+	.not-found-wrap {
+		max-width: 860px;
+		margin: 0 auto;
+		padding: 2rem 1.25rem 3rem;
+	}
+
+	.masthead {
+		border-bottom: 3px double #33271c;
+		padding-bottom: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.eyebrow {
+		margin: 0;
+		font-size: 0.8rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	h1 {
+		margin: 0.2rem 0 0;
+		font-size: clamp(2.2rem, 6vw, 4.25rem);
+		line-height: 0.95;
+		font-family: 'Times New Roman', Georgia, serif;
+	}
+
+	.summary {
+		margin: 0.8rem 0 0;
+		font-size: 1.08rem;
+		line-height: 1.6;
+	}
+
+	nav {
+		display: flex;
+		gap: 0.9rem;
+		flex-wrap: wrap;
+	}
+
+	nav a {
+		color: #1f1a15;
+		font-weight: 700;
+	}
+</style>

@@ -116,6 +116,54 @@ function Assert-Auth0SyncToEnv {
     }
 }
 
+function Invoke-EnforceStagingPublishOnlyCollections {
+        Write-Step "Enforcing publish-only collection supports for staging"
+
+        $env:TURSO_DATABASE_URL = Get-TerraformOutputRaw -Name "turso_database_url"
+        $env:TURSO_AUTH_TOKEN   = Get-TerraformOutputRaw -Name "turso_database_auth_token"
+
+        $webDir = Join-Path $repoRoot "web"
+        $scriptPath = Join-Path $webDir ".ft-emdash-staging-publish-only.cjs"
+        $scriptContent = @'
+const { createClient } = require("@libsql/client");
+
+async function main() {
+    const url = process.env.TURSO_DATABASE_URL;
+    const authToken = process.env.TURSO_AUTH_TOKEN;
+
+    if (!url || !authToken) {
+        throw new Error("Missing TURSO_DATABASE_URL or TURSO_AUTH_TOKEN for staging publish-only enforcement.");
+    }
+
+    const db = createClient({ url, authToken });
+    await db.execute("update _emdash_collections set supports = '[\"revisions\",\"search\"]', updated_at = datetime('now') where slug in ('posts', 'pages')");
+    await db.execute("delete from options where name = 'emdash:manifest_cache'");
+
+    const rows = await db.execute("select slug, supports from _emdash_collections order by slug");
+    console.log(JSON.stringify(rows.rows, null, 2));
+}
+
+main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+});
+'@
+
+        Set-Content -Path $scriptPath -Value $scriptContent -Encoding UTF8
+
+        Push-Location (Join-Path $repoRoot "web")
+        try {
+                & node $scriptPath
+                if ($LASTEXITCODE -ne 0) {
+                        throw "Failed to enforce staging publish-only collection supports."
+                }
+        }
+        finally {
+                Pop-Location
+                Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
+        }
+}
+
 function Invoke-SecretSync {
     Write-Step "Syncing Cloudflare Worker secrets for staging"
 
@@ -197,6 +245,7 @@ function Invoke-Verification {
 Write-Step "Starting local staging rebuild workflow"
 Invoke-TerraformApplyWithRecovery
 Assert-Auth0SyncToEnv
+Invoke-EnforceStagingPublishOnlyCollections
 
 $workerName = Get-TerraformOutputRaw -Name "worker_name"
 

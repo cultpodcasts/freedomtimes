@@ -19,6 +19,10 @@ See [infra/terraform/README.md](infra/terraform/README.md) for setup and usage.
 
 See [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md). This is a living document and will be updated as tooling and project requirements evolve.
 
+## Content Operations
+
+Staging-to-production CMS promotion runbook is in [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md).
+
 ## Development Guardrails
 
 See [DEVELOPMENT_GUARDRAILS.md](DEVELOPMENT_GUARDRAILS.md) for branch policy, ticket flow, and PR rules.
