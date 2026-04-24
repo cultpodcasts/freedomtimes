@@ -1,0 +1,308 @@
+---
+import { getEmDashCollection } from 'emdash';
+
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import { requireEditorialSession } from '../../lib/editorial-session';
+
+type ArchiveCard = {
+	slug: string;
+	title: string;
+	dateLabel: string;
+	sortTime: number;
+	volumeNumber: number | null;
+	regionalVariant: string | null;
+	abstractText: string | null;
+	coverSrc: string | null;
+};
+
+function readString(value: unknown): string | null {
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readNumber(value: unknown): number | null {
+	if (typeof value === 'number' && Number.isFinite(value)) {
+		return value;
+	}
+
+	if (typeof value === 'string') {
+		const parsed = Number.parseInt(value.trim(), 10);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+
+	return null;
+}
+
+function parseDate(value: string | null): Date | null {
+	if (!value) return null;
+	const parsed = new Date(value);
+	return Number.isNaN(parsed.valueOf()) ? null : parsed;
+}
+
+function toDateLabel(value: Date | null): string {
+	if (!value) return 'Unknown date';
+	return value.toLocaleDateString('en-GB', {
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric',
+	});
+}
+
+function truncateText(value: string | null, maxLength = 180): string | null {
+	if (!value) return null;
+	if (value.length <= maxLength) return value;
+	return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function readImageSrc(value: unknown): string | null {
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? trimmed : null;
+	}
+
+	if (value && typeof value === 'object') {
+		const candidate = value as Record<string, unknown>;
+		const direct = readString(candidate.src) ?? readString(candidate.url);
+		if (direct) return direct;
+
+		const meta =
+			candidate.meta && typeof candidate.meta === 'object'
+				? (candidate.meta as Record<string, unknown>)
+				: null;
+		const storageKey = readString(meta?.storageKey) ?? readString(candidate.storageKey);
+		if (storageKey) {
+			return `/_emdash/api/media/file/${storageKey}`;
+		}
+
+		const mediaId = readString(candidate.id);
+		if (mediaId) {
+			return `/_emdash/api/media/file/${mediaId}`;
+		}
+	}
+
+	return null;
+}
+
+function readPageImageSrc(value: unknown): string | null {
+	if (!Array.isArray(value) || value.length === 0) return null;
+	return readImageSrc(value[0]);
+}
+
+const session = await requireEditorialSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+
+const { entries, error } = await getEmDashCollection('archives', {
+	limit: 250,
+	orderBy: { updated_at: 'desc' },
+});
+
+if (error) {
+	throw error;
+}
+
+const cards: ArchiveCard[] = entries.map((entry) => {
+	const data = entry.data as Record<string, unknown>;
+	const slug = readString(data.slug) ?? entry.id;
+	const title = readString(data.title) ?? 'Untitled archive';
+	const issueDate = parseDate(readString(data.date));
+	const fallbackDate = parseDate(readString(data.updatedAt));
+	const resolvedDate = issueDate ?? fallbackDate;
+	const volumeNumber =
+		readNumber(data.volume_number)
+		?? readNumber(data.volumeNumber)
+		?? readNumber(title.match(/Vol\.\s*(\d+)/i)?.[1] ?? null);
+
+	const rawRegionalVariant = readString(data.regional_variant) ?? readString(data.regionalVariant);
+	const regionalVariant =
+		rawRegionalVariant === 'Lancaster'
+		|| rawRegionalVariant === 'Newcastle'
+		|| rawRegionalVariant === 'Nottingham'
+			? rawRegionalVariant
+			: null;
+
+	const abstractText = truncateText(
+		readString(data.abstract)
+		?? readString(data.excerpt)
+		?? readString(data.description)
+		?? null,
+	);
+
+	const coverSrc =
+		readImageSrc(data.cover_image)
+		?? readImageSrc(data.featured_image)
+		?? readPageImageSrc(data.page_images)
+		?? readPageImageSrc(data.pageImages);
+
+	return {
+		slug,
+		title,
+		dateLabel: toDateLabel(resolvedDate),
+		sortTime: resolvedDate ? resolvedDate.valueOf() : 0,
+		volumeNumber,
+		regionalVariant,
+		abstractText,
+		coverSrc,
+	};
+}).sort((a, b) => b.sortTime - a.sortTime);
+---
+
+<Layout>
+	<div class="archive-index">
+		<Header section="Archives" sectionUrl="/archives" isEditor={session.isEditor} isSignedIn={true} />
+
+		{cards.length === 0 ? (
+			<p class="empty">No archive issues are available yet.</p>
+		) : (
+			<ul class="card-grid">
+				{cards.map((card) => (
+					<li>
+						<article class="archive-card">
+							<a class="card-link" href={`/archives/${card.slug}`} aria-label={`Open ${card.title}`}>
+								{card.coverSrc ? (
+									<img src={card.coverSrc} alt={`${card.title} cover page`} loading="lazy" decoding="async" />
+								) : (
+									<div class="cover-fallback" aria-hidden="true">No cover</div>
+								)}
+								<div class="content">
+									<p class="date">{card.dateLabel}</p>
+									<h2>{card.title}</h2>
+									{(card.volumeNumber !== null || card.regionalVariant) && (
+										<p class="meta">
+											{card.volumeNumber !== null && <span>Volume {card.volumeNumber}</span>}
+											{card.volumeNumber !== null && card.regionalVariant && <span> • </span>}
+											{card.regionalVariant && <span>{card.regionalVariant}</span>}
+										</p>
+									)}
+									{card.abstractText && <p class="abstract">{card.abstractText}</p>}
+								</div>
+							</a>
+						</article>
+					</li>
+				))}
+			</ul>
+		)}
+	</section>
+</Layout>
+
+<style>
+	.archive-index {
+		max-width: var(--max-width-main);
+		margin: 0 auto;
+	}
+
+	.card-grid {
+		list-style: none;
+		padding: 0 var(--page-padding-side) 5rem;
+		margin: 0;
+		display: grid;
+		grid-template-columns: repeat(3, 1fr);
+		gap: 3rem 2rem;
+	}
+
+	.archive-card {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+	}
+
+	.card-link {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	img,
+	.cover-fallback {
+		width: 100%;
+		aspect-ratio: 3 / 4;
+		object-fit: cover;
+		background: #f5f5f5;
+		margin-bottom: 1.25rem;
+		border: 1px solid #eeeeee;
+		transition: transform 0.3s ease, border-color 0.3s ease;
+	}
+
+	.card-link:hover img {
+		transform: translateY(-4px);
+		border-color: #bbbbbb;
+	}
+
+	.cover-fallback {
+		display: grid;
+		place-items: center;
+		font-family: 'Inter', sans-serif;
+		font-weight: 600;
+		color: #999999;
+		font-size: 0.7rem;
+		letter-spacing: 0.1em;
+	}
+
+	.content {
+		display: flex;
+		flex-direction: column;
+		flex-grow: 1;
+	}
+
+	.date {
+		margin: 0 0 0.5rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		color: #0044bb;
+	}
+
+	h2 {
+		margin: 0 0 0.75rem;
+		font-family: 'Playfair Display', serif;
+		font-size: 1.5rem;
+		font-weight: 900;
+		line-height: 1.2;
+		letter-spacing: -0.01em;
+	}
+
+	.meta {
+		margin: 0 0 1rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #777777;
+		letter-spacing: 0.05em;
+	}
+
+	.abstract {
+		margin: 0;
+		font-family: 'Source Serif 4', serif;
+		font-size: 0.95rem;
+		line-height: 1.5;
+		color: #444444;
+	}
+
+	@media (max-width: 1024px) {
+		.card-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	@media (max-width: 640px) {
+		.archive-index {
+			padding: 2rem 1rem;
+		}
+		.card-grid {
+			grid-template-columns: 1fr;
+		}
+		h1 {
+			font-size: 2.2rem;
+		}
+	}
+</style>

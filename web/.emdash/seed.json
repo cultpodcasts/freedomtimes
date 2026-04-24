@@ -82,6 +82,23 @@
           "type": "image"
         },
         {
+          "slug": "page_images",
+          "label": "Page Images",
+          "type": "json"
+        },
+        {
+          "slug": "volume_number",
+          "label": "Volume Number",
+          "type": "integer",
+          "searchable": true
+        },
+        {
+          "slug": "regional_variant",
+          "label": "Regional Variant",
+          "type": "string",
+          "searchable": true
+        },
+        {
           "slug": "pdf_file",
           "label": "PDF File",
           "type": "file"

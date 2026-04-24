@@ -2,6 +2,7 @@
 import { PortableText } from 'astro-portabletext';
 
 import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
 
 const {
 	entry,
@@ -17,6 +18,32 @@ const {
 
 function readString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+function readNumber(value: unknown): number | null {
+	if (typeof value === 'number' && Number.isFinite(value)) {
+		return value;
+	}
+
+	if (typeof value === 'string') {
+		const parsed = Number.parseInt(value.trim(), 10);
+		return Number.isFinite(parsed) ? parsed : null;
+	}
+
+	return null;
+}
+
+function tryParseJsonString(value: string): unknown {
+	const trimmed = value.trim();
+	if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(trimmed);
+	} catch {
+		return null;
+	}
 }
 
 function readFeaturedImageSrc(value: unknown): string | null {
@@ -55,14 +82,36 @@ function readFeaturedImageSrc(value: unknown): string | null {
 function readMediaFileUrl(value: unknown): string | null {
 	if (typeof value === 'string') {
 		const trimmed = value.trim();
-		return trimmed.length > 0 ? trimmed : null;
+		if (trimmed.length === 0) {
+			return null;
+		}
+
+		const parsed = tryParseJsonString(trimmed);
+		if (parsed && parsed !== value) {
+			return readMediaFileUrl(parsed);
+		}
+
+		return trimmed;
 	}
 
 	if (value && typeof value === 'object') {
 		const candidate = value as Record<string, unknown>;
-		const url = readString(candidate.url) ?? readString(candidate.src);
+		const url =
+			readString(candidate.url) ??
+			readString(candidate.src) ??
+			readString(candidate.file) ??
+			readString(candidate.path) ??
+			readString(candidate.href);
 		if (url) {
 			return url;
+		}
+
+		const nestedValue =
+			readString(candidate.value) ??
+			readString(candidate.filename) ??
+			readString(candidate.key);
+		if (nestedValue) {
+			return nestedValue;
 		}
 
 		const meta =
@@ -83,6 +132,106 @@ function readMediaFileUrl(value: unknown): string | null {
 	return null;
 }
 
+function normalizeEmdashMediaFileUrl(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	if (trimmed.startsWith('/_emdash/api/media/file/')) {
+		return trimmed;
+	}
+
+	if (trimmed.startsWith('/')) {
+		return null;
+	}
+
+	try {
+		const parsed = new URL(trimmed);
+		if (parsed.pathname.startsWith('/_emdash/api/media/file/')) {
+			return parsed.pathname;
+		}
+	} catch {
+		return null;
+	}
+
+	return null;
+}
+
+function normalizeImageUrl(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+	if (trimmed.startsWith('/')) return trimmed;
+
+	try {
+		const parsed = new URL(trimmed);
+		return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+	} catch {
+		return null;
+	}
+}
+
+function extractPageNumber(value: unknown): number | null {
+	const parse = (candidate: string | null): number | null => {
+		if (!candidate) return null;
+		const match = candidate.match(/--page-(\d+)\.(?:png|jpg|jpeg|webp)$/i);
+		if (!match) return null;
+		const parsed = Number.parseInt(match[1], 10);
+		return Number.isFinite(parsed) ? parsed : null;
+	};
+
+	if (typeof value === 'string') {
+		return parse(value.trim());
+	}
+
+	if (value && typeof value === 'object') {
+		const candidate = value as Record<string, unknown>;
+		return (
+			parse(readString(candidate.filename))
+			?? parse(readString(candidate.name))
+			?? parse(readString(candidate.src))
+			?? parse(readString(candidate.url))
+		);
+	}
+
+	return null;
+}
+
+type SlideImage = { src: string; pageNumber: number | null };
+
+function coerceImageList(value: unknown): SlideImage[] {
+	const add = (collector: SlideImage[], candidate: unknown) => {
+		const fromMedia = readMediaFileUrl(candidate);
+		const fromString = readString(candidate);
+		const resolved =
+			(fromMedia && normalizeImageUrl(fromMedia))
+			?? (fromString && normalizeImageUrl(fromString))
+			?? null;
+		if (resolved) {
+			collector.push({ src: resolved, pageNumber: extractPageNumber(candidate) });
+		}
+	};
+
+	if (Array.isArray(value)) {
+		const images: SlideImage[] = [];
+		for (const item of value) add(images, item);
+		return images;
+	}
+
+	if (typeof value === 'string') {
+		const parsed = tryParseJsonString(value);
+		if (Array.isArray(parsed)) {
+			const images: SlideImage[] = [];
+			for (const item of parsed) add(images, item);
+			return images;
+		}
+		const single = normalizeImageUrl(value);
+		return single ? [{ src: single, pageNumber: extractPageNumber(value) }] : [];
+	}
+
+	return [];
+}
+
 const data = entry.data;
 const title =
 	readString(data.title) ??
@@ -96,12 +245,34 @@ const summary =
 	readString(data.abstract) ??
 	readString(data.description) ??
 	null;
+const summaryParagraphs = summary
+	? summary
+		.split(/\n\s*\n+/)
+		.map((paragraph) => paragraph.trim())
+		.filter((paragraph) => paragraph.length > 0)
+	: [];
 const portableContent = Array.isArray(data.content) ? data.content : null;
 const textContent = portableContent ? null : readString(data.content);
 const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 const featuredImageAlt =
 	readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
-const pdfFileUrl = readMediaFileUrl(data.pdf_file);
+const volumeNumber =
+	readNumber(data.volume_number)
+	?? readNumber(data.volumeNumber)
+	?? readNumber(title.match(/Vol\.\s*(\d+)/i)?.[1] ?? null);
+const rawRegionalVariant = readString(data.regional_variant) ?? readString(data.regionalVariant);
+const regionalVariant =
+	rawRegionalVariant === 'Lancaster'
+	|| rawRegionalVariant === 'Newcastle'
+	|| rawRegionalVariant === 'Nottingham'
+		? rawRegionalVariant
+		: null;
+const pageImages = coerceImageList(data.page_images)
+	.concat(coerceImageList(data.pageImages))
+	.filter((value, index, all) => all.findIndex((item) => item.src === value.src) === index);
+const slidePageNumbers = pageImages.map((item, index) => item.pageNumber ?? index + 1);
+const slidePageTotal = slidePageNumbers.length > 0 ? Math.max(...slidePageNumbers) : 0;
+const pdfLink = normalizeEmdashMediaFileUrl(readMediaFileUrl(data.pdf_file) ?? '');
 const issueDate = readString(data.date);
 const publishedAt = readString(data.publishedAt);
 const updatedAt = readString(data.updatedAt);
@@ -109,197 +280,345 @@ const updatedAt = readString(data.updatedAt);
 
 <Layout>
 	<article class="page-wrap">
-		<header class="masthead">
-			<div>
-				<p class="eyebrow">{collectionLabel}</p>
-				<h1>{title}</h1>
-				{summary && <p class="summary">{summary}</p>}
-			</div>
-			<div class="meta-block">
-				<p>Signed in as {displayName}</p>
-				{issueDate && <p>Issue date {new Date(issueDate).toLocaleDateString()}</p>}
+		<Header section={collectionLabel} sectionUrl={collectionLabel === 'Archive' ? '/archives' : '/homepage'} isEditor={true} isSignedIn={true} />
+
+		<header class="article-header">
+			<h1>{title}</h1>
+			{issueDate && <p class="issue-date">Issue date {new Date(issueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
+			
+			<div class="article-meta">
 				{publishedAt && <p>Published {new Date(publishedAt).toLocaleString()}</p>}
 				{!publishedAt && updatedAt && <p>Updated {new Date(updatedAt).toLocaleString()}</p>}
 				{isPreview && <p class="preview">Preview mode</p>}
-				<nav>
-					<a href="/homepage">Home</a>
-					<a href="/_emdash/admin">CMS</a>
-					<a href="/auth/logout">Sign out</a>
-				</nav>
 			</div>
 		</header>
 
 		<section class="content-card">
-			{featuredImageSrc && (
+			{summaryParagraphs.length > 0 && (
+				<div class="summary-wrap">
+					{summaryParagraphs.map((paragraph) => (
+						<p class="summary">{paragraph}</p>
+					))}
+				</div>
+			)}
+			{pageImages.length > 0 ? (
+				<section class="slideshow" data-slideshow>
+					<header class="slideshow-header">
+						<p class="slideshow-kicker">Issue Pages</p>
+						{(volumeNumber !== null || regionalVariant) && (
+							<p class="edition-meta">
+								{volumeNumber !== null && <span>Volume {volumeNumber}</span>}
+								{volumeNumber !== null && regionalVariant && <span> • </span>}
+								{regionalVariant && <span>Regional variant {regionalVariant}</span>}
+							</p>
+						)}
+					</header>
+					<div class="slideshow-frame-wrap">
+						<button type="button" class="slide-nav prev" aria-label="Previous page">Previous</button>
+						<div class="slideshow-frame">
+							{pageImages.map((image, index) => (
+								<figure class={`slide ${index === 0 ? 'is-active' : ''}`} data-slide data-index={index} data-page-number={slidePageNumbers[index]}>
+									<img src={image.src} alt={`${title} page ${slidePageNumbers[index]}`} loading={index === 0 ? 'eager' : 'lazy'} decoding="async" />
+								</figure>
+							))}
+						</div>
+						<button type="button" class="slide-nav next" aria-label="Next page">Next</button>
+					</div>
+					<p class="slide-status">
+						<span>Page </span>
+						<span data-slide-current>{slidePageNumbers[0]}</span>
+						<span> / </span>
+						<span>{slidePageTotal}</span>
+					</p>
+					{pdfLink && (
+						<p class="pdf-link-wrap">
+							<a href={pdfLink} target="_blank" rel="noopener noreferrer">Open original PDF</a>
+						</p>
+					)}
+				</section>
+			) : featuredImageSrc ? (
 				<figure class="hero">
 					<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
 				</figure>
-			)}
-			{pdfFileUrl && (
-				<p class="pdf-link-wrap">
-					<a class="pdf-link" href={pdfFileUrl} target="_blank" rel="noopener noreferrer">Download PDF</a>
-				</p>
-			)}
+			) : null}
 			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} />}
 			{!portableContent && textContent && <p>{textContent}</p>}
-			{!portableContent && !textContent && (
-				<p class="empty-state">This entry is published but has no renderable body content yet.</p>
-			)}
 		</section>
 	</article>
 </Layout>
 
 <style>
-	:global(.shell) {
-		display: block;
-		padding: 0;
-	}
-
-	:global(body) {
-		background:
-			radial-gradient(circle at top left, rgba(248, 236, 211, 0.9), transparent 32%),
-			linear-gradient(180deg, #f5ecd9 0%, #efe4cf 100%);
-		color: #1f1a15;
-		font-family: Georgia, 'Times New Roman', serif;
-	}
 
 	.page-wrap {
-		max-width: 860px;
+		max-width: var(--max-width-article);
 		margin: 0 auto;
-		padding: 2rem 1.25rem 3rem;
+		padding: 0 var(--page-padding-side) 5rem;
 	}
 
-	.masthead {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 1rem;
-		align-items: end;
-		border-bottom: 3px double #33271c;
-		padding-bottom: 1rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.eyebrow,
-	.meta-block p {
-		margin: 0;
-		font-size: 0.8rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
 
 	h1 {
-		margin: 0.2rem 0 0;
-		font-size: clamp(2.2rem, 6vw, 4.25rem);
-		line-height: 0.95;
-		font-family: 'Times New Roman', Georgia, serif;
+		margin: 0;
+		font-family: 'Playfair Display', serif;
+		font-size: clamp(2.5rem, 7vw, 4.5rem);
+		font-weight: 900;
+		line-height: 1;
+		letter-spacing: -0.01em;
 	}
 
-	.summary {
-		margin: 0.8rem 0 0;
-		font-size: 1.08rem;
-		line-height: 1.6;
-		max-width: 62ch;
+	.issue-date {
+		margin: 1rem 0 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		font-weight: 600;
+		letter-spacing: 0.05em;
+		color: #333333;
 	}
 
-	.meta-block {
-		display: grid;
-		gap: 0.45rem;
-		justify-items: end;
-		text-align: right;
+
+	.article-header {
+		margin-bottom: 2.5rem;
+		border-bottom: 1px solid #eeeeee;
+		padding-bottom: 2rem;
+	}
+
+	.article-meta {
+		display: flex;
+		gap: 1.5rem;
+		margin-top: 1rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		color: #777777;
+		letter-spacing: 0.05em;
+	}
+
+	.article-meta p {
+		margin: 0;
 	}
 
 	.preview {
-		color: #7b2f17;
-		font-weight: 700;
-	}
-
-	nav {
-		display: flex;
-		gap: 0.9rem;
-		flex-wrap: wrap;
-		justify-content: end;
-	}
-
-	nav a {
-		color: #1f1a15;
-		text-decoration: none;
+		color: #cc0000;
 		font-weight: 700;
 	}
 
 	.content-card {
-		padding: 1.75rem;
-		background: rgba(255, 252, 245, 0.85);
-		border: 1px solid rgba(61, 44, 27, 0.18);
-		box-shadow: 0 18px 40px rgba(60, 42, 21, 0.1);
-		border-radius: 18px;
-		line-height: 1.75;
-		font-size: 1.05rem;
+		line-height: 1.7;
+		font-size: 1.15rem;
+	}
+
+	.summary-wrap {
+		margin-bottom: 3rem;
+		padding-bottom: 2rem;
+		border-bottom: 1px solid #eeeeee;
+	}
+
+	.summary {
+		margin: 0 0 1.25rem;
+		font-size: 1.25rem;
+		font-weight: 500;
+		line-height: 1.5;
+		color: #222222;
+		max-width: 65ch;
 	}
 
 	.hero {
-		margin: 0 0 1.2rem;
-	}
-
-	.pdf-link-wrap {
-		margin: 0 0 1rem;
-	}
-
-	.pdf-link {
-		display: inline-block;
-		font-weight: 700;
-		text-decoration: underline;
-		text-underline-offset: 0.14em;
+		margin: 0 0 3rem;
 	}
 
 	.hero img {
 		display: block;
 		width: 100%;
 		height: auto;
-		border-radius: 12px;
-		border: 1px solid rgba(61, 44, 27, 0.2);
-		background: #f2ebde;
+		border: 1px solid #eeeeee;
+	}
+
+	.slideshow {
+		margin: 0 0 4rem;
+		padding: 2rem;
+		background: #fcfcfc;
+		border: 1px solid #eeeeee;
+	}
+
+	.slideshow-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+		font-family: 'Inter', sans-serif;
+		letter-spacing: 0.1em;
+	}
+
+	.slideshow-kicker {
+		margin: 0;
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: #0044bb;
+	}
+
+	.edition-meta {
+		margin: 0;
+		font-size: 0.75rem;
+		color: #777777;
+	}
+
+	.slideshow-frame-wrap {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		gap: 1.5rem;
+		align-items: center;
+	}
+
+	.slideshow-frame {
+		position: relative;
+		min-height: 400px;
+		background: #ffffff;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+		border: 1px solid #eeeeee;
+	}
+
+	.slide {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		transition: opacity 0.3s ease;
+		margin: 0;
+	}
+
+	.slide.is-active {
+		opacity: 1;
+		position: relative;
+	}
+
+	.slide img {
+		display: block;
+		width: 100%;
+		height: auto;
+	}
+
+	.slide-nav {
+		background: #ffffff;
+		border: 1px solid #dddddd;
+		color: #111111;
+		padding: 0.75rem 1rem;
+		font-family: 'Inter', sans-serif;
+		font-weight: 700;
+		font-size: 0.7rem;
+		letter-spacing: 0.1em;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.slide-nav:hover {
+		background: #111111;
+		color: #ffffff;
+		border-color: #111111;
+	}
+
+	.slide-status {
+		margin: 1.5rem 0 0;
+		text-align: center;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+	}
+
+	.pdf-link-wrap {
+		margin: 1.5rem 0 0;
+		text-align: center;
+	}
+
+	.pdf-link-wrap a {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		color: #0044bb;
+		text-decoration: none;
+	}
+
+	.pdf-link-wrap a:hover {
+		text-decoration: underline;
 	}
 
 	.content-card :global(p) {
-		margin: 0 0 1rem;
+		margin: 0 0 1.5rem;
+		max-width: 65ch;
 	}
 
 	.content-card :global(h2),
 	.content-card :global(h3),
 	.content-card :global(h4) {
-		font-family: 'Times New Roman', Georgia, serif;
-		line-height: 1.1;
-		margin: 1.75rem 0 0.8rem;
+		font-family: 'Playfair Display', serif;
+		font-weight: 800;
+		line-height: 1.2;
+		margin: 3rem 0 1rem;
 	}
 
 	.content-card :global(a) {
-		color: #234d69;
+		color: #0044bb;
+		text-decoration: underline;
 		text-decoration-thickness: 1px;
-		text-underline-offset: 0.14em;
+		text-underline-offset: 3px;
 	}
 
-	.empty-state {
-		margin: 0;
-		font-style: italic;
-		color: #5d5144;
-	}
-
-	@media (max-width: 760px) {
+	@media (max-width: 768px) {
+		.page-wrap {
+			padding: 2rem 1rem;
+		}
 		.masthead {
 			grid-template-columns: 1fr;
+			gap: 1rem;
 		}
-
 		.meta-block {
-			justify-items: start;
+			align-items: flex-start;
 			text-align: left;
 		}
-
 		nav {
-			justify-content: start;
+			justify-content: flex-start;
 		}
-
-		.content-card {
-			padding: 1.2rem;
+		.slideshow-frame-wrap {
+			grid-template-columns: 1fr;
+		}
+		.slide-nav {
+			width: 100%;
 		}
 	}
 </style>
+
+<script>
+	const slideshows = document.querySelectorAll('[data-slideshow]');
+
+	for (const root of slideshows) {
+		const slides = Array.from(root.querySelectorAll<HTMLElement>('[data-slide]'));
+		const prev = root.querySelector<HTMLButtonElement>('.slide-nav.prev');
+		const next = root.querySelector<HTMLButtonElement>('.slide-nav.next');
+		const status = root.querySelector<HTMLElement>('[data-slide-current]');
+		let current = 0;
+
+		const render = () => {
+			slides.forEach((slide, index) => {
+				slide.classList.toggle('is-active', index === current);
+			});
+			if (status) {
+				const currentSlide = slides[current];
+				const pageNumber = currentSlide?.dataset.pageNumber;
+				status.textContent = pageNumber ?? String(current + 1);
+			}
+		};
+
+		prev?.addEventListener('click', (event) => {
+			event.preventDefault();
+			current = (current - 1 + slides.length) % slides.length;
+			render();
+		});
+
+		next?.addEventListener('click', (event) => {
+			event.preventDefault();
+			current = (current + 1) % slides.length;
+			render();
+		});
+
+		render();
+	}
+</script>

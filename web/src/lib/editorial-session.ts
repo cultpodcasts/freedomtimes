@@ -21,6 +21,7 @@ type EditorialSessionContext = {
 
 type EditorialSession = {
 	displayName: string;
+	isEditor: boolean;
 	requestId: string;
 };
 
@@ -56,6 +57,7 @@ export async function requireEditorialSession(
 
 		return {
 			displayName: getDisplayName(payload),
+			isEditor: hasEditorialRole(payload),
 			requestId,
 		};
 	} catch (error) {
