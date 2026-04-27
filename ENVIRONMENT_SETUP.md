@@ -813,6 +813,16 @@ Preferred wrapper command from repo root:
 
 This dispatches and watches `.github/workflows/terraform-production.yml` with apply enabled.
 
+Recommended pre-apply checkpoint and rollback helpers:
+
+```bash
+# Create Turso rollback checkpoint + metadata (includes git hashes)
+.\scripts\turso-create-rollback-branch.ps1 -ProductionDatabaseName <prod-db-name> -AllowProduction
+
+# Emergency failback: point production Worker to rollback Turso branch
+.\scripts\switch-production-turso-secrets.ps1 -DatabaseUrl <rollback-url> -AuthToken <rollback-token> -DatabaseName <rollback-db-name> -SyncGitHub -AllowProduction
+```
+
 ```bash
 # 1. Ensure secrets synced to GitHub (one-time)
 .\scripts\set-github-secrets.ps1 -Target Production -SyncGitHubSecretsAndVars -AllowProduction

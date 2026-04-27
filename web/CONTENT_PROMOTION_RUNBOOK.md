@@ -7,6 +7,7 @@ This runbook documents the repeatable process for getting verified staging conte
 - Promote entries (for example `posts`, `pages`, `archives`) from staging to production.
 - Verify items are truly published (not draft-only).
 - Recover from stale manifest cache issues such as `Collection "archives" not found`.
+- For `archives`, validate associated media assets are present in production before go-live.
 
 ## Staging Policy
 
@@ -30,7 +31,9 @@ $env:EMDASH_PRODUCTION_TOKEN = "<production-token>"
 
 ## 1. Verify Schema Parity First
 
-From `web/`, ensure required collections exist in both environments:
+Schema changes are made on staging during development. By release time, staging schema should already be valid. This step confirms production matches staging before promoting content — mismatched schemas will cause content create/update to fail.
+
+From `web/`, verify the collection fields match in both environments:
 
 ```powershell
 npx emdash schema list -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
@@ -93,7 +96,27 @@ Notes:
 - `archives` usually include media references; ensure required files exist in production media storage.
 - If create fails because slug exists, use `content get` on production and then `content update ... --rev <token>`.
 
-## 4. Recover From "Collection not found" Manifest Issues
+## 4. Archives Media/R2 Preflight (Required for Archives Releases)
+
+If promoting `archives`, run this preflight before final publish checks:
+
+```powershell
+# Compare staging vs production media inventory (high-level)
+npx --prefix web emdash media list -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
+npx --prefix web emdash media list -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+
+# Inspect specific media record referenced by archive content
+npx --prefix web emdash media get <media-id> -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+
+# Upload missing media into production
+npx --prefix web emdash media upload .\path\to\asset.png --alt "Archive asset" -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+```
+
+Operational rule:
+
+- Do not mark an archives release complete until all referenced media records resolve in production and the corresponding archive pages render with working image/file links.
+
+## 5. Recover From "Collection not found" Manifest Issues
 
 Symptom:
 
@@ -116,7 +139,7 @@ node -e 'const { createClient } = require("@libsql/client"); (async () => { cons
 
 After this, reload admin and re-test the collection route.
 
-## 5. Production Go-Live Checklist
+## 6. Production Go-Live Checklist
 
 1. Schema parity confirmed (`schema list/get`).
 2. Staging source item validated as published.

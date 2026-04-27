@@ -29,6 +29,12 @@
 					"id": "962280ddb8f649b1a9482739fb295bdd"
 				}
 			],
+			"r2_buckets": [
+				{
+					"binding": "MEDIA",
+					"bucket_name": "freedomtimes-media-production"
+				}
+			],
 			"vars": {
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",

@@ -48,9 +48,7 @@ Why:
 Create a checkpoint branch from the production database:
 
 ```powershell
-$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$rollbackDb = "prod-rollback-$timestamp"
-turso db create $rollbackDb --from-db <production-database-name>
+.\scripts\turso-create-rollback-branch.ps1 -ProductionDatabaseName <production-database-name> -AllowProduction
 ```
 
 Record these with the release notes:
@@ -58,6 +56,13 @@ Record these with the release notes:
 1. rollback database name
 2. creation timestamp
 3. source production database name
+
+The metadata file written to `.release/rollback-branches` includes:
+
+1. rollback database name and creation timestamp
+2. git HEAD hash and short hash
+3. `origin/main` hash
+4. current branch and dirty working tree flag
 
 Important Turso behavior:
 
@@ -87,29 +92,30 @@ Plan-only dry path:
 
 ## 3. Promote EmDash Schema Changes
 
-Apply schema changes to staging first, then mirror the same operations to production.
+Schema changes are made on staging during development, not during the release. By release time, staging schema is already validated.
 
-Examples:
-
-```powershell
-# Create collection
-npx --prefix web emdash schema create posts --label "Posts" -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx --prefix web emdash schema create posts --label "Posts" -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
-
-# Add field
-npx --prefix web emdash schema add-field posts teaser --type text --label "Teaser" -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx --prefix web emdash schema add-field posts teaser --type text --label "Teaser" -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
-```
-
-Parity checks after schema promotion:
+This step diffs staging vs production, presents the required CLI commands for human review, then applies them after explicit confirmation.
 
 ```powershell
-npx --prefix web emdash schema list -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx --prefix web emdash schema list -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
-
-npx --prefix web emdash schema get posts -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx --prefix web emdash schema get posts -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+.\scripts\promote-schema-to-production.ps1 -AllowProduction
 ```
+
+The script will:
+
+1. Fetch the full schema (all collections + fields) from both staging and production.
+2. Compute the diff: new collections, missing fields.
+3. Print each generated command for human review.
+4. Prompt `yes/no` before applying anything.
+5. Warn about fields/collections present in production but absent in staging (never removes anything automatically).
+6. Stop immediately on the first failure and report partial state.
+
+Dry-run (diff only, no apply):
+
+```powershell
+.\scripts\promote-schema-to-production.ps1 -AllowProduction -DryRun
+```
+
+Destructive operations (`schema delete`, `remove-field`) are never generated. If production has extra fields or collections that need removing, do that manually with the EmDash CLI after reviewing the diff output.
 
 ## 4. Promote EmDash Content Changes
 
@@ -130,6 +136,29 @@ npx --prefix web emdash content publish posts example-post -u $env:EMDASH_PRODUC
 npx --prefix web emdash content get posts example-post --published -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
 ```
 
+### Archives Releases Require Media Asset Validation (R2)
+
+If the release includes `archives` content, content promotion alone is not sufficient. You must validate associated media assets.
+
+Minimum checks:
+
+1. Confirm production Worker has a valid `MEDIA` R2 binding for EmDash runtime.
+2. Confirm each archive item's referenced media exists in production media storage.
+3. Re-upload missing media to production before publishing archive entries.
+
+Useful commands:
+
+```powershell
+# List production media records in EmDash
+npx --prefix web emdash media list -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+
+# Get a specific media record by id
+npx --prefix web emdash media get <media-id> -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+
+# Upload missing media file to production
+npx --prefix web emdash media upload .\path\to\asset.png --alt "Archive cover" -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+```
+
 ## 5. Release Verification Checklist
 
 1. Production workflow run is green.
@@ -137,10 +166,21 @@ npx --prefix web emdash content get posts example-post --published -u $env:EMDAS
 3. Schema parity checks pass for touched collections.
 4. Promoted content is `--published` in production.
 5. Public routes render updated content without fallback/manual repair.
+6. For archives releases, linked media renders correctly and downloadable assets resolve from production.
 
 ## 6. Rollback Strategy
 
 1. Revert code on `main` and re-run production workflow.
-2. If data rollback is needed, switch production runtime from the primary database credentials to the pre-release Turso rollback branch credentials, then redeploy.
+2. If data rollback is needed, switch production runtime from the primary database credentials to the pre-release Turso rollback branch credentials.
+
+```powershell
+.\scripts\switch-production-turso-secrets.ps1 \
+	-DatabaseUrl <rollback-libsql-url> \
+	-AuthToken <rollback-db-token> \
+	-DatabaseName <rollback-db-name> \
+	-SyncGitHub \
+	-AllowProduction
+```
+
 3. For content rollback, re-publish previous content revision or restore previous item state in EmDash.
 4. For schema rollback, apply reverse CLI operations (for example remove newly-added field) only after impact review.
