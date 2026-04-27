@@ -13,13 +13,15 @@
     EmDash staging instance URL (or set EMDASH_STAGING_URL).
 
 .PARAMETER StagingToken
-    EmDash staging API token (or set EMDASH_STAGING_TOKEN).
+    EmDash staging API token (or set EMDASH_STAGING_TOKEN). If omitted, the script
+    falls back to the token stored by `emdash login`.
 
 .PARAMETER ProductionUrl
     EmDash production instance URL (or set EMDASH_PRODUCTION_URL).
 
 .PARAMETER ProductionToken
-    EmDash production API token (or set EMDASH_PRODUCTION_TOKEN).
+    EmDash production API token (or set EMDASH_PRODUCTION_TOKEN). If omitted, the script
+    falls back to the token stored by `emdash login`.
 
 .PARAMETER DryRun
     Print the diff and generated commands but do not apply anything.
@@ -54,10 +56,8 @@ if (-not $AllowProduction) {
 }
 
 foreach ($param in @(
-    @{ Name = "StagingUrl";     Value = $StagingUrl },
-    @{ Name = "StagingToken";   Value = $StagingToken },
-    @{ Name = "ProductionUrl";  Value = $ProductionUrl },
-    @{ Name = "ProductionToken";Value = $ProductionToken }
+    @{ Name = "StagingUrl";    Value = $StagingUrl },
+    @{ Name = "ProductionUrl"; Value = $ProductionUrl }
 )) {
     if ([string]::IsNullOrWhiteSpace($param.Value)) {
         Write-Error "Missing required parameter: $($param.Name). Set via argument or environment variable."
@@ -71,6 +71,29 @@ if (-not (Get-Command "npx" -ErrorAction SilentlyContinue)) {
 }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+function Get-StoredEmdashAccessToken {
+    param([string]$Url)
+
+    $authPath = Join-Path $HOME ".config\emdash\auth.json"
+    if (-not (Test-Path $authPath)) {
+        return $null
+    }
+
+    try {
+        $auth = Get-Content -Path $authPath -Raw | ConvertFrom-Json
+        $entry = $auth.PSObject.Properties[$Url]
+        if ($null -eq $entry) {
+            return $null
+        }
+
+        return $entry.Value.accessToken
+    }
+    catch {
+        Write-Error "Failed to read stored EmDash auth from $authPath. $_"
+        exit 1
+    }
+}
 
 function Invoke-EmdashSchema {
     param([string]$Subcommand, [string]$Url, [string]$Token, [string[]]$ExtraArgs = @())
@@ -93,6 +116,40 @@ function Get-FullSchema {
         $result[$col.slug] = $detail
     }
     return $result
+}
+
+if ([string]::IsNullOrWhiteSpace($StagingToken)) {
+    $StagingToken = Get-StoredEmdashAccessToken -Url $StagingUrl
+}
+
+if ([string]::IsNullOrWhiteSpace($ProductionToken)) {
+    $ProductionToken = Get-StoredEmdashAccessToken -Url $ProductionUrl
+}
+
+foreach ($param in @(
+    @{ Name = "StagingToken";    Value = $StagingToken; Url = $StagingUrl },
+    @{ Name = "ProductionToken"; Value = $ProductionToken; Url = $ProductionUrl }
+)) {
+    if ([string]::IsNullOrWhiteSpace($param.Value)) {
+        Write-Error "Missing required parameter: $($param.Name). Set via argument, environment variable, or run 'emdash login -u $($param.Url)' first."
+        exit 1
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($env:EMDASH_STAGING_URL)) {
+    $env:EMDASH_STAGING_URL = $StagingUrl
+}
+
+if ([string]::IsNullOrWhiteSpace($env:EMDASH_STAGING_TOKEN)) {
+    $env:EMDASH_STAGING_TOKEN = $StagingToken
+}
+
+if ([string]::IsNullOrWhiteSpace($env:EMDASH_PRODUCTION_URL)) {
+    $env:EMDASH_PRODUCTION_URL = $ProductionUrl
+}
+
+if ([string]::IsNullOrWhiteSpace($env:EMDASH_PRODUCTION_TOKEN)) {
+    $env:EMDASH_PRODUCTION_TOKEN = $ProductionToken
 }
 
 # ── Fetch ──────────────────────────────────────────────────────────────────────
