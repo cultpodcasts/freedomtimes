@@ -326,8 +326,8 @@ foreach ($item in $pendingCommands) {
     # Strip the leading 'npx' and split into args for direct invocation
     $parts = $expanded -split '\s+(?=(?:[^"]*"[^"]*")*[^"]*$)'
     $exe   = $parts[0]
-    $args  = $parts[1..($parts.Length - 1)]
-    & $exe @args
+    $commandArgs = $parts[1..($parts.Length - 1)]
+    & $exe @commandArgs
     if ($LASTEXITCODE -eq 0) {
         Write-Host "    OK" -ForegroundColor Green
         $applied++
