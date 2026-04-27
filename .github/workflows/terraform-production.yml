@@ -138,6 +138,24 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      - name: Prune Legacy Azure State Entries
+        run: |
+          set -euo pipefail
+
+          # Some legacy Azure resources were removed out-of-band and can no longer be refreshed.
+          # Remove them from state so plan/apply can converge on the new non-Azure topology.
+          mapfile -t legacy_addrs < <(terraform state list | grep -E '^(module\.azure_editorial_api\.|cloudflare_record\.api_custom_hostname\[0\]|time_sleep\.wait_for_api_custom_hostname_dns\[0\])' || true)
+
+          if [ "${#legacy_addrs[@]}" -eq 0 ]; then
+            echo "No legacy Azure/APIM state entries found."
+            exit 0
+          fi
+
+          echo "Removing legacy state entries:"
+          printf '  - %s\n' "${legacy_addrs[@]}"
+
+          terraform state rm "${legacy_addrs[@]}"
+
       - name: Terraform Plan
         id: plan
         timeout-minutes: 20
