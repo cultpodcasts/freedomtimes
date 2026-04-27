@@ -6,6 +6,27 @@
   },
   "collections": [
     {
+      "slug": "pages",
+      "label": "Pages",
+      "labelSingular": "Page",
+      "supports": ["drafts", "revisions", "search"],
+      "fields": [
+        {
+          "slug": "title",
+          "label": "Title",
+          "type": "string",
+          "required": true,
+          "searchable": true
+        },
+        {
+          "slug": "content",
+          "label": "Content",
+          "type": "portableText",
+          "searchable": true
+        }
+      ]
+    },
+    {
       "slug": "posts",
       "label": "Posts",
       "labelSingular": "Post",
@@ -33,27 +54,6 @@
           "slug": "excerpt",
           "label": "Excerpt",
           "type": "text"
-        }
-      ]
-    },
-    {
-      "slug": "pages",
-      "label": "Pages",
-      "labelSingular": "Page",
-      "supports": ["drafts", "revisions", "search"],
-      "fields": [
-        {
-          "slug": "title",
-          "label": "Title",
-          "type": "string",
-          "required": true,
-          "searchable": true
-        },
-        {
-          "slug": "content",
-          "label": "Content",
-          "type": "portableText",
-          "searchable": true
         }
       ]
     },
