@@ -2,11 +2,9 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
-/*
 provider "azurerm" {
   features {}
 }
-*/
 
 provider "auth0" {
   # Management client credentials: used only for Terraform to manage Auth0 resources
