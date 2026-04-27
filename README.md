@@ -27,6 +27,12 @@ Staging-to-production CMS promotion runbook is in [web/CONTENT_PROMOTION_RUNBOOK
 
 See [DEVELOPMENT_GUARDRAILS.md](DEVELOPMENT_GUARDRAILS.md) for branch policy, ticket flow, and PR rules.
 
+## Production Releases
+
+Unified production deployment path for Terraform, EmDash runtime updates, layout changes, schema promotion, and content promotion:
+
+- [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md)
+
 ## Staging Auth Login Flow
 
 Use this runbook when validating login behavior on staging at https://staging.freedomtimes.news.

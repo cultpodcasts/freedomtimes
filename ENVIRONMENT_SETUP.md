@@ -805,6 +805,14 @@ cd ../../web && npm run build && npx wrangler deploy --env staging
 
 ### I want to deploy production via GitHub Actions
 
+Preferred wrapper command from repo root:
+
+```bash
+.\scripts\production-release.ps1 -TerraformMode apply -Watch -AllowProduction
+```
+
+This dispatches and watches `.github/workflows/terraform-production.yml` with apply enabled.
+
 ```bash
 # 1. Ensure secrets synced to GitHub (one-time)
 .\scripts\set-github-secrets.ps1 -Target Production -SyncGitHubSecretsAndVars -AllowProduction
