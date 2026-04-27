@@ -156,6 +156,35 @@ jobs:
 
           terraform state rm "${legacy_addrs[@]}"
 
+      - name: Import Existing Worker Route If Needed
+        run: |
+          set -euo pipefail
+
+          route_addr='module.cloudflare_holding_page.cloudflare_workers_route.holding_page[0]'
+
+          if terraform state show "$route_addr" >/dev/null 2>&1; then
+            echo "Worker route already tracked in state."
+            exit 0
+          fi
+
+          routes_json=$(curl -fsS \
+            -H "Authorization: Bearer ${TF_VAR_cloudflare_api_token}" \
+            -H "Content-Type: application/json" \
+            "https://api.cloudflare.com/client/v4/zones/${TF_VAR_cloudflare_zone_id}/workers/routes")
+
+          route_id=$(echo "$routes_json" | jq -r \
+            --arg pattern "$TF_VAR_route_pattern" \
+            --arg script "$TF_VAR_worker_name" \
+            '.result[] | select(.pattern == $pattern and .script == $script) | .id' | head -n1)
+
+          if [ -z "$route_id" ] || [ "$route_id" = "null" ]; then
+            echo "No pre-existing worker route found for pattern ${TF_VAR_route_pattern} and script ${TF_VAR_worker_name}."
+            exit 0
+          fi
+
+          echo "Importing existing worker route ${route_id} into Terraform state."
+          terraform import "$route_addr" "${TF_VAR_cloudflare_zone_id}/${route_id}"
+
       - name: Terraform Plan
         id: plan
         timeout-minutes: 20
