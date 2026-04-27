@@ -1,0 +1,14 @@
+{
+  "createdAtUtc": "2026-04-27T23:08:03Z",
+  "sourceDatabase": "freedomtimes-emdash-production",
+  "rollbackDatabase": "prod-rollback-20260427-230803",
+  "notes": "Rollback checkpoint before production archive content mojibake repair.",
+  "git": {
+    "head": "a287cd24a8b054d0f989ac06e4639ebd128777e9",
+    "headShort": "a287cd2",
+    "currentBranch": "main",
+    "originMain": "a287cd24a8b054d0f989ac06e4639ebd128777e9",
+    "originRemote": "https://cultpodcasts@github.com/cultpodcasts/freedomtimes.git",
+    "dirtyWorkingTree": true
+  }
+}

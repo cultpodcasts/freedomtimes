@@ -142,6 +142,12 @@ npx emdash content get posts example-post -u $env:EMDASH_STAGING_URL -t $env:EMD
 npx emdash content get posts example-post --published -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
 ```
 
+If production text is corrupted and staging is clean, use the guarded repair helper instead of manual edits:
+
+```powershell
+.\scripts\repair-production-content-from-staging.ps1 -Collection archives -Ids 2024-07-14-freedom-times -FieldNames abstract -RollbackMetadataFile .\.release\rollback-branches\<timestamp>-<rollback-db>.json -AllowProduction
+```
+
 ## 4. Archives Media/R2 Preflight (Required for Archives Releases)
 
 If promoting `archives`, run this preflight before final publish checks:

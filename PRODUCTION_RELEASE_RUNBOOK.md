@@ -169,6 +169,7 @@ This includes content-integrity controls, not just content existence:
 2. Manual copy/paste or ad hoc shell transfer of JSON payloads is not an approved production method.
 3. Promoted text-bearing fields must be compared between staging and production before release sign-off.
 4. Mojibake signatures such as `ΓÇ`, `â€™`, `â€œ`, `â€`, or `╬ô├ç├û` are release blockers.
+5. If corruption is found in production while staging is clean, use `./scripts/repair-production-content-from-staging.ps1` with a rollback checkpoint rather than editing production content manually.
 
 Minimal single-item example:
 
