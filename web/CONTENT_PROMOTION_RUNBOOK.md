@@ -33,6 +33,8 @@ $env:EMDASH_PRODUCTION_TOKEN = "<production-token>"
 
 Schema changes are made on staging during development. By release time, staging schema should already be valid. This step confirms production matches staging before promoting content — mismatched schemas will cause content create/update to fail.
 
+Release rule: if a PR contains code or content promotion that depends on EmDash schema, do not close the PR and do not allow the `main` deployment until this parity check passes or the missing schema has been applied to production.
+
 From `web/`, verify the collection fields match in both environments:
 
 ```powershell

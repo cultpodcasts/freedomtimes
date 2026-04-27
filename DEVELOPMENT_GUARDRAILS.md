@@ -8,6 +8,7 @@ These guardrails define how ticket work moves from development to production.
 - Normal path to `main`:
   - Work happens on a feature branch.
   - Staging testing passes.
+  - If the branch changes EmDash-dependent code or content model assumptions, production schema is checked and synced before the PR is closed.
   - PR is reviewed and merged.
 - Exception path for production-only issues:
   - If a post-merge production-only issue is found, a direct `main` fix may be made only with explicit approval.
@@ -32,3 +33,9 @@ These guardrails define how ticket work moves from development to production.
 - After local development testing passes on the feature branch, open a PR.
 - PRs are the default vehicle for code review, staging validation, and merge to `main`.
 - PR description should reference the ticket (for example, `Closes #11`) so ticket lifecycle stays linked to delivery.
+
+## PR Merge Criteria For EmDash-Dependent Changes
+
+- If the branch changes code that depends on EmDash collections or fields, do not merge until production schema matches staging for the touched collections.
+- Use `./scripts/promote-schema-to-production.ps1 -AllowProduction -DryRun` to verify parity and `./scripts/promote-schema-to-production.ps1 -AllowProduction` to apply missing schema changes.
+- The production Worker deploy from `main` is allowed only after schema parity is confirmed, because the deployed code may reference fields that do not yet exist in production.

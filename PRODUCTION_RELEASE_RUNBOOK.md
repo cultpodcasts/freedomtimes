@@ -26,6 +26,11 @@ This runbook is the single path for promoting all production-facing changes:
 4. Staging validation complete for schema/content and page rendering.
 5. Turso CLI access available for production rollback checkpoints.
 
+Merge rule for EmDash-dependent changes:
+
+- If a PR changes code that depends on EmDash schema, production schema must be synced before the PR is closed and before allowing the `main` deployment to proceed.
+- Treat schema sync as a deployment prerequisite for those PRs, not as optional cleanup after merge.
+
 Recommended env vars for content/schema operations:
 
 ```powershell
@@ -72,6 +77,8 @@ Important Turso behavior:
 
 ## 2. Deploy Code, Layout, EmDash Runtime, and Terraform
 
+Do not run this step for EmDash-dependent code until Step 3 shows production schema is already in sync or has just been synced.
+
 From repo root:
 
 ```powershell
@@ -93,6 +100,8 @@ Plan-only dry path:
 ## 3. Promote EmDash Schema Changes
 
 Schema changes are made on staging during development, not during the release. By release time, staging schema is already validated.
+
+Operational rule: if the branch contains code that expects new collections or fields, production schema parity must be confirmed here before closing the PR or allowing the `main` deploy to become the source of truth.
 
 This step diffs staging vs production, presents the required CLI commands for human review, then applies them after explicit confirmation.
 
