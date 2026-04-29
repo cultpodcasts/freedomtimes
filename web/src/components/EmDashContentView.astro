@@ -3,6 +3,7 @@ import { PortableText } from 'astro-portabletext';
 
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
+import PortableVideo from '../components/PortableVideo.astro';
 
 const {
 	entry,
@@ -126,6 +127,11 @@ function readMediaFileUrl(value: unknown): string | null {
 		const mediaId = readString(candidate.id);
 		if (mediaId) {
 			return `/_emdash/api/media/file/${mediaId}`;
+		}
+
+		const mediaRef = readString(candidate._ref);
+		if (mediaRef) {
+			return `/_emdash/api/media/file/${mediaRef}`;
 		}
 	}
 
@@ -276,6 +282,11 @@ const pdfLink = normalizeEmdashMediaFileUrl(readMediaFileUrl(data.pdf_file) ?? '
 const issueDate = readString(data.date);
 const publishedAt = readString(data.publishedAt);
 const updatedAt = readString(data.updatedAt);
+const portableComponents = {
+	type: {
+		video: PortableVideo,
+	},
+};
 ---
 
 <Layout>
@@ -341,7 +352,7 @@ const updatedAt = readString(data.updatedAt);
 					<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
 				</figure>
 			) : null}
-			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} />}
+			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} components={portableComponents} />}
 			{!portableContent && textContent && <p>{textContent}</p>}
 		</section>
 	</article>
@@ -560,6 +571,19 @@ const updatedAt = readString(data.updatedAt);
 		text-decoration: underline;
 		text-decoration-thickness: 1px;
 		text-underline-offset: 3px;
+	}
+
+	.content-card :global(.video-embed) {
+		margin: 2rem 0;
+		max-width: 65ch;
+	}
+
+	.content-card :global(.video-embed video) {
+		display: block;
+		width: 100%;
+		height: auto;
+		border: 1px solid #eeeeee;
+		background: #000000;
 	}
 
 	@media (max-width: 768px) {
