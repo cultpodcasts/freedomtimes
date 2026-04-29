@@ -24,6 +24,17 @@ allprojects {
     }
 }
 
+// Pin Build-Tools to an installed revision so Gradle does not try to auto-install 35.x into a non-writable SDK under Program Files.
+subprojects { sub ->
+    sub.afterEvaluate {
+        if (sub.plugins.hasPlugin('com.android.library') || sub.plugins.hasPlugin('com.android.application')) {
+            sub.android {
+                buildToolsVersion "36.0.0"
+            }
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
