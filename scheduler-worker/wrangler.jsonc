@@ -1,0 +1,44 @@
+{
+	"name": "freedomtimes-scheduler",
+	"account_id": "bae3f835f19899c6eee1ec48f2d658cf",
+	"main": "src/scheduler.ts",
+	"compatibility_date": "2026-03-29",
+	"logpush": true,
+	"compatibility_flags": ["nodejs_compat"],
+	"observability": {
+		"enabled": true,
+		"head_sampling_rate": 1
+	},
+	"vars": {
+		"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+		"NOTIFICATION_DEFAULT_URL": "/homepage",
+		"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
+		"PUSH_IOS_APNS_HOST": "api.push.apple.com"
+	},
+	"env": {
+		"production": {
+			"name": "freedomtimes-scheduler",
+			"triggers": {
+				"crons": ["*/10 * * * *"]
+			},
+			"vars": {
+				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+				"NOTIFICATION_DEFAULT_URL": "/homepage",
+				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
+				"PUSH_IOS_APNS_HOST": "api.push.apple.com"
+			}
+		},
+		"staging": {
+			"name": "freedomtimes-scheduler-staging",
+			"triggers": {
+				"crons": ["*/10 * * * *"]
+			},
+			"vars": {
+				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times Staging",
+				"NOTIFICATION_DEFAULT_URL": "/homepage",
+				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
+				"PUSH_IOS_APNS_HOST": "api.sandbox.push.apple.com"
+			}
+		}
+	}
+}

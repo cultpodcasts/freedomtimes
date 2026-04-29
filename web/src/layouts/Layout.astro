@@ -16,6 +16,10 @@ const { hideFooter = false } = Astro.props;
 		<meta name="viewport" content="width=device-width" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="icon" href="/favicon.ico" />
+		<link rel="manifest" href="/manifest.webmanifest" />
+		<meta name="theme-color" content="#1d4b3e" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="Freedom Times" />
 		<meta name="generator" content={Astro.generator} />
 		<link rel="preconnect" href="https://fonts.googleapis.com">
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,6 +30,15 @@ const { hideFooter = false } = Astro.props;
 		<main class="shell">
 			<slot />
 		</main>
+		<script>
+			import { initializeNativeAuthBridge } from '../lib/native-auth-bridge';
+			import { initializeNativePushBridge } from '../lib/device-notifications';
+			import { initializePwa } from '../lib/pwa';
+
+			void initializeNativeAuthBridge();
+			void initializeNativePushBridge();
+			void initializePwa();
+		</script>
 		{!hideFooter && <Footer />}
 	</body>
 </html>

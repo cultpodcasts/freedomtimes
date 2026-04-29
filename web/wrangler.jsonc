@@ -1,5 +1,6 @@
 {
 	"name": "freedomtimes-holding",
+	"account_id": "bae3f835f19899c6eee1ec48f2d658cf",
 	"main": "dist/server/entry.mjs",
 	"compatibility_date": "2026-03-29",
 	"logpush": true,

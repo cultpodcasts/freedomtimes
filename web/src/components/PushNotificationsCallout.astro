@@ -1,0 +1,114 @@
+---
+import { getPushSubscribePublicKey } from '../lib/push-subscriptions';
+
+const pushSubscribePublicKey = getPushSubscribePublicKey();
+---
+
+<section class="notifications" aria-labelledby="notifications-heading">
+	<div>
+		<p class="eyebrow">Reader Alerts</p>
+		<h2 id="notifications-heading">Get notified when major stories land</h2>
+		<p id="notification-status" class="notification-copy">
+			Enable notifications on this device to receive published Freedom Times alerts.
+		</p>
+	</div>
+	<button
+		id="notifications-enable"
+		type="button"
+		class="secondary-button"
+		data-public-key={pushSubscribePublicKey}
+		data-configured={pushSubscribePublicKey.length > 0 ? 'true' : 'false'}
+	>
+		Enable notifications
+	</button>
+</section>
+
+<script>
+	import {
+		enableNotificationsForCurrentDevice,
+		getNotificationSupportState,
+		initializeNativePushBridge,
+	} from '../lib/device-notifications';
+
+	const button = document.querySelector('#notifications-enable');
+	const status = document.querySelector('#notification-status');
+
+	if (button instanceof HTMLButtonElement && status instanceof HTMLParagraphElement) {
+		void initializeNativePushBridge();
+		void applyInitialState(button, status);
+
+		button.addEventListener('click', () => {
+			void subscribeToNotifications(button, status);
+		});
+	}
+
+	async function applyInitialState(button: HTMLButtonElement, status: HTMLParagraphElement) {
+		const state = await getNotificationSupportState(button.dataset.publicKey || '');
+		button.disabled = state.buttonDisabled;
+		status.textContent = state.message;
+	}
+
+	async function subscribeToNotifications(button: HTMLButtonElement, status: HTMLParagraphElement) {
+		button.disabled = true;
+		status.textContent = 'Configuring notifications for this device...';
+
+		try {
+			status.textContent = 'Registering this device for notifications...';
+			status.textContent = await enableNotificationsForCurrentDevice(button.dataset.publicKey || '');
+		} catch (error) {
+			console.error('[notifications] subscribe failed', error);
+			status.textContent = error instanceof Error
+				? error.message
+				: 'Notification setup failed. Check the console and try again.';
+			button.disabled = false;
+		}
+	}
+</script>
+
+<style>
+	.notifications {
+		margin-top: 1.2rem;
+		padding: 1rem 1.1rem;
+		border: 1px solid rgba(35, 77, 105, 0.18);
+		border-radius: 14px;
+		background: linear-gradient(180deg, rgba(35, 77, 105, 0.08), rgba(35, 77, 105, 0.03));
+		display: grid;
+		gap: 0.9rem;
+	}
+
+	.eyebrow {
+		margin: 0;
+		font-size: 0.72rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	h2 {
+		margin: 0.2rem 0 0;
+		font-size: clamp(1.1rem, 3vw, 1.45rem);
+		line-height: 1.1;
+	}
+
+	.notification-copy {
+		margin: 0.55rem 0 0;
+		font-size: 0.97rem;
+		line-height: 1.6;
+	}
+
+	.secondary-button {
+		justify-self: start;
+		padding: 0.72rem 1.05rem;
+		border: 1px solid #234d69;
+		border-radius: 999px;
+		background: #fffdf8;
+		color: #234d69;
+		font: inherit;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.secondary-button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+</style>

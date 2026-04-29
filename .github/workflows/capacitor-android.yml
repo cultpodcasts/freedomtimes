@@ -1,0 +1,112 @@
+name: Capacitor Android
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/capacitor-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-build:
+    name: Android Debug Build
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: web
+
+    env:
+      CAPACITOR_SERVER_URL: https://staging.freedomtimes.news
+      PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+      ANDROID_STAGING_SIGNING_KEYSTORE_BASE64: ${{ secrets.ANDROID_STAGING_SIGNING_KEYSTORE_BASE64 }}
+      ANDROID_STAGING_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_STAGING_SIGNING_STORE_PASSWORD }}
+      ANDROID_STAGING_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_STAGING_SIGNING_KEY_ALIAS }}
+      ANDROID_STAGING_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_STAGING_SIGNING_KEY_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Web Dependencies
+        run: npm ci
+
+      - name: Materialize Firebase Android Config
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
+            echo "Missing required secret: PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64"
+            exit 1
+          fi
+
+          mkdir -p android/app
+          printf '%s' "$PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
+
+          if [ ! -s android/app/google-services.json ]; then
+            echo "google-services.json was not created correctly"
+            exit 1
+          fi
+
+      - name: Validate Android Signing Inputs
+        run: |
+          set -euo pipefail
+
+          required=(
+            ANDROID_STAGING_SIGNING_KEYSTORE_BASE64
+            ANDROID_STAGING_SIGNING_STORE_PASSWORD
+            ANDROID_STAGING_SIGNING_KEY_ALIAS
+            ANDROID_STAGING_SIGNING_KEY_PASSWORD
+          )
+
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required Android signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Install Android SDK Packages
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Sync Capacitor Android
+        run: npm run cap:sync:android
+
+      - name: Assemble Android Debug Build
+        run: |
+          chmod +x android/gradlew
+          cd android
+          ./gradlew assembleDebug
+
+      - name: Upload Android Debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: capacitor-android-debug-apk
+          path: web/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          compression-level: 0

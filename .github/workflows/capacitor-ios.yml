@@ -1,0 +1,236 @@
+name: Capacitor iOS
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/capacitor-ios.yml"
+  workflow_dispatch:
+    inputs:
+      signed_export:
+        description: "Run signed iOS archive/export"
+        required: false
+        default: false
+        type: boolean
+      export_method:
+        description: "Export method for signed iOS build"
+        required: false
+        default: development
+        type: choice
+        options:
+          - development
+          - ad-hoc
+          - app-store
+
+permissions:
+  contents: read
+
+jobs:
+  ios-build:
+    name: iOS Simulator Build
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: web
+
+    env:
+      CAPACITOR_SERVER_URL: https://staging.freedomtimes.news
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Web Dependencies
+        run: npm ci
+
+      - name: Sync Capacitor iOS
+        run: npm run cap:sync:ios
+
+      - name: Build iOS App for Simulator
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Upload iOS Simulator App
+        uses: actions/upload-artifact@v7
+        with:
+          name: capacitor-ios-simulator-app
+          path: web/ios/build/Build/Products/Debug-iphonesimulator/App.app
+          if-no-files-found: error
+          compression-level: 0
+
+  ios-signed-export:
+    name: iOS Signed Archive Export
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.signed_export == 'true'
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: web
+
+    env:
+      CAPACITOR_SERVER_URL: https://staging.freedomtimes.news
+      IOS_BUNDLE_IDENTIFIER: news.freedomtimes.app
+      IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+      IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Web Dependencies
+        run: npm ci
+
+      - name: Sync Capacitor iOS
+        run: npm run cap:sync:ios
+
+      - name: Validate Signing Inputs
+        run: |
+          set -euo pipefail
+
+          required=(
+            IOS_CERTIFICATE_P12_BASE64
+            IOS_CERTIFICATE_PASSWORD
+            IOS_PROVISIONING_PROFILE_BASE64
+            IOS_TEAM_ID
+          )
+
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required iOS signing secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Import Signing Certificate and Provisioning Profile
+        run: |
+          set -euo pipefail
+
+          CERT_PATH="$RUNNER_TEMP/ios-signing-cert.p12"
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/profile.plist"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+
+          echo "$IOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")
+
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          {
+            echo "IOS_KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "IOS_KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD"
+            echo "IOS_PROFILE_UUID=$PROFILE_UUID"
+            echo "IOS_PROFILE_NAME=$PROFILE_NAME"
+          } >> "$GITHUB_ENV"
+
+      - name: Create Export Options
+        run: |
+          mkdir -p ios/build
+          cat > ios/build/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>${{ github.event.inputs.export_method }}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${IOS_BUNDLE_IDENTIFIER}</key>
+              <string>${IOS_PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Archive Signed iOS App
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath ios/build/App.xcarchive \
+            -derivedDataPath ios/build \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_IDENTIFIER" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $IOS_KEYCHAIN_PATH" \
+            archive
+
+      - name: Export Signed iOS App
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath ios/build/App.xcarchive \
+            -exportPath ios/build/export \
+            -exportOptionsPlist ios/build/ExportOptions.plist \
+            OTHER_CODE_SIGN_FLAGS="--keychain $IOS_KEYCHAIN_PATH"
+
+      - name: Upload Signed iOS Export
+        uses: actions/upload-artifact@v7
+        with:
+          name: capacitor-ios-signed-export-${{ github.event.inputs.export_method }}
+          path: |
+            web/ios/build/App.xcarchive
+            web/ios/build/export/*.ipa
+            web/ios/build/ExportOptions.plist
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Cleanup Signing Assets
+        if: always()
+        run: |
+          set +e
+          if [ -n "${IOS_PROFILE_UUID:-}" ]; then
+            rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$IOS_PROFILE_UUID.mobileprovision"
+          fi
+          if [ -n "${IOS_KEYCHAIN_PATH:-}" ]; then
+            security delete-keychain "$IOS_KEYCHAIN_PATH"
+          fi

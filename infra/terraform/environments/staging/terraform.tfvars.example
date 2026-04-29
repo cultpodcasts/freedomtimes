@@ -6,6 +6,9 @@ route_pattern         = "staging.example.com/*"
 # Auth0 app workspace URL for staging auth callbacks
 workspace_url = "https://staging.example.com"
 
+# Additional Auth0 callbacks such as the Android deep-link return URL
+auth0_extra_callback_urls = ["news.freedomtimes.app://auth/callback"]
+
 # CORS allowed origins for staging APIM
 api_management_allowed_origins = ["https://staging.example.com", "https://example.com"]
 
@@ -38,3 +41,7 @@ node_version = "24"
 # TF_VAR_turso_database_group = "default"
 # TF_VAR_turso_database_token_expiration = "90d"
 # TF_VAR_turso_database_size_limit = "1gb"
+# TF_VAR_scheduler_turso_database_name = "freedomtimes-scheduler-staging"
+# TF_VAR_scheduler_turso_database_group = "default"
+# TF_VAR_scheduler_turso_database_token_expiration = "90d"
+# TF_VAR_scheduler_turso_database_size_limit = "1gb"

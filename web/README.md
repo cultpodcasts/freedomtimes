@@ -59,6 +59,140 @@ Run all commands from `web/`:
 - `npm run build`
 - `npm run preview`
 
+## Capacitor Spike
+
+Capacitor is installed in `web/` because the mobile spike wraps this Astro app directly.
+
+This site currently runs as a Cloudflare Worker SSR app, not a static export. That means Capacitor should point at a live URL instead of trying to package the Worker runtime into the native shell.
+
+A minimal placeholder web bundle is checked in for Capacitor sync operations. Runtime traffic still targets the configured live URL.
+
+Default behavior:
+
+- `CAPACITOR_SERVER_URL` defaults to `https://staging.freedomtimes.news`
+- local emulator/device testing can override it to a local HTTP URL
+
+Examples:
+
+```powershell
+cd web
+$env:CAPACITOR_SERVER_URL = "https://staging.freedomtimes.news"
+npm run cap:doctor
+```
+
+```powershell
+cd web
+$env:CAPACITOR_SERVER_URL = "http://10.0.2.2:4321"
+npm run cap:doctor
+```
+
+Available spike commands:
+
+- `npm run cap:doctor`
+- `npm run cap:add:android`
+- `npm run cap:add:ios`
+- `npm run cap:sync:android`
+- `npm run cap:sync:ios`
+- `npm run cap:open:android`
+- `npm run cap:open:ios`
+
+Notes:
+
+- Android can be spiked from Windows if the Android SDK and tooling are installed.
+- iOS now has a Capacitor shell under `web/ios`, but local build validation still requires macOS with Xcode.
+- Because this is a live-URL wrapper spike, changing the Worker deployment remains the source of truth for app content and auth behavior.
+
+### Local Android Build
+
+The Android shell is validated by syncing Capacitor and building `assembleDebug` from `web/android`.
+
+Requirements:
+
+- `JAVA_HOME` must point at a working JDK.
+- `ANDROID_HOME` or `ANDROID_SDK_ROOT` must point at a writable Android SDK location.
+- Prefer a user-scoped SDK over a protected install under `Program Files`, because Gradle may need to install or update SDK components.
+
+Example PowerShell flow:
+
+```powershell
+cd web
+$env:JAVA_HOME = "C:\path\to\jdk"
+$env:ANDROID_HOME = "C:\path\to\android-sdk"
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
+$env:PATH = "$env:JAVA_HOME\bin;$env:ANDROID_HOME\platform-tools;$env:PATH"
+npm run cap:sync:android
+cd android
+.\gradlew.bat assembleDebug
+```
+
+Validated locally in this spike:
+
+- JDK from Android install: `C:\Program Files\Android\openjdk\jdk-21.0.8`
+- Writable SDK: `C:\Users\jonbr\.bubblewrap\android_sdk`
+
+### Local iOS Build
+
+The iOS shell is generated under `web/ios` and uses the same live-URL Capacitor configuration as Android.
+
+Requirements:
+
+- macOS with Xcode installed
+- Xcode command line tools available
+- A simulator build can run unsigned; a physical device build requires the usual Apple signing setup
+
+Example macOS flow:
+
+```sh
+cd web
+export CAPACITOR_SERVER_URL="https://staging.freedomtimes.news"
+npm run cap:sync:ios
+cd ios/App
+xcodebuild \
+  -project App.xcodeproj \
+  -scheme App \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
+
+### GitHub Validation
+
+GitHub Actions validates both native shells on macOS so the spike does not depend on one workstation's local setup.
+
+- Android validation installs Java and Android SDK packages, syncs Capacitor, and runs `assembleDebug`.
+- iOS validation syncs Capacitor and runs an unsigned simulator build with `xcodebuild`.
+
+### Signed iOS Archive Export
+
+The iOS workflow also supports a manually dispatched signed archive/export path on GitHub-hosted macOS runners.
+
+Workflow:
+
+- `.github/workflows/capacitor-ios.yml`
+- dispatch with `signed_export=true`
+- choose `export_method` as `development`, `ad-hoc`, or `app-store`
+
+Required GitHub secrets:
+
+- `IOS_CERTIFICATE_P12_BASE64`: base64-encoded signing certificate `.p12`
+- `IOS_CERTIFICATE_PASSWORD`: password for the `.p12`
+- `IOS_PROVISIONING_PROFILE_BASE64`: base64-encoded `.mobileprovision`
+- `IOS_TEAM_ID`: Apple Developer Team ID
+
+Output artifact:
+
+- `capacitor-ios-signed-export-<method>`
+
+That artifact includes:
+
+- exported `.ipa`
+- `.xcarchive`
+- generated `ExportOptions.plist`
+
+This path is intended for Mac-based install/signing validation. It is separate from the unsigned simulator artifact.
+
 ## Routes
 
 - `/` holding page
@@ -73,6 +207,7 @@ Run all commands from `web/`:
 - Login requests `scope=openid` for minimal identity claims.
 - Login also requests the configured API audience so Auth0 issues an API access token used by the cookie-to-APIM flow.
 - The Auth0 API is configured to skip first-party consent prompts, so normal staging/production login should not show the consent screen.
+- For the Android Capacitor shell, Auth0 must also allow the native callback URL `news.freedomtimes.app://auth/callback` so the browser can hand the user back to the app after Google sign-in.
 
 ## Staging Login Flow Runbook
 
@@ -176,3 +311,62 @@ npx wrangler secret put AUTH0_CLIENT_SECRET
 ```
 
 You will be prompted for each value. These must match the values used in CI and production.
+
+## Scheduler Worker
+
+The notification scheduler runs as a separate Cloudflare Worker in the sibling [scheduler-worker](scheduler-worker) project, using [scheduler-worker/wrangler.jsonc](scheduler-worker/wrangler.jsonc).
+
+- It is intentionally separate from the Astro SSR worker.
+- It is triggered by a Cloudflare cron schedule every 10 minutes.
+- It reads recurring jobs from the scheduler Turso database and dispatches handlers from [scheduler-worker/src/scheduler.ts](scheduler-worker/src/scheduler.ts).
+
+Manual staging deploy example:
+
+```powershell
+cd scheduler-worker
+npx wrangler deploy --config wrangler.jsonc --env staging
+```
+
+Required scheduler secrets:
+
+```powershell
+cd scheduler-worker
+npx wrangler secret put TURSO_SCHEDULER_DATABASE_URL --config wrangler.jsonc --env staging
+npx wrangler secret put TURSO_SCHEDULER_AUTH_TOKEN --config wrangler.jsonc --env staging
+```
+
+## Turso SQL Migrations
+
+Database schema deployment for non-EmDash Turso workloads runs from the `web/` project with shared tooling.
+
+- Scheduler SQL lives in `infra/scheduler-database/migrations` and `infra/scheduler-database/seeds`.
+- Subscriptions SQL lives in `infra/subscriptions-database/migrations` and `infra/subscriptions-database/seeds`.
+
+Manual staging examples:
+
+```powershell
+cd web
+npm run scheduler:db:deploy
+npm run subscriptions:db:deploy
+```
+
+For browser subscription capture, the web worker also needs:
+
+- `TURSO_SUBSCRIPTIONS_DATABASE_URL`
+- `TURSO_SUBSCRIPTIONS_AUTH_TOKEN`
+- local development: `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`
+- deployed worker secret: `PUSH_SUBSCRIBE_PUBLIC_KEY`
+
+The first two are synced from Terraform outputs in CI. The public key is safe to expose to the browser, but it still needs to be set on the worker separately until VAPID key management is wired into deployment.
+
+The scheduler worker needs the matching VAPID delivery keys:
+
+- staging: `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`, `PUSH_STAGING_VAPID_PRIVATE_KEY`, `PUSH_STAGING_VAPID_SUBJECT`
+- production: `PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY`, `PUSH_PRODUCTION_VAPID_PRIVATE_KEY`, `PUSH_PRODUCTION_VAPID_SUBJECT`
+
+Generate a compatible keypair with:
+
+```powershell
+cd scheduler-worker
+npm run push:vapid:generate -- mailto:platform@freedomtimes.news
+```

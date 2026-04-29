@@ -54,7 +54,7 @@ jobs:
       TF_VAR_turso_database_group: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -257,11 +257,21 @@ jobs:
           AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
           TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
           TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
+          SCHEDULER_TURSO_DATABASE_URL=$(terraform output -raw scheduler_turso_database_url 2>/dev/null || echo "")
+          SCHEDULER_TURSO_AUTH_TOKEN=$(terraform output -raw scheduler_turso_database_auth_token 2>/dev/null || echo "")
+          SUBSCRIPTIONS_TURSO_DATABASE_URL=$(terraform output -raw subscriptions_turso_database_url 2>/dev/null || echo "")
+          SUBSCRIPTIONS_TURSO_AUTH_TOKEN=$(terraform output -raw subscriptions_turso_database_auth_token 2>/dev/null || echo "")
 
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
           echo "turso_database_url=$TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
           echo "::add-mask::$TURSO_AUTH_TOKEN"
           echo "turso_auth_token=$TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
+          echo "scheduler_turso_database_url=$SCHEDULER_TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "::add-mask::$SCHEDULER_TURSO_AUTH_TOKEN"
+          echo "scheduler_turso_auth_token=$SCHEDULER_TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
+          echo "subscriptions_turso_database_url=$SUBSCRIPTIONS_TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "::add-mask::$SUBSCRIPTIONS_TURSO_AUTH_TOKEN"
+          echo "subscriptions_turso_auth_token=$SUBSCRIPTIONS_TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
 
       - name: Fetch Auth0 App Secret
         id: auth0_app_secret
@@ -293,12 +303,18 @@ jobs:
         run: rm -f tfplan
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: |
+            scheduler-worker/package-lock.json
             web/package-lock.json
+
+      - name: Install Scheduler Worker Dependencies
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: scheduler-worker
+        run: npm ci
 
       - name: Validate Worker Runtime Vars
         run: |
@@ -328,6 +344,109 @@ jobs:
             exit 1
           fi
 
+      - name: Validate Web Worker Secret Inputs
+        if: steps.tf_outputs.outputs.api_base_url != '' && steps.tf_outputs.outputs.api_base_url != 'null'
+        env:
+          AUTH0_DOMAIN_VALUE: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
+          AUTH0_CLIENT_ID_VALUE: ${{ steps.tf_outputs.outputs.auth0_app_client_id }}
+          AUTH0_CLIENT_SECRET_VALUE: ${{ steps.auth0_app_secret.outputs.auth0_app_client_secret }}
+          TURSO_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+          TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
+          TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
+          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
+        run: |
+          set -euo pipefail
+
+          required=(
+            AUTH0_DOMAIN_VALUE
+            AUTH0_CLIENT_ID_VALUE
+            AUTH0_CLIENT_SECRET_VALUE
+            TURSO_DATABASE_URL_VALUE
+            TURSO_AUTH_TOKEN_VALUE
+            TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE
+            TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE
+            PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE
+            EMDASH_AUTH_SECRET_VALUE
+          )
+
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required inputs for production web worker secret sync: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Validate Scheduler Worker Secret Inputs
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        env:
+          TURSO_SCHEDULER_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
+          TURSO_SCHEDULER_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
+          TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
+          TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
+          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}
+          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID }}
+          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL }}
+          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY }}
+          PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_TEAM_ID }}
+          PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_KEY_ID }}
+          PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_PRIVATE_KEY }}
+          PUSH_IOS_APNS_BUNDLE_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID }}
+        run: |
+          set -euo pipefail
+
+          required=(
+            TURSO_SCHEDULER_DATABASE_URL_VALUE
+            TURSO_SCHEDULER_AUTH_TOKEN_VALUE
+            TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE
+            TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE
+            PUSH_VAPID_PUBLIC_KEY_VALUE
+            PUSH_VAPID_PRIVATE_KEY_VALUE
+            PUSH_VAPID_SUBJECT_VALUE
+            PUSH_ANDROID_FCM_PROJECT_ID_VALUE
+            PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE
+            PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE
+          )
+
+          missing=()
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required inputs for production scheduler worker secret sync: ${missing[*]}"
+            exit 1
+          fi
+
+          ios_required=(
+            PUSH_IOS_APNS_TEAM_ID_VALUE
+            PUSH_IOS_APNS_KEY_ID_VALUE
+            PUSH_IOS_APNS_PRIVATE_KEY_VALUE
+            PUSH_IOS_APNS_BUNDLE_ID_VALUE
+          )
+
+          ios_set=0
+          for name in "${ios_required[@]}"; do
+            if [ -n "${!name:-}" ]; then
+              ios_set=$((ios_set + 1))
+            fi
+          done
+
+          if [ "$ios_set" -ne 0 ] && [ "$ios_set" -ne 4 ]; then
+            echo "iOS APNS secrets must be configured all-or-none for production scheduler worker"
+            exit 1
+          fi
+
       - name: Install Web Dependencies
         working-directory: web
         run: |
@@ -342,6 +461,48 @@ jobs:
             echo "[web-deps] npm ci failed; attempting npm install fallback"
             npm install --no-audit --no-fund
           fi
+
+      - name: Apply Scheduler Database Migration and Seed
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: web
+        env:
+          TURSO_SCHEDULER_DATABASE_URL: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
+          TURSO_SCHEDULER_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TURSO_SCHEDULER_DATABASE_URL}" ]; then
+            echo "ERROR: TURSO_SCHEDULER_DATABASE_URL is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          if [ -z "${TURSO_SCHEDULER_AUTH_TOKEN}" ]; then
+            echo "ERROR: TURSO_SCHEDULER_AUTH_TOKEN is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          npm run scheduler:db:deploy
+
+      - name: Apply Subscriptions Database Migration and Seed
+        if: steps.tf_outputs.outputs.subscriptions_turso_database_url != '' && steps.tf_outputs.outputs.subscriptions_turso_database_url != 'null'
+        working-directory: web
+        env:
+          TURSO_SUBSCRIPTIONS_DATABASE_URL: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
+          TURSO_SUBSCRIPTIONS_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TURSO_SUBSCRIPTIONS_DATABASE_URL}" ]; then
+            echo "ERROR: TURSO_SUBSCRIPTIONS_DATABASE_URL is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          if [ -z "${TURSO_SUBSCRIPTIONS_AUTH_TOKEN}" ]; then
+            echo "ERROR: TURSO_SUBSCRIPTIONS_AUTH_TOKEN is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          npm run subscriptions:db:deploy
 
       - name: Build Astro Worker
         working-directory: web
@@ -381,6 +542,17 @@ jobs:
           --var AUTH0_ROLES_CLAIM_NAMESPACE:$AUTH0_ROLES_CLAIM_NAMESPACE
           --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
 
+      - name: Deploy Scheduler Worker to Production
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: scheduler-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          npx wrangler deploy --config wrangler.jsonc --env production
+
       - name: Set Worker Secrets for Production
         working-directory: web
         # Cloudflare Worker secrets are synced here from Terraform outputs and Auth0 Management API.
@@ -394,6 +566,9 @@ jobs:
           AUTH0_CLIENT_SECRET_VALUE: ${{ steps.auth0_app_secret.outputs.auth0_app_client_secret }}
           TURSO_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.turso_database_url }}
           TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+          TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
+          TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
+          PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
           EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_PRODUCTION }}
         run: |
@@ -409,10 +584,54 @@ jobs:
           printf '%s' "$AUTH0_CLIENT_SECRET_VALUE" | npx wrangler secret put AUTH0_CLIENT_SECRET --config wrangler.jsonc --env production
           printf '%s' "$TURSO_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_DATABASE_URL --config wrangler.jsonc --env production
           printf '%s' "$TURSO_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_AUTH_TOKEN --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_DATABASE_URL --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_AUTH_TOKEN --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE" | npx wrangler secret put PUSH_SUBSCRIBE_PUBLIC_KEY --config wrangler.jsonc --env production
           printf '%s' "$EMDASH_AUTH_SECRET_VALUE" | npx wrangler secret put EMDASH_AUTH_SECRET --config wrangler.jsonc --env production
 
           if [ -n "${EMDASH_PREVIEW_SECRET_VALUE:-}" ]; then
             printf '%s' "$EMDASH_PREVIEW_SECRET_VALUE" | npx wrangler secret put EMDASH_PREVIEW_SECRET --config wrangler.jsonc --env production
+          fi
+
+      - name: Set Scheduler Worker Secrets for Production
+        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        working-directory: scheduler-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          TURSO_SCHEDULER_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
+          TURSO_SCHEDULER_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.scheduler_turso_auth_token }}
+          TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
+          TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
+          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}
+          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID }}
+          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL }}
+          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY }}
+          PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_TEAM_ID }}
+          PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_KEY_ID }}
+          PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_PRIVATE_KEY }}
+          PUSH_IOS_APNS_BUNDLE_ID_VALUE: ${{ secrets.PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID }}
+        run: |
+          set -euo pipefail
+
+          printf '%s' "$TURSO_SCHEDULER_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_SCHEDULER_DATABASE_URL --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_SCHEDULER_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_SCHEDULER_AUTH_TOKEN --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_DATABASE_URL --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_AUTH_TOKEN --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_VAPID_PUBLIC_KEY_VALUE" | npx wrangler secret put PUSH_VAPID_PUBLIC_KEY --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_VAPID_PRIVATE_KEY_VALUE" | npx wrangler secret put PUSH_VAPID_PRIVATE_KEY --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_VAPID_SUBJECT_VALUE" | npx wrangler secret put PUSH_VAPID_SUBJECT --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_ANDROID_FCM_PROJECT_ID_VALUE" | npx wrangler secret put PUSH_ANDROID_FCM_PROJECT_ID --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE" | npx wrangler secret put PUSH_ANDROID_FCM_CLIENT_EMAIL --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE" | npx wrangler secret put PUSH_ANDROID_FCM_PRIVATE_KEY --config wrangler.jsonc --env production
+
+          if [ -n "${PUSH_IOS_APNS_TEAM_ID_VALUE:-}" ] && [ -n "${PUSH_IOS_APNS_KEY_ID_VALUE:-}" ] && [ -n "${PUSH_IOS_APNS_PRIVATE_KEY_VALUE:-}" ] && [ -n "${PUSH_IOS_APNS_BUNDLE_ID_VALUE:-}" ]; then
+            printf '%s' "$PUSH_IOS_APNS_TEAM_ID_VALUE" | npx wrangler secret put PUSH_IOS_APNS_TEAM_ID --config wrangler.jsonc --env production
+            printf '%s' "$PUSH_IOS_APNS_KEY_ID_VALUE" | npx wrangler secret put PUSH_IOS_APNS_KEY_ID --config wrangler.jsonc --env production
+            printf '%s' "$PUSH_IOS_APNS_PRIVATE_KEY_VALUE" | npx wrangler secret put PUSH_IOS_APNS_PRIVATE_KEY --config wrangler.jsonc --env production
+            printf '%s' "$PUSH_IOS_APNS_BUNDLE_ID_VALUE" | npx wrangler secret put PUSH_IOS_APNS_BUNDLE_ID --config wrangler.jsonc --env production
           fi
 
       - name: Cleanup Unlock TFC Workspace

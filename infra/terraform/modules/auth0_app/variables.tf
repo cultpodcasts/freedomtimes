@@ -54,6 +54,12 @@ variable "extra_workspace_urls" {
   default     = []
 }
 
+variable "extra_callback_urls" {
+  description = "Additional callback URLs to allow beyond workspace_url/auth/callback patterns, such as native mobile deep links"
+  type        = list(string)
+  default     = []
+}
+
 variable "jwt_signing_alg" {
   description = "JWT signing algorithm for Auth0 application tokens"
   type        = string

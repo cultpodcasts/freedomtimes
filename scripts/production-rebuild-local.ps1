@@ -87,6 +87,52 @@ function Get-EnvFileValue {
     return ($line -split '=', 2)[1].Trim()
 }
 
+function Test-IsPlaceholderValue {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+
+    return $Value.Trim() -match '^<[^>]+>$'
+}
+
+function Assert-ProductionPushSecretsReady {
+    Write-Step "Preflight: validating production push secret inputs in .env.dev"
+
+    $requiredKeys = @(
+        "PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY",
+        "PUSH_PRODUCTION_VAPID_PRIVATE_KEY",
+        "PUSH_PRODUCTION_VAPID_SUBJECT",
+        "PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID",
+        "PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL",
+        "PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY"
+    )
+
+    $missing = @()
+    $placeholders = @()
+
+    foreach ($key in $requiredKeys) {
+        $value = Get-EnvFileValue -Path $baseEnvPath -Key $key
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $missing += $key
+            continue
+        }
+
+        if (Test-IsPlaceholderValue -Value $value) {
+            $placeholders += $key
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        throw "Missing required production push secret values in .env.dev: $($missing -join ', ')"
+    }
+
+    if ($placeholders.Count -gt 0) {
+        throw "Unresolved placeholder production push secret values in .env.dev: $($placeholders -join ', ')"
+    }
+}
+
 function Assert-Auth0SyncToEnv {
     Write-Step "Verifying Terraform-synced Auth0 production credentials in .env.dev"
     $prodClientIdInEnv = Get-EnvFileValue -Path $baseEnvPath -Key "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION"
@@ -150,6 +196,7 @@ function Invoke-WorkerBuild {
 }
 
 Write-Step "Starting local production rebuild workflow"
+Assert-ProductionPushSecretsReady
 Invoke-TerraformApplyWithRecovery
 
 # Update .env.dev with latest Auth0 values from Terraform outputs

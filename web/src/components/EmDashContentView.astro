@@ -5,6 +5,7 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import PortableVideo from '../components/PortableVideo.astro';
 import PortableLink from '../components/PortableLink.astro';
+import PushNotificationsCallout from './PushNotificationsCallout.astro';
 import { readOptionalEnv } from '../lib/auth';
 
 const {
@@ -415,6 +416,10 @@ const portableComponents = {
 			) : null}
 			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} components={portableComponents} />}
 			{!portableContent && textContent && <p>{textContent}</p>}
+			{!portableContent && !textContent && (
+				<p class="empty-state">This entry is published but has no renderable body content yet.</p>
+			)}
+			<PushNotificationsCallout />
 		</section>
 	</article>
 </Layout>

@@ -24,3 +24,6 @@ pnpm-debug.log*
 .idea/
 
 .wrangler/
+
+# generated service worker bundle
+public/service-worker.js

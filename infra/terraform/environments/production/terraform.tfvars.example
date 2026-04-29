@@ -6,6 +6,9 @@ route_pattern         = "example.com/*"
 # Auth0 app workspace URL for production auth callbacks
 workspace_url = "https://example.com"
 
+# Additional Auth0 callbacks such as the Android deep-link return URL
+auth0_extra_callback_urls = ["news.freedomtimes.app://auth/callback"]
+
 worker_name     = "freedomtimes-holding"
 holding_title   = "Freedom Times"
 holding_heading = "Freedom Times"

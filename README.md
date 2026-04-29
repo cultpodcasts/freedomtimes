@@ -23,6 +23,8 @@ See [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md). This is a living doc
 
 Staging-to-production CMS promotion runbook is in [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md).
 
+For Android local push setup and build troubleshooting, see [Android Local Build and Push Requirements](LOCAL_DEV_REQUIREMENTS.md#android-local-build-and-push-requirements).
+
 ## Development Guardrails
 
 See [DEVELOPMENT_GUARDRAILS.md](DEVELOPMENT_GUARDRAILS.md) for branch policy, ticket flow, and PR rules.

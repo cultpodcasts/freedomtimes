@@ -225,6 +225,50 @@ npx wrangler deploy --config wrangler.jsonc --env production
 
 Use `scripts/set-github-secrets.ps1` to push secrets and variables to GitHub Actions.
 
+For Android push credentials, do not generate service-account keys during deploy/apply. Prepare them locally in `.env.dev`, then use the existing secret-sync flow.
+
+#### Preparing Android FCM credentials locally
+
+Use `scripts/populate-android-fcm-env.ps1` to populate the Android FCM entries in `.env.dev` from a Google service-account JSON key. The script can either read an existing JSON key file or ask `gcloud` to generate a temporary key for an existing service account.
+
+Examples:
+
+```powershell
+# Staging: generate a temporary key via gcloud for an existing service account,
+# write PUSH_STAGING_ANDROID_FCM_* into .env.dev, then delete the temp key file.
+.\scripts\populate-android-fcm-env.ps1 `
+  -Target Staging `
+  -ProjectId <firebase-project-id> `
+  -ServiceAccountEmail <service-account-email>
+
+# Production: reuse an existing downloaded JSON key file.
+.\scripts\populate-android-fcm-env.ps1 `
+  -Target Production `
+  -JsonKeyPath C:\path\to\firebase-service-account.json
+```
+
+After that, push the values outward using the normal sync commands:
+
+```powershell
+.\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
+
+.\scripts\set-github-secrets.ps1 `
+  -Target Production `
+  -SyncCloudflareWorkerSecrets `
+  -AllowProduction
+```
+
+If you also need GitHub Actions to hold the same values, run:
+
+```powershell
+.\scripts\set-github-secrets.ps1 `
+  -Target Production `
+  -SyncGitHubSecretsAndVars `
+  -AllowProduction
+```
+
+`set-github-secrets.ps1` now refuses to sync unresolved placeholder values like `<firebase-project-id>` so bad values do not get pushed to Cloudflare or GitHub.
+
 #### Prerequisites
 
 1. **GitHub CLI authenticated:**

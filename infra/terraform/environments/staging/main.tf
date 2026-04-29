@@ -23,7 +23,15 @@ locals {
   turso_database_group = trimspace(var.turso_database_group) != "" ? trimspace(var.turso_database_group) : null
   turso_database_token_expiration = trimspace(var.turso_database_token_expiration) != "" ? trimspace(var.turso_database_token_expiration) : null
   turso_database_size_limit = trimspace(var.turso_database_size_limit) != "" ? trimspace(var.turso_database_size_limit) : null
+  scheduler_turso_database_group = trimspace(var.scheduler_turso_database_group) != "" ? trimspace(var.scheduler_turso_database_group) : local.turso_database_group
+  scheduler_turso_database_token_expiration = trimspace(var.scheduler_turso_database_token_expiration) != "" ? trimspace(var.scheduler_turso_database_token_expiration) : local.turso_database_token_expiration
+  scheduler_turso_database_size_limit = trimspace(var.scheduler_turso_database_size_limit) != "" ? trimspace(var.scheduler_turso_database_size_limit) : local.turso_database_size_limit
+  subscriptions_turso_database_group = trimspace(var.subscriptions_turso_database_group) != "" ? trimspace(var.subscriptions_turso_database_group) : local.turso_database_group
+  subscriptions_turso_database_token_expiration = trimspace(var.subscriptions_turso_database_token_expiration) != "" ? trimspace(var.subscriptions_turso_database_token_expiration) : local.turso_database_token_expiration
+  subscriptions_turso_database_size_limit = trimspace(var.subscriptions_turso_database_size_limit) != "" ? trimspace(var.subscriptions_turso_database_size_limit) : local.turso_database_size_limit
   turso_database_url = format("libsql://%s", turso_database.emdash.hostname)
+  scheduler_turso_database_url = format("libsql://%s", turso_database.scheduler.hostname)
+  subscriptions_turso_database_url = format("libsql://%s", turso_database.subscriptions.hostname)
 }
 
 resource "turso_database" "emdash" {
@@ -46,6 +54,50 @@ resource "turso_database_token" "emdash" {
   database_name     = turso_database.emdash.name
   authorization     = var.turso_database_token_authorization
   expiration        = local.turso_database_token_expiration
+}
+
+resource "turso_database" "scheduler" {
+  organization_name = var.turso_organization
+  name              = var.scheduler_turso_database_name
+  group             = local.scheduler_turso_database_group
+}
+
+resource "turso_database_configuration" "scheduler" {
+  count = var.scheduler_turso_database_delete_protection || local.scheduler_turso_database_size_limit != null ? 1 : 0
+
+  organization_slug = var.turso_organization
+  database_name     = turso_database.scheduler.name
+  delete_protection = var.scheduler_turso_database_delete_protection
+  size_limit        = local.scheduler_turso_database_size_limit
+}
+
+resource "turso_database_token" "scheduler" {
+  organization_name = var.turso_organization
+  database_name     = turso_database.scheduler.name
+  authorization     = var.scheduler_turso_database_token_authorization
+  expiration        = local.scheduler_turso_database_token_expiration
+}
+
+resource "turso_database" "subscriptions" {
+  organization_name = var.turso_organization
+  name              = var.subscriptions_turso_database_name
+  group             = local.subscriptions_turso_database_group
+}
+
+resource "turso_database_configuration" "subscriptions" {
+  count = var.subscriptions_turso_database_delete_protection || local.subscriptions_turso_database_size_limit != null ? 1 : 0
+
+  organization_slug = var.turso_organization
+  database_name     = turso_database.subscriptions.name
+  delete_protection = var.subscriptions_turso_database_delete_protection
+  size_limit        = local.subscriptions_turso_database_size_limit
+}
+
+resource "turso_database_token" "subscriptions" {
+  organization_name = var.turso_organization
+  database_name     = turso_database.subscriptions.name
+  authorization     = var.subscriptions_turso_database_token_authorization
+  expiration        = local.subscriptions_turso_database_token_expiration
 }
 
 
@@ -81,6 +133,7 @@ module "auth0_app" {
   api_identifier          = var.auth0_api_identifier
   api_name                = "freedomtimes-api-staging"
   workspace_url           = var.workspace_url
+  extra_callback_urls     = var.auth0_extra_callback_urls
   roles_claim_namespace   = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   app_name                = "freedomtimes-admin-staging"
   create_shared_resources = false

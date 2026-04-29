@@ -71,3 +71,19 @@ output "turso_database_auth_token" {
   value       = turso_database_token.emdash.jwt
   sensitive   = true
 }
+
+output "subscriptions_turso_database_name" {
+  description = "Turso database name for the production subscriptions workload"
+  value       = turso_database.subscriptions.name
+}
+
+output "subscriptions_turso_database_url" {
+  description = "libSQL URL for the production subscriptions database"
+  value       = local.subscriptions_turso_database_url
+}
+
+output "subscriptions_turso_database_auth_token" {
+  description = "Application auth token for the production subscriptions database"
+  value       = turso_database_token.subscriptions.jwt
+  sensitive   = true
+}

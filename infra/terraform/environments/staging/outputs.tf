@@ -76,3 +76,35 @@ output "turso_database_auth_token" {
   value       = turso_database_token.emdash.jwt
   sensitive   = true
 }
+
+output "scheduler_turso_database_name" {
+  description = "Turso database name for the staging scheduler workload"
+  value       = turso_database.scheduler.name
+}
+
+output "scheduler_turso_database_url" {
+  description = "libSQL URL for the staging scheduler database"
+  value       = local.scheduler_turso_database_url
+}
+
+output "scheduler_turso_database_auth_token" {
+  description = "Application auth token for the staging scheduler database"
+  value       = turso_database_token.scheduler.jwt
+  sensitive   = true
+}
+
+output "subscriptions_turso_database_name" {
+  description = "Turso database name for the staging subscriptions workload"
+  value       = turso_database.subscriptions.name
+}
+
+output "subscriptions_turso_database_url" {
+  description = "libSQL URL for the staging subscriptions database"
+  value       = local.subscriptions_turso_database_url
+}
+
+output "subscriptions_turso_database_auth_token" {
+  description = "Application auth token for the staging subscriptions database"
+  value       = turso_database_token.subscriptions.jwt
+  sensitive   = true
+}

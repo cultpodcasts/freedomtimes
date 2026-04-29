@@ -96,6 +96,52 @@ function Get-EnvFileValue {
     return ($line -split '=', 2)[1].Trim()
 }
 
+function Test-IsPlaceholderValue {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+
+    return $Value.Trim() -match '^<[^>]+>$'
+}
+
+function Assert-StagingPushSecretsReady {
+    Write-Step "Preflight: validating staging push secret inputs in .env.dev"
+
+    $requiredKeys = @(
+        "PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY",
+        "PUSH_STAGING_VAPID_PRIVATE_KEY",
+        "PUSH_STAGING_VAPID_SUBJECT",
+        "PUSH_STAGING_ANDROID_FCM_PROJECT_ID",
+        "PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL",
+        "PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY"
+    )
+
+    $missing = @()
+    $placeholders = @()
+
+    foreach ($key in $requiredKeys) {
+        $value = Get-EnvFileValue -Path $baseEnvPath -Key $key
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            $missing += $key
+            continue
+        }
+
+        if (Test-IsPlaceholderValue -Value $value) {
+            $placeholders += $key
+        }
+    }
+
+    if ($missing.Count -gt 0) {
+        throw "Missing required staging push secret values in .env.dev: $($missing -join ', ')"
+    }
+
+    if ($placeholders.Count -gt 0) {
+        throw "Unresolved placeholder staging push secret values in .env.dev: $($placeholders -join ', ')"
+    }
+}
+
 function Assert-Auth0SyncToEnv {
     Write-Step "Verifying Terraform-synced Auth0 staging credentials in .env.dev"
 
@@ -243,6 +289,7 @@ function Invoke-Verification {
 }
 
 Write-Step "Starting local staging rebuild workflow"
+Assert-StagingPushSecretsReady
 Invoke-TerraformApplyWithRecovery
 Assert-Auth0SyncToEnv
 Invoke-EnforceStagingPublishOnlyCollections

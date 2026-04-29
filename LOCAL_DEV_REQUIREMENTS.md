@@ -92,6 +92,69 @@ If Terraform resources change later (for example DNS records, KV namespace manag
 - Any required VS Code extensions
 - CI parity commands for local preflight checks
 
+## Android Local Build and Push Requirements
+
+Use this section when validating Android push notifications locally for the Capacitor app.
+
+### Required Tooling
+
+- OpenJDK 21 installed locally.
+- Android SDK installed with:
+  - Platform: `android-36`
+  - Build Tools: `35.0.0` (minimum needed by current Gradle build)
+- Node dependencies installed in `web/`.
+
+### Java Setup (PowerShell)
+
+If Java is installed but not on PATH in your current terminal, set it before running Gradle:
+
+```powershell
+$env:JAVA_HOME='C:\Program Files\Android\openjdk\jdk-21.0.8'
+$env:Path="$env:JAVA_HOME\bin;$env:Path"
+java -version
+```
+
+Adjust the path if your JDK is installed elsewhere.
+
+### Android SDK Path Configuration
+
+Create `web/android/local.properties` with your local SDK path:
+
+```properties
+sdk.dir=C\:\\Users\\<your-user>\\.bubblewrap\\android_sdk
+```
+
+Notes:
+- `local.properties` is local-only and already ignored by git.
+- If you keep your SDK under Program Files, Gradle may fail to install missing components due to permissions.
+
+### Firebase Android Config for Push
+
+Place Firebase Android config at:
+
+- `web/android/app/google-services.json`
+
+For this repository, a local source copy exists at `secrets/google-services.json`.
+
+Security note:
+- `web/android/app/google-services.json` is gitignored.
+- Keep secret/config source files under `secrets/` only; never commit them.
+
+### Sync and Build Commands
+
+From repository root:
+
+```powershell
+npx cap sync android --project web
+.\web\android\gradlew.bat -p .\web\android assembleDebug
+```
+
+Expected result:
+- `BUILD SUCCESSFUL`
+
+If build fails with `SDK location not found`, re-check `web/android/local.properties`.
+If build fails with `java not recognized`, re-check `JAVA_HOME` and PATH for the active shell.
+
 ---
 ## Restoring and Syncing Auth0 Client ID for Staging
 
