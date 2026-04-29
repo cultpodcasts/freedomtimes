@@ -5,18 +5,26 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import PortableVideo from '../components/PortableVideo.astro';
 import PortableLink from '../components/PortableLink.astro';
+import { readOptionalEnv } from '../lib/auth';
 
 const {
 	entry,
 	collectionLabel,
 	displayName,
 	isPreview = false,
+	isEditor = false,
+	isSignedIn,
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
 	collectionLabel: string;
 	displayName: string;
 	isPreview?: boolean;
+	isEditor?: boolean;
+	isSignedIn?: boolean;
 };
+
+const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const resolvedIsSignedIn = isSignedIn ?? siteAccessMode !== 'public';
 
 function readString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value : null;
@@ -343,7 +351,7 @@ const portableComponents = {
 
 <Layout>
 	<article class="page-wrap">
-		<Header section={collectionLabel} sectionUrl={collectionLabel === 'Archive' ? '/archives' : '/homepage'} isEditor={true} isSignedIn={true} />
+		<Header section={collectionLabel} sectionUrl={collectionLabel === 'Archive' ? '/archives' : '/homepage'} isEditor={isEditor} isSignedIn={resolvedIsSignedIn} />
 
 		<header class="article-header">
 			<h1>{title}</h1>

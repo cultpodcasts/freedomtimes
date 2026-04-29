@@ -3,6 +3,7 @@ import { getEmDashCollection } from 'emdash';
 
 import Layout from '../../layouts/Layout.astro';
 import Header from '../../components/Header.astro';
+import { readOptionalEnv } from '../../lib/auth';
 import { requireEditorialSession } from '../../lib/editorial-session';
 
 type ArchiveCard = {
@@ -88,15 +89,26 @@ function readPageImageSrc(value: unknown): string | null {
 	return readImageSrc(value[0]);
 }
 
-const session = await requireEditorialSession({
-	cookies: Astro.cookies,
-	url: Astro.url,
-	request: Astro.request,
-	redirect: Astro.redirect,
-});
+const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const isLocked = siteAccessMode !== 'public';
 
-if (session instanceof Response) {
-	return session;
+let isEditor = false;
+let isSignedIn = false;
+
+if (isLocked) {
+	const session = await requireEditorialSession({
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+	});
+
+	if (session instanceof Response) {
+		return session;
+	}
+
+	isEditor = session.isEditor;
+	isSignedIn = true;
 }
 
 const { entries, error } = await getEmDashCollection('archives', {
@@ -156,7 +168,7 @@ const cards: ArchiveCard[] = entries.map((entry) => {
 
 <Layout>
 	<div class="archive-index">
-		<Header section="Archives" sectionUrl="/archives" isEditor={session.isEditor} isSignedIn={true} />
+		<Header section="Archives" sectionUrl="/archives" isEditor={isEditor} isSignedIn={isSignedIn} />
 
 		{cards.length === 0 ? (
 			<p class="empty">No archive issues are available yet.</p>
@@ -189,7 +201,7 @@ const cards: ArchiveCard[] = entries.map((entry) => {
 				))}
 			</ul>
 		)}
-	</section>
+	</div>
 </Layout>
 
 <style>
