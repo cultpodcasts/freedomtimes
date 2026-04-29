@@ -3,17 +3,27 @@ import { getEmDashCollection, getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../../components/EmDashContentView.astro';
 import Layout from '../../layouts/Layout.astro';
+import { readOptionalEnv } from '../../lib/auth';
 import { requireEditorialSession } from '../../lib/editorial-session';
 
-const session = await requireEditorialSession({
-	cookies: Astro.cookies,
-	url: Astro.url,
-	request: Astro.request,
-	redirect: Astro.redirect,
-});
+const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const isLocked = siteAccessMode !== 'public';
 
-if (session instanceof Response) {
-	return session;
+let displayName = 'Reader';
+
+if (isLocked) {
+	const session = await requireEditorialSession({
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+	});
+
+	if (session instanceof Response) {
+		return session;
+	}
+
+	displayName = session.displayName;
 }
 
 const slug = Astro.params.slug;
@@ -104,7 +114,7 @@ if (!slug) {
 	<EmDashContentView
 		entry={entry}
 		collectionLabel="Archive"
-		displayName={session.displayName}
+		displayName={displayName}
 		isPreview={isPreview}
 	/>
 )}
