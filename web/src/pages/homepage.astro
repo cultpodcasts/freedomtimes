@@ -50,6 +50,7 @@ function readImageSrc(value: unknown): string | null {
 function toCfImageUrl(src: string, width: number, height: number): string {
   const trimmed = src.trim();
   if (!trimmed) return trimmed;
+  if (trimmed.startsWith('/_emdash/api/media/file/')) return trimmed;
   return `/cdn-cgi/image/width=${width},height=${height},fit=cover,quality=85,format=auto${trimmed}`;
 }
 
