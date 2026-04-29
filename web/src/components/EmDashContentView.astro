@@ -4,6 +4,7 @@ import { PortableText } from 'astro-portabletext';
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import PortableVideo from '../components/PortableVideo.astro';
+import PortableLink from '../components/PortableLink.astro';
 
 const {
 	entry,
@@ -31,6 +32,16 @@ function readNumber(value: unknown): number | null {
 		return Number.isFinite(parsed) ? parsed : null;
 	}
 
+	return null;
+}
+
+function readDateCandidate(value: unknown): string | null {
+	if (typeof value === 'string' && value.trim().length > 0) {
+		return value.trim();
+	}
+	if (value instanceof Date && Number.isFinite(value.getTime())) {
+		return value.toISOString();
+	}
 	return null;
 }
 
@@ -239,6 +250,7 @@ function coerceImageList(value: unknown): SlideImage[] {
 }
 
 const data = entry.data;
+const entryMeta = entry as Record<string, unknown>;
 const title =
 	readString(data.title) ??
 	readString(data.name) ??
@@ -280,11 +292,52 @@ const slidePageNumbers = pageImages.map((item, index) => item.pageNumber ?? inde
 const slidePageTotal = slidePageNumbers.length > 0 ? Math.max(...slidePageNumbers) : 0;
 const pdfLink = normalizeEmdashMediaFileUrl(readMediaFileUrl(data.pdf_file) ?? '');
 const issueDate = readString(data.date);
-const publishedAt = readString(data.publishedAt);
-const updatedAt = readString(data.updatedAt);
+const publishedAt =
+	readDateCandidate(entryMeta.publishedAt)
+	?? readDateCandidate(entryMeta.published_at)
+	?? readDateCandidate(data.publishedAt)
+	?? readDateCandidate(data.published_at)
+	?? readDateCandidate(entryMeta.createdAt)
+	?? readDateCandidate(entryMeta.created_at)
+	?? readDateCandidate(data.createdAt)
+	?? readDateCandidate(data.created_at);
+const updatedAt =
+	readDateCandidate(entryMeta.updatedAt)
+	?? readDateCandidate(entryMeta.updated_at)
+	?? readDateCandidate(data.updatedAt)
+	?? readDateCandidate(data.updated_at);
+const primaryByline = (() => {
+	const direct = (
+		(entryMeta.byline && typeof entryMeta.byline === 'object' ? entryMeta.byline : null)
+		?? (data.byline && typeof data.byline === 'object' ? data.byline : null)
+	) as Record<string, unknown> | null;
+	const bylinesArray = (
+		(Array.isArray(entryMeta.bylines) ? entryMeta.bylines : null)
+		?? (Array.isArray(data.bylines) ? data.bylines : null)
+	) as unknown[] | null;
+	const fromArray = bylinesArray && bylinesArray.length > 0
+		? (bylinesArray[0] as Record<string, unknown>)
+		: null;
+	const bylineRecord =
+		direct
+		?? (
+			fromArray && fromArray.byline && typeof fromArray.byline === 'object'
+				? (fromArray.byline as Record<string, unknown>)
+				: null
+		);
+	const name =
+		(bylineRecord ? readString(bylineRecord.displayName) : null)
+		?? (fromArray ? readString(fromArray.displayName) : null)
+		?? readString(data.author)
+		?? readString(data.bylineName);
+	return name;
+})();
 const portableComponents = {
 	type: {
 		video: PortableVideo,
+	},
+	mark: {
+		link: PortableLink,
 	},
 };
 ---
@@ -298,6 +351,7 @@ const portableComponents = {
 			{issueDate && <p class="issue-date">Issue date {new Date(issueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
 			
 			<div class="article-meta">
+				{primaryByline && <p>By {primaryByline}</p>}
 				{publishedAt && <p>Published {new Date(publishedAt).toLocaleString()}</p>}
 				{!publishedAt && updatedAt && <p>Updated {new Date(updatedAt).toLocaleString()}</p>}
 				{isPreview && <p class="preview">Preview mode</p>}
