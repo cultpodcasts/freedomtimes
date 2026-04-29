@@ -13,6 +13,7 @@
 	},
 	"vars": {
 		// Vars shared by all environments (override in env block if needed)
+		"SITE_ACCESS_MODE": "locked",
 		"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 		"API_BASE_URL": "https://local.freedomtimes.news/editorial",
 		"COOKIE_BASE_DOMAIN": "freedomtimes.news",
@@ -36,6 +37,7 @@
 				}
 			],
 			"vars": {
+				"SITE_ACCESS_MODE": "public",
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
@@ -58,6 +60,7 @@
 				}
 			],
 			"vars": {
+				"SITE_ACCESS_MODE": "locked",
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",

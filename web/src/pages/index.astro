@@ -1,5 +1,12 @@
 ---
+import { readOptionalEnv } from '../lib/auth';
+
 const denied = Astro.url.searchParams.get('denied') === '1';
+const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+
+if (siteAccessMode === 'public') {
+	return Astro.rewrite('/homepage');
+}
 ---
 <!doctype html>
 <html lang="en">

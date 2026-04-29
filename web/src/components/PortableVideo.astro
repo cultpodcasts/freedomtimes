@@ -1,0 +1,53 @@
+---
+const props = Astro.props as Record<string, unknown>;
+const value =
+	(props.value as Record<string, unknown> | undefined)
+	?? (props.node as Record<string, unknown> | undefined)
+	?? props;
+
+function readString(input: unknown): string | null {
+	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+}
+
+function resolvePortableVideoUrl(input: unknown): string | null {
+	if (!input || typeof input !== 'object') {
+		return null;
+	}
+
+	const candidate = input as Record<string, unknown>;
+	const directUrl =
+		readString(candidate.url)
+		?? readString(candidate.file)
+		?? readString((candidate.asset as Record<string, unknown> | undefined)?._ref)
+		?? readString((candidate.asset as Record<string, unknown> | undefined)?.id)
+		?? readString(candidate._ref)
+		?? readString(candidate.id);
+
+	if (!directUrl) {
+		return null;
+	}
+
+	if (directUrl.startsWith('/')) {
+		return directUrl;
+	}
+
+	if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) {
+		try {
+			return new URL(directUrl).pathname;
+		} catch {
+			return null;
+		}
+	}
+
+	return `/_emdash/api/media/file/${directUrl}`;
+}
+
+const src = resolvePortableVideoUrl(value);
+const alt = readString(value.alt) ?? 'Embedded video';
+---
+
+{src && (
+	<figure class="video-embed">
+		<video controls preload="metadata" src={src} aria-label={alt}></video>
+	</figure>
+)}

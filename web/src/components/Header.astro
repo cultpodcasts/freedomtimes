@@ -1,4 +1,6 @@
 ---
+import { readOptionalEnv } from '../lib/auth';
+
 interface Props {
 	section?: string;
 	sectionUrl?: string;
@@ -7,18 +9,20 @@ interface Props {
 }
 
 const { section, sectionUrl, isEditor, isSignedIn } = Astro.props;
+const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 ---
 
 <header class="masthead">
 	<p class="edition">UK & Europe | Investigations & Public Interest</p>
 	<div class="brand-wrap">
-		<a href="/homepage"><h1>Freedom Times</h1></a>
+		<a href={homePath}><h1>Freedom Times</h1></a>
 	</div>
-	<p class="tagline">The International paper of record for cult power, public money, and manufactured truth.</p>
+	<p class="tagline">Telling survivor truths. Protecting sources. Holding cults to account.</p>
 	
 	<nav class="main-nav">
 		<div class="nav-links">
-			<a href="/homepage" class={Astro.url.pathname === '/homepage' ? 'active' : ''}>Home</a>
+			<a href={homePath} class={Astro.url.pathname === '/' || Astro.url.pathname === '/homepage' ? 'active' : ''}>Home</a>
 			<a href="/archives" class={Astro.url.pathname.startsWith('/archives') ? 'active' : ''}>Archives</a>
 			{isEditor && <a href="/_emdash/admin">CMS</a>}
 			{isSignedIn && <a href="/auth/logout">Sign out</a>}
