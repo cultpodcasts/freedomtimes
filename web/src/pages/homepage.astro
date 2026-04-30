@@ -11,6 +11,7 @@ type Story = {
   slug: string;
   title: string;
   dek: string | null;
+  subjects: string[];
   imageSrc: string | null;
   publishDate: string | null;
   updatedAt: string | null;
@@ -74,6 +75,55 @@ function readDateCandidate(value: unknown): string | null {
   return null;
 }
 
+function readSubjects(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item) => item.length > 0);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => (typeof item === 'string' ? item.trim() : ''))
+          .filter((item) => item.length > 0);
+      }
+    } catch {
+      // Treat as plain text subject fallback.
+    }
+    return [trimmed];
+  }
+
+  return [];
+}
+
+function hashString(input: string): number {
+  let hash = 2166136261;
+  for (const char of input) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function subjectColorTokens(subject: string): { bg: string; border: string; text: string } {
+  const hash = hashString(subject.toLowerCase().trim());
+  const hue = hash % 360;
+  const saturation = 62 + (hash % 14);
+  const lightness = 90 - (hash % 8);
+  const borderLightness = 46 - (hash % 8);
+  const textLightness = 28 - (hash % 6);
+  return {
+    bg: `hsl(${hue} ${saturation}% ${lightness}%)`,
+    border: `hsl(${hue} ${Math.max(45, saturation - 12)}% ${borderLightness}%)`,
+    text: `hsl(${hue} ${Math.max(40, saturation - 18)}% ${textLightness}%)`,
+  };
+}
+
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
 
@@ -122,6 +172,7 @@ const stories: Story[] = postEntries.map((entry) => {
   const dek = typeof data.excerpt === 'string' && data.excerpt.length > 0
     ? data.excerpt
     : null;
+  const subjects = readSubjects(data.subjects);
 
   const imageSrc = readImageSrc(data.featured_image);
 
@@ -150,6 +201,7 @@ const stories: Story[] = postEntries.map((entry) => {
     slug,
     title,
     dek,
+    subjects,
     imageSrc,
     publishDate,
     updatedAt,
@@ -179,6 +231,15 @@ const rails = stories.slice(2);
               )}
               {formatPublicationDate(lead.publishDate) && <p class="kicker">{formatPublicationDate(lead.publishDate)}</p>}
               <h2>{lead.title}</h2>
+              {lead.subjects.length > 0 && (
+                <ul class="subject-list" aria-label="Subjects">
+                  {lead.subjects.map((subject) => {
+                    const colors = subjectColorTokens(subject);
+                    const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
+                    return <li style={style}>{subject}</li>;
+                  })}
+                </ul>
+              )}
               {lead.dek && <p>{lead.dek}</p>}
               {lead.updatedAt && <p class="meta">Updated {new Date(lead.updatedAt).toLocaleString()}</p>}
             </a>
@@ -194,6 +255,15 @@ const rails = stories.slice(2);
                 )}
                 {formatPublicationDate(secondLead.publishDate) && <p class="kicker">{formatPublicationDate(secondLead.publishDate)}</p>}
                 <h3>{secondLead.title}</h3>
+                {secondLead.subjects.length > 0 && (
+                  <ul class="subject-list" aria-label="Subjects">
+                    {secondLead.subjects.map((subject) => {
+                      const colors = subjectColorTokens(subject);
+                      const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
+                      return <li style={style}>{subject}</li>;
+                    })}
+                  </ul>
+                )}
                 {secondLead.dek && <p>{secondLead.dek}</p>}
                 {secondLead.updatedAt && <p class="meta">Updated {new Date(secondLead.updatedAt).toLocaleString()}</p>}
               </a>
@@ -218,6 +288,15 @@ const rails = stories.slice(2);
                     )}
                     {formatPublicationDate(story.publishDate) && <p class="kicker">{formatPublicationDate(story.publishDate)}</p>}
                     <h4>{story.title}</h4>
+                    {story.subjects.length > 0 && (
+                      <ul class="subject-list" aria-label="Subjects">
+                        {story.subjects.map((subject) => {
+                          const colors = subjectColorTokens(subject);
+                          const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
+                          return <li style={style}>{subject}</li>;
+                        })}
+                      </ul>
+                    )}
                     {story.dek && <p>{story.dek}</p>}
                   </a>
                 </article>
@@ -358,6 +437,27 @@ const rails = stories.slice(2);
     font-size: 0.7rem;
     color: #888888;
     letter-spacing: 0.05em;
+  }
+
+  .subject-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.8rem;
+  }
+
+  .subject-list li {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 0.25rem 0.45rem;
+    border: 1px solid var(--subject-chip-border, #dddddd);
+    background: var(--subject-chip-bg, #fafafa);
+    color: var(--subject-chip-text, #333333);
   }
 
   .rail {
