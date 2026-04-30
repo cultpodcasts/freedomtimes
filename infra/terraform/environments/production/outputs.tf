@@ -72,6 +72,22 @@ output "turso_database_auth_token" {
   sensitive   = true
 }
 
+output "scheduler_turso_database_name" {
+  description = "Turso database name for the production scheduler workload"
+  value       = turso_database.scheduler.name
+}
+
+output "scheduler_turso_database_url" {
+  description = "libSQL URL for the production scheduler database"
+  value       = local.scheduler_turso_database_url
+}
+
+output "scheduler_turso_database_auth_token" {
+  description = "Application auth token for the production scheduler database"
+  value       = turso_database_token.scheduler.jwt
+  sensitive   = true
+}
+
 output "subscriptions_turso_database_name" {
   description = "Turso database name for the production subscriptions workload"
   value       = turso_database.subscriptions.name

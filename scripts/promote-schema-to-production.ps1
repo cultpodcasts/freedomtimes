@@ -148,6 +148,24 @@ function Get-FullSchema {
     return $result
 }
 
+function Build-AddFieldCommand {
+    param([string]$CollectionSlug, $Field)
+    $cmd = "npx --prefix web emdash schema add-field $CollectionSlug $($Field.slug) --type $($Field.type)"
+    if ($Field.PSObject.Properties["label"] -and -not [string]::IsNullOrWhiteSpace($Field.label)) {
+        $cmd += " --label `"$($Field.label)`""
+    }
+    if ($Field.PSObject.Properties["required"] -and $Field.required -eq $true) {
+        $cmd += " --required"
+    }
+    $cmd += " -u `$env:EMDASH_PRODUCTION_URL -t `$env:EMDASH_PRODUCTION_TOKEN --json"
+    return @{
+        Kind        = "add-field"
+        Collection  = $CollectionSlug
+        Description = "New field: $CollectionSlug.$($Field.slug) (type: $($Field.type))"
+        Command     = $cmd
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($StagingToken)) {
     $StagingToken = Get-StoredEmdashAccessToken -Url $StagingUrl
 }
