@@ -1,5 +1,4 @@
-import { eq } from 'drizzle-orm';
-import { readEnv, readOptionalEnv } from './auth';
+import { readOptionalEnv } from './auth';
 import { createSubscriptionsDb, pushSubscriptionsTable } from './subscriptions-db';
 
 export type WebPushSubscriptionRecord = {
@@ -56,7 +55,6 @@ export async function upsertPushSubscription(input: PushSubscriptionInsert): Pro
         active: 1,
         updatedAt: now,
       },
-      setWhere: eq(pushSubscriptionsTable.endpoint, endpoint),
     }).run();
   } finally {
     client.close();

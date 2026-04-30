@@ -31,6 +31,28 @@ function Main {
         if ($Target -eq "Staging") {
             Write-Host "\nSyncing Cloudflare Worker secrets for STAGING..." -ForegroundColor Cyan
             Write-Host "Reading credentials from local env: .env.staging" -ForegroundColor Gray
+            Assert-NoConflictingOverlayValues -BaseValues $baseEnvValues -OverlayValues $stagingOverlayValues -Keys @(
+                "AUTH0_DOMAIN",
+                "TF_VAR_auth0_domain",
+                "AUTH0_LOGIN_APP_CLIENT_ID_STAGING",
+                "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING",
+                "EMDASH_AUTH_SECRET_STAGING",
+                "EMDASH_PREVIEW_SECRET_STAGING",
+                "TURSO_STAGING_SUBSCRIPTIONS_DB_URL",
+                "TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN",
+                "TURSO_STAGING_SCHEDULER_DB_URL",
+                "TURSO_STAGING_SCHEDULER_DB_TOKEN",
+                "PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY",
+                "PUSH_STAGING_VAPID_PRIVATE_KEY",
+                "PUSH_STAGING_VAPID_SUBJECT",
+                "PUSH_STAGING_ANDROID_FCM_PROJECT_ID",
+                "PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL",
+                "PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY",
+                "PUSH_STAGING_IOS_APNS_TEAM_ID",
+                "PUSH_STAGING_IOS_APNS_KEY_ID",
+                "PUSH_STAGING_IOS_APNS_PRIVATE_KEY",
+                "PUSH_STAGING_IOS_APNS_BUNDLE_ID"
+            ) -OverlayPath $stagingEnvPath -TargetLabel "Staging"
             $stagingEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $stagingOverlayValues
             $stagingAuth0Domain = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
             Write-Host "[LOG] Setting AUTH0_DOMAIN for staging: '$stagingAuth0Domain'" -ForegroundColor Magenta
@@ -81,6 +103,26 @@ function Main {
         elseif ($Target -eq "Production") {
             Write-Host "\nSyncing Cloudflare Worker secrets for PRODUCTION..." -ForegroundColor Red
             Write-Host "Reading credentials from local env: .env.production" -ForegroundColor Gray
+            Assert-NoConflictingOverlayValues -BaseValues $baseEnvValues -OverlayValues $productionOverlayValues -Keys @(
+                "AUTH0_DOMAIN",
+                "TF_VAR_auth0_domain",
+                "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION",
+                "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION",
+                "TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL",
+                "TURSO_PRODUCTION_SUBSCRIPTIONS_DB_TOKEN",
+                "TURSO_PRODUCTION_SCHEDULER_DB_URL",
+                "TURSO_PRODUCTION_SCHEDULER_DB_TOKEN",
+                "PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY",
+                "PUSH_PRODUCTION_VAPID_PRIVATE_KEY",
+                "PUSH_PRODUCTION_VAPID_SUBJECT",
+                "PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID",
+                "PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL",
+                "PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY",
+                "PUSH_PRODUCTION_IOS_APNS_TEAM_ID",
+                "PUSH_PRODUCTION_IOS_APNS_KEY_ID",
+                "PUSH_PRODUCTION_IOS_APNS_PRIVATE_KEY",
+                "PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID"
+            ) -OverlayPath $productionEnvPath -TargetLabel "Production"
             $productionEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $productionOverlayValues
             $productionAuth0Domain = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
             Write-Host "[LOG] Setting AUTH0_DOMAIN for production: '$productionAuth0Domain'" -ForegroundColor Magenta
@@ -416,6 +458,43 @@ function Add-EntryIfTargetMatches {
     )
     if ($RequestedTarget -eq "All" -or $RequestedTarget -eq $EntryTarget) {
         $Map[$Name] = $Value
+    }
+}
+
+function Assert-NoConflictingOverlayValues {
+    param(
+        [hashtable]$BaseValues,
+        [hashtable]$OverlayValues,
+        [string[]]$Keys,
+        [string]$OverlayPath,
+        [string]$TargetLabel
+    )
+
+    if ($null -eq $OverlayValues -or $OverlayValues.Count -eq 0) {
+        return
+    }
+
+    $conflicts = @()
+    foreach ($key in $Keys) {
+        if (-not $BaseValues.ContainsKey($key) -or -not $OverlayValues.ContainsKey($key)) {
+            continue
+        }
+
+        $baseValue = [string]$BaseValues[$key]
+        $overlayValue = [string]$OverlayValues[$key]
+
+        if ([string]::IsNullOrWhiteSpace($baseValue) -or [string]::IsNullOrWhiteSpace($overlayValue)) {
+            continue
+        }
+
+        if ($baseValue -ne $overlayValue) {
+            $conflicts += $key
+        }
+    }
+
+    if ($conflicts.Count -gt 0) {
+        $joined = $conflicts -join ", "
+        throw "Conflicting $TargetLabel env values detected between .env.dev and $OverlayPath for keys: $joined. Protocol: keep canonical sync values in .env.dev; if duplicated in overlay files, they must match exactly."
     }
 }
 

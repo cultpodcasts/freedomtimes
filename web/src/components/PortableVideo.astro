@@ -9,6 +9,21 @@ function readString(input: unknown): string | null {
 	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
 }
 
+function readAspectRatio(input: unknown): string | null {
+	if (typeof input !== 'string') {
+		return null;
+	}
+	const trimmed = input.trim();
+	if (!trimmed) {
+		return null;
+	}
+	// Accept CSS aspect-ratio forms like "16 / 9", "4/3", "1.91 / 1".
+	if (/^\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?$/.test(trimmed)) {
+		return trimmed.replace(/\s*\/\s*/, ' / ');
+	}
+	return null;
+}
+
 function resolvePortableVideoUrl(input: unknown): string | null {
 	if (!input || typeof input !== 'object') {
 		return null;
@@ -33,7 +48,11 @@ function resolvePortableVideoUrl(input: unknown): string | null {
 
 	if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) {
 		try {
-			return new URL(directUrl).pathname;
+			const parsed = new URL(directUrl);
+			if (parsed.pathname.startsWith('/_emdash/api/media/file/')) {
+				return parsed.pathname;
+			}
+			return parsed.toString();
 		} catch {
 			return null;
 		}
@@ -44,10 +63,35 @@ function resolvePortableVideoUrl(input: unknown): string | null {
 
 const src = resolvePortableVideoUrl(value);
 const alt = readString(value.alt) ?? 'Embedded video';
+const aspectRatio = readAspectRatio(value.aspectRatio) ?? '16 / 9';
+const youtubeMatch = src?.match(
+	/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{6,})/i,
+);
+const youtubeEmbedSrc = youtubeMatch ? `https://www.youtube.com/embed/${youtubeMatch[1]}` : null;
+const isDirectMediaFile = !!src?.match(/\.(mp4|webm|ogg|m3u8)(\?.*)?$/i) || src?.startsWith('/_emdash/api/media/file/');
+const genericEmbedSrc = !youtubeEmbedSrc && !isDirectMediaFile ? src : null;
 ---
 
 {src && (
-	<figure class="video-embed">
-		<video controls preload="metadata" src={src} aria-label={alt}></video>
+	<figure class="video-embed" style={`--video-aspect-ratio: ${aspectRatio};`}>
+		{youtubeEmbedSrc ? (
+			<iframe
+				src={youtubeEmbedSrc}
+				title={alt}
+				loading="lazy"
+				allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+				allowfullscreen
+			></iframe>
+		) : genericEmbedSrc ? (
+			<iframe
+				src={genericEmbedSrc}
+				title={alt}
+				loading="lazy"
+				allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+				allowfullscreen
+			></iframe>
+		) : (
+			<video controls preload="metadata" src={src} aria-label={alt}></video>
+		)}
 	</figure>
 )}

@@ -258,6 +258,51 @@ function coerceImageList(value: unknown): SlideImage[] {
 	return [];
 }
 
+function readSubjects(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value
+			.map((item) => (typeof item === 'string' ? item.trim() : ''))
+			.filter((item) => item.length > 0);
+	}
+
+	if (typeof value === 'string') {
+		const parsed = tryParseJsonString(value);
+		if (Array.isArray(parsed)) {
+			return parsed
+				.map((item) => (typeof item === 'string' ? item.trim() : ''))
+				.filter((item) => item.length > 0);
+		}
+
+		const trimmed = value.trim();
+		return trimmed.length > 0 ? [trimmed] : [];
+	}
+
+	return [];
+}
+
+function hashString(input: string): number {
+	let hash = 2166136261;
+	for (const char of input) {
+		hash ^= char.charCodeAt(0);
+		hash = Math.imul(hash, 16777619);
+	}
+	return hash >>> 0;
+}
+
+function subjectColorTokens(subject: string): { bg: string; border: string; text: string } {
+	const hash = hashString(subject.toLowerCase().trim());
+	const hue = hash % 360;
+	const saturation = 62 + (hash % 14); // 62-75
+	const lightness = 90 - (hash % 8); // 90-83
+	const borderLightness = 46 - (hash % 8); // 46-39
+	const textLightness = 28 - (hash % 6); // 28-23
+	return {
+		bg: `hsl(${hue} ${saturation}% ${lightness}%)`,
+		border: `hsl(${hue} ${Math.max(45, saturation - 12)}% ${borderLightness}%)`,
+		text: `hsl(${hue} ${Math.max(40, saturation - 18)}% ${textLightness}%)`,
+	};
+}
+
 const data = entry.data;
 const entryMeta = entry as Record<string, unknown>;
 const title =
@@ -299,6 +344,7 @@ const pageImages = coerceImageList(data.page_images)
 const slidePageNumbers = pageImages.map((item, index) => item.pageNumber ?? index + 1);
 const slidePageTotal = slidePageNumbers.length > 0 ? Math.max(...slidePageNumbers) : 0;
 const pdfLink = normalizeEmdashMediaFileUrl(readMediaFileUrl(data.pdf_file) ?? '');
+const subjects = readSubjects(data.subjects);
 const issueDate = readString(data.date);
 const publishedAt =
 	readDateCandidate(entryMeta.publishedAt)
@@ -348,6 +394,63 @@ const portableComponents = {
 		link: PortableLink,
 	},
 };
+
+type LegacyContentBlock =
+	| { type: 'heading'; level: 2 | 3 | 4; text: string }
+	| { type: 'paragraph'; text: string }
+	| { type: 'video'; value: Record<string, unknown> };
+
+function parseLegacyTextContent(value: string): LegacyContentBlock[] {
+	const blocks: LegacyContentBlock[] = [];
+	const lines = value.split('\n');
+	const videoPattern = /^<!--ec:block\s+(\{.*\})\s+-->$/;
+	let paragraphBuffer: string[] = [];
+
+	const flushParagraph = () => {
+		const text = paragraphBuffer.join(' ').trim();
+		if (text.length > 0) {
+			blocks.push({ type: 'paragraph', text });
+		}
+		paragraphBuffer = [];
+	};
+
+	for (const rawLine of lines) {
+		const line = rawLine.trim();
+		if (!line) {
+			flushParagraph();
+			continue;
+		}
+
+		const videoMatch = line.match(videoPattern);
+		if (videoMatch) {
+			flushParagraph();
+			try {
+				const parsed = JSON.parse(videoMatch[1]);
+				if (parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>)._type === 'video') {
+					blocks.push({ type: 'video', value: parsed as Record<string, unknown> });
+					continue;
+				}
+			} catch {
+				// Fall through to paragraph mode if parsing fails.
+			}
+		}
+
+		const headingMatch = line.match(/^(#{2,4})\s+(.+)$/);
+		if (headingMatch) {
+			flushParagraph();
+			const level = headingMatch[1].length as 2 | 3 | 4;
+			blocks.push({ type: 'heading', level, text: headingMatch[2].trim() });
+			continue;
+		}
+
+		paragraphBuffer.push(line);
+	}
+
+	flushParagraph();
+	return blocks;
+}
+
+const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 ---
 
 <Layout>
@@ -364,6 +467,15 @@ const portableComponents = {
 				{!publishedAt && updatedAt && <p>Updated {new Date(updatedAt).toLocaleString()}</p>}
 				{isPreview && <p class="preview">Preview mode</p>}
 			</div>
+			{subjects.length > 0 && (
+				<ul class="subject-list" aria-label="Subjects">
+					{subjects.map((subject) => {
+						const colors = subjectColorTokens(subject);
+						const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
+						return <li style={style}>{subject}</li>;
+					})}
+				</ul>
+			)}
 		</header>
 
 		<section class="content-card">
@@ -415,7 +527,19 @@ const portableComponents = {
 				</figure>
 			) : null}
 			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} components={portableComponents} />}
-			{!portableContent && textContent && <p>{textContent}</p>}
+			{!portableContent && textContent && legacyBlocks.length > 0 && (
+				<div class="legacy-content">
+					{legacyBlocks.map((block) => (
+						block.type === 'video' ? (
+							<PortableVideo value={block.value} />
+						) : block.type === 'heading' ? (
+							block.level === 2 ? <h2>{block.text}</h2> : block.level === 3 ? <h3>{block.text}</h3> : <h4>{block.text}</h4>
+						) : (
+							<p>{block.text}</p>
+						)
+					))}
+				</div>
+			)}
 			{!portableContent && !textContent && (
 				<p class="empty-state">This entry is published but has no renderable body content yet.</p>
 			)}
@@ -470,6 +594,27 @@ const portableComponents = {
 
 	.article-meta p {
 		margin: 0;
+	}
+
+	.subject-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		list-style: none;
+		padding: 0;
+		margin: 1rem 0 0;
+	}
+
+	.subject-list li {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.7rem;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		font-weight: 700;
+		padding: 0.3rem 0.5rem;
+		border: 1px solid var(--subject-chip-border, #dddddd);
+		background: var(--subject-chip-bg, #fafafa);
+		color: var(--subject-chip-text, #333333);
 	}
 
 	.preview {
@@ -667,6 +812,14 @@ const portableComponents = {
 		background: #000000;
 	}
 
+	.content-card :global(.video-embed iframe) {
+		display: block;
+		width: 100%;
+		aspect-ratio: var(--video-aspect-ratio, 16 / 9);
+		border: 1px solid #eeeeee;
+		background: #000000;
+	}
+
 	@media (max-width: 768px) {
 		.page-wrap {
 			padding: 2rem 1rem;
@@ -692,6 +845,18 @@ const portableComponents = {
 </style>
 
 <script>
+	const contentLinks = document.querySelectorAll('.content-card a');
+	for (const link of contentLinks) {
+		const first = link.firstChild;
+		if (first && first.nodeType === Node.TEXT_NODE) {
+			first.textContent = (first.textContent ?? '').replace(/^\s+/, '');
+		}
+		const last = link.lastChild;
+		if (last && last.nodeType === Node.TEXT_NODE) {
+			last.textContent = (last.textContent ?? '').replace(/\s+$/, '');
+		}
+	}
+
 	const slideshows = document.querySelectorAll('[data-slideshow]');
 
 	for (const root of slideshows) {

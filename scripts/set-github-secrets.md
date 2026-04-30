@@ -16,8 +16,9 @@ Purpose: sync GitHub secrets/variables and Cloudflare Worker secrets from local 
 
 ## Source of Truth
 
-- `.env.dev` is the canonical source file.
-- Staging and production values are selected using suffixed keys.
+- `.env.dev` is the source for sync values consumed by `set-github-secrets.ps1`.
+- Keep all values needed by this script in `.env.dev`.
+- Before syncing Worker secrets after Terraform changes, refresh `.env.dev` from Terraform outputs, then run the sync script.
 
 Worker secret sync key resolution:
 

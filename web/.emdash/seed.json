@@ -54,6 +54,11 @@
           "slug": "excerpt",
           "label": "Excerpt",
           "type": "text"
+        },
+        {
+          "slug": "subjects",
+          "label": "Subjects",
+          "type": "json"
         }
       ]
     },
