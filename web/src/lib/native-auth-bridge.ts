@@ -61,7 +61,6 @@ async function openLoginInSystemBrowser(): Promise<void> {
     window.location.assign(new URL(NATIVE_LOGIN_PATH, window.location.origin).toString());
   }
 }
-
 function installNativeLoginInterceptor(): void {
   document.addEventListener('click', (event) => {
     if (event.defaultPrevented) {

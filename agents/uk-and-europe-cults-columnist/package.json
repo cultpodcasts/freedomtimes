@@ -1,0 +1,29 @@
+{
+  "name": "uk-and-europe-cults-columnist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local agent to draft UK/EU cult-related CMS posts via MCP",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node --enable-source-maps dist/index.js",
+    "dev": "tsx src/index.ts",
+    "render:html": "tsx scripts/render-cult-news-html.tsx",
+    "render:cult-news": "tsx scripts/render-cult-news-html.tsx",
+    "recover:failed-urls": "tsx scripts/recover-failed-urls.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "google-news-url-decoder": "^1.2.1",
+    "playwright": "^1.59.1",
+    "tinyld": "^1.3.4"
+  }
+}

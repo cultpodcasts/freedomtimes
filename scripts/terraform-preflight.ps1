@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("staging", "production", "auth0-shared")]
+    [ValidateSet("staging", "production", "auth0-shared", "local")]
     [string]$Environment,
     [string]$BaseEnvFile = ".env.dev",
     [switch]$LoadEnvFiles
@@ -138,7 +138,7 @@ if ($LoadEnvFiles) {
         }
     }
 
-    if ($Environment -eq "auth0-shared") {
+    if ($Environment -eq "auth0-shared" -or $Environment -eq "local") {
         $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE", "Process")
         if (-not [string]::IsNullOrWhiteSpace($audience)) {
             [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
@@ -149,9 +149,11 @@ if ($LoadEnvFiles) {
             [System.Environment]::SetEnvironmentVariable("TF_VAR_editorial_roles_claim", $rolesClaim, "Process")
         }
 
-        $workspaceUrl = [System.Environment]::GetEnvironmentVariable("TF_VAR_WORKSPACE_URL_PRODUCTION", "Process")
-        if (-not [string]::IsNullOrWhiteSpace($workspaceUrl)) {
-            [System.Environment]::SetEnvironmentVariable("TF_VAR_workspace_url", $workspaceUrl, "Process")
+        if ($Environment -eq "auth0-shared") {
+            $workspaceUrl = [System.Environment]::GetEnvironmentVariable("TF_VAR_WORKSPACE_URL_PRODUCTION", "Process")
+            if (-not [string]::IsNullOrWhiteSpace($workspaceUrl)) {
+                [System.Environment]::SetEnvironmentVariable("TF_VAR_workspace_url", $workspaceUrl, "Process")
+            }
         }
     }
 
@@ -175,11 +177,14 @@ if (-not $env:TF_TOKEN_app_terraform_io) {
 }
 
 $requiredCommon = @(
-    "TF_TOKEN_app_terraform_io",
     "TF_VAR_auth0_domain",
     "TF_VAR_auth0_management_client_id",
     "TF_VAR_auth0_management_client_secret"
 )
+
+if ($Environment -ne "local") {
+    $requiredCommon = @("TF_TOKEN_app_terraform_io") + $requiredCommon
+}
 
 $requiredByEnvironment = @{
     staging = @(
@@ -201,6 +206,7 @@ $requiredByEnvironment = @{
         "TF_VAR_editorial_roles_claim",
         "TF_VAR_workspace_url"
     )
+    local = @()
 }
 
 $required = @($requiredCommon + $requiredByEnvironment[$Environment])

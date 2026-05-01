@@ -19,7 +19,8 @@
 		"API_BASE_URL": "https://local.freedomtimes.news/editorial",
 		"COOKIE_BASE_DOMAIN": "freedomtimes.news",
 		"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles",
-		"API_UPSTREAM_MODE": "apim"
+		"API_UPSTREAM_MODE": "apim",
+		"CULT_AGENT_URL": "https://local.freedomtimes.news"
 	},
 	// Default (production) config
 	"env": {
@@ -43,7 +44,8 @@
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
 				"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles",
-				"API_UPSTREAM_MODE": "apim"
+				"API_UPSTREAM_MODE": "apim",
+				"CULT_AGENT_URL": "https://cult-columnist-cf-worker.freedomtimes.workers.dev"
 			}
 		},
 		"staging": {
@@ -66,7 +68,8 @@
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
 				"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles",
-				"API_UPSTREAM_MODE": "apim"
+				"API_UPSTREAM_MODE": "apim",
+				"CULT_AGENT_URL": "https://cult-columnist-cf-worker-staging.freedomtimes.workers.dev"
 			}
 		}
 	}

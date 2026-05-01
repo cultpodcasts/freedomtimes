@@ -24,6 +24,8 @@ crash.log
 
 # Local env files
 .env.dev
+.dev.vars
+!.dev.vars.example
 *.har
 certs/*
 infra/terraform/environments/staging/.wrangler/cache/wrangler-account.json
@@ -46,3 +48,5 @@ request-headers
 web/.generated/archive-import/*
 .cookie
 secrets/*
+agents/uk-and-europe-cults-columnist/reports/*.html
+agents/cult-columnist-cf-worker/.wrangler/*

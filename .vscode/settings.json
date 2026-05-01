@@ -1,6 +1,14 @@
 {
     "chat.tools.terminal.autoApprove": {
-        "gh": true
+        "gh": true,
+        "/^cd \\.\\\\agents\\\\uk-and-europe-cults-columnist; node \\.\\\\scripts\\\\render-cult-news-html\\.mjs$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd \\.\\\\agents\\\\uk-and-europe-cults-columnist; npm run dev -- --max=10 --concurrency=8 2>&1 \\| Tee-Object -FilePath \\.\\\\last-run\\.log$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
     },
     "java.configuration.updateBuildConfiguration": "interactive"
 }

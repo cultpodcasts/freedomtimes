@@ -1,0 +1,1698 @@
+{
+  "feeds": [
+    {
+      "id": "cultnews-main",
+      "title": "CultNews",
+      "url": "https://cultnews.net/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "cultnews-atom",
+      "title": "CultNews (Atom)",
+      "url": "https://cultnews.net/feed/atom",
+      "sourceFormat": "atom",
+      "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "cultnews101-main",
+      "title": "CultNews101",
+      "url": "https://www.cultnews101.com/feeds/posts/default?alt=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
+      "requiresUrlResolution": true,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "cultnews101-atom",
+      "title": "CultNews101 (Atom)",
+      "url": "https://www.cultnews101.com/feeds/posts/default",
+      "sourceFormat": "atom",
+      "sourceCategory": "publisher-feed",
+      "urlResolver": "republishedSourceLink",
+      "requiresUrlResolution": true,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-main",
+      "title": "BBC News",
+      "url": "https://feeds.bbci.co.uk/news/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-uk",
+      "title": "BBC UK",
+      "url": "https://feeds.bbci.co.uk/news/uk/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-politics",
+      "title": "BBC Politics",
+      "url": "https://feeds.bbci.co.uk/news/politics/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-europe",
+      "title": "BBC Europe",
+      "url": "https://feeds.bbci.co.uk/news/world/europe/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-england",
+      "title": "BBC England",
+      "url": "https://feeds.bbci.co.uk/news/england/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-scotland",
+      "title": "BBC Scotland",
+      "url": "https://feeds.bbci.co.uk/news/scotland/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-wales",
+      "title": "BBC Wales",
+      "url": "https://feeds.bbci.co.uk/news/wales/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-ni",
+      "title": "BBC Northern Ireland",
+      "url": "https://feeds.bbci.co.uk/news/northern_ireland/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-world",
+      "title": "BBC World",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bbc-business",
+      "title": "BBC Business",
+      "url": "https://feeds.bbci.co.uk/news/business/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sky-home",
+      "title": "Sky Home",
+      "url": "https://feeds.skynews.com/feeds/rss/home.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sky-uk",
+      "title": "Sky UK",
+      "url": "https://feeds.skynews.com/feeds/rss/uk.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sky-world",
+      "title": "Sky World",
+      "url": "https://feeds.skynews.com/feeds/rss/world.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sky-business",
+      "title": "Sky Business",
+      "url": "https://feeds.skynews.com/feeds/rss/business.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sky-politics",
+      "title": "Sky Politics",
+      "url": "https://feeds.skynews.com/feeds/rss/politics.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sky-tech",
+      "title": "Sky Technology",
+      "url": "https://feeds.skynews.com/feeds/rss/technology.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "guardian-uk",
+      "title": "Guardian UK",
+      "url": "https://www.theguardian.com/uk-news/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "telegraph",
+      "title": "Telegraph",
+      "url": "https://www.telegraph.co.uk/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "independent",
+      "title": "Independent",
+      "url": "http://www.independent.co.uk/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "huffpost-uk",
+      "title": "HuffPost UK",
+      "url": "https://www.huffingtonpost.co.uk/feeds/index.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "daily-record",
+      "title": "Daily Record",
+      "url": "https://www.dailyrecord.co.uk/news/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sun",
+      "title": "The Sun",
+      "url": "https://www.thesun.co.uk/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "politics-co-uk",
+      "title": "Politics.co.uk",
+      "url": "https://www.politics.co.uk/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "mirror",
+      "title": "Mirror",
+      "url": "https://www.mirror.co.uk/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "standard",
+      "title": "Standard",
+      "url": "https://www.standard.co.uk/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "conversation-uk",
+      "title": "The Conversation UK",
+      "url": "https://theconversation.com/uk/articles.atom",
+      "sourceFormat": "atom",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "men",
+      "title": "Manchester Evening News",
+      "url": "https://www.manchestereveningnews.co.uk/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "daily-express",
+      "title": "Daily Express",
+      "url": "https://feeds.feedburner.com/daily-express-news-showbiz",
+      "sourceFormat": "rss",
+      "sourceCategory": "aggregator-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "metro",
+      "title": "Metro",
+      "url": "https://metro.co.uk/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "birmingham-mail",
+      "title": "Birmingham Mail",
+      "url": "https://www.birminghammail.co.uk/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "argus",
+      "title": "The Argus",
+      "url": "https://www.theargus.co.uk/news/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "york-press",
+      "title": "York Press",
+      "url": "https://www.yorkpress.co.uk/news/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "northern-echo",
+      "title": "Northern Echo",
+      "url": "https://www.thenorthernecho.co.uk/news/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "bolton-news",
+      "title": "Bolton News",
+      "url": "https://www.theboltonnews.co.uk/news/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "portsmouth",
+      "title": "Portsmouth",
+      "url": "https://www.portsmouth.co.uk/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "scarborough",
+      "title": "Scarborough",
+      "url": "https://www.thescarboroughnews.co.uk/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "wales-online",
+      "title": "Wales Online",
+      "url": "https://www.walesonline.co.uk/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "herald-scotland",
+      "title": "Herald Scotland",
+      "url": "https://www.heraldscotland.com/news/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "belfast-live",
+      "title": "Belfast Live",
+      "url": "https://www.belfastlive.co.uk/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "cambridge-news",
+      "title": "Cambridge News",
+      "url": "https://www.cambridge-news.co.uk/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "grimsby",
+      "title": "Grimsby Telegraph",
+      "url": "https://www.grimsbytelegraph.co.uk/news/?service=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "glasgow-times",
+      "title": "Glasgow Times",
+      "url": "https://www.glasgowtimes.co.uk/news/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "deadline-news",
+      "title": "Deadline News",
+      "url": "https://www.deadlinenews.co.uk/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "positive-news",
+      "title": "Positive News",
+      "url": "https://www.positive.news/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "scotsman",
+      "title": "Scotsman",
+      "url": "https://www.scotsman.com/news/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "breakingnews-ie",
+      "title": "BreakingNews.ie",
+      "url": "https://feeds.breakingnews.ie/bntopstories",
+      "sourceFormat": "rss",
+      "sourceCategory": "aggregator-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "scottish-sun",
+      "title": "Scottish Sun",
+      "url": "https://www.thescottishsun.co.uk/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "scottish-field",
+      "title": "Scottish Field",
+      "url": "https://www.scottishfield.co.uk/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "daily-echo",
+      "title": "Daily Echo",
+      "url": "https://www.dailyecho.co.uk/news/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "ni-world",
+      "title": "Northern Ireland World",
+      "url": "https://www.northernirelandworld.com/news/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "newsnet-scot",
+      "title": "Newsnet Scotland",
+      "url": "https://newsnet.scot/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "pinknews",
+      "title": "Pink News",
+      "url": "https://www.thepinknews.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "larne-times",
+      "title": "Larne Times",
+      "url": "https://www.larnetimes.co.uk/news/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "irish-times",
+      "title": "Irish Times",
+      "url": "https://www.irishtimes.com/cmlink/news-1.1319192",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "rte-news",
+      "title": "RTE News",
+      "url": "https://www.rte.ie/feeds/rss/?index=/news/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "irish-examiner",
+      "title": "Irish Examiner",
+      "url": "https://www.irishexaminer.com/feed/35-top_news.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "the-journal-ie",
+      "title": "The Journal",
+      "url": "https://www.thejournal.ie/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "newstalk-ie",
+      "title": "Newstalk",
+      "url": "https://www.newstalk.com/content/001/rss/Newstalk-News.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "independent-ie",
+      "title": "Irish Independent",
+      "url": "https://www.independent.ie/breaking-news/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "france24-en",
+      "title": "France 24 English",
+      "url": "https://www.france24.com/en/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "fr"
+    },
+    {
+      "id": "lemonde-en",
+      "title": "Le Monde English",
+      "url": "https://www.lemonde.fr/en/rss/une.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "lepoint",
+      "title": "Le Point",
+      "url": "https://www.lepoint.fr/24h-infos/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "fr"
+    },
+    {
+      "id": "twenty-minutes-fr",
+      "title": "20 Minutes",
+      "url": "https://www.20minutes.fr/feeds/rss-une.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "fr"
+    },
+    {
+      "id": "ouest-france",
+      "title": "Ouest-France",
+      "url": "https://www.ouest-france.fr/rss/une",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "fr"
+    },
+    {
+      "id": "spiegel-international",
+      "title": "Der Spiegel International",
+      "url": "https://www.spiegel.de/international/index.rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "sueddeutsche-top",
+      "title": "Sueddeutsche Zeitung",
+      "url": "https://rss.sueddeutsche.de/rss/Topthemen",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "faz-aktuell",
+      "title": "Frankfurter Allgemeine",
+      "url": "https://www.faz.net/rss/aktuell/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "tagesschau",
+      "title": "Tagesschau",
+      "url": "https://www.tagesschau.de/xml/rss2/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "handelsblatt",
+      "title": "Handelsblatt",
+      "url": "https://www.handelsblatt.com/contentexport/feed/top-themen",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "elpais-en",
+      "title": "El Pais English",
+      "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/english.elpais.com/portada",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "elmundo",
+      "title": "El Mundo",
+      "url": "https://e00-elmundo.uecdn.es/rss/portada.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "es"
+    },
+    {
+      "id": "eldiario",
+      "title": "elDiario.es",
+      "url": "https://www.eldiario.es/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "es"
+    },
+    {
+      "id": "ansa",
+      "title": "ANSA",
+      "url": "https://www.ansa.it/sito/ansait_rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "it"
+    },
+    {
+      "id": "repubblica",
+      "title": "La Repubblica",
+      "url": "https://www.repubblica.it/rss/homepage/rss2.0.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "it"
+    },
+    {
+      "id": "la-stampa",
+      "title": "La Stampa",
+      "url": "https://www.lastampa.it/rss/copertina.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "it"
+    },
+    {
+      "id": "il-sole-24-ore",
+      "title": "Il Sole 24 Ore",
+      "url": "https://www.ilsole24ore.com/rss/italia.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "it"
+    },
+    {
+      "id": "nrc",
+      "title": "NRC",
+      "url": "https://www.nrc.nl/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "nl"
+    },
+    {
+      "id": "volkskrant",
+      "title": "de Volkskrant",
+      "url": "https://www.volkskrant.nl/voorpagina/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "nl"
+    },
+    {
+      "id": "adnl",
+      "title": "AD.nl",
+      "url": "https://www.ad.nl/home/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "nl"
+    },
+    {
+      "id": "telegraaf",
+      "title": "De Telegraaf",
+      "url": "https://www.telegraaf.nl/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "nl"
+    },
+    {
+      "id": "expresso-pt",
+      "title": "Expresso",
+      "url": "https://feeds.feedburner.com/expresso-geral",
+      "sourceFormat": "rss",
+      "sourceCategory": "aggregator-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "pt"
+    },
+    {
+      "id": "cmjornal",
+      "title": "Correio da Manha",
+      "url": "https://www.cmjornal.pt/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "pt"
+    },
+    {
+      "id": "publico-pt",
+      "title": "Publico",
+      "url": "https://feeds.feedburner.com/PublicoRSS",
+      "sourceFormat": "rss",
+      "sourceCategory": "aggregator-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "pt"
+    },
+    {
+      "id": "wyborcza",
+      "title": "Wyborcza.pl",
+      "url": "https://wyborcza.pl/pub/rss/najnowsze_wyborcza.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "pl"
+    },
+    {
+      "id": "notes-from-poland",
+      "title": "Notes From Poland",
+      "url": "https://notesfrompoland.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "rzeczpospolita",
+      "title": "Rzeczpospolita",
+      "url": "https://www.rp.pl/rss_main?unknown-old-rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "pl"
+    },
+    {
+      "id": "wired-uk",
+      "title": "Wired UK",
+      "url": "https://www.wired.co.uk/feed",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "dn-se",
+      "title": "Dagens Nyheter",
+      "url": "https://www.dn.se/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sv"
+    },
+    {
+      "id": "svd-se",
+      "title": "Svenska Dagbladet",
+      "url": "https://www.svd.se/feed/articles.rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sv"
+    },
+    {
+      "id": "svt-se",
+      "title": "SVT",
+      "url": "https://www.svt.se/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sv"
+    },
+    {
+      "id": "thelocal-se",
+      "title": "The Local Sweden",
+      "url": "https://www.thelocal.se/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "aftenposten-no",
+      "title": "Aftenposten",
+      "url": "https://www.aftenposten.no/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "no"
+    },
+    {
+      "id": "vg-no",
+      "title": "Verdens Gang",
+      "url": "https://www.vg.no/rss/feed/?format=rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "no"
+    },
+    {
+      "id": "e24-no",
+      "title": "E24",
+      "url": "https://e24.no/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "no"
+    },
+    {
+      "id": "thelocal-no",
+      "title": "The Local Norway",
+      "url": "https://feeds.thelocal.com/rss/no",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "berlingske-dk",
+      "title": "Berlingske",
+      "url": "https://www.berlingske.dk/content/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "da"
+    },
+    {
+      "id": "nordjyske-dk",
+      "title": "Nordjyske",
+      "url": "https://nordjyske.dk/rss/nyheder",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "da"
+    },
+    {
+      "id": "politiken-dk",
+      "title": "Politiken",
+      "url": "https://politiken.dk/rss/senestenyt.rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "da"
+    },
+    {
+      "id": "thelocal-dk",
+      "title": "The Local Denmark",
+      "url": "https://feeds.thelocal.com/rss/dk",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "finland-today-fi",
+      "title": "Finland Today",
+      "url": "https://finlandtoday.fi/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "helsinki-times-fi",
+      "title": "Helsinki Times",
+      "url": "https://www.helsinkitimes.fi/?format=feed",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "iltalehti-fi",
+      "title": "Iltalehti",
+      "url": "https://www.iltalehti.fi/rss/rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "fi"
+    },
+    {
+      "id": "daily-finland-fi",
+      "title": "Daily Finland",
+      "url": "https://dailyfinland.fi/feed/latest-rss.xml",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "brussels-times-be",
+      "title": "The Brussels Times",
+      "url": "https://www.brusselstimes.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "lecho-be",
+      "title": "L'Echo",
+      "url": "https://www.lecho.be/rss/top_stories.xml",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "fr"
+    },
+    {
+      "id": "lalibre-be",
+      "title": "La Libre",
+      "url": "https://www.lalibre.be/arc/outboundfeeds/rss/?outputType=xml",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "fr"
+    },
+    {
+      "id": "hln-be",
+      "title": "HLN",
+      "url": "https://www.hln.be/home/rss.xml",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "nl"
+    },
+    {
+      "id": "krone-at",
+      "title": "Kronen Zeitung",
+      "url": "https://api.krone.at/v1/rss/rssfeed-google.xml?id=2311992",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "sn-at",
+      "title": "Salzburger Nachrichten",
+      "url": "https://www.sn.at/xml/rss",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "diepresse-at",
+      "title": "Die Presse",
+      "url": "https://www.diepresse.com/rss//",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "thelocal-at",
+      "title": "The Local Austria",
+      "url": "https://www.thelocal.at/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "thelocal-ch",
+      "title": "The Local Switzerland",
+      "url": "https://feeds.thelocal.com/rss/ch",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "nzz-ch",
+      "title": "NZZ",
+      "url": "https://www.nzz.ch/recent.rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "lenews-ch",
+      "title": "Le News",
+      "url": "https://lenews.ch/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "beobachter-ch",
+      "title": "Beobachter",
+      "url": "https://www.beobachter.ch/rss_feed",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "de"
+    },
+    {
+      "id": "aktualne-cz",
+      "title": "Aktualne.cz",
+      "url": "https://magazin.aktualne.cz/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "cs"
+    },
+    {
+      "id": "praguemorning-cz",
+      "title": "Prague Morning",
+      "url": "https://praguemorning.cz/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "ceskenoviny-cz",
+      "title": "Ceske Noviny",
+      "url": "https://www.ceskenoviny.cz/sluzby/rss/zpravy.php",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "cs"
+    },
+    {
+      "id": "idnes-cz",
+      "title": "iDNES",
+      "url": "https://servis.idnes.cz/rss.aspx",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "cs"
+    },
+    {
+      "id": "romania-insider-ro",
+      "title": "Romania Insider",
+      "url": "https://www.romania-insider.com/feed",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "jurnalul-ro",
+      "title": "Jurnalul",
+      "url": "https://jurnalul.ro/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "ro"
+    },
+    {
+      "id": "hotnews-ro",
+      "title": "HotNews.ro",
+      "url": "https://feeds.feedburner.com/hotnews/yvoq",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "ro"
+    },
+    {
+      "id": "romanialibera-ro",
+      "title": "Romania Libera",
+      "url": "https://romanialibera.ro/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "ro"
+    },
+    {
+      "id": "ekathimerini-gr",
+      "title": "eKathimerini",
+      "url": "https://feeds.feedburner.com/ekathimerini/sKip",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "kathimerini-gr",
+      "title": "Kathimerini",
+      "url": "https://feeds.feedburner.com/kathimerini/DJpy",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "el"
+    },
+    {
+      "id": "greekreporter-gr",
+      "title": "Greek Reporter Greece",
+      "url": "https://greekreporter.com/greece/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "tovima-gr",
+      "title": "To Vima",
+      "url": "https://www.tovima.gr/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "el"
+    },
+    {
+      "id": "abcnews-al",
+      "title": "Abcnews Albania",
+      "url": "https://abcnews.al/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sq"
+    },
+    {
+      "id": "vizionplus-al",
+      "title": "Vizion Plus",
+      "url": "https://www.vizionplus.tv/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sq"
+    },
+    {
+      "id": "tiranatimes-al",
+      "title": "Tirana Times",
+      "url": "https://www.tiranatimes.com/?feed=rss2",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "zurnal24-si",
+      "title": "Zurnal24",
+      "url": "https://www.zurnal24.si/feeds/latest",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sl"
+    },
+    {
+      "id": "24ur-si",
+      "title": "24ur",
+      "url": "https://www.24ur.com/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sl"
+    },
+    {
+      "id": "slovenia-times-si",
+      "title": "The Slovenia Times",
+      "url": "https://sloveniatimes.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "mondo-ba",
+      "title": "Mondo Bosnia",
+      "url": "https://mondo.ba/rss/629/Naslovna",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "bs"
+    },
+    {
+      "id": "fokus-ba",
+      "title": "Fokus",
+      "url": "https://www.fokus.ba/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "bs"
+    },
+    {
+      "id": "slobodna-bosna-ba",
+      "title": "Slobodna Bosna",
+      "url": "https://www.slobodna-bosna.ba/rss/100/sve_vijesti.html",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "bs"
+    },
+    {
+      "id": "croatiaweek-hr",
+      "title": "Croatia Week",
+      "url": "https://www.croatiaweek.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "total-croatia-news-hr",
+      "title": "Total Croatia News",
+      "url": "https://total-croatia-news.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "index-hr",
+      "title": "Index.hr",
+      "url": "https://www.index.hr/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "hr"
+    },
+    {
+      "id": "serbianmonitor-rs",
+      "title": "Serbian Monitor",
+      "url": "https://serbianmonitor.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "nova-rs",
+      "title": "Nova.rs",
+      "url": "https://nova.rs/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sr"
+    },
+    {
+      "id": "n1-rs",
+      "title": "N1 Serbia",
+      "url": "https://n1info.rs/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sr"
+    },
+    {
+      "id": "postimees-ee",
+      "title": "Postimees",
+      "url": "https://news.postimees.ee/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "et"
+    },
+    {
+      "id": "err-ee",
+      "title": "ERR News",
+      "url": "https://news.err.ee/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "estonianworld-ee",
+      "title": "Estonian World",
+      "url": "https://estonianworld.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "apollo-lv",
+      "title": "Apollo Latvia",
+      "url": "https://www.apollo.lv/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "lv"
+    },
+    {
+      "id": "tvnet-lv",
+      "title": "TVNET Latvia",
+      "url": "https://www.tvnet.lv/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "lv"
+    },
+    {
+      "id": "ir-lv",
+      "title": "IR Latvia",
+      "url": "https://ir.lv/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "lv"
+    },
+    {
+      "id": "lrt-lt",
+      "title": "LRT Lithuania",
+      "url": "https://www.lrt.lt/?rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "lt"
+    },
+    {
+      "id": "15min-lt",
+      "title": "15min Lithuania",
+      "url": "https://www.15min.lt/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "lt"
+    },
+    {
+      "id": "lrytas-lt",
+      "title": "Lrytas",
+      "url": "https://www.lrytas.lt/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "lt"
+    },
+    {
+      "id": "timesofmalta-mt",
+      "title": "Times of Malta",
+      "url": "https://timesofmalta.com/articles/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "maltatoday-mt",
+      "title": "Malta Today",
+      "url": "https://www.maltatoday.com.mt/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "monaco-tribune-mc",
+      "title": "Monaco Tribune",
+      "url": "https://www.monaco-tribune.com/en/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "luxembourg-times-lu",
+      "title": "Luxembourg Times",
+      "url": "https://www.luxtimes.lu/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "andorra-daily-ad",
+      "title": "Andorra Daily",
+      "url": "https://andorradaily.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "en"
+    },
+    {
+      "id": "sanmarino-rtv-sm",
+      "title": "San Marino RTV",
+      "url": "https://www.sanmarinortv.sm/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "it"
+    },
+    {
+      "id": "vaticannews-va",
+      "title": "Vatican News",
+      "url": "https://www.vaticannews.va/en.rss.xml",
+      "sourceFormat": "xml",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "liechtensteiner-vaterland-li",
+      "title": "Liechtensteiner Vaterland",
+      "url": "https://www.vaterland.li/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "de"
+    },
+    {
+      "id": "meta-mk",
+      "title": "Meta.mk",
+      "url": "https://meta.mk/en/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "sdk-mk",
+      "title": "SDK.mk",
+      "url": "https://sdk.mk/index.php/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": false,
+      "language": "mk"
+    },
+    {
+      "id": "prishtina-insight-xk",
+      "title": "Prishtina Insight",
+      "url": "https://prishtinainsight.com/feed/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "en"
+    },
+    {
+      "id": "koha-kosovo-xk",
+      "title": "Koha Kosovo",
+      "url": "https://www.koha.net/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sq"
+    },
+    {
+      "id": "vijesti-me",
+      "title": "Vijesti Montenegro",
+      "url": "https://www.vijesti.me/rss",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sr"
+    },
+    {
+      "id": "rtcg-me",
+      "title": "RTCG Montenegro",
+      "url": "https://rtcg.me/rss/",
+      "sourceFormat": "rss",
+      "sourceCategory": "publisher-feed",
+      "requiresUrlResolution": false,
+      "enabled": true,
+      "language": "sr"
+    }
+  ]
+}
