@@ -1,0 +1,6 @@
+{
+  "createdAtUtc": "2026-04-30T20:15:00Z",
+  "sourceDatabase": "freedomtimes-emdash-production",
+  "rollbackDatabase": "prod-rollback-20260430-2115",
+  "notes": "Manual Turso UI rollback checkpoint before schema promotion and 3-post media migration."
+}
