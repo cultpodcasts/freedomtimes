@@ -265,6 +265,28 @@
     "(setta OR sette OR \"abuso spirituale\" OR \"manipolazione mentale\" OR seita OR \"grupo coercivo\") AND (Italia OR Italy OR Portugal)",
     "(sekte OR sekta OR secta OR lahko OR \"control mental\" OR \"control mintal\") AND (Nederland OR Netherlands OR Polska OR Poland OR Romania OR Cesko OR Czech OR Suomi OR Finland OR Sverige OR Sweden OR Norge OR Norway OR Danmark OR Denmark OR Ellada OR Greece)"
   ],
+  "regionalHostSuffixes": [
+    ".uk",
+    ".ie",
+    ".fr",
+    ".de",
+    ".es",
+    ".it",
+    ".nl",
+    ".be",
+    ".se",
+    ".no",
+    ".dk",
+    ".pl",
+    ".ro",
+    ".pt",
+    ".gr",
+    ".cz",
+    ".at",
+    ".fi",
+    ".ch"
+  ],
+  "focusSignalTerms": [],
   "regionTerms": [
     "uk",
     "united kingdom",

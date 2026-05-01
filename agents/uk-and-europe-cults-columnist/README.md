@@ -82,3 +82,16 @@ The current starter prints either:
 - `DRY_RUN=true` by default.
 - Source reliability threshold must pass before drafting.
 - No auto-publish path exists.
+
+## Runtime Focus Parameters (No Story Hardcoding)
+- Keep weekly story focus out of source code; pass it as runtime input.
+- Use either `DISCOVERY_FOCUS_JSON` (inline JSON) or `DISCOVERY_FOCUS_FILE` (path to JSON file).
+- Focus input can extend discovery and ranking terms without changing code:
+  - `focusSignalTerms`
+  - `googleNewsGenericQueries`
+  - `newsdataQueries`
+  - `regionTerms`
+  - `regionalHostSuffixes`
+  - `priorityWatchlistHosts`
+  - `googleNewsWatchlistSites`
+- This keeps the agent reusable for future week-ending stories while still allowing focused runs.

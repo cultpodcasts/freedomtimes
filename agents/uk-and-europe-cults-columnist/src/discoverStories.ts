@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.js';
 import { fetchJsonWithCache, fetchTextWithCache } from './httpCache.js';
 import {
+  FOCUS_SIGNAL_TERMS,
   GOOGLE_NEWS_COUNTRY_TERMS,
   GOOGLE_NEWS_GENERIC_QUERIES,
   GOOGLE_NEWS_WATCHLIST_SITES,
@@ -891,6 +892,10 @@ function scoreDiscoveredStory(story: DiscoveredStory, allowedHosts: Set<string>)
 
   if (containsTerm(titleLower, REGION_TERMS)) {
     add('title_has_region_signal', 8);
+  }
+
+  if (FOCUS_SIGNAL_TERMS.length > 0 && containsTerm(titleLower, FOCUS_SIGNAL_TERMS)) {
+    add('title_has_focus_signal', 16);
   }
 
   try {

@@ -47,7 +47,7 @@ export async function handleCandidateFetchQueue(batch: MessageBatch<CandidateFet
         candidateId: row.candidateId,
         rawUrl: row.rawUrl,
         requiresUrlResolution: row.requiresUrlResolution,
-      });
+      }, env);
 
       const pendingRemaining = await countPendingCandidateFetchWorkItems(env.AGENT_DB, body.runId);
       const candidate = await getCandidateExtractResultById(env.AGENT_DB, body.runId, row.candidateId);

@@ -66,6 +66,17 @@ Authority is the repo-root `.env.dev` pattern used across the monorepo.
 - Sensitive values: Worker secrets synced with existing scripts and conventions.
 - Reuse existing secret-sync workflow and avoid introducing new secret systems.
 
+### Runtime Focus Parameters (No Story Hardcoding)
+
+- Keep week-ending story focus in runtime input, not in source code.
+- Set optional `DISCOVERY_FOCUS_JSON` in Worker vars/secrets.
+- Supported fields:
+  - `focusSignalTerms`
+  - `googleNewsGenericQueries`
+  - `newsdataQueries`
+  - `priorityWatchlistHosts`
+- These are merged at runtime with the default discovery behavior so weekly priorities can change without code edits.
+
 ## Deployments
 
 Deployments follow the same broad approach as existing workers, but this worker remains standalone in runtime/process boundaries.

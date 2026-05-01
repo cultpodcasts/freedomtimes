@@ -19,6 +19,7 @@ import {
   STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE,
 } from './pipelineTerms.js';
 import { fetchTextWithCache } from './httpCache.js';
+import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.js';
 import type { DraftPayload, PipelineResult } from './types.js';
 
 type UrlResolver = (html: string, pageUrl: string) => string | undefined;
@@ -260,25 +261,14 @@ function loadResolverHostConfigs(): Map<string, ResolverKey> {
   }
 }
 
-const UK_EU_HOST_SUFFIXES = [
-  '.uk', '.ie', '.fr', '.de', '.es', '.it', '.nl', '.be', '.se', '.no', '.dk', '.pl', '.ro', '.pt', '.gr', '.cz', '.at', '.fi', '.ch',
-];
-
-const UK_EU_REGION_TERMS = [
-  'uk', 'united kingdom', 'england', 'scotland', 'wales', 'northern ireland', 'london',
-  'europe', 'european', 'france', 'germany', 'spain', 'italy', 'netherlands', 'belgium',
-  'sweden', 'norway', 'denmark', 'ireland', 'poland', 'romania', 'portugal', 'greece',
-  'czech republic', 'austria', 'finland', 'switzerland',
-];
-
-function isLikelyUkOrEuHost(host: string): boolean {
+function isLikelyConfiguredRegionalHost(host: string): boolean {
   const normalized = normalizeHost(host);
-  return UK_EU_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix));
+  return REGIONAL_HOST_SUFFIXES.some((suffix) => normalized.endsWith(suffix.toLowerCase()));
 }
 
-function hasUkOrEuSignalInText(text: string): boolean {
+function hasConfiguredRegionalSignalInText(text: string): boolean {
   const normalized = normalizeMatchingText(text.toLowerCase());
-  return includesAnyPhrase(normalized, UK_EU_REGION_TERMS);
+  return includesAnyPhrase(normalized, REGION_TERMS);
 }
 
 function decodeHtmlHref(value: string): string {
@@ -692,7 +682,7 @@ export async function runPipeline(
   const title = detectTitle(html, 'Untitled source story');
   const text = stripHtml(html);
   const relevance = evaluateRelevance(`${title} ${text}`);
-  const leadRegionSignal = hasUkOrEuSignalInText(`${title} ${text.slice(0, 2800)}`);
+  const leadRegionSignal = hasConfiguredRegionalSignalInText(`${title} ${text.slice(0, 2800)}`);
 
   if (!isCultTopicPrecise(title, text, effectiveUrl, language)) {
     return {
@@ -712,12 +702,12 @@ export async function runPipeline(
     };
   }
 
-  if (!isLikelyUkOrEuHost(source.host) && !leadRegionSignal) {
+  if (!isLikelyConfiguredRegionalHost(source.host) && !leadRegionSignal) {
     return {
       status: 'rejected',
       source,
       relevance,
-      reason: 'Story does not have a UK/EU source or UK/EU geographic signal',
+      reason: 'Story does not have a configured regional source or configured regional geographic signal',
     };
   }
 

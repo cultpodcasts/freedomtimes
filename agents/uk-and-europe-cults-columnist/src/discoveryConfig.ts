@@ -8,6 +8,8 @@ type DiscoveryConfig = {
   newsdataLanguages?: unknown;
   newsdataQueries?: unknown;
   regionTerms?: unknown;
+  regionalHostSuffixes?: unknown;
+  focusSignalTerms?: unknown;
 };
 
 type GoogleNewsQueryDefinitions = {
@@ -116,6 +118,8 @@ function loadDiscoveryConfig(): {
   newsdataLanguages: string;
   newsdataQueries: string[];
   regionTerms: string[];
+  regionalHostSuffixes: string[];
+  focusSignalTerms: string[];
 } {
   const configUrl = new URL('../discovery-config.json', import.meta.url);
   const raw = readFileSync(configUrl, 'utf-8');
@@ -134,17 +138,153 @@ function loadDiscoveryConfig(): {
     newsdataLanguages: expectString(parsed.newsdataLanguages, 'newsdataLanguages'),
     newsdataQueries: expectStringArray(parsed.newsdataQueries, 'newsdataQueries'),
     regionTerms: expectStringArray(parsed.regionTerms, 'regionTerms'),
+    regionalHostSuffixes: parsed.regionalHostSuffixes
+      ? expectStringArray(parsed.regionalHostSuffixes, 'regionalHostSuffixes')
+      : [],
+    focusSignalTerms: parsed.focusSignalTerms
+      ? expectStringArray(parsed.focusSignalTerms, 'focusSignalTerms')
+      : [],
   };
+}
+
+function uniqueOrdered(values: string[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    ordered.push(normalized);
+  }
+  return ordered;
+}
+
+function mergeCsv(base: string, extra: string): string {
+  const baseValues = base
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const extraValues = extra
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  return uniqueOrdered([...baseValues, ...extraValues]).join(',');
+}
+
+type DiscoveryFocusInput = {
+  googleNewsCountryTerms?: unknown;
+  googleNewsGenericQueries?: unknown;
+  newsdataCountryCodes?: unknown;
+  newsdataLanguages?: unknown;
+  newsdataQueries?: unknown;
+  regionTerms?: unknown;
+  priorityWatchlistHosts?: unknown;
+  googleNewsWatchlistSites?: unknown;
+  regionalHostSuffixes?: unknown;
+  focusSignalTerms?: unknown;
+};
+
+function loadDiscoveryFocusInput(): DiscoveryFocusInput | null {
+  const inline = process.env.DISCOVERY_FOCUS_JSON?.trim();
+  const filePath = process.env.DISCOVERY_FOCUS_FILE?.trim();
+
+  if (inline) {
+    return JSON.parse(inline) as DiscoveryFocusInput;
+  }
+
+  if (filePath) {
+    const raw = readFileSync(filePath, 'utf-8');
+    return JSON.parse(raw) as DiscoveryFocusInput;
+  }
+
+  return null;
 }
 
 const DISCOVERY_CONFIG = loadDiscoveryConfig();
 const WATCHLIST_SITES = loadWatchlistSites();
+const DISCOVERY_FOCUS_INPUT = loadDiscoveryFocusInput();
 
-export const PRIORITY_WATCHLIST_HOSTS = WATCHLIST_SITES;
-export const GOOGLE_NEWS_WATCHLIST_SITES = WATCHLIST_SITES;
-export const GOOGLE_NEWS_COUNTRY_TERMS = DISCOVERY_CONFIG.googleNewsCountryTerms;
-export const GOOGLE_NEWS_GENERIC_QUERIES = DISCOVERY_CONFIG.googleNewsGenericQueries;
-export const NEWSDATA_COUNTRY_CODES = DISCOVERY_CONFIG.newsdataCountryCodes;
-export const NEWSDATA_LANGUAGES = DISCOVERY_CONFIG.newsdataLanguages;
-export const NEWSDATA_QUERIES = DISCOVERY_CONFIG.newsdataQueries;
-export const REGION_TERMS = DISCOVERY_CONFIG.regionTerms;
+const MERGED_DISCOVERY_CONFIG = (() => {
+  if (!DISCOVERY_FOCUS_INPUT) {
+    return DISCOVERY_CONFIG;
+  }
+
+  return {
+    googleNewsCountryTerms: uniqueOrdered([
+      ...DISCOVERY_CONFIG.googleNewsCountryTerms,
+      ...(DISCOVERY_FOCUS_INPUT.googleNewsCountryTerms
+        ? expectStringArray(DISCOVERY_FOCUS_INPUT.googleNewsCountryTerms, 'focus.googleNewsCountryTerms')
+        : []),
+    ]),
+    googleNewsGenericQueries: uniqueOrdered([
+      ...DISCOVERY_CONFIG.googleNewsGenericQueries,
+      ...(DISCOVERY_FOCUS_INPUT.googleNewsGenericQueries
+        ? expectStringArray(DISCOVERY_FOCUS_INPUT.googleNewsGenericQueries, 'focus.googleNewsGenericQueries')
+        : []),
+    ]),
+    newsdataCountryCodes: DISCOVERY_FOCUS_INPUT.newsdataCountryCodes
+      ? mergeCsv(
+          DISCOVERY_CONFIG.newsdataCountryCodes,
+          expectString(DISCOVERY_FOCUS_INPUT.newsdataCountryCodes, 'focus.newsdataCountryCodes'),
+        )
+      : DISCOVERY_CONFIG.newsdataCountryCodes,
+    newsdataLanguages: DISCOVERY_FOCUS_INPUT.newsdataLanguages
+      ? mergeCsv(
+          DISCOVERY_CONFIG.newsdataLanguages,
+          expectString(DISCOVERY_FOCUS_INPUT.newsdataLanguages, 'focus.newsdataLanguages'),
+        )
+      : DISCOVERY_CONFIG.newsdataLanguages,
+    newsdataQueries: uniqueOrdered([
+      ...DISCOVERY_CONFIG.newsdataQueries,
+      ...(DISCOVERY_FOCUS_INPUT.newsdataQueries
+        ? expectStringArray(DISCOVERY_FOCUS_INPUT.newsdataQueries, 'focus.newsdataQueries')
+        : []),
+    ]),
+    regionTerms: uniqueOrdered([
+      ...DISCOVERY_CONFIG.regionTerms,
+      ...(DISCOVERY_FOCUS_INPUT.regionTerms
+        ? expectStringArray(DISCOVERY_FOCUS_INPUT.regionTerms, 'focus.regionTerms')
+        : []),
+    ]),
+    regionalHostSuffixes: uniqueOrdered([
+      ...DISCOVERY_CONFIG.regionalHostSuffixes,
+      ...(DISCOVERY_FOCUS_INPUT.regionalHostSuffixes
+        ? expectStringArray(DISCOVERY_FOCUS_INPUT.regionalHostSuffixes, 'focus.regionalHostSuffixes')
+        : []),
+    ]),
+    focusSignalTerms: uniqueOrdered([
+      ...DISCOVERY_CONFIG.focusSignalTerms,
+      ...(DISCOVERY_FOCUS_INPUT.focusSignalTerms
+        ? expectStringArray(DISCOVERY_FOCUS_INPUT.focusSignalTerms, 'focus.focusSignalTerms')
+        : []),
+    ]),
+  };
+})();
+
+const MERGED_WATCHLIST_SITES = (() => {
+  if (!DISCOVERY_FOCUS_INPUT) {
+    return WATCHLIST_SITES;
+  }
+
+  const extraPriority = DISCOVERY_FOCUS_INPUT.priorityWatchlistHosts
+    ? expectStringArray(DISCOVERY_FOCUS_INPUT.priorityWatchlistHosts, 'focus.priorityWatchlistHosts')
+    : [];
+  const extraGoogle = DISCOVERY_FOCUS_INPUT.googleNewsWatchlistSites
+    ? expectStringArray(DISCOVERY_FOCUS_INPUT.googleNewsWatchlistSites, 'focus.googleNewsWatchlistSites')
+    : [];
+
+  return uniqueOrdered([...WATCHLIST_SITES, ...extraPriority, ...extraGoogle]);
+})();
+
+export const PRIORITY_WATCHLIST_HOSTS = MERGED_WATCHLIST_SITES;
+export const GOOGLE_NEWS_WATCHLIST_SITES = MERGED_WATCHLIST_SITES;
+export const GOOGLE_NEWS_COUNTRY_TERMS = MERGED_DISCOVERY_CONFIG.googleNewsCountryTerms;
+export const GOOGLE_NEWS_GENERIC_QUERIES = MERGED_DISCOVERY_CONFIG.googleNewsGenericQueries;
+export const NEWSDATA_COUNTRY_CODES = MERGED_DISCOVERY_CONFIG.newsdataCountryCodes;
+export const NEWSDATA_LANGUAGES = MERGED_DISCOVERY_CONFIG.newsdataLanguages;
+export const NEWSDATA_QUERIES = MERGED_DISCOVERY_CONFIG.newsdataQueries;
+export const REGION_TERMS = MERGED_DISCOVERY_CONFIG.regionTerms;
+export const REGIONAL_HOST_SUFFIXES = MERGED_DISCOVERY_CONFIG.regionalHostSuffixes;
+export const FOCUS_SIGNAL_TERMS = MERGED_DISCOVERY_CONFIG.focusSignalTerms;

@@ -1,4 +1,5 @@
 import type { Env } from '../types';
+import { loadDiscoveryFocus } from './discoveryFocus';
 
 export type DynamicSource = {
   id: string;
@@ -128,14 +129,18 @@ async function listCultTerms(db: D1Database): Promise<string[]> {
 
 export async function buildDynamicSources(db: D1Database, env: Env): Promise<DynamicSource[]> {
   const seed = daySeed();
+  const focus = loadDiscoveryFocus(env);
   const [watchlistHosts, cultTerms] = await Promise.all([listWatchlistHosts(db), listCultTerms(db)]);
 
-  const rotatedHosts = rotate(watchlistHosts, seed).slice(0, GOOGLE_WATCHLIST_HOST_LIMIT);
-  const rotatedTerms = rotate(cultTerms, seed).slice(0, GOOGLE_TERM_LIMIT);
+  const mergedWatchlistHosts = Array.from(new Set([...watchlistHosts, ...focus.priorityWatchlistHosts]));
+  const mergedCultTerms = Array.from(new Set([...cultTerms, ...focus.focusSignalTerms]));
+  const rotatedHosts = rotate(mergedWatchlistHosts, seed).slice(0, GOOGLE_WATCHLIST_HOST_LIMIT);
+  const rotatedTerms = rotate(mergedCultTerms, seed).slice(0, GOOGLE_TERM_LIMIT);
 
   const googleQueries = [
     ...rotatedHosts.flatMap((host) => rotatedTerms.map((term) => `site:${host} \"${term}\"`)),
     ...GOOGLE_GENERIC_QUERIES,
+    ...focus.googleNewsGenericQueries,
   ];
 
   const uniqueGoogleQueries = Array.from(new Set(googleQueries.map((q) => q.trim()).filter(Boolean)));
@@ -155,8 +160,8 @@ export async function buildDynamicSources(db: D1Database, env: Env): Promise<Dyn
 
   let newsDataSources: DynamicSource[] = [];
   if (newsDataEnabled && newsDataKey) {
-    const rotatedNewsDataTerms = rotate(cultTerms, seed + 11).slice(0, NEWSDATA_TERM_LIMIT);
-    const queries = Array.from(new Set([...rotatedNewsDataTerms, ...NEWSDATA_GENERIC_QUERIES]));
+    const rotatedNewsDataTerms = rotate(mergedCultTerms, seed + 11).slice(0, NEWSDATA_TERM_LIMIT);
+    const queries = Array.from(new Set([...rotatedNewsDataTerms, ...NEWSDATA_GENERIC_QUERIES, ...focus.newsdataQueries]));
 
     const mapped: Array<DynamicSource | null> = queries.map((query, idx) => {
         const url = buildNewsDataUrl(query, env);

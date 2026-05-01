@@ -7,7 +7,9 @@ import {
   updateCandidateFetchState,
 } from '../lib/db';
 import { describeDynamicSourceFromUrl } from '../lib/dynamicSources';
+import { loadDiscoveryFocus } from '../lib/discoveryFocus';
 import { parseFeedItems } from '../lib/rss';
+import type { Env } from '../types';
 
 const ARTICLE_CONCURRENCY = 5;
 
@@ -46,7 +48,7 @@ function articleStatusForHttpStatus(status: number): 'failed' | 'blocked' {
   return 'failed';
 }
 
-const RELEVANCE_TERMS = [
+const DEFAULT_RELEVANCE_TERMS = [
   'cult',
   'sect',
   'high-control',
@@ -67,21 +69,21 @@ function stripHtml(value: string): string {
     .trim();
 }
 
-function isLikelyRelevantArticle(rawUrl: string, resolvedUrl: string, body: string): boolean {
+function isLikelyRelevantArticle(rawUrl: string, resolvedUrl: string, body: string, relevanceTerms: string[]): boolean {
   const urlText = `${rawUrl} ${resolvedUrl}`.toLowerCase();
   const text = stripHtml(body).toLowerCase().slice(0, 250000);
   const haystack = `${urlText} ${text}`;
-  return RELEVANCE_TERMS.some((term) => haystack.includes(term));
+  return relevanceTerms.some((term) => haystack.includes(term));
 }
 
-function buildRelevanceTrace(rawUrl: string, resolvedUrl: string, body: string): {
+function buildRelevanceTrace(rawUrl: string, resolvedUrl: string, body: string, relevanceTerms: string[]): {
   matchedTerms: string[];
   scannedChars: number;
 } {
   const urlText = `${rawUrl} ${resolvedUrl}`.toLowerCase();
   const text = stripHtml(body).toLowerCase().slice(0, 250000);
   const haystack = `${urlText} ${text}`;
-  const matchedTerms = RELEVANCE_TERMS.filter((term) => haystack.includes(term));
+  const matchedTerms = relevanceTerms.filter((term) => haystack.includes(term));
   return {
     matchedTerms,
     scannedChars: haystack.length,
@@ -92,7 +94,13 @@ export async function processCandidateFetchWorkItem(
   db: D1Database,
   r2: R2Bucket,
   item: CandidateWorkItem,
+  env: Env,
 ): Promise<'ok' | 'failed' | 'blocked' | 'cached' | 'filtered'> {
+  const focus = loadDiscoveryFocus(env);
+  const relevanceTerms = Array.from(
+    new Set([...DEFAULT_RELEVANCE_TERMS, ...focus.focusSignalTerms.map((term) => term.toLowerCase())]),
+  );
+
   try {
     const cached = await getFreshHttpCacheEntryByRequestUrl(db, item.rawUrl);
     if (cached && cached.status >= 200 && cached.status < 300) {
@@ -150,7 +158,7 @@ export async function processCandidateFetchWorkItem(
     }
 
     const body = await response.text();
-    const relevance = buildRelevanceTrace(item.rawUrl, resolvedUrl, body);
+    const relevance = buildRelevanceTrace(item.rawUrl, resolvedUrl, body, relevanceTerms);
     const relevant = relevance.matchedTerms.length > 0;
     if (!relevant) {
       await updateCandidateFetchState(db, {
@@ -256,6 +264,7 @@ export async function runCandidateExtractStage(
   db: D1Database,
   r2: R2Bucket,
   runId: string,
+  _env?: Env,
 ): Promise<{ inserted: number }> {
   void r2;
   const feeds = await listEnabledFeeds(db);

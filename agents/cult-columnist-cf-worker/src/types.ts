@@ -19,6 +19,8 @@ export type Env = {
   NEWSDATA_LANGUAGES?: string;
   NEWSDATA_QUERY_LIMIT?: string;
   NEWSDATA_TIMEFRAME_HOURS?: string;
+  /** Optional JSON payload to steer weekly discovery focus without code changes. */
+  DISCOVERY_FOCUS_JSON?: string;
   /** Must be explicitly set to 'true' alongside AUTH0_DOMAIN=test.auth0.com to enable test token bypass. Never set in staging/production. */
   ALLOW_TEST_TOKENS?: string;
 };

@@ -42,7 +42,7 @@ export class CultAgentOrchestrator extends Agent<Env, AgentState> {
     try {
       if (nextStage === 'candidate_extract') {
         const stageResult = await this.runFiber(`approve:${runId}:${nextStage}`, async (ctx) => {
-          const seedResult = await runCandidateExtractStage(this.env.AGENT_DB, this.env.AGENT_STORE, runId);
+          const seedResult = await runCandidateExtractStage(this.env.AGENT_DB, this.env.AGENT_STORE, runId, this.env);
           const pendingItems = await listPendingCandidateFetchWorkItems(this.env.AGENT_DB, runId);
 
           if (pendingItems.length === 0) {
@@ -138,7 +138,7 @@ export class CultAgentOrchestrator extends Agent<Env, AgentState> {
       return { stage, ...metrics };
     }
 
-    const metrics = await runCandidateExtractStage(this.env.AGENT_DB, this.env.AGENT_STORE, runId);
+    const metrics = await runCandidateExtractStage(this.env.AGENT_DB, this.env.AGENT_STORE, runId, this.env);
     await setRunStatus(this.env.AGENT_DB, runId, 'awaiting_review_candidate_extract', stage);
     return { stage, ...metrics };
   }

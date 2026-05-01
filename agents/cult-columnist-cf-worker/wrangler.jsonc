@@ -8,6 +8,8 @@
 	"vars": {
 		"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 		"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles"
+		// Optional: DISCOVERY_FOCUS_JSON can be set per environment to steer weekly
+		// discovery focus without hardcoding topics in source.
 	},
 
 	// Secrets (never in wrangler.jsonc):
