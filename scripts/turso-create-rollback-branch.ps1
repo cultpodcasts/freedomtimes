@@ -4,9 +4,11 @@ param(
     [string]$ProductionDatabaseName,
     [string]$BranchName,
     [string]$MetadataDirectory = ".release/rollback-branches",
+    [string]$TursoGroup,
     [string]$Notes,
     [switch]$AllowProduction,
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$UseWslTurso
 )
 
 Set-StrictMode -Version Latest
@@ -50,8 +52,13 @@ if (-not (Test-CommandAvailable -CommandName "git")) {
     throw "git is required to capture release metadata."
 }
 
-if (-not (Test-CommandAvailable -CommandName "turso")) {
-    throw "Turso CLI is required. Install Turso CLI and run 'turso auth login'."
+if ($UseWslTurso) {
+    if (-not (Test-CommandAvailable -CommandName "wsl")) {
+        throw "wsl is required when -UseWslTurso is set (run Turso installer inside Ubuntu WSL: https://get.tur.so/install.sh )."
+    }
+}
+elseif (-not (Test-CommandAvailable -CommandName "turso")) {
+    throw "Turso CLI is required. Install Turso CLI and run 'turso auth login', or re-run with -UseWslTurso after installing Turso in WSL."
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -73,11 +80,29 @@ try {
     $isDirty = $dirtyResult.Output.Count -gt 0
 
     if ($DryRun) {
-        Write-Host "[dry-run] turso db create $BranchName --from-db $ProductionDatabaseName" -ForegroundColor Yellow
+        $dryExtra = if ([string]::IsNullOrWhiteSpace($TursoGroup)) { "" } else { " --group $TursoGroup" }
+        Write-Host "[dry-run] turso db create $BranchName --from-db $ProductionDatabaseName$dryExtra" -ForegroundColor Yellow
     }
     else {
         Write-Host "Creating Turso rollback branch '$BranchName' from '$ProductionDatabaseName'" -ForegroundColor Cyan
-        Invoke-External -FilePath "turso" -Arguments @("db", "create", $BranchName, "--from-db", $ProductionDatabaseName)
+        if ($UseWslTurso) {
+            function Escape-BashSingleQuoted {
+                param([string]$Value)
+                return "'" + ($Value -replace "'", "'\''") + "'"
+            }
+            $bashLine = '$HOME/.turso/turso db create ' + (Escape-BashSingleQuoted $BranchName) + ' --from-db ' + (Escape-BashSingleQuoted $ProductionDatabaseName)
+            if (-not [string]::IsNullOrWhiteSpace($TursoGroup)) {
+                $bashLine += ' --group ' + (Escape-BashSingleQuoted $TursoGroup)
+            }
+            $null = Invoke-External -FilePath "wsl" -Arguments @("bash", "-lc", $bashLine)
+        }
+        else {
+            $tursoArgs = @("db", "create", $BranchName, "--from-db", $ProductionDatabaseName)
+            if (-not [string]::IsNullOrWhiteSpace($TursoGroup)) {
+                $tursoArgs += @("--group", $TursoGroup)
+            }
+            $null = Invoke-External -FilePath "turso" -Arguments $tursoArgs
+        }
         Write-Host "Turso rollback branch created." -ForegroundColor Green
     }
 

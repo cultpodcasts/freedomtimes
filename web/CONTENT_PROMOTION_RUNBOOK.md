@@ -127,6 +127,26 @@ Notes:
 - `archives` usually include media references; ensure required files exist in production media storage.
 - If create fails because slug exists, use `content get` on production and then `content update ... --rev <token>`.
 
+### Featured media and bylines (posts)
+
+Staging media IDs and R2 keys do **not** exist in production. Promoting only the `data` JSON without fixing `featured_image` leaves production pointing at missing media (broken hero images).
+
+Bylines are **not** set by copying `primaryBylineId` in a raw JSON file: the API expects a `bylines` array on create/update (see EmDash `contentUpdateBody`). Use `bylines: [{ "bylineId": "<id>" }]` in a follow-up `PUT` to `/_emdash/api/content/<collection>/<slug>`, or use the scripted promoter below.
+
+**Scripted path (recommended for `posts`):** from repo root, after `emdash login` for both URLs:
+
+```powershell
+node web/scripts/promote-post-staging-to-production.mjs posts <slug>
+```
+
+This script:
+
+1. Exports published staging content with the CLI (UTF-8-safe).
+2. If `data.featured_image` references a media id that does not exist in production, downloads the file from the **public** staging URL `/_emdash/api/media/file/<storageKey>`, uploads it to production, and rewrites `featured_image` before `content create` / `content update`.
+3. If staging has `primaryBylineId`, sends `PUT` with `bylines: [{ bylineId }]`, then `publish`.
+
+Ensure the byline id already exists in production (for example list `GET /_emdash/api/admin/bylines` with a bearer token). If the guest author only exists on staging, create the matching byline in production first.
+
 Required content-integrity rule:
 
 - Before publishing production content, compare the staged source fields with the production fields that matter for rendering.

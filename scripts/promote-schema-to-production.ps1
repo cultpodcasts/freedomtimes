@@ -112,17 +112,35 @@ function Get-StoredEmdashAccessToken {
 
     try {
         $auth = Get-Content -Path $authPath -Raw | ConvertFrom-Json
-        $entry = $auth.PSObject.Properties[$Url]
-        if ($null -eq $entry) {
-            return $null
-        }
-
-        return $entry.Value.accessToken
     }
     catch {
-        Write-Error "Failed to read stored EmDash auth from $authPath. $_"
+        Write-Error "Failed to parse EmDash auth JSON from $authPath. $_"
         exit 1
     }
+
+    $entry = $auth.PSObject.Properties[$Url]
+    if ($null -eq $entry) {
+        return $null
+    }
+
+    $value = $entry.Value
+    if ($value.PSObject.Properties["accessToken"] -and -not [string]::IsNullOrWhiteSpace($value.accessToken)) {
+        return $value.accessToken
+    }
+
+    if ($value.PSObject.Properties["refreshToken"] -and -not [string]::IsNullOrWhiteSpace($value.refreshToken)) {
+        throw @"
+Stored EmDash OAuth credential for $Url has no accessToken (likely expired).
+Refresh it interactively, then re-run this script:
+
+  cd web
+  npx emdash login -u $Url
+
+Or pass -StagingToken / -ProductionToken, or set EMDASH_STAGING_TOKEN / EMDASH_PRODUCTION_TOKEN.
+"@
+    }
+
+    return $null
 }
 
 function Invoke-EmdashSchema {
@@ -255,7 +273,7 @@ foreach ($slug in $stagingSchema.Keys) {
         foreach ($f in $stagingCol.fields) { $stagingFieldSlugs[$f.slug] = $true }
         foreach ($f in $prodCol.fields) {
             if (-not $stagingFieldSlugs.ContainsKey($f.slug)) {
-                $warnings.Add("  WARN: field '$($f.slug)' exists in production.$slug but not in staging.$slug — not removed (review manually)")
+                $warnings.Add("  WARN: field '$($f.slug)' exists in production.$slug but not in staging.$slug - not removed (review manually)")
             }
         }
     }
@@ -264,7 +282,7 @@ foreach ($slug in $stagingSchema.Keys) {
 # 4. Collections in production but not in staging — warn only
 foreach ($slug in $productionSchema.Keys) {
     if (-not $stagingSchema.ContainsKey($slug)) {
-        $warnings.Add("  WARN: collection '$slug' exists in production but not in staging — not removed (review manually)")
+        $warnings.Add("  WARN: collection '$slug' exists in production but not in staging - not removed (review manually)")
     }
 }
 
@@ -351,7 +369,7 @@ foreach ($item in $pendingCommands) {
         $applied++
     }
     else {
-        Write-Host "    FAILED — stopping. Review production state before retrying." -ForegroundColor Red
+        Write-Host "    FAILED - stopping. Review production state before retrying." -ForegroundColor Red
         $failed++
         break
     }
