@@ -88,6 +88,10 @@ The current starter prints either:
 ## Runtime Focus Parameters (No Story Hardcoding)
 - Keep weekly story focus out of source code; pass it as runtime input.
 - `DISCOVERY_MAX_AGE_HOURS` is required runtime input (set `168` for weekly runs).
+- Google News discovery runs **each query against every configured European locale** (`gl` / `hl` / `ceid`), not only the UK edition, so French and other regional outlets surface in line with local Google News rankings.
+- Each locale search **ANDs** the discovery query with a short OR-group of keywords: English **cult** everywhere, plus **secte** (and similar) for French editions, **sect** / **sekt** where those are the natural words, **Sekte** for German, and other local equivalents as appropriate for that `hl`.
+- European Google News editions and per-locale cult keyword rules live in `data/google-news-europe-locales.json` and `data/google-news-locale-cult-keywords.json` (editable without changing TypeScript).
+- Optional: `GOOGLE_NEWS_LOCALE_IDS` (comma-separated ids such as `FR-fr,DE-de`) to restrict locales for faster runs; optional `GOOGLE_NEWS_TOTAL_CAP` to bound total RSS discoveries per run.
 - Use either `DISCOVERY_FOCUS_JSON` (inline JSON) or `DISCOVERY_FOCUS_FILE` (path to JSON file).
 - Focus input can extend discovery and ranking terms without changing code:
   - `focusSignalTerms`

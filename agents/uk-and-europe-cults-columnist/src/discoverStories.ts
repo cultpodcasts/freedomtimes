@@ -94,6 +94,12 @@ const CLUSTER_EXPANSION_MAX_TOTAL_QUERIES = Math.max(
   Number.parseInt(process.env.CLUSTER_EXPANSION_MAX_TOTAL_QUERIES ?? '6', 10) || 6,
 );
 
+/** Hard stop so multi-locale Google News runs cannot fetch without bound. */
+const GOOGLE_NEWS_TOTAL_CAP = Math.max(
+  1000,
+  Number.parseInt(process.env.GOOGLE_NEWS_TOTAL_CAP ?? '25000', 10) || 25000,
+);
+
 const NEWSDATA_ENABLED = (process.env.NEWSDATA_ENABLED ?? 'false').toLowerCase() === 'true';
 const NEWSIO_API_KEY = process.env.NEWSIO_API_KEY ?? process.env.NEWSDATA_API_KEY;
 const NEWSDATA_BASE_URL = 'https://newsdata.io/api/1/latest';
@@ -427,9 +433,192 @@ function parseGoogleNewsFeed(xml: string): GoogleNewsFeedItem[] {
   return items;
 }
 
-function buildGoogleNewsRssUrl(query: string): string {
-  const encoded = encodeURIComponent(query);
-  return `https://news.google.com/rss/search?q=${encoded}&hl=en-GB&gl=GB&ceid=GB:en`;
+type GoogleNewsLocale = {
+  /** Stable id for logs and optional GOOGLE_NEWS_LOCALE_IDS filter (e.g. FR-fr, DE-de). */
+  id: string;
+  hl: string;
+  gl: string;
+  ceid: string;
+};
+
+type CultKeywordRuleJson = {
+  hlStartsWith?: string;
+  hlEquals?: string;
+  extraTerms: string[];
+};
+
+type CultKeywordsConfigJson = {
+  baseTerms: string[];
+  fallbackExtraTerms: string[];
+  rules: CultKeywordRuleJson[];
+};
+
+let europeGoogleNewsLocalesCache: GoogleNewsLocale[] | undefined;
+let cultKeywordsConfigCache: CultKeywordsConfigJson | undefined;
+
+function loadEuropeGoogleNewsLocalesFromFile(): GoogleNewsLocale[] {
+  if (europeGoogleNewsLocalesCache) {
+    return europeGoogleNewsLocalesCache;
+  }
+
+  try {
+    const configUrl = new URL('../data/google-news-europe-locales.json', import.meta.url);
+    const raw = readFileSync(configUrl, 'utf-8');
+    const parsed = JSON.parse(raw) as { locales?: unknown };
+    if (!parsed.locales || !Array.isArray(parsed.locales)) {
+      throw new Error('google-news-europe-locales.json must contain a locales array');
+    }
+
+    const locales: GoogleNewsLocale[] = [];
+    for (const item of parsed.locales) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        typeof (item as GoogleNewsLocale).id === 'string' &&
+        typeof (item as GoogleNewsLocale).hl === 'string' &&
+        typeof (item as GoogleNewsLocale).gl === 'string' &&
+        typeof (item as GoogleNewsLocale).ceid === 'string'
+      ) {
+        locales.push(item as GoogleNewsLocale);
+      }
+    }
+
+    if (locales.length === 0) {
+      throw new Error('google-news-europe-locales.json contained no valid locale entries');
+    }
+
+    europeGoogleNewsLocalesCache = locales;
+    return locales;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[agent] failed to load google-news-europe-locales.json', { message });
+    europeGoogleNewsLocalesCache = [];
+    return [];
+  }
+}
+
+function loadCultKeywordsConfigFromFile(): CultKeywordsConfigJson {
+  if (cultKeywordsConfigCache) {
+    return cultKeywordsConfigCache;
+  }
+
+  try {
+    const configUrl = new URL('../data/google-news-locale-cult-keywords.json', import.meta.url);
+    const raw = readFileSync(configUrl, 'utf-8');
+    const parsed = JSON.parse(raw) as CultKeywordsConfigJson;
+    if (!Array.isArray(parsed.baseTerms) || !parsed.baseTerms.every((t) => typeof t === 'string')) {
+      throw new Error('google-news-locale-cult-keywords.json baseTerms must be a string array');
+    }
+    if (!Array.isArray(parsed.fallbackExtraTerms) || !parsed.fallbackExtraTerms.every((t) => typeof t === 'string')) {
+      throw new Error('google-news-locale-cult-keywords.json fallbackExtraTerms must be a string array');
+    }
+    if (!Array.isArray(parsed.rules)) {
+      throw new Error('google-news-locale-cult-keywords.json rules must be an array');
+    }
+    for (const rule of parsed.rules) {
+      if (!rule || typeof rule !== 'object' || !Array.isArray(rule.extraTerms)) {
+        throw new Error('each rule must have extraTerms array');
+      }
+      if (!rule.extraTerms.every((t) => typeof t === 'string')) {
+        throw new Error('rule.extraTerms must be strings');
+      }
+      if (!rule.hlStartsWith && !rule.hlEquals) {
+        throw new Error('each rule needs hlStartsWith or hlEquals');
+      }
+    }
+
+    cultKeywordsConfigCache = parsed;
+    return parsed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn('[agent] failed to load google-news-locale-cult-keywords.json', { message });
+    cultKeywordsConfigCache = {
+      baseTerms: ['cult', 'cults'],
+      fallbackExtraTerms: ['sect', 'sects', 'sekta'],
+      rules: [{ hlStartsWith: 'en', extraTerms: ['sect', 'sects'] }],
+    };
+    return cultKeywordsConfigCache;
+  }
+}
+
+function loadEuropeGoogleNewsLocales(): GoogleNewsLocale[] {
+  const all = loadEuropeGoogleNewsLocalesFromFile();
+  const localeIdsFilter = process.env.GOOGLE_NEWS_LOCALE_IDS?.trim();
+  if (!localeIdsFilter) {
+    return all;
+  }
+
+  const wanted = new Set(
+    localeIdsFilter
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+  const picked = all.filter((locale) => wanted.has(locale.id));
+  if (picked.length === 0) {
+    console.warn('[agent] GOOGLE_NEWS_LOCALE_IDS did not match any known locale id; using full European set');
+    return all;
+  }
+
+  return picked;
+}
+
+function uniquePreserveOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    ordered.push(value);
+  }
+  return ordered;
+}
+
+function hlMatchesCultKeywordRule(hlLower: string, rule: CultKeywordRuleJson): boolean {
+  if (rule.hlEquals !== undefined && hlLower === rule.hlEquals.toLowerCase()) {
+    return true;
+  }
+  if (rule.hlStartsWith !== undefined && hlLower.startsWith(rule.hlStartsWith.toLowerCase())) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * OR-group of cult-type keywords for this Google News edition (from
+ * data/google-news-locale-cult-keywords.json): base terms + first matching hl rule, else fallback.
+ */
+function buildLocalizedCultKeywordClause(locale: GoogleNewsLocale): string {
+  const config = loadCultKeywordsConfigFromFile();
+  const hlLower = locale.hl.toLowerCase();
+  const terms: string[] = [...config.baseTerms];
+
+  for (const rule of config.rules) {
+    if (hlMatchesCultKeywordRule(hlLower, rule)) {
+      terms.push(...rule.extraTerms);
+      return `(${uniquePreserveOrder(terms).join(' OR ')})`;
+    }
+  }
+
+  terms.push(...config.fallbackExtraTerms);
+  return `(${uniquePreserveOrder(terms).join(' OR ')})`;
+}
+
+/** AND the base discovery query with a locale-appropriate cult/sect keyword bucket (Google treats adjacent groups as AND). */
+function applyLocalizedCultTermsToGoogleNewsQuery(baseQuery: string, locale: GoogleNewsLocale): string {
+  const clause = buildLocalizedCultKeywordClause(locale);
+  return `${baseQuery} ${clause}`.trim();
+}
+
+function buildGoogleNewsRssUrl(query: string, locale: GoogleNewsLocale): string {
+  const fullQuery = applyLocalizedCultTermsToGoogleNewsQuery(query, locale);
+  const encodedQuery = encodeURIComponent(fullQuery);
+  const encodedHl = encodeURIComponent(locale.hl);
+  const encodedCeid = encodeURIComponent(locale.ceid);
+  return `https://news.google.com/rss/search?q=${encodedQuery}&hl=${encodedHl}&gl=${locale.gl}&ceid=${encodedCeid}`;
 }
 
 type NewsDataResult = {
@@ -867,85 +1056,94 @@ function buildExpansionQueries(scored: DiscoveredStory[]): string[] {
 }
 
 async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: string): Promise<DiscoveredStory[]> {
+  const locales = loadEuropeGoogleNewsLocales();
   const discovered: DiscoveredStory[] = [];
   const seen = new Set<string>();
-  // Google News RSS search returns up to 100 items; consume the full page per query.
-  const perQueryLimit = 100;
-  const globalCeiling = Math.max(queries.length * perQueryLimit, queries.length);
-  let queryIndex = 0;
+  // Google News RSS search returns up to 100 items per request; each query runs per locale edition.
+  const perRequestLimit = 100;
+  const totalRequests = queries.length * locales.length;
+  let requestIndex = 0;
 
   logDiscoveryProgress('google-news-start', {
     queryCount: queries.length,
-    globalCeiling,
+    localeCount: locales.length,
+    rssRequests: totalRequests,
+    totalCap: GOOGLE_NEWS_TOTAL_CAP,
   });
 
   for (const query of queries) {
-    queryIndex += 1;
+    for (const locale of locales) {
+      requestIndex += 1;
 
-    if (discovered.length >= globalCeiling) {
-      break;
-    }
-
-    if (queryIndex === 1 || queryIndex % 8 === 0) {
-      logDiscoveryProgress('google-news-running', {
-        queryIndex,
-        queryCount: queries.length,
-        discovered: discovered.length,
-      });
-    }
-
-    const rssUrl = buildGoogleNewsRssUrl(query);
-
-    try {
-      const response = await fetchTextWithCache(rssUrl, {
-        headers: {
-          'User-Agent': 'FreedomTimes-Local-Agent/0.1',
-          Accept: 'application/rss+xml, application/xml, text/xml',
-        },
-      });
-
-      if (!response.ok) {
-        continue;
-      }
-
-      const parsed = parseGoogleNewsFeed(response.text);
-
-      let addedForQuery = 0;
-
-      for (const item of parsed) {
-        if (discovered.length >= globalCeiling || addedForQuery >= perQueryLimit) {
-          break;
-        }
-
-        if (!isWithinFreshnessWindow(item.publishedAt)) {
-          continue;
-        }
-
-        let selectedUrl = item.originalUrlFromMetadata;
-        if (!selectedUrl) {
-          selectedUrl = await resolveGoogleNewsLink(item.link);
-        }
-
-        if (seen.has(selectedUrl)) {
-          continue;
-        }
-
-        seen.add(selectedUrl);
-        discovered.push({
-          url: selectedUrl,
-          title: item.title,
-          publishedAt: item.publishedAt,
-          sourceFeed: `${sourcePrefix}:${query}`,
-          sourceFormat: 'rss',
-          sourceCategory: 'aggregator-feed',
-          requiresUrlResolution: true,
-          publisherName: item.publisherName,
-          publisherUrl: item.publisherUrl,
+      if (discovered.length >= GOOGLE_NEWS_TOTAL_CAP) {
+        logDiscoveryProgress('google-news-complete', {
+          discovered: discovered.length,
+          cappedAtTotal: GOOGLE_NEWS_TOTAL_CAP,
         });
-        addedForQuery += 1;
+        return discovered;
       }
-    } catch {
-      // Continue with remaining queries.
+
+      if (requestIndex === 1 || requestIndex % 40 === 0) {
+        logDiscoveryProgress('google-news-running', {
+          requestIndex,
+          rssRequests: totalRequests,
+          discovered: discovered.length,
+        });
+      }
+
+      const rssUrl = buildGoogleNewsRssUrl(query, locale);
+
+      try {
+        const response = await fetchTextWithCache(rssUrl, {
+          headers: {
+            'User-Agent': 'FreedomTimes-Local-Agent/0.1',
+            Accept: 'application/rss+xml, application/xml, text/xml',
+          },
+        });
+
+        if (!response.ok) {
+          continue;
+        }
+
+        const parsed = parseGoogleNewsFeed(response.text);
+
+        let addedForRequest = 0;
+
+        for (const item of parsed) {
+          if (discovered.length >= GOOGLE_NEWS_TOTAL_CAP || addedForRequest >= perRequestLimit) {
+            break;
+          }
+
+          if (!isWithinFreshnessWindow(item.publishedAt)) {
+            continue;
+          }
+
+          let selectedUrl = item.originalUrlFromMetadata;
+          if (!selectedUrl) {
+            selectedUrl = await resolveGoogleNewsLink(item.link);
+          }
+
+          if (seen.has(selectedUrl)) {
+            continue;
+          }
+
+          seen.add(selectedUrl);
+          discovered.push({
+            url: selectedUrl,
+            title: item.title,
+            publishedAt: item.publishedAt,
+            sourceFeed: `${sourcePrefix}[${locale.id}]:${query}`,
+            sourceFormat: 'rss',
+            sourceCategory: 'aggregator-feed',
+            requiresUrlResolution: true,
+            publisherName: item.publisherName,
+            publisherUrl: item.publisherUrl,
+          });
+          addedForRequest += 1;
+        }
+      } catch {
+        // Continue with remaining locale/query pairs.
+      }
     }
   }
 
