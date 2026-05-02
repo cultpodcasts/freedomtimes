@@ -1,0 +1,104 @@
+{
+  "_docs": "Shared template groups for googleNewsQueryDefinitions.templates (language-agnostic).",
+  "groups": {
+    "cultCore": [
+      "cult",
+      "cults",
+      "sect",
+      "sects"
+    ],
+    "ukGeo": [
+      "UK",
+      "\"United Kingdom\"",
+      "Britain",
+      "England",
+      "Scotland",
+      "Wales",
+      "\"Northern Ireland\"",
+      "Ireland"
+    ],
+    "ukGeoTight": [
+      "UK",
+      "\"United Kingdom\"",
+      "Britain"
+    ],
+    "europeGeo": [
+      "Europe",
+      "European",
+      "Europa"
+    ],
+    "harmSignals": [
+      "\"coercive control\"",
+      "brainwashing",
+      "\"high control group\"",
+      "\"high control groups\"",
+      "\"religious abuse\"",
+      "\"spiritual abuse\""
+    ],
+    "nordicsGeo": [
+      "Sweden",
+      "Sverige",
+      "Norway",
+      "Norge",
+      "Denmark",
+      "Danmark"
+    ],
+    "czGeo": [
+      "\"Czech Republic\"",
+      "Cesko"
+    ],
+    "balkansGeo": [
+      "Croatia",
+      "Hrvatska",
+      "Serbia",
+      "Srbija",
+      "Slovenia",
+      "Slovenija",
+      "Bosnia",
+      "Montenegro",
+      "\"North Macedonia\"",
+      "Kosovo",
+      "Albania"
+    ],
+    "balticsGeo": [
+      "Estonia",
+      "Eesti",
+      "Latvia",
+      "Latvija",
+      "Lithuania",
+      "Lietuva"
+    ],
+    "microstatesGeo": [
+      "Malta",
+      "Luxembourg",
+      "Letzebuerg",
+      "Monaco",
+      "\"San Marino\"",
+      "Liechtenstein",
+      "Andorra",
+      "Vatican"
+    ],
+    "journalismSignals": [
+      "news",
+      "report",
+      "investigation"
+    ],
+    "justiceSignals": [
+      "trial",
+      "court",
+      "police",
+      "arrested"
+    ],
+    "victimSignals": [
+      "survivor",
+      "victims",
+      "abuse",
+      "exploitation"
+    ],
+    "mediaSignals": [
+      "documentary",
+      "netflix",
+      "series"
+    ]
+  }
+}

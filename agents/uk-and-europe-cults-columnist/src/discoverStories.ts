@@ -226,25 +226,26 @@ type WatchlistQueryBundle = {
   countryGroup: string;
 };
 
-let watchlistQueryBundlesCache: Record<string, WatchlistQueryBundle> | undefined;
+type WatchlistQueryBundlesFileCache = {
+  bundles: Record<string, WatchlistQueryBundle>;
+  europeCountryOrMergeGroupKeys: string[];
+};
+
+let watchlistQueryBundlesFileCache: WatchlistQueryBundlesFileCache | undefined;
 let europeCountryOrMultilingualCache: string[] | undefined;
 
-const EUROPE_COUNTRY_MERGE_GROUP_KEYS = [
-  'enEuropeCountryOr',
-  'deEuropeCountryOr',
-  'frEuropeCountryOr',
-  'itEuropeCountryOr',
-] as const;
-
-function loadWatchlistQueryBundles(): Record<string, WatchlistQueryBundle> {
-  if (watchlistQueryBundlesCache) {
-    return watchlistQueryBundlesCache;
+function loadWatchlistQueryBundlesFile(): WatchlistQueryBundlesFileCache {
+  if (watchlistQueryBundlesFileCache) {
+    return watchlistQueryBundlesFileCache;
   }
 
   try {
     const configUrl = new URL('../data/google-news-watchlist-query-bundles.json', import.meta.url);
     const raw = readFileSync(configUrl, 'utf-8');
-    const parsed = JSON.parse(raw) as { bundles?: Record<string, WatchlistQueryBundle> };
+    const parsed = JSON.parse(raw) as {
+      bundles?: Record<string, WatchlistQueryBundle>;
+      europeCountryOrMergeGroupKeys?: unknown;
+    };
     const rawBundles = parsed.bundles ?? {};
     const out: Record<string, WatchlistQueryBundle> = {};
     for (const [key, bundle] of Object.entries(rawBundles)) {
@@ -260,14 +261,25 @@ function loadWatchlistQueryBundles(): Record<string, WatchlistQueryBundle> {
       }
       out[key.toLowerCase()] = bundle;
     }
-    watchlistQueryBundlesCache = out;
-    return watchlistQueryBundlesCache;
+
+    const fromFile = Array.isArray(parsed.europeCountryOrMergeGroupKeys)
+      ? parsed.europeCountryOrMergeGroupKeys.filter(
+          (k): k is string => typeof k === 'string' && k.length > 0 && !k.startsWith('_'),
+        )
+      : [];
+
+    watchlistQueryBundlesFileCache = { bundles: out, europeCountryOrMergeGroupKeys: fromFile };
+    return watchlistQueryBundlesFileCache;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn('[agent] failed to load google-news-watchlist-query-bundles.json', { message });
-    watchlistQueryBundlesCache = {};
-    return watchlistQueryBundlesCache;
+    watchlistQueryBundlesFileCache = { bundles: {}, europeCountryOrMergeGroupKeys: [] };
+    return watchlistQueryBundlesFileCache;
   }
+}
+
+function loadWatchlistQueryBundles(): Record<string, WatchlistQueryBundle> {
+  return loadWatchlistQueryBundlesFile().bundles;
 }
 
 function resolveWatchlistCountryTerms(
@@ -275,9 +287,16 @@ function resolveWatchlistCountryTerms(
   groups: Record<string, string[] | undefined>,
 ): string[] | undefined {
   if (countryGroup === 'europeCountryOrMultilingual') {
+    const mergeKeys = loadWatchlistQueryBundlesFile().europeCountryOrMergeGroupKeys;
+    if (mergeKeys.length === 0) {
+      console.warn(
+        '[agent] europeCountryOrMultilingual bundle needs europeCountryOrMergeGroupKeys in google-news-watchlist-query-bundles.json',
+      );
+      return undefined;
+    }
     if (!europeCountryOrMultilingualCache) {
       const set = new Set<string>();
-      for (const key of EUROPE_COUNTRY_MERGE_GROUP_KEYS) {
+      for (const key of mergeKeys) {
         for (const term of groups[key] ?? []) {
           set.add(term);
         }

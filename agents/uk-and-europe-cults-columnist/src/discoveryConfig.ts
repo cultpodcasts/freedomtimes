@@ -111,18 +111,66 @@ function loadWatchlistSites(): string[] {
   return expectStringArray(parsed, 'watchlist-sites');
 }
 
-function extractGoogleNewsQueryGroups(parsed: DiscoveryConfig): Record<string, string[]> {
+/**
+ * Merge `googleNewsQueryDefinitions.groups` (optional, legacy) with each JSON file in `groupFiles`
+ * (paths relative to the package root, same directory as `discovery-config.json`).
+ */
+function loadMergedGoogleNewsQueryGroups(
+  parsed: DiscoveryConfig,
+  packageRootUrl: URL,
+): Record<string, string[]> {
   const definitions = parsed.googleNewsQueryDefinitions;
   if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) {
     return {};
   }
 
-  const groups = (definitions as GoogleNewsQueryDefinitions).groups;
-  if (!groups || typeof groups !== 'object' || Array.isArray(groups)) {
-    return {};
+  const def = definitions as GoogleNewsQueryDefinitions & {
+    groupFiles?: unknown;
+    groups?: unknown;
+  };
+
+  const merged: Record<string, string[]> = {};
+
+  if (def.groups && typeof def.groups === 'object' && !Array.isArray(def.groups)) {
+    const inline = expectStringRecordOfArrays(def.groups, 'googleNewsQueryDefinitions.groups');
+    for (const [k, v] of Object.entries(inline)) {
+      merged[k] = v;
+    }
   }
 
-  return expectStringRecordOfArrays(groups, 'googleNewsQueryDefinitions.groups');
+  if (!Array.isArray(def.groupFiles)) {
+    return merged;
+  }
+
+  for (const rel of def.groupFiles) {
+    if (typeof rel !== 'string' || !rel.trim()) {
+      continue;
+    }
+    const pathPart = rel.trim().replace(/^\/+/, '');
+    const fileUrl = new URL(pathPart, packageRootUrl);
+    let raw: string;
+    try {
+      raw = readFileSync(fileUrl, 'utf-8');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to read discovery group file '${rel}': ${message}`);
+    }
+    const fileParsed = JSON.parse(raw) as { groups?: unknown };
+    if (!fileParsed.groups || typeof fileParsed.groups !== 'object' || Array.isArray(fileParsed.groups)) {
+      throw new Error(`Discovery group file '${rel}' must contain a "groups" object`);
+    }
+    const chunk = expectStringRecordOfArrays(fileParsed.groups, `${pathPart}.groups`);
+    for (const [k, v] of Object.entries(chunk)) {
+      if (Object.prototype.hasOwnProperty.call(merged, k)) {
+        throw new Error(
+          `Duplicate Google News query group '${k}' while merging '${rel}' into discovery config`,
+        );
+      }
+      merged[k] = v;
+    }
+  }
+
+  return merged;
 }
 
 function loadDiscoveryConfig(): {
@@ -136,20 +184,28 @@ function loadDiscoveryConfig(): {
   regionalHostSuffixes: string[];
   focusSignalTerms: string[];
 } {
+  const packageRootUrl = new URL('../', import.meta.url);
   const configUrl = new URL('../discovery-config.json', import.meta.url);
   const raw = readFileSync(configUrl, 'utf-8');
   const parsed = JSON.parse(raw) as DiscoveryConfig;
+  const mergedQueryGroups = loadMergedGoogleNewsQueryGroups(parsed, packageRootUrl);
   const fallbackGoogleQueries = parsed.googleNewsGenericQueries
     ? expectStringArray(parsed.googleNewsGenericQueries, 'googleNewsGenericQueries')
     : undefined;
 
+  const definitions = parsed.googleNewsQueryDefinitions;
+  const syntheticDefinitions =
+    definitions && typeof definitions === 'object' && !Array.isArray(definitions)
+      ? { ...(definitions as Record<string, unknown>), groups: mergedQueryGroups }
+      : { groups: mergedQueryGroups };
+
   return {
     googleNewsCountryTerms: expectStringArray(parsed.googleNewsCountryTerms, 'googleNewsCountryTerms'),
     googleNewsGenericQueries: buildGoogleNewsQueriesFromDefinitions(
-      parsed.googleNewsQueryDefinitions,
+      syntheticDefinitions,
       fallbackGoogleQueries,
     ),
-    googleNewsQueryGroups: extractGoogleNewsQueryGroups(parsed),
+    googleNewsQueryGroups: mergedQueryGroups,
     newsdataCountryCodes: expectString(parsed.newsdataCountryCodes, 'newsdataCountryCodes'),
     newsdataLanguages: expectString(parsed.newsdataLanguages, 'newsdataLanguages'),
     newsdataQueries: expectStringArray(parsed.newsdataQueries, 'newsdataQueries'),
@@ -299,7 +355,7 @@ export const PRIORITY_WATCHLIST_HOSTS = MERGED_WATCHLIST_SITES;
 export const GOOGLE_NEWS_WATCHLIST_SITES = MERGED_WATCHLIST_SITES;
 export const GOOGLE_NEWS_COUNTRY_TERMS = MERGED_DISCOVERY_CONFIG.googleNewsCountryTerms;
 export const GOOGLE_NEWS_GENERIC_QUERIES = MERGED_DISCOVERY_CONFIG.googleNewsGenericQueries;
-/** Named OR-groups from discovery-config.json `googleNewsQueryDefinitions.groups` (not expanded templates). */
+/** Named OR-groups from `discovery-config.json` (`groupFiles` + optional inline `groups`); not expanded templates. */
 export const GOOGLE_NEWS_QUERY_GROUPS = MERGED_DISCOVERY_CONFIG.googleNewsQueryGroups;
 export const NEWSDATA_COUNTRY_CODES = MERGED_DISCOVERY_CONFIG.newsdataCountryCodes;
 export const NEWSDATA_LANGUAGES = MERGED_DISCOVERY_CONFIG.newsdataLanguages;
