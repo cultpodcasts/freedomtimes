@@ -351,6 +351,13 @@
       "homepageLang": "en",
       "localeSource": "manual"
     },
+    "franceinfo.fr": {
+      "googleNewsLocaleIds": [
+        "FR-fr"
+      ],
+      "homepageLang": "fr",
+      "localeSource": "manual"
+    },
     "ft.com": {
       "googleNewsLocaleIds": [
         "GB-en"

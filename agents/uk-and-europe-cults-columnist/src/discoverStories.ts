@@ -19,6 +19,13 @@ type GoogleNewsUrlDecoder = {
   decode: (url: string) => Promise<{ status?: boolean; decoded_url?: string; message?: string }>;
 };
 
+/** One Google News RSS search (optional edition pin for cluster follow-ups). */
+export type GoogleNewsQueryRunSpec = {
+  query: string;
+  /** When set, only these `GoogleNewsLocale.id` cells are fetched (e.g. `FR-fr`). */
+  googleNewsLocaleIds?: readonly string[];
+};
+
 export type DiscoveredStory = {
   url: string;
   title: string;
@@ -73,7 +80,28 @@ function loadFeedDefinitions(): FeedDefinition[] {
 
 const FEEDS = loadFeedDefinitions();
 
-const MAX_WATCHLIST_GOOGLE_QUERIES_PER_RUN = 28;
+/**
+ * Positive integer cap, or unlimited when env unset / empty / `0` / invalid.
+ * Use for expansion and watchlist chunking so defaults do not hide queries from the plan.
+ */
+function readPositiveIntCapOrUnlimited(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === '') {
+    return Number.POSITIVE_INFINITY;
+  }
+  const n = Number.parseInt(raw.trim(), 10);
+  if (!Number.isFinite(n) || n <= 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return n;
+}
+
+function capSlice<T>(items: readonly T[], max: number): T[] {
+  if (!Number.isFinite(max) || max >= items.length) {
+    return [...items];
+  }
+  return items.slice(0, max);
+}
+
 const CLUSTER_EXPANSION_ENABLED = (process.env.CLUSTER_EXPANSION_ENABLED ?? 'true').toLowerCase() !== 'false';
 const CLUSTER_EXPANSION_MIN_CLUSTER_SIZE = Math.max(
   2,
@@ -83,24 +111,98 @@ const CLUSTER_EXPANSION_MIN_SCORE = Math.max(
   1,
   Number.parseInt(process.env.CLUSTER_EXPANSION_MIN_SCORE ?? '70', 10) || 70,
 );
-const CLUSTER_EXPANSION_MAX_CLUSTERS = Math.max(
-  1,
-  Number.parseInt(process.env.CLUSTER_EXPANSION_MAX_CLUSTERS ?? '2', 10) || 2,
+const CLUSTER_EXPANSION_MAX_CLUSTERS = readPositiveIntCapOrUnlimited(process.env.CLUSTER_EXPANSION_MAX_CLUSTERS);
+const CLUSTER_EXPANSION_MAX_QUERIES_PER_CLUSTER = readPositiveIntCapOrUnlimited(
+  process.env.CLUSTER_EXPANSION_MAX_QUERIES_PER_CLUSTER,
 );
-const CLUSTER_EXPANSION_MAX_QUERIES_PER_CLUSTER = Math.max(
-  1,
-  Number.parseInt(process.env.CLUSTER_EXPANSION_MAX_QUERIES_PER_CLUSTER ?? '3', 10) || 3,
+const CLUSTER_EXPANSION_MAX_TOTAL_QUERIES = readPositiveIntCapOrUnlimited(
+  process.env.CLUSTER_EXPANSION_MAX_TOTAL_QUERIES,
 );
-const CLUSTER_EXPANSION_MAX_TOTAL_QUERIES = Math.max(
-  1,
-  Number.parseInt(process.env.CLUSTER_EXPANSION_MAX_TOTAL_QUERIES ?? '6', 10) || 6,
+/** When fewer than `CLUSTER_EXPANSION_MIN_CLUSTER_SIZE` high-scoring stories exist, still run a small follow-up Google News pass from title phrases (“cluster of one”). */
+const CLUSTER_EXPANSION_SINGLETON_ENABLED =
+  (process.env.CLUSTER_EXPANSION_SINGLETON_ENABLED ?? 'true').toLowerCase() !== 'false';
+const CLUSTER_EXPANSION_SINGLETON_MAX_STORIES = readPositiveIntCapOrUnlimited(
+  process.env.CLUSTER_EXPANSION_SINGLETON_MAX_STORIES,
 );
 
-/** Hard stop so multi-locale Google News runs cannot fetch without bound. */
-const GOOGLE_NEWS_TOTAL_CAP = Math.max(
-  1000,
-  Number.parseInt(process.env.GOOGLE_NEWS_TOTAL_CAP ?? '25000', 10) || 25000,
+/**
+ * Optional safety bound on total RSS-derived Google News rows per run (`0` = unlimited).
+ * Prefer tuning broad queries + `when:` over relying on a low cap.
+ */
+const GOOGLE_NEWS_TOTAL_CAP_RAW = Number.parseInt(process.env.GOOGLE_NEWS_TOTAL_CAP ?? '0', 10);
+const GOOGLE_NEWS_TOTAL_CAP =
+  Number.isFinite(GOOGLE_NEWS_TOTAL_CAP_RAW) && GOOGLE_NEWS_TOTAL_CAP_RAW > 0 ? GOOGLE_NEWS_TOTAL_CAP_RAW : 0;
+
+/**
+ * Max `site:` hosts per OR-merge before splitting (`0` / unset = one query with every host for that bundle).
+ */
+const GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK = readPositiveIntCapOrUnlimited(
+  process.env.GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK,
 );
+
+const DISCOVERY_LOG_GOOGLE_NEWS_WRAPPED_LINKS =
+  (process.env.DISCOVERY_LOG_GOOGLE_NEWS_WRAPPED_LINKS ?? 'true').toLowerCase() !== 'false';
+
+const GOOGLE_NEWS_RESOLVE_USE_PLAYWRIGHT =
+  (process.env.GOOGLE_NEWS_RESOLVE_USE_PLAYWRIGHT ?? 'false').toLowerCase() === 'true';
+/** Max Playwright navigations per discovery run (`0` = unlimited when Playwright resolve is on). */
+const GOOGLE_NEWS_PLAYWRIGHT_MAX_RESOLVES = readPositiveIntCapOrUnlimited(
+  process.env.GOOGLE_NEWS_PLAYWRIGHT_MAX_RESOLVES,
+);
+
+type GoogleNewsWrappedLinkRecord = {
+  recordedAt: string;
+  sourcePrefix: string;
+  localeId: string;
+  queryPreview: string;
+  title: string;
+  rssItemLink: string;
+  resolvedUrl: string;
+  publisherName?: string;
+};
+
+const googleNewsWrappedLinkBuffer: GoogleNewsWrappedLinkRecord[] = [];
+let googleNewsPlaywrightAttemptsThisRun = 0;
+let googleNewsPlaywrightSuccessesThisRun = 0;
+
+export function resetGoogleNewsDiscoveryReporting(): void {
+  googleNewsWrappedLinkBuffer.length = 0;
+  googleNewsPlaywrightAttemptsThisRun = 0;
+  googleNewsPlaywrightSuccessesThisRun = 0;
+}
+
+function recordGoogleNewsWrappedLink(entry: Omit<GoogleNewsWrappedLinkRecord, 'recordedAt'>): void {
+  googleNewsWrappedLinkBuffer.push({
+    recordedAt: new Date().toISOString(),
+    ...entry,
+  });
+}
+
+export function flushGoogleNewsWrappedLinksReport(): void {
+  if (googleNewsWrappedLinkBuffer.length === 0) {
+    return;
+  }
+  const reportsDir = new URL('../reports/', import.meta.url);
+  mkdirSync(reportsDir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const payload = {
+    recordedAt: new Date().toISOString(),
+    count: googleNewsWrappedLinkBuffer.length,
+    playwrightAttemptsThisRun: googleNewsPlaywrightAttemptsThisRun,
+    playwrightSuccessesThisRun: googleNewsPlaywrightSuccessesThisRun,
+    items: [...googleNewsWrappedLinkBuffer],
+  };
+  const json = `${JSON.stringify(payload, null, 2)}\n`;
+  writeFileSync(new URL(`google-news-wrapped-links-${stamp}.json`, reportsDir), json, 'utf-8');
+  writeFileSync(new URL('google-news-wrapped-links-latest.json', reportsDir), json, 'utf-8');
+  console.log('[agent] google-news wrapped RSS links report written', {
+    path: 'reports/google-news-wrapped-links-latest.json',
+    count: payload.count,
+    playwrightAttemptsThisRun: payload.playwrightAttemptsThisRun,
+    playwrightSuccessesThisRun: payload.playwrightSuccessesThisRun,
+  });
+  googleNewsWrappedLinkBuffer.length = 0;
+}
 
 /** Pacing between Google News RSS cells to reduce 429/503 bursts (0 = off). */
 const GOOGLE_NEWS_RSS_REQUEST_GAP_MS = Math.max(
@@ -222,6 +324,26 @@ function sleepMs(ms: number): Promise<void> {
 
 function formatWatchlistOrGroup(terms: string[]): string {
   return `(${terms.join(' OR ')})`;
+}
+
+function chunkArray<T>(items: readonly T[], chunkSize: number): T[][] {
+  if (!Number.isFinite(chunkSize) || chunkSize <= 0) {
+    return items.length === 0 ? [] : [[...items]];
+  }
+  const size = Math.max(1, Math.floor(chunkSize));
+  if (items.length === 0) {
+    return [];
+  }
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
+}
+
+function formatSiteOrClause(sites: readonly string[]): string {
+  const parts = sites.map((s) => `site:${normalizePublisherSiteHost(s)}`);
+  return parts.length === 1 ? parts[0]! : `(${parts.join(' OR ')})`;
 }
 
 type WatchlistQueryBundle = {
@@ -361,65 +483,97 @@ function watchlistLocaleKeyForSite(site: string): string {
   return watchlistExplicitBundleKeyForSite(site) ?? watchlistUnifiedLanguageKeyForSite(site) ?? 'en-aggregate';
 }
 
-function buildWatchlistQueries(): string[] {
-  const queries: string[] = [];
+function buildWatchlistQuerySuffixForSite(site: string): { kind: 'bundle'; suffix: string } | { kind: 'legacy' } {
   const groups = GOOGLE_NEWS_QUERY_GROUPS as Record<string, string[] | undefined>;
   const bundles = loadWatchlistQueryBundles();
 
-  for (const site of GOOGLE_NEWS_WATCHLIST_SITES) {
-    const explicitLang = watchlistExplicitBundleKeyForSite(site);
-    if (explicitLang) {
-      const bundle = bundles[explicitLang];
-      if (bundle) {
-        const cult = groups[bundle.cultGroup];
-        const countries = resolveWatchlistCountryTerms(bundle.countryGroup, groups);
-        if (cult?.length && countries?.length) {
-          queries.push(`site:${site} ${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`);
-          continue;
-        }
-      }
-    }
-
-    const lang = watchlistUnifiedLanguageKeyForSite(site);
-    if (lang) {
-      const bundle = bundles[lang];
-      if (bundle) {
-        const cult = groups[bundle.cultGroup];
-        const countries = resolveWatchlistCountryTerms(bundle.countryGroup, groups);
-        if (cult?.length && countries?.length) {
-          queries.push(`site:${site} ${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`);
-          continue;
-        }
-      }
-    }
-
-    const enBundle = bundles['en'];
-    if (enBundle) {
-      const cult = groups[enBundle.cultGroup];
-      const countries =
-        resolveWatchlistCountryTerms('europeCountryOrMultilingual', groups) ??
-        resolveWatchlistCountryTerms(enBundle.countryGroup, groups);
+  const explicitLang = watchlistExplicitBundleKeyForSite(site);
+  if (explicitLang) {
+    const bundle = bundles[explicitLang];
+    if (bundle) {
+      const cult = groups[bundle.cultGroup];
+      const countries = resolveWatchlistCountryTerms(bundle.countryGroup, groups);
       if (cult?.length && countries?.length) {
-        queries.push(`site:${site} ${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`);
-        continue;
+        return {
+          kind: 'bundle',
+          suffix: `${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`,
+        };
       }
+    }
+  }
+
+  const lang = watchlistUnifiedLanguageKeyForSite(site);
+  if (lang) {
+    const bundle = bundles[lang];
+    if (bundle) {
+      const cult = groups[bundle.cultGroup];
+      const countries = resolveWatchlistCountryTerms(bundle.countryGroup, groups);
+      if (cult?.length && countries?.length) {
+        return {
+          kind: 'bundle',
+          suffix: `${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`,
+        };
+      }
+    }
+  }
+
+  const enBundle = bundles['en'];
+  if (enBundle) {
+    const cult = groups[enBundle.cultGroup];
+    const countries =
+      resolveWatchlistCountryTerms('europeCountryOrMultilingual', groups) ??
+      resolveWatchlistCountryTerms(enBundle.countryGroup, groups);
+    if (cult?.length && countries?.length) {
+      return {
+        kind: 'bundle',
+        suffix: `${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`,
+      };
+    }
+  }
+
+  return { kind: 'legacy' };
+}
+
+/**
+ * One Google News `q=` per bundle (cult + country OR-groups), with publishers OR-merged and chunked for URL size.
+ * Legacy `site:… cult "<country>"` rows are merged per country the same way.
+ */
+function buildWatchlistQueries(): string[] {
+  const bundleSuffixToSites = new Map<string, string[]>();
+  const legacyCountryToSites = new Map<string, string[]>();
+
+  for (const site of GOOGLE_NEWS_WATCHLIST_SITES) {
+    const resolved = buildWatchlistQuerySuffixForSite(site);
+    if (resolved.kind === 'bundle') {
+      const list = bundleSuffixToSites.get(resolved.suffix) ?? [];
+      list.push(site);
+      bundleSuffixToSites.set(resolved.suffix, list);
+      continue;
     }
 
     for (const country of GOOGLE_NEWS_COUNTRY_TERMS) {
-      queries.push(`site:${site} cult "${country}"`);
+      const list = legacyCountryToSites.get(country) ?? [];
+      list.push(site);
+      legacyCountryToSites.set(country, list);
+    }
+  }
+
+  const queries: string[] = [];
+  const chunk = GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK;
+
+  for (const [suffix, sites] of bundleSuffixToSites) {
+    for (const siteChunk of chunkArray(sites, chunk)) {
+      queries.push(`${formatSiteOrClause(siteChunk)} ${suffix}`);
+    }
+  }
+
+  for (const [country, sites] of legacyCountryToSites) {
+    for (const siteChunk of chunkArray(sites, chunk)) {
+      queries.push(`${formatSiteOrClause(siteChunk)} cult "${country}"`);
     }
   }
 
   return queries;
-}
-
-function rotateArray<T>(items: T[], offset: number): T[] {
-  if (items.length === 0) {
-    return items;
-  }
-
-  const start = ((offset % items.length) + items.length) % items.length;
-  return [...items.slice(start), ...items.slice(0, start)];
 }
 
 const CULT_TERMS = ALL_CULT_TERMS;
@@ -938,10 +1092,23 @@ function normalizePublisherSiteHost(host: string): string {
     .replace(/^["']+|["']+$/g, '');
 }
 
-/** First `site:` host in the query, if any (Google News `site:` operator). */
+/** Every `site:` host in the query (supports merged `(site:a OR site:b) …`). */
+function extractAllSiteHostsFromGoogleNewsQuery(query: string): string[] {
+  const raw: string[] = [];
+  const re = /\bsite:\s*([^\s)]+)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(query)) !== null) {
+    const captured = m[1];
+    if (captured) {
+      raw.push(normalizePublisherSiteHost(captured));
+    }
+  }
+  return [...new Set(raw)];
+}
+
+/** First `site:` host in the query, if any (for logs / plan summaries). */
 function extractSiteHostFromGoogleNewsQuery(query: string): string | undefined {
-  const match = query.match(/\bsite:([^\s)]+)/i);
-  return match?.[1] ? normalizePublisherSiteHost(match[1]) : undefined;
+  return extractAllSiteHostsFromGoogleNewsQuery(query)[0];
 }
 
 function resolveGlsFromPublisherHostname(host: string): string[] | undefined {
@@ -964,16 +1131,7 @@ function resolveGlsFromPublisherHostname(host: string): string[] | undefined {
   return undefined;
 }
 
-/**
- * For `site:publisher` watchlist queries, only Google News editions that match the publisher's market.
- * Generic queries (no `site:`) use the full European locale set.
- */
-function localesForGoogleNewsPublisherQuery(query: string, allLocales: GoogleNewsLocale[]): GoogleNewsLocale[] {
-  const siteHost = extractSiteHostFromGoogleNewsQuery(query);
-  if (!siteHost) {
-    return allLocales;
-  }
-
+function localesForSingleSiteHost(siteHost: string, allLocales: GoogleNewsLocale[]): GoogleNewsLocale[] {
   const cfg = loadPublisherSiteLocalesConfig();
   const byHost = cfg.localeIdsByHost ?? {};
   const explicit = byHost[siteHost];
@@ -1002,10 +1160,53 @@ function localesForGoogleNewsPublisherQuery(query: string, allLocales: GoogleNew
   return allLocales;
 }
 
-function countGoogleNewsRssCells(queries: string[], allLocales: GoogleNewsLocale[]): number {
+/**
+ * For `site:publisher` watchlist queries, only Google News editions that match the publishers' markets.
+ * Merged `(site:a OR site:b)` uses the union of each host's editions. Generic queries (no `site:`) use all locales.
+ */
+function localesForGoogleNewsPublisherQuery(query: string, allLocales: GoogleNewsLocale[]): GoogleNewsLocale[] {
+  const siteHosts = extractAllSiteHostsFromGoogleNewsQuery(query);
+  if (siteHosts.length === 0) {
+    return allLocales;
+  }
+
+  const byId = new Map<string, GoogleNewsLocale>();
+  for (const siteHost of siteHosts) {
+    for (const loc of localesForSingleSiteHost(siteHost, allLocales)) {
+      byId.set(loc.id, loc);
+    }
+  }
+
+  return byId.size > 0 ? [...byId.values()] : allLocales;
+}
+
+function normalizeGoogleNewsRunSpecs(
+  queries: readonly string[] | readonly GoogleNewsQueryRunSpec[],
+): GoogleNewsQueryRunSpec[] {
+  if (queries.length === 0) {
+    return [];
+  }
+  const first = queries[0]!;
+  if (typeof first === 'string') {
+    return (queries as string[]).map((query) => ({ query }));
+  }
+  return (queries as GoogleNewsQueryRunSpec[]).map((spec) => ({ ...spec }));
+}
+
+function countGoogleNewsRssCells(
+  queries: readonly string[] | readonly GoogleNewsQueryRunSpec[],
+  allLocales: GoogleNewsLocale[],
+): number {
+  const specs = normalizeGoogleNewsRunSpecs(queries);
   let n = 0;
-  for (const q of queries) {
-    n += localesForGoogleNewsPublisherQuery(q, allLocales).length;
+  for (const spec of specs) {
+    const pinned = spec.googleNewsLocaleIds;
+    const locales =
+      pinned && pinned.length > 0
+        ? allLocales.filter((l) => pinned.includes(l.id))
+        : localesForGoogleNewsPublisherQuery(spec.query, allLocales);
+    const effective = locales.length > 0 ? locales : allLocales;
+    n += effective.length;
   }
   return n;
 }
@@ -1459,7 +1660,57 @@ async function discoverFromNewsData(): Promise<DiscoveredStory[]> {
   return discovered;
 }
 
+let googleNewsPlaywrightBrowser: import('playwright').Browser | undefined;
+let googleNewsPlaywrightMutex: Promise<unknown> = Promise.resolve();
+
+async function disposeGoogleNewsPlaywrightBrowser(): Promise<void> {
+  if (googleNewsPlaywrightBrowser) {
+    await googleNewsPlaywrightBrowser.close().catch(() => {});
+    googleNewsPlaywrightBrowser = undefined;
+  }
+}
+
+async function tryResolveGoogleNewsUrlWithPlaywright(gnUrl: string): Promise<string | undefined> {
+  if (!GOOGLE_NEWS_RESOLVE_USE_PLAYWRIGHT) {
+    return undefined;
+  }
+  if (
+    Number.isFinite(GOOGLE_NEWS_PLAYWRIGHT_MAX_RESOLVES) &&
+    googleNewsPlaywrightAttemptsThisRun >= GOOGLE_NEWS_PLAYWRIGHT_MAX_RESOLVES
+  ) {
+    return undefined;
+  }
+  googleNewsPlaywrightAttemptsThisRun += 1;
+  try {
+    const { chromium } = await import('playwright');
+    if (!googleNewsPlaywrightBrowser) {
+      googleNewsPlaywrightBrowser = await chromium.launch({ headless: true });
+    }
+    const page = await googleNewsPlaywrightBrowser.newPage();
+    await page.goto(gnUrl, { waitUntil: 'domcontentloaded', timeout: 35_000 });
+    const finalUrl = page.url();
+    await page.close();
+    if (!isGoogleNewsUrl(finalUrl)) {
+      googleNewsPlaywrightSuccessesThisRun += 1;
+      return finalUrl;
+    }
+  } catch {
+    // Playwright optional; ignore failures.
+  }
+  return undefined;
+}
+
+function enqueuePlaywrightResolveGnUrl(gnUrl: string): Promise<string | undefined> {
+  const done = googleNewsPlaywrightMutex.then(() => tryResolveGoogleNewsUrlWithPlaywright(gnUrl));
+  googleNewsPlaywrightMutex = done.then(
+    () => undefined,
+    () => undefined,
+  );
+  return done;
+}
+
 async function resolveGoogleNewsLink(url: string): Promise<string> {
+  let resolved = url;
   try {
     const response = await fetchTextWithCache(url, {
       redirect: 'follow',
@@ -1477,12 +1728,19 @@ async function resolveGoogleNewsLink(url: string): Promise<string> {
       return decoded;
     }
 
-    return response.url;
+    resolved = response.url;
   } catch {
-    // Fallback to original URL.
+    resolved = url;
   }
 
-  return url;
+  if (isGoogleNewsUrl(resolved)) {
+    const playwrightUrl = await enqueuePlaywrightResolveGnUrl(url);
+    if (playwrightUrl) {
+      return playwrightUrl;
+    }
+  }
+
+  return resolved;
 }
 
 /**
@@ -1622,30 +1880,43 @@ type GoogleNewsQueryPlanRow = {
   query: string;
   source: 'watchlist' | 'generic';
   siteHost?: string;
+  siteHosts?: string[];
   /** Unified `hl` bundle key (e.g. `de`, `fr`) or `en-aggregate` for English OR+OR fallback. */
   watchlistLocaleKey?: string;
   localeIds?: string[];
   rssCells: number;
   inMainPassThisRun: boolean;
+  pinnedGoogleNewsLocaleIds?: string[];
 };
 
 function buildGoogleNewsQueryPlanRow(
   query: string,
   source: 'watchlist' | 'generic',
   allLocales: GoogleNewsLocale[],
+  options?: { pinnedGoogleNewsLocaleIds?: readonly string[] },
 ): Omit<GoogleNewsQueryPlanRow, 'inMainPassThisRun'> {
-  const siteHost = extractSiteHostFromGoogleNewsQuery(query);
-  const queryLocales = localesForGoogleNewsPublisherQuery(query, allLocales);
+  const siteHosts = extractAllSiteHostsFromGoogleNewsQuery(query);
+  const siteHost = siteHosts[0];
+  const pinned = options?.pinnedGoogleNewsLocaleIds;
+  const queryLocales =
+    pinned && pinned.length > 0
+      ? allLocales.filter((l) => pinned.includes(l.id))
+      : localesForGoogleNewsPublisherQuery(query, allLocales);
+  const effectiveLocales = queryLocales.length > 0 ? queryLocales : allLocales;
   const watchlistLocaleKey = siteHost ? watchlistLocaleKeyForSite(siteHost) : undefined;
   const row: Omit<GoogleNewsQueryPlanRow, 'inMainPassThisRun'> = {
     query,
     source,
     siteHost: siteHost ?? undefined,
+    siteHosts: siteHosts.length > 0 ? siteHosts : undefined,
     watchlistLocaleKey,
-    rssCells: queryLocales.length,
+    rssCells: effectiveLocales.length,
   };
+  if (pinned && pinned.length > 0) {
+    row.pinnedGoogleNewsLocaleIds = [...pinned];
+  }
   if (GOOGLE_NEWS_QUERY_PLAN_INCLUDE_LOCALE_IDS) {
-    row.localeIds = queryLocales.map((l) => l.id);
+    row.localeIds = effectiveLocales.map((l) => l.id);
   }
   return row;
 }
@@ -1653,24 +1924,23 @@ function buildGoogleNewsQueryPlanRow(
 function recordGoogleNewsQueryPlanFromConfig(params: {
   runSeed: number;
   watchlistQueriesFull: string[];
-  mainPassQueries: string[];
+  mainPassSpecs: GoogleNewsQueryRunSpec[];
 }): void {
   if (!GOOGLE_NEWS_RECORD_QUERY_PLAN) {
     return;
   }
 
   const allLocales = loadEuropeGoogleNewsLocales();
-  const mainPassSet = new Set(params.mainPassQueries);
   const genericSet = new Set(GOOGLE_NEWS_GENERIC_QUERIES);
 
   const configDerivedQueries: GoogleNewsQueryPlanRow[] = [
     ...params.watchlistQueriesFull.map((query) => ({
       ...buildGoogleNewsQueryPlanRow(query, 'watchlist', allLocales),
-      inMainPassThisRun: mainPassSet.has(query),
+      inMainPassThisRun: true,
     })),
     ...GOOGLE_NEWS_GENERIC_QUERIES.map((query) => ({
       ...buildGoogleNewsQueryPlanRow(query, 'generic', allLocales),
-      inMainPassThisRun: mainPassSet.has(query),
+      inMainPassThisRun: true,
     })),
   ];
 
@@ -1685,33 +1955,48 @@ function recordGoogleNewsQueryPlanFromConfig(params: {
   > = {};
 
   for (const row of configDerivedQueries) {
-    if (row.source !== 'watchlist' || !row.siteHost) {
+    if (row.source !== 'watchlist') {
       continue;
     }
-    const bucket = watchlistByHost[row.siteHost] ?? {
-      watchlistLocaleKey: row.watchlistLocaleKey,
-      queryCount: 0,
-      rssCellsSum: 0,
-      queries: [],
-    };
-    bucket.queryCount += 1;
-    bucket.rssCellsSum += row.rssCells;
-    bucket.queries.push(row.query);
-    if (!bucket.watchlistLocaleKey && row.watchlistLocaleKey) {
-      bucket.watchlistLocaleKey = row.watchlistLocaleKey;
+    const hosts =
+      row.siteHosts && row.siteHosts.length > 0 ? row.siteHosts : row.siteHost ? [row.siteHost] : [];
+    if (hosts.length === 0) {
+      continue;
     }
-    watchlistByHost[row.siteHost] = bucket;
+    for (const host of hosts) {
+      const bucket = watchlistByHost[host] ?? {
+        watchlistLocaleKey: watchlistLocaleKeyForSite(host),
+        queryCount: 0,
+        rssCellsSum: 0,
+        queries: [],
+      };
+      bucket.queryCount += 1;
+      bucket.rssCellsSum += row.rssCells;
+      bucket.queries.push(row.query);
+      if (!bucket.watchlistLocaleKey) {
+        bucket.watchlistLocaleKey = watchlistLocaleKeyForSite(host);
+      }
+      watchlistByHost[host] = bucket;
+    }
   }
 
-  const mainPassRows: GoogleNewsQueryPlanRow[] = params.mainPassQueries.map((query) => ({
-    ...buildGoogleNewsQueryPlanRow(query, genericSet.has(query) ? 'generic' : 'watchlist', allLocales),
+  const mainPassRows: GoogleNewsQueryPlanRow[] = params.mainPassSpecs.map((spec) => ({
+    ...buildGoogleNewsQueryPlanRow(
+      spec.query,
+      genericSet.has(spec.query) ? 'generic' : 'watchlist',
+      allLocales,
+      spec.googleNewsLocaleIds && spec.googleNewsLocaleIds.length > 0
+        ? { pinnedGoogleNewsLocaleIds: spec.googleNewsLocaleIds }
+        : undefined,
+    ),
     inMainPassThisRun: true,
   }));
 
   const payload = {
     recordedAt: new Date().toISOString(),
     runSeed: params.runSeed,
-    maxWatchlistQueriesPerRun: MAX_WATCHLIST_GOOGLE_QUERIES_PER_RUN,
+    watchlistSiteOrChunk: GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK,
+    googleNewsTotalCap: GOOGLE_NEWS_TOTAL_CAP,
     localeCount: allLocales.length,
     options: {
       includeLocaleIdsPerQuery: GOOGLE_NEWS_QUERY_PLAN_INCLUDE_LOCALE_IDS,
@@ -1719,17 +2004,17 @@ function recordGoogleNewsQueryPlanFromConfig(params: {
     summary: {
       configWatchlistQueryStrings: params.watchlistQueriesFull.length,
       configGenericQueryStrings: GOOGLE_NEWS_GENERIC_QUERIES.length,
-      mainPassQueryStrings: params.mainPassQueries.length,
+      mainPassQueryStrings: params.mainPassSpecs.length,
       rssCellsFullConfigPool: countGoogleNewsRssCells(
         [...params.watchlistQueriesFull, ...GOOGLE_NEWS_GENERIC_QUERIES],
         allLocales,
       ),
-      rssCellsMainPassThisRun: countGoogleNewsRssCells(params.mainPassQueries, allLocales),
+      rssCellsMainPassThisRun: countGoogleNewsRssCells(params.mainPassSpecs, allLocales),
     },
     configDerivedQueries,
     watchlistByHost,
     mainPassThisRun: {
-      queryStringsInOrder: params.mainPassQueries,
+      queryStringsInOrder: params.mainPassSpecs.map((s) => s.query),
       rows: mainPassRows,
     },
   };
@@ -1746,15 +2031,16 @@ function recordGoogleNewsQueryPlanFromConfig(params: {
 export async function discoverFromGoogleNews(): Promise<DiscoveredStory[]> {
   const watchlistQueries = buildWatchlistQueries();
   const runSeed = Number.parseInt(new Date().toISOString().slice(0, 10).replace(/-/g, ''), 10);
-  const rotatedWatchlistQueries = rotateArray(watchlistQueries, runSeed);
-  const boundedWatchlistQueries = rotatedWatchlistQueries.slice(0, MAX_WATCHLIST_GOOGLE_QUERIES_PER_RUN);
-  const queries = [...boundedWatchlistQueries, ...GOOGLE_NEWS_GENERIC_QUERIES];
+  const mainPassSpecs: GoogleNewsQueryRunSpec[] = [
+    ...watchlistQueries.map((query) => ({ query })),
+    ...GOOGLE_NEWS_GENERIC_QUERIES.map((query) => ({ query })),
+  ];
   recordGoogleNewsQueryPlanFromConfig({
     runSeed,
     watchlistQueriesFull: watchlistQueries,
-    mainPassQueries: queries,
+    mainPassSpecs,
   });
-  return discoverFromGoogleNewsQueries(queries, 'google-news');
+  return discoverFromGoogleNewsQueries(mainPassSpecs, 'google-news');
 }
 
 /** Diagnostics: planned RSS GET counts for the main Google News pass (no network). */
@@ -1764,10 +2050,11 @@ export function reportGoogleNewsMainPassRssFootprint(isoDateSeed?: string): Reco
   const runSeed = Number.parseInt((isoDateSeed ?? new Date().toISOString().slice(0, 10)).replace(/-/g, ''), 10);
 
   const watchlistQueries = buildWatchlistQueries();
-  const rotated = rotateArray(watchlistQueries, runSeed);
-  const boundedWatchlist = rotated.slice(0, MAX_WATCHLIST_GOOGLE_QUERIES_PER_RUN);
-  const passQueries = [...boundedWatchlist, ...GOOGLE_NEWS_GENERIC_QUERIES];
-  const rssCellsThisPass = countGoogleNewsRssCells(passQueries, locales);
+  const passSpecs: GoogleNewsQueryRunSpec[] = [
+    ...watchlistQueries.map((query) => ({ query })),
+    ...GOOGLE_NEWS_GENERIC_QUERIES.map((query) => ({ query })),
+  ];
+  const rssCellsThisPass = countGoogleNewsRssCells(passSpecs, locales);
 
   const watchlistLocaleSiteCounts: Record<string, number> = {};
   let watchlistEnAggregateSites = 0;
@@ -1786,9 +2073,7 @@ export function reportGoogleNewsMainPassRssFootprint(isoDateSeed?: string): Reco
       legacyEnglishWatchlist.push(`site:${site} cult "${country}"`);
     }
   }
-  const legacyRotated = rotateArray(legacyEnglishWatchlist, runSeed);
-  const legacyBounded = legacyRotated.slice(0, MAX_WATCHLIST_GOOGLE_QUERIES_PER_RUN);
-  const legacyPassQueries = [...legacyBounded, ...GOOGLE_NEWS_GENERIC_QUERIES];
+  const legacyPassQueries = [...legacyEnglishWatchlist, ...GOOGLE_NEWS_GENERIC_QUERIES];
   const rssCellsLegacyWatchlistPublisherLocales = countGoogleNewsRssCells(legacyPassQueries, locales);
   const rssCellsLegacyWatchlistAllLocalesEveryQuery = legacyPassQueries.length * localeCount;
 
@@ -1801,20 +2086,21 @@ export function reportGoogleNewsMainPassRssFootprint(isoDateSeed?: string): Reco
   return {
     localeCount,
     runSeed,
-    maxWatchlistQueriesPerRun: MAX_WATCHLIST_GOOGLE_QUERIES_PER_RUN,
+    watchlistSiteOrChunk: GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK,
+    googleNewsTotalCap: GOOGLE_NEWS_TOTAL_CAP,
     genericTemplateQueries: GOOGLE_NEWS_GENERIC_QUERIES.length,
     watchlistSites: GOOGLE_NEWS_WATCHLIST_SITES.length,
     watchlistQueryStringsTotal: watchlistQueries.length,
     watchlistLocaleSiteCounts,
     watchlistEnAggregateSites,
-    queriesInMainPass: passQueries.length,
+    queriesInMainPass: passSpecs.length,
     rssGetCellsMainPass: rssCellsThisPass,
-    /** Same 28-slot rotation + generics, old `cult "<country>"` grid, current per-publisher locales. */
+    /** Unbounded legacy English `cult "<country>"` grid × per-publisher locales (for comparison only). */
     rssGetCellsLegacyEnglishWatchlistPublisherLocales: rssCellsLegacyWatchlistPublisherLocales,
-    /** Same pass query count, every query × every locale (no publisher-scoped locales). */
+    /** Legacy grid + generics × every locale every time. */
     rssGetCellsLegacyFullEuropeGrid: rssCellsLegacyWatchlistAllLocalesEveryQuery,
     legacyEnglishWatchlistStringsTotal: legacyEnglishWatchlist.length,
-    /** Entire watchlist pool + generics, current localized watchlist + publisher locales. */
+    /** Merged watchlist + generics, publisher-scoped locales. */
     rssGetCellsFullPoolNewWatchlist: rssCellsFullPoolNew,
     /** Entire legacy English grid + generics, publisher locales. */
     rssGetCellsFullPoolLegacyWatchlistPublisherLocales: rssCellsFullPoolLegacyPublisherLocales,
@@ -1846,7 +2132,146 @@ function extractTitlePhrases(title: string, languageCode: string): string[] {
   return phrases;
 }
 
-function buildExpansionQueries(scored: DiscoveredStory[]): string[] {
+/** Extra stems so French (and similar) headlines still yield seeds when English-only `incidentSignalTerms` miss. */
+const SINGLETON_EXPANSION_PHRASE_SIGNAL_TERMS = [
+  'secte',
+  'sectes',
+  'viol',
+  'viols',
+  'emprise',
+  'gourou',
+  'détention',
+  'detention',
+  'esclavage',
+  'abus',
+  'adeptes',
+];
+
+function phraseQualifiesForSingletonExpansionSeed(phrase: string, storyTitleLower: string): boolean {
+  const p = phrase.trim();
+  if (p.length < 8 || p.includes('"')) {
+    return false;
+  }
+  const lower = p.toLowerCase();
+  if (
+    containsTerm(lower, SINGLETON_EXPANSION_PHRASE_SIGNAL_TERMS) ||
+    containsTerm(lower, CULT_TERMS) ||
+    containsTerm(lower, [
+      'religious group',
+      'sect',
+      'slavery',
+      'raid',
+      'abuse',
+      'trafficking',
+    ]) ||
+    (FOCUS_SIGNAL_TERMS.length > 0 && containsTerm(lower, FOCUS_SIGNAL_TERMS))
+  ) {
+    return true;
+  }
+  /** Title already has cult signals but n-gram lacks an English stem (e.g. “dérives sectaires”). */
+  if (containsTerm(storyTitleLower, CULT_TERMS) && p.length >= 12 && p.split(/\s+/).filter(Boolean).length >= 2) {
+    return true;
+  }
+  return false;
+}
+
+function publisherHostnameFromArticleUrl(articleUrl: string): string | undefined {
+  try {
+    return normalizeHost(new URL(articleUrl).hostname);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Google News `ceid` ids (e.g. FR-fr) inferred from the resolved publisher URL. */
+function googleNewsEditionIdsForPublisherUrl(
+  articleUrl: string,
+  allLocales: GoogleNewsLocale[],
+): string[] {
+  const host = publisherHostnameFromArticleUrl(articleUrl);
+  if (!host) {
+    return [];
+  }
+  const cfg = loadPublisherSiteLocalesConfig();
+  const explicit = cfg.localeIdsByHost?.[host];
+  if (explicit?.length) {
+    return explicit.filter((id) => allLocales.some((l) => l.id === id));
+  }
+  const gls = resolveGlsFromPublisherHostname(host);
+  if (gls?.length) {
+    const glSet = new Set(gls);
+    return allLocales.filter((l) => glSet.has(l.gl)).map((l) => l.id);
+  }
+  return [];
+}
+
+function mergeClusterExpansionQuerySpecs(specs: GoogleNewsQueryRunSpec[]): GoogleNewsQueryRunSpec[] {
+  const map = new Map<string, Set<string>>();
+  const order: string[] = [];
+  for (const s of specs) {
+    const key = s.query.trim();
+    if (!map.has(key)) {
+      map.set(key, new Set());
+      order.push(key);
+    }
+    if (s.googleNewsLocaleIds?.length) {
+      for (const id of s.googleNewsLocaleIds) {
+        map.get(key)!.add(id);
+      }
+    }
+  }
+  return order.map((key) => {
+    const ids = map.get(key)!;
+    return {
+      query: key,
+      googleNewsLocaleIds: ids.size > 0 ? [...ids] : undefined,
+    };
+  });
+}
+
+/**
+ * Follow-up Google News queries when we have strong candidate(s) but not enough for multi-story phrase overlap.
+ * Uses title n-grams that already contain cult / harm / focus signals (conservative to limit noise).
+ */
+function buildSingletonClusterExpansionQueries(
+  eligible: DiscoveredStory[],
+  allLocales: GoogleNewsLocale[],
+): GoogleNewsQueryRunSpec[] {
+  if (!CLUSTER_EXPANSION_SINGLETON_ENABLED || eligible.length === 0) {
+    return [];
+  }
+
+  const expansionTail = `(sect OR "religious group" OR slavery OR raid OR cult OR secte OR sectes OR emprise)`;
+  const collected: GoogleNewsQueryRunSpec[] = [];
+  const seen = new Set<string>();
+
+  for (const story of capSlice(eligible, CLUSTER_EXPANSION_SINGLETON_MAX_STORIES)) {
+    const storyTitleLower = story.title.toLowerCase();
+    const lang = detectTitleLanguageForCluster(story.title, story.sourceLanguage);
+    const editionPin = googleNewsEditionIdsForPublisherUrl(story.url, allLocales);
+    const pin = editionPin.length > 0 ? editionPin : undefined;
+    for (const phrase of extractTitlePhrases(story.title, lang)) {
+      if (!phraseQualifiesForSingletonExpansionSeed(phrase, storyTitleLower)) {
+        continue;
+      }
+      const q = `"${phrase.replace(/"/g, '')}" ${expansionTail}`;
+      const key = `${q.toLowerCase()}|${pin?.join(',') ?? 'all'}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      collected.push({ query: q, googleNewsLocaleIds: pin });
+      if (collected.length >= CLUSTER_EXPANSION_MAX_TOTAL_QUERIES) {
+        return mergeClusterExpansionQuerySpecs(collected);
+      }
+    }
+  }
+
+  return mergeClusterExpansionQuerySpecs(collected);
+}
+
+function buildExpansionQueries(scored: DiscoveredStory[]): GoogleNewsQueryRunSpec[] {
+  const allLocales = loadEuropeGoogleNewsLocales();
   const incidentSignalTerms = ['religious group', 'sect', 'slavery', 'raid', 'abuse', 'trafficking'];
   const eligible = scored
     .filter((story) => (story.discoveryScore ?? 0) >= CLUSTER_EXPANSION_MIN_SCORE)
@@ -1860,11 +2285,12 @@ function buildExpansionQueries(scored: DiscoveredStory[]): string[] {
     })
     .slice(0, 300);
   if (eligible.length < CLUSTER_EXPANSION_MIN_CLUSTER_SIZE) {
-    return [];
+    return buildSingletonClusterExpansionQueries(eligible, allLocales);
   }
 
   const phraseCounts = new Map<string, number>();
   const phraseScore = new Map<string, number>();
+  const phraseLocales = new Map<string, Set<string>>();
   const seenPhraseByStory = new Map<number, Set<string>>();
   for (let i = 0; i < eligible.length; i += 1) {
     const story = eligible[i];
@@ -1875,6 +2301,7 @@ function buildExpansionQueries(scored: DiscoveredStory[]): string[] {
     seenPhraseByStory.set(i, seen);
     const lang = detectTitleLanguageForCluster(story.title, story.sourceLanguage);
     const phrases = extractTitlePhrases(story.title, lang);
+    const editionIds = googleNewsEditionIdsForPublisherUrl(story.url, allLocales);
     for (const phrase of phrases) {
       if (seen.has(phrase)) {
         continue;
@@ -1882,6 +2309,16 @@ function buildExpansionQueries(scored: DiscoveredStory[]): string[] {
       seen.add(phrase);
       phraseCounts.set(phrase, (phraseCounts.get(phrase) ?? 0) + 1);
       phraseScore.set(phrase, (phraseScore.get(phrase) ?? 0) + (story.discoveryScore ?? 0));
+      if (editionIds.length > 0) {
+        let locSet = phraseLocales.get(phrase);
+        if (!locSet) {
+          locSet = new Set();
+          phraseLocales.set(phrase, locSet);
+        }
+        for (const id of editionIds) {
+          locSet.add(id);
+        }
+      }
     }
   }
 
@@ -1911,59 +2348,97 @@ function buildExpansionQueries(scored: DiscoveredStory[]): string[] {
         tokenCounts.set(token, (tokenCounts.get(token) ?? 0) + 1);
       }
     }
-    return Array.from(tokenCounts.entries())
-      .filter(([, count]) => count >= 2)
-      .sort((a, b) => b[1] - a[1])
-      .map(([token]) => token)
-      .slice(0, CLUSTER_EXPANSION_MAX_TOTAL_QUERIES);
+    return capSlice(
+      Array.from(tokenCounts.entries())
+        .filter(([, count]) => count >= 2)
+        .sort((a, b) => b[1] - a[1])
+        .map(([token]) => token),
+      CLUSTER_EXPANSION_MAX_TOTAL_QUERIES,
+    );
   })();
 
-  const seeds = rankedSeeds.length > 0 ? rankedSeeds : fallbackSeeds;
-  if (seeds.length === 0) {
-    return [];
+  const clusterBudget =
+    !Number.isFinite(CLUSTER_EXPANSION_MAX_CLUSTERS) || !Number.isFinite(CLUSTER_EXPANSION_MAX_QUERIES_PER_CLUSTER)
+      ? Number.POSITIVE_INFINITY
+      : CLUSTER_EXPANSION_MAX_CLUSTERS * CLUSTER_EXPANSION_MAX_QUERIES_PER_CLUSTER;
+  const seedLimit = Math.min(CLUSTER_EXPANSION_MAX_TOTAL_QUERIES, clusterBudget);
+  const expansionTail = `(sect OR "religious group" OR slavery OR raid OR cult OR secte OR sectes OR emprise)`;
+  const queries: GoogleNewsQueryRunSpec[] = [];
+
+  if (rankedSeeds.length > 0) {
+    for (const phrase of rankedSeeds.slice(0, seedLimit)) {
+      const ids = phraseLocales.get(phrase);
+      const pin = ids && ids.size > 0 ? [...ids] : undefined;
+      queries.push({
+        query: `"${phrase}" ${expansionTail}`,
+        googleNewsLocaleIds: pin,
+      });
+    }
+  } else if (fallbackSeeds.length > 0) {
+    const allPins = new Set<string>();
+    for (const story of eligible) {
+      for (const id of googleNewsEditionIdsForPublisherUrl(story.url, allLocales)) {
+        allPins.add(id);
+      }
+    }
+    const unionPin = allPins.size > 0 ? [...allPins] : undefined;
+    for (const token of fallbackSeeds.slice(0, seedLimit)) {
+      queries.push({
+        query: `"${token}" ${expansionTail}`,
+        googleNewsLocaleIds: unionPin,
+      });
+    }
   }
 
-  const queries: string[] = [];
-  const seedLimit = Math.min(
-    CLUSTER_EXPANSION_MAX_TOTAL_QUERIES,
-    CLUSTER_EXPANSION_MAX_CLUSTERS * CLUSTER_EXPANSION_MAX_QUERIES_PER_CLUSTER,
-  );
-  for (const seed of seeds.slice(0, seedLimit)) {
-    queries.push(`"${seed}" (sect OR "religious group" OR slavery OR raid OR cult)`);
-  }
-
-  return Array.from(new Set(queries));
+  return mergeClusterExpansionQuerySpecs(queries);
 }
 
-async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: string): Promise<DiscoveredStory[]> {
+async function discoverFromGoogleNewsQueries(
+  queries: readonly string[] | readonly GoogleNewsQueryRunSpec[],
+  sourcePrefix: string,
+): Promise<DiscoveredStory[]> {
   const localesFull = loadEuropeGoogleNewsLocales();
+  const specs = normalizeGoogleNewsRunSpecs(queries);
   const discovered: DiscoveredStory[] = [];
   const seen = new Set<string>();
   // Google News RSS search returns up to 100 items per request; each query runs per locale edition.
   const perRequestLimit = 100;
-  const totalRequests = countGoogleNewsRssCells(queries, localesFull);
+  const totalRequests = countGoogleNewsRssCells(specs, localesFull);
   let requestIndex = 0;
   const gridStartedAt = Date.now();
 
+  try {
   logDiscoveryProgress('google-news-start', {
     sourcePrefix,
-    queryCount: queries.length,
+    queryCount: specs.length,
     localeCount: localesFull.length,
     rssRequests: totalRequests,
-    totalCap: GOOGLE_NEWS_TOTAL_CAP,
+    totalCap: GOOGLE_NEWS_TOTAL_CAP > 0 ? GOOGLE_NEWS_TOTAL_CAP : 'unlimited',
     logEvery: DISCOVERY_PROGRESS_GOOGLE_NEWS_EVERY,
     logEveryHttp: DISCOVERY_LOG_EVERY_GOOGLE_NEWS_HTTP,
     logFetchLifecycle: DISCOVERY_LOG_GOOGLE_NEWS_FETCH_LIFECYCLE,
   });
 
-  for (let queryIdx = 0; queryIdx < queries.length; queryIdx += 1) {
-    const query = queries[queryIdx]!;
-    const queryLocales = localesForGoogleNewsPublisherQuery(query, localesFull);
-    for (let localeIdx = 0; localeIdx < queryLocales.length; localeIdx += 1) {
-      const locale = queryLocales[localeIdx]!;
+  for (let queryIdx = 0; queryIdx < specs.length; queryIdx += 1) {
+    const spec = specs[queryIdx]!;
+    const query = spec.query;
+    const pinned = spec.googleNewsLocaleIds;
+    const queryLocales =
+      pinned && pinned.length > 0
+        ? localesFull.filter((l) => pinned.includes(l.id))
+        : localesForGoogleNewsPublisherQuery(query, localesFull);
+    const effectiveLocales = queryLocales.length > 0 ? queryLocales : localesFull;
+    if (pinned && pinned.length > 0 && queryLocales.length === 0) {
+      console.warn('[agent] google-news pinned locales not in europe grid; using full grid', {
+        pinned,
+        queryPreview: truncateForProgress(query, 96),
+      });
+    }
+    for (let localeIdx = 0; localeIdx < effectiveLocales.length; localeIdx += 1) {
+      const locale = effectiveLocales[localeIdx]!;
       requestIndex += 1;
 
-      if (discovered.length >= GOOGLE_NEWS_TOTAL_CAP) {
+      if (GOOGLE_NEWS_TOTAL_CAP > 0 && discovered.length >= GOOGLE_NEWS_TOTAL_CAP) {
         const rssRequestsPct =
           totalRequests > 0 ? Number(((requestIndex / totalRequests) * 100).toFixed(1)) : 100;
         logDiscoveryProgress('google-news-complete', {
@@ -2058,6 +2533,7 @@ async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: st
           const parsed = parseGoogleNewsFeed(response.text);
           rssItemCount = parsed.length;
           let rssItemsMissingMetadata = 0;
+          let wrappedLinkRows = 0;
           for (const item of parsed) {
             if (!item.originalUrlFromMetadata) {
               rssItemsMissingMetadata += 1;
@@ -2106,7 +2582,10 @@ async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: st
               }
             }
 
-            if (discovered.length >= GOOGLE_NEWS_TOTAL_CAP || addedForRequest >= perRequestLimit) {
+            if (
+              (GOOGLE_NEWS_TOTAL_CAP > 0 && discovered.length >= GOOGLE_NEWS_TOTAL_CAP) ||
+              addedForRequest >= perRequestLimit
+            ) {
               break;
             }
 
@@ -2135,6 +2614,19 @@ async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: st
                   });
                 }
               }
+            }
+
+            if (isGoogleNewsUrl(selectedUrl)) {
+              wrappedLinkRows += 1;
+              recordGoogleNewsWrappedLink({
+                sourcePrefix,
+                localeId: locale.id,
+                queryPreview: truncateForProgress(query, 200),
+                title: item.title,
+                rssItemLink: item.link,
+                resolvedUrl: selectedUrl,
+                publisherName: item.publisherName,
+              });
             }
 
             if (seen.has(selectedUrl)) {
@@ -2168,6 +2660,7 @@ async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: st
               rssItemCount,
               rssItemsMissingMetadata,
               resolvedLinkCount,
+              wrappedLinkRowsThisRequest: wrappedLinkRows,
               postprocessElapsedMs: Date.now() - postprocessStartedAt,
               addedUniqueThisRequest: addedForRequest,
               skippedFreshnessThisRequest: skippedFreshness,
@@ -2209,13 +2702,13 @@ async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: st
           rssRequests: totalRequests,
           rssRequestsPct,
           queryIndex: queryIdx + 1,
-          queryCount: queries.length,
+          queryCount: specs.length,
           queriesPct:
-            queries.length > 0
-              ? Number((((queryIdx + (localeIdx + 1) / queryLocales.length) / queries.length) * 100).toFixed(1))
+            specs.length > 0
+              ? Number((((queryIdx + (localeIdx + 1) / effectiveLocales.length) / specs.length) * 100).toFixed(1))
               : 100,
           localeIndex: localeIdx + 1,
-          localeCount: queryLocales.length,
+          localeCount: effectiveLocales.length,
           localeId: locale.id,
           queryPreview: truncateForProgress(query, 96),
           discovered: discovered.length,
@@ -2267,9 +2760,15 @@ async function discoverFromGoogleNewsQueries(queries: string[], sourcePrefix: st
     rssRequests: totalRequests,
     rssRequestsPct: 100,
     elapsedMs: Date.now() - gridStartedAt,
+    wrappedLinksBuffered: googleNewsWrappedLinkBuffer.length,
+    playwrightAttemptsThisRun: googleNewsPlaywrightAttemptsThisRun,
+    playwrightSuccessesThisRun: googleNewsPlaywrightSuccessesThisRun,
   });
 
   return discovered;
+  } finally {
+    await disposeGoogleNewsPlaywrightBrowser();
+  }
 }
 
 function normalizeHost(host: string): string {
@@ -2511,6 +3010,14 @@ export async function discoverCandidateStories(allowedHosts: Set<string>): Promi
     if (expansionQueries.length > 0) {
       logDiscoveryProgress('cluster-expansion-start', {
         queryCount: expansionQueries.length,
+        queryPreview: expansionQueries.map((spec) =>
+          truncateForProgress(
+            spec.googleNewsLocaleIds?.length
+              ? `${spec.query} @(${spec.googleNewsLocaleIds.join(',')})`
+              : spec.query,
+            96,
+          ),
+        ),
       });
 
       try {
