@@ -15,6 +15,28 @@
       "vaimne väärkohtlemine",
       "usuline väärkohtlemine"
     ],
+    "etJournalismSignals": [
+      "uudised",
+      "reportaaž",
+      "uurimine"
+    ],
+    "etJusticeSignals": [
+      "kohtuprotsess",
+      "kohus",
+      "politsei",
+      "kinni peetud"
+    ],
+    "etVictimSignals": [
+      "ellujääjad",
+      "ohvrid",
+      "väärkohtlemine",
+      "ärakasutamine"
+    ],
+    "etMediaSignals": [
+      "dokumentaalfilm",
+      "netflix",
+      "sari"
+    ],
     "etEuropeCountryOr": [
       "Euroopa",
       "Europe",

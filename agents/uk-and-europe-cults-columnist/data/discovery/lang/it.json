@@ -17,6 +17,28 @@
       "\"abuso spirituale\"",
       "\"alto controllo\""
     ],
+    "itJournalismSignals": [
+      "notizie",
+      "inchiesta",
+      "reportage"
+    ],
+    "itJusticeSignals": [
+      "processo",
+      "tribunale",
+      "polizia",
+      "arrestato"
+    ],
+    "itVictimSignals": [
+      "sopravvissuti",
+      "vittime",
+      "abuso",
+      "sfruttamento"
+    ],
+    "itMediaSignals": [
+      "documentario",
+      "netflix",
+      "serie"
+    ],
     "itItalyGeo": [
       "Italia"
     ],

@@ -15,6 +15,28 @@
       "åndelig misbruk",
       "religiøst misbruk"
     ],
+    "noJournalismSignals": [
+      "nyheter",
+      "reportasje",
+      "etterforskning"
+    ],
+    "noJusticeSignals": [
+      "rettssak",
+      "domstol",
+      "politi",
+      "arrestert"
+    ],
+    "noVictimSignals": [
+      "overlevende",
+      "ofre",
+      "misbruk",
+      "utnyttelse"
+    ],
+    "noMediaSignals": [
+      "dokumentar",
+      "netflix",
+      "serie"
+    ],
     "noEuropeCountryOr": [
       "Europa",
       "Europe",

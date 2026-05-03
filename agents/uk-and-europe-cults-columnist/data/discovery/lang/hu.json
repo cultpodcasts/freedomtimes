@@ -15,6 +15,28 @@
       "\"lelki visszaélés\"",
       "\"vallási visszaélés\""
     ],
+    "huJournalismSignals": [
+      "hírek",
+      "riport",
+      "nyomozás"
+    ],
+    "huJusticeSignals": [
+      "tárgyalás",
+      "bíróság",
+      "rendőrség",
+      "letartóztatott"
+    ],
+    "huVictimSignals": [
+      "túlélők",
+      "áldozatok",
+      "visszaélés",
+      "kizsákmányolás"
+    ],
+    "huMediaSignals": [
+      "dokumentumfilm",
+      "netflix",
+      "sorozat"
+    ],
     "huEuropeCountryOr": [
       "Európa",
       "Europe",

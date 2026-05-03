@@ -15,6 +15,28 @@
       "dvasinis smurtas",
       "religinis smurtas"
     ],
+    "ltJournalismSignals": [
+      "naujienos",
+      "reportažas",
+      "tyrimas"
+    ],
+    "ltJusticeSignals": [
+      "teismas",
+      "byla",
+      "policija",
+      "sulaikytas"
+    ],
+    "ltVictimSignals": [
+      "išgyvenusieji",
+      "aukos",
+      "smurtas",
+      "išnaudojimas"
+    ],
+    "ltMediaSignals": [
+      "dokumentinis",
+      "netflix",
+      "serialas"
+    ],
     "ltEuropeCountryOr": [
       "Europa",
       "Europe",

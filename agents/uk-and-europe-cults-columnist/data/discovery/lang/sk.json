@@ -15,6 +15,28 @@
       "duchové zneužívanie",
       "náboženské zneužívanie"
     ],
+    "skJournalismSignals": [
+      "správy",
+      "reportáž",
+      "vyšetrovanie"
+    ],
+    "skJusticeSignals": [
+      "súd",
+      "proces",
+      "polícia",
+      "zatknutý"
+    ],
+    "skVictimSignals": [
+      "preživší",
+      "obete",
+      "zneužívanie",
+      "vykořisťovanie"
+    ],
+    "skMediaSignals": [
+      "dokument",
+      "netflix",
+      "seriál"
+    ],
     "skEuropeCountryOr": [
       "Európa",
       "Europe",

@@ -16,6 +16,28 @@
       "\"abuz spiritual\"",
       "\"abuz religios\""
     ],
+    "roJournalismSignals": [
+      "știri",
+      "reportaj",
+      "investigație"
+    ],
+    "roJusticeSignals": [
+      "proces",
+      "tribunal",
+      "poliție",
+      "arestat"
+    ],
+    "roVictimSignals": [
+      "supraviețuitori",
+      "victime",
+      "abuz",
+      "exploatare"
+    ],
+    "roMediaSignals": [
+      "documentar",
+      "netflix",
+      "serial"
+    ],
     "roRomaniaGeo": [
       "România"
     ],

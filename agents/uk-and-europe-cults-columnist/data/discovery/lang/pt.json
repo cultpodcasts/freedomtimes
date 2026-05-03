@@ -17,6 +17,28 @@
       "\"abuso espiritual\"",
       "\"abuso religioso\""
     ],
+    "ptJournalismSignals": [
+      "notícias",
+      "reportagem",
+      "investigação"
+    ],
+    "ptJusticeSignals": [
+      "julgamento",
+      "tribunal",
+      "polícia",
+      "detido"
+    ],
+    "ptVictimSignals": [
+      "sobreviventes",
+      "vítimas",
+      "abuso",
+      "exploração"
+    ],
+    "ptMediaSignals": [
+      "documentário",
+      "netflix",
+      "série"
+    ],
     "ptPortugalGeo": [
       "Portugal"
     ],

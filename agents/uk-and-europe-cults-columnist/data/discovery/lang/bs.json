@@ -15,6 +15,28 @@
       "duhovno zlostavljanje",
       "religijsko zlostavljanje"
     ],
+    "bsJournalismSignals": [
+      "vijesti",
+      "izvještaj",
+      "istraga"
+    ],
+    "bsJusticeSignals": [
+      "suđenje",
+      "sud",
+      "policija",
+      "uhapšen"
+    ],
+    "bsVictimSignals": [
+      "preživjeli",
+      "žrtve",
+      "zlostavljanje",
+      "eksploatacija"
+    ],
+    "bsMediaSignals": [
+      "dokumentarni",
+      "netflix",
+      "serija"
+    ],
     "bsEuropeCountryOr": [
       "Evropa",
       "Europe",

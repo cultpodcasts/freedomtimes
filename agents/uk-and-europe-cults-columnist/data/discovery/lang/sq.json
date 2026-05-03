@@ -15,6 +15,28 @@
       "abuzim shpirtëror",
       "abuzim fetar"
     ],
+    "sqJournalismSignals": [
+      "lajme",
+      "raport",
+      "hetim"
+    ],
+    "sqJusticeSignals": [
+      "gjykim",
+      "gjykatë",
+      "polici",
+      "i arrestuar"
+    ],
+    "sqVictimSignals": [
+      "mbijetues",
+      "viktima",
+      "abuzim",
+      "shfrytëzim"
+    ],
+    "sqMediaSignals": [
+      "dokumentar",
+      "netflix",
+      "seri"
+    ],
     "sqEuropeCountryOr": [
       "Evropa",
       "Europe",

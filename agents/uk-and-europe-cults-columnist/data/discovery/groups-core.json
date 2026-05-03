@@ -1,5 +1,5 @@
 {
-  "_docs": "Shared template groups for googleNewsQueryDefinitions.templates. IMPORTANT: templates without site: are executed for every europe locale (see discoverStories localesForGoogleNewsPublisherQuery). Keep tokens here broad/Latin-script only; English-only legal/psychology phrases (harm signals) live in data/discovery/lang/en.json. Per-locale cult morphology belongs in lang/*.json.",
+  "_docs": "Shared template groups for googleNewsQueryDefinitions.templates. IMPORTANT: templates without site: are executed for every europe locale unless locale-pinned. Harm, journalism/justice/victim/media signal phrases live per locale in data/discovery/lang/*.json. Per-locale cult morphology belongs in lang/*.json.",
   "groups": {
     "cultCore": [
       "cult",
@@ -111,28 +111,6 @@
       "Liechtenstein",
       "Andorra",
       "Vatikan"
-    ],
-    "journalismSignals": [
-      "news",
-      "report",
-      "investigation"
-    ],
-    "justiceSignals": [
-      "trial",
-      "court",
-      "police",
-      "arrested"
-    ],
-    "victimSignals": [
-      "survivor",
-      "victims",
-      "abuse",
-      "exploitation"
-    ],
-    "mediaSignals": [
-      "documentary",
-      "netflix",
-      "series"
     ]
   }
 }

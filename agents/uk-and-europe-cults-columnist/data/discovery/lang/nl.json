@@ -16,6 +16,28 @@
       "\"geestelijk misbruik\"",
       "\"religieus misbruik\""
     ],
+    "nlJournalismSignals": [
+      "nieuws",
+      "verslag",
+      "onderzoek"
+    ],
+    "nlJusticeSignals": [
+      "rechtszaak",
+      "rechtbank",
+      "politie",
+      "gearresteerd"
+    ],
+    "nlVictimSignals": [
+      "overlevenden",
+      "slachtoffers",
+      "misbruik",
+      "uitbuiting"
+    ],
+    "nlMediaSignals": [
+      "documentaire",
+      "netflix",
+      "serie"
+    ],
     "nlNetherlandsGeo": [
       "Nederland"
     ],

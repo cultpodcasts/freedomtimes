@@ -18,6 +18,30 @@
       "\"psychische Manipulation\"",
       "\"geistlicher Missbrauch\""
     ],
+    "deJournalismSignals": [
+      "Nachrichten",
+      "Bericht",
+      "Recherche",
+      "Enthüllung"
+    ],
+    "deJusticeSignals": [
+      "Prozess",
+      "Gericht",
+      "Polizei",
+      "verhaftet"
+    ],
+    "deVictimSignals": [
+      "Überlebende",
+      "Opfer",
+      "Missbrauch",
+      "Ausbeutung"
+    ],
+    "deMediaSignals": [
+      "Dokumentation",
+      "Dokumentarfilm",
+      "Netflix",
+      "Serie"
+    ],
     "deDachCountryOr": [
       "Deutschland",
       "Österreich",

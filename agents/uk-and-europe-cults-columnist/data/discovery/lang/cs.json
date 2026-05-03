@@ -15,6 +15,28 @@
       "duchovní zneužívání",
       "náboženské zneužívání"
     ],
+    "csJournalismSignals": [
+      "zprávy",
+      "reportáž",
+      "vyšetřování"
+    ],
+    "csJusticeSignals": [
+      "soud",
+      "soudní proces",
+      "policie",
+      "zatčen"
+    ],
+    "csVictimSignals": [
+      "přeživší",
+      "oběti",
+      "zneužívání",
+      "vykořisťování"
+    ],
+    "csMediaSignals": [
+      "dokument",
+      "netflix",
+      "seriál"
+    ],
     "csEuropeCountryOr": [
       "Evropa",
       "Europe",

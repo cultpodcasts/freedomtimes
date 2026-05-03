@@ -15,6 +15,28 @@
       "garīga vardarbība",
       "garīga izmantošana"
     ],
+    "lvJournalismSignals": [
+      "ziņas",
+      "reportāža",
+      "izmeklēšana"
+    ],
+    "lvJusticeSignals": [
+      "tiesa",
+      "tiesas process",
+      "policija",
+      "aizturēts"
+    ],
+    "lvVictimSignals": [
+      "izdzīvojušie",
+      "upuri",
+      "vardarbība",
+      "izmantošana"
+    ],
+    "lvMediaSignals": [
+      "documentālā filma",
+      "netflix",
+      "seriāls"
+    ],
     "lvEuropeCountryOr": [
       "Eiropa",
       "Europe",

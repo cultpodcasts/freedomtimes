@@ -15,6 +15,28 @@
       "andligt missbruk",
       "religiöst missbruk"
     ],
+    "svJournalismSignals": [
+      "nyheter",
+      "rapport",
+      "utredning"
+    ],
+    "svJusticeSignals": [
+      "rättegång",
+      "domstol",
+      "polis",
+      "gripen"
+    ],
+    "svVictimSignals": [
+      "överlevande",
+      "offer",
+      "missbruk",
+      "utnyttjande"
+    ],
+    "svMediaSignals": [
+      "dokumentär",
+      "netflix",
+      "serie"
+    ],
     "svEuropeCountryOr": [
       "Europa",
       "Europe",

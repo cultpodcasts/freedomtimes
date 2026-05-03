@@ -17,6 +17,28 @@
       "\"lavage de cerveau\"",
       "\"abus spirituel\""
     ],
+    "frJournalismSignals": [
+      "actualités",
+      "reportage",
+      "enquête"
+    ],
+    "frJusticeSignals": [
+      "procès",
+      "tribunal",
+      "police",
+      "arrêté"
+    ],
+    "frVictimSignals": [
+      "survivants",
+      "victimes",
+      "abus",
+      "exploitation"
+    ],
+    "frMediaSignals": [
+      "documentaire",
+      "netflix",
+      "série"
+    ],
     "frFranceBelgGeo": [
       "France",
       "Belgique"

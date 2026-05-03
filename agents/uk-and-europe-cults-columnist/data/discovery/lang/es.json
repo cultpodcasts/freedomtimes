@@ -18,6 +18,28 @@
       "\"abuso religioso\"",
       "\"grupo de alto control\""
     ],
+    "esJournalismSignals": [
+      "noticias",
+      "reportaje",
+      "investigación"
+    ],
+    "esJusticeSignals": [
+      "juicio",
+      "tribunal",
+      "policía",
+      "detenido"
+    ],
+    "esVictimSignals": [
+      "supervivientes",
+      "víctimas",
+      "abuso",
+      "explotación"
+    ],
+    "esMediaSignals": [
+      "documental",
+      "netflix",
+      "serie"
+    ],
     "esSpainGeo": [
       "España"
     ],

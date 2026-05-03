@@ -15,6 +15,28 @@
       "duhovno zlorabljanje",
       "versko zlorabljanje"
     ],
+    "slJournalismSignals": [
+      "novice",
+      "poročilo",
+      "preiskava"
+    ],
+    "slJusticeSignals": [
+      "sojenje",
+      "sodišče",
+      "policija",
+      "prijet"
+    ],
+    "slVictimSignals": [
+      "preživeli",
+      "žrtve",
+      "zloraba",
+      "izkoriščanje"
+    ],
+    "slMediaSignals": [
+      "dokumentarni film",
+      "netflix",
+      "serija"
+    ],
     "slEuropeCountryOr": [
       "Evropa",
       "Europe",

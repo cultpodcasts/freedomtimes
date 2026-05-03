@@ -16,6 +16,28 @@
       "\"wykorzystywanie duchowe\"",
       "\"nadużycie religijne\""
     ],
+    "plJournalismSignals": [
+      "wiadomości",
+      "reportaż",
+      "śledztwo"
+    ],
+    "plJusticeSignals": [
+      "proces",
+      "sąd",
+      "policja",
+      "aresztowany"
+    ],
+    "plVictimSignals": [
+      "ocaleni",
+      "ofiary",
+      "wykorzystanie",
+      "eksploatacja"
+    ],
+    "plMediaSignals": [
+      "dokument",
+      "netflix",
+      "serial"
+    ],
     "plPolandGeo": [
       "Polska"
     ],

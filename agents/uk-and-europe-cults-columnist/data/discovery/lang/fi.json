@@ -16,6 +16,28 @@
       "\"hengellinen väkivalta\"",
       "\"uskonnollinen väkivalta\""
     ],
+    "fiJournalismSignals": [
+      "uutiset",
+      "reportaasi",
+      "tutkinta"
+    ],
+    "fiJusticeSignals": [
+      "oikeudenkäynti",
+      "oikeus",
+      "poliisi",
+      "pidätetty"
+    ],
+    "fiVictimSignals": [
+      "selviytyjät",
+      "uhrit",
+      "väkivalta",
+      "hyväksikäyttö"
+    ],
+    "fiMediaSignals": [
+      "dokumentti",
+      "netflix",
+      "sarja"
+    ],
     "fiFinlandGeo": [
       "Suomi"
     ],

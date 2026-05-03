@@ -15,6 +15,28 @@
       "duševno zlostavljanje",
       "duhovno zlostavljanje"
     ],
+    "hrJournalismSignals": [
+      "vijesti",
+      "izvještaj",
+      "istraga"
+    ],
+    "hrJusticeSignals": [
+      "suđenje",
+      "sud",
+      "policija",
+      "uhićen"
+    ],
+    "hrVictimSignals": [
+      "preživjeli",
+      "žrtve",
+      "zlostavljanje",
+      "eksploatacija"
+    ],
+    "hrMediaSignals": [
+      "dokumentarni",
+      "netflix",
+      "serija"
+    ],
     "hrEuropeCountryOr": [
       "Europa",
       "Europe",

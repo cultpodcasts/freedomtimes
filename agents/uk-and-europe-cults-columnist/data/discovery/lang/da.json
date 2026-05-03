@@ -15,6 +15,28 @@
       "åndeligt misbrug",
       "religiøst misbrug"
     ],
+    "daJournalismSignals": [
+      "nyheder",
+      "rapport",
+      "undersøgelse"
+    ],
+    "daJusticeSignals": [
+      "retssag",
+      "domstol",
+      "politi",
+      "anholdt"
+    ],
+    "daVictimSignals": [
+      "overlevende",
+      "ofre",
+      "misbrug",
+      "udnyttelse"
+    ],
+    "daMediaSignals": [
+      "dokumentar",
+      "netflix",
+      "serie"
+    ],
     "daEuropeCountryOr": [
       "Europa",
       "Europe",

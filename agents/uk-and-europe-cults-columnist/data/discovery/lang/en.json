@@ -1,5 +1,5 @@
 {
-  "_docs": "Language-specific Google News query groups for \"en\" (cult-related + Europe country OR list). Harm / abuse phrases for Google q= as {{enHarmSignals}} (locale-pinned templates).",
+  "_docs": "Language-specific Google News query groups for \"en\" (cult-related + Europe country OR list). Locale-pinned templates use {{enHarmSignals}}, {{enJournalismSignals}}, {{enJusticeSignals}}, {{enVictimSignals}}, {{enMediaSignals}}.",
   "language": "en",
   "groups": {
     "enHarmSignals": [
@@ -9,6 +9,28 @@
       "\"high control groups\"",
       "\"religious abuse\"",
       "\"spiritual abuse\""
+    ],
+    "enJournalismSignals": [
+      "news",
+      "report",
+      "investigation"
+    ],
+    "enJusticeSignals": [
+      "trial",
+      "court",
+      "police",
+      "arrested"
+    ],
+    "enVictimSignals": [
+      "survivor",
+      "victims",
+      "abuse",
+      "exploitation"
+    ],
+    "enMediaSignals": [
+      "documentary",
+      "netflix",
+      "series"
     ],
     "enWatchlistTerms": [
       "cult",
