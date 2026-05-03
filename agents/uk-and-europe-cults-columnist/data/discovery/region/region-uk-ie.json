@@ -1,0 +1,20 @@
+{
+  "_docs": "UK and Ireland geography tokens for English-pinned Google News templates.",
+  "groups": {
+    "ukGeo": [
+      "UK",
+      "\"United Kingdom\"",
+      "Britain",
+      "England",
+      "Scotland",
+      "Wales",
+      "\"Northern Ireland\"",
+      "Ireland"
+    ],
+    "ukGeoTight": [
+      "UK",
+      "\"United Kingdom\"",
+      "Britain"
+    ]
+  }
+}

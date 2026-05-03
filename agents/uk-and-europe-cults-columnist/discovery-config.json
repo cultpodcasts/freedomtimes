@@ -1,9 +1,16 @@
 {
-  "_architecture": "regionTerms: mixed EN+local tokens for pipeline/discovery text matching (not the same as per-locale Google q=). newsdataQueries: one row per language/market for NewsData.io. Generic googleNews templates expand into q= strings; each template row may set templateLocaleHlPrefixes (same length as templates) so a query runs only on editions whose hl matches. Harm and journalism/justice/victim/media signal phrases live per locale as {{xxHarmSignals}}, {{xxJournalismSignals}}, etc. in data/discovery/lang/*.json. null = all europe locales in the grid. Publisher watchlist queries use site: and stay edition-scoped via localesForGoogleNewsPublisherQuery.",
+  "_architecture": "regionTerms: mixed EN+local tokens for pipeline/discovery text matching (not the same as per-locale Google q=). newsdataQueries: one row per language/market for NewsData.io. Generic googleNews templates expand into q= strings; each template row may set templateLocaleHlPrefixes (same length as templates) so a query runs only on editions whose hl matches. Sub-regional geo and cult OR-groups live in data/discovery/region/*.json; harm and journalism/justice/victim/media signals per locale in data/discovery/lang/*.json. null = all europe locales in the grid. Publisher watchlist queries use site: and stay edition-scoped via localesForGoogleNewsPublisherQuery.",
   "googleNewsQueryDefinitions": {
-    "_docs": "Inline `groups` removed; loaded from `groupFiles` in discoveryConfig.ts. `templateLocaleHlPrefixes`: per-template hl subtag(s), same order as `templates`.",
+    "_docs": "Inline `groups` removed; loaded from `groupFiles` in discoveryConfig.ts. Sub-regional geo/cult OR-groups: `data/discovery/region/*.json`. `templateLocaleHlPrefixes`: per-template hl subtag(s), same order as `templates`.",
     "groupFiles": [
       "data/discovery/groups-core.json",
+      "data/discovery/region/region-europe-geo.json",
+      "data/discovery/region/region-uk-ie.json",
+      "data/discovery/region/region-nordic.json",
+      "data/discovery/region/region-cz-sk.json",
+      "data/discovery/region/region-balkans.json",
+      "data/discovery/region/region-baltics.json",
+      "data/discovery/region/region-microstates.json",
       "data/discovery/lang/bg.json",
       "data/discovery/lang/bs.json",
       "data/discovery/lang/cs.json",

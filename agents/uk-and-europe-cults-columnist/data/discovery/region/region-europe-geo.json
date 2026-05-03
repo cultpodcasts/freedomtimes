@@ -1,0 +1,10 @@
+{
+  "_docs": "Broad European geography tokens for generic Google News q= (not a single country).",
+  "groups": {
+    "europeGeo": [
+      "Europe",
+      "European",
+      "Europa"
+    ]
+  }
+}

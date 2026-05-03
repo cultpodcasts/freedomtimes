@@ -1,0 +1,24 @@
+{
+  "_docs": "European microstates: multilingual cult morphology OR-group + local geography names (unpinned template may hit all editions).",
+  "groups": {
+    "microstatesCultOr": [
+      "secte",
+      "sectes",
+      "sekte",
+      "sekt",
+      "secta",
+      "sekta",
+      "sekty",
+      "sectă"
+    ],
+    "microstatesGeo": [
+      "Malta",
+      "Lëtzebuerg",
+      "Monaco",
+      "\"San Marino\"",
+      "Liechtenstein",
+      "Andorra",
+      "Vatikan"
+    ]
+  }
+}

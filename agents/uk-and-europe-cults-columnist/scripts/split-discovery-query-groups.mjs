@@ -1,8 +1,8 @@
 /**
  * Migration / emergency re-split: only works when `discovery-config.json` still has an inline
  * `googleNewsQueryDefinitions.groups` object. After the first split, edit
- * `data/discovery/groups-core.json` and `data/discovery/lang/*.json` directly and maintain
- * `groupFiles` in discovery-config.json by hand.
+ * `data/discovery/groups-core.json`, `data/discovery/region/*.json`, and `data/discovery/lang/*.json`
+ * and maintain `groupFiles` in discovery-config.json by hand.
  *
  * Run from package root: npm run split:discovery-groups
  */
@@ -13,16 +13,46 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-const CORE_KEYS = [
-  'cultCore',
-  'ukGeo',
-  'ukGeoTight',
-  'europeGeo',
-  'nordicsGeo',
-  'czGeo',
-  'balkansGeo',
-  'balticsGeo',
-  'microstatesGeo',
+/** Keys written to `data/discovery/groups-core.json` (minimal shared Latin cult stems). */
+const CORE_KEYS = ['cultCore'];
+
+/** Sub-regional / cross-language geo and cult OR-groups → `data/discovery/region/*.json`. */
+const REGION_FILES = [
+  {
+    rel: 'data/discovery/region/region-europe-geo.json',
+    _docs: 'Broad European geography tokens for generic Google News q= (not a single country).',
+    keys: ['europeGeo'],
+  },
+  {
+    rel: 'data/discovery/region/region-uk-ie.json',
+    _docs: 'UK and Ireland geography tokens for English-pinned Google News templates.',
+    keys: ['ukGeo', 'ukGeoTight'],
+  },
+  {
+    rel: 'data/discovery/region/region-nordic.json',
+    _docs: 'Nordic cult stems + geography for Nordic-pinned Google News rows.',
+    keys: ['nordicSearchCultOr', 'nordicsGeo'],
+  },
+  {
+    rel: 'data/discovery/region/region-cz-sk.json',
+    _docs: 'Czechia and Slovakia cult stems + geography for cs/sk-pinned Google News rows.',
+    keys: ['czSkCultOr', 'czGeo'],
+  },
+  {
+    rel: 'data/discovery/region/region-balkans.json',
+    _docs: 'Western Balkans cult stems + geography for Balkan-pinned Google News rows.',
+    keys: ['balkansCultOr', 'balkansGeo'],
+  },
+  {
+    rel: 'data/discovery/region/region-baltics.json',
+    _docs: 'Baltic cult stems + geography for Baltic-pinned Google News rows.',
+    keys: ['balticsCultOr', 'balticsGeo'],
+  },
+  {
+    rel: 'data/discovery/region/region-microstates.json',
+    _docs: 'European microstates cult morphology + geography.',
+    keys: ['microstatesCultOr', 'microstatesGeo'],
+  },
 ];
 
 /** Primary language code → group keys owned by that file (cult + country OR lists). */
@@ -313,6 +343,11 @@ function main() {
   const groups = defs.groups;
 
   const assigned = new Set([...CORE_KEYS]);
+  for (const r of REGION_FILES) {
+    for (const k of r.keys) {
+      assigned.add(k);
+    }
+  }
   for (const keys of Object.values(LANG_GROUP_KEYS)) {
     for (const k of keys) {
       assigned.add(k);
@@ -321,7 +356,7 @@ function main() {
 
   for (const k of Object.keys(groups)) {
     if (!assigned.has(k)) {
-      throw new Error(`Group "${k}" is not listed in CORE_KEYS or LANG_GROUP_KEYS — add it to the split script.`);
+      throw new Error(`Group "${k}" is not listed in CORE_KEYS, REGION_FILES, or LANG_GROUP_KEYS — add it to the split script.`);
     }
   }
 
@@ -340,12 +375,24 @@ function main() {
   }
 
   mkdirSync(join(root, 'data/discovery/lang'), { recursive: true });
+  mkdirSync(join(root, 'data/discovery/region'), { recursive: true });
 
   const corePayload = {
-    _docs: 'Shared template groups for googleNewsQueryDefinitions.templates (language-agnostic).',
+    _docs:
+      'Minimal shared Latin cult/sect stems for Google News q= templates. Continental and sub-regional geo live in data/discovery/region/*.json; language-specific tokens in data/discovery/lang/*.json.',
     groups: pick(CORE_KEYS),
   };
   writeFileSync(join(root, 'data/discovery/groups-core.json'), `${JSON.stringify(corePayload, null, 2)}\n`);
+
+  for (const r of REGION_FILES) {
+    const regionPayload = {
+      _docs: r._docs,
+      groups: pick(r.keys),
+    };
+    const outPath = join(root, r.rel);
+    mkdirSync(dirname(outPath), { recursive: true });
+    writeFileSync(outPath, `${JSON.stringify(regionPayload, null, 2)}\n`);
+  }
 
   const langCodes = Object.keys(LANG_GROUP_KEYS).sort();
   for (const lang of langCodes) {
@@ -357,7 +404,11 @@ function main() {
     writeFileSync(join(root, `data/discovery/lang/${lang}.json`), `${JSON.stringify(payload, null, 2)}\n`);
   }
 
-  const groupFiles = ['data/discovery/groups-core.json', ...langCodes.map((l) => `data/discovery/lang/${l}.json`)];
+  const groupFiles = [
+    'data/discovery/groups-core.json',
+    ...REGION_FILES.map((r) => r.rel),
+    ...langCodes.map((l) => `data/discovery/lang/${l}.json`),
+  ];
 
   const next = {
     ...cfg,

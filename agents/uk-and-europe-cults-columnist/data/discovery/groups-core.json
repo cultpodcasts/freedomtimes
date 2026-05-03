@@ -1,116 +1,11 @@
 {
-  "_docs": "Shared geo and cross-region cult OR-stems for googleNewsQueryDefinitions.templates only. Do not add harm, journalism, justice, victim, or media signal phrases here — those live exclusively in data/discovery/lang/<code>.json (e.g. enJournalismSignals). Templates without site: still hit every europe locale unless pinned via templateLocaleHlPrefixes.",
+  "_docs": "Minimal shared Latin cult/sect stems for Google News q= templates. Continental and sub-regional geo live in data/discovery/region/*.json; language-specific tokens in data/discovery/lang/*.json.",
   "groups": {
     "cultCore": [
       "cult",
       "cults",
       "sect",
       "sects"
-    ],
-    "ukGeo": [
-      "UK",
-      "\"United Kingdom\"",
-      "Britain",
-      "England",
-      "Scotland",
-      "Wales",
-      "\"Northern Ireland\"",
-      "Ireland"
-    ],
-    "ukGeoTight": [
-      "UK",
-      "\"United Kingdom\"",
-      "Britain"
-    ],
-    "europeGeo": [
-      "Europe",
-      "European",
-      "Europa"
-    ],
-    "nordicSearchCultOr": [
-      "sekt",
-      "sekter",
-      "sekte",
-      "sektes",
-      "kult",
-      "sect",
-      "sects",
-      "cults"
-    ],
-    "nordicsGeo": [
-      "Sverige",
-      "Norge",
-      "Danmark",
-      "Suomi",
-      "Ísland"
-    ],
-    "czSkCultOr": [
-      "sekta",
-      "sekty",
-      "sekte",
-      "sekt",
-      "sect",
-      "sects",
-      "cult",
-      "cults"
-    ],
-    "czGeo": [
-      "Česko",
-      "Slovensko"
-    ],
-    "balkansCultOr": [
-      "sekta",
-      "sekte",
-      "sekt",
-      "sect",
-      "sects",
-      "cult",
-      "cults",
-      "kult"
-    ],
-    "balkansGeo": [
-      "Hrvatska",
-      "Srbija",
-      "Slovenija",
-      "Bosna i Hercegovina",
-      "Crna Gora",
-      "Kosovo",
-      "Sjeverna Makedonija",
-      "Shqipëri"
-    ],
-    "balticsCultOr": [
-      "sekt",
-      "sekter",
-      "sekte",
-      "sect",
-      "sects",
-      "kult",
-      "cult",
-      "cults"
-    ],
-    "balticsGeo": [
-      "Eesti",
-      "Latvija",
-      "Lietuva"
-    ],
-    "microstatesCultOr": [
-      "secte",
-      "sectes",
-      "sekte",
-      "sekt",
-      "secta",
-      "sekta",
-      "sekty",
-      "sectă"
-    ],
-    "microstatesGeo": [
-      "Malta",
-      "Lëtzebuerg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatikan"
     ]
   }
 }

@@ -1,0 +1,19 @@
+{
+  "_docs": "Czechia and Slovakia cult stems + geography for cs/sk-pinned Google News rows.",
+  "groups": {
+    "czSkCultOr": [
+      "sekta",
+      "sekty",
+      "sekte",
+      "sekt",
+      "sect",
+      "sects",
+      "cult",
+      "cults"
+    ],
+    "czGeo": [
+      "Česko",
+      "Slovensko"
+    ]
+  }
+}
