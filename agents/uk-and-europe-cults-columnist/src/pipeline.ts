@@ -16,7 +16,7 @@ import {
   FIGURATIVE_CULT_PHRASES_BY_LANGUAGE,
   FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE,
   GENERIC_CULT_TERMS_BY_LANGUAGE,
-  STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE,
+  getStrictCultTermExtensionsForLanguage,
 } from './pipelineTerms.js';
 import { fetchTextWithCache } from './httpCache.js';
 import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.js';
@@ -77,14 +77,8 @@ const FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE: Record<string, RegExp[]> = (() => {
   return result;
 })();
 
-const STRICT_CULT_TERMS = Array.from(
-  new Set([
-    ...ALL_CULT_TERMS,
-    ...(STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE.en ?? []),
-  ]),
-);
-
-const SPECIFIC_CULT_TERMS = STRICT_CULT_TERMS.filter((term) => !ALL_GENERIC_CULT_TERMS.includes(term));
+/** Union of cult-terms.json only (no locale-specific strict extensions) — fallback when a language yields no specific terms. */
+const SPECIFIC_CULT_TERMS_FALLBACK = ALL_CULT_TERMS.filter((term) => !ALL_GENERIC_CULT_TERMS.includes(term));
 const AMBIGUOUS_SPECIFIC_CULT_TERMS = new Set(['lahko']);
 const genericCultUrlPattern = ALL_GENERIC_CULT_TERMS.map((term) => escapeRegExp(term)).join('|');
 const GENERIC_CULT_URL_SIGNAL_PATTERN = new RegExp(`/(${genericCultUrlPattern})([/-]|$)`, 'i');
@@ -203,9 +197,10 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
   const bodyLeadLower = normalizeMatchingText(text.slice(0, 2800).toLowerCase());
   const urlLower = url.toLowerCase();
 
-  const languageCultTerms = getCultTermsForLanguage(language);
+  const strictExtensions = getStrictCultTermExtensionsForLanguage(language);
+  const languageCultTerms = Array.from(new Set([...getCultTermsForLanguage(language), ...strictExtensions]));
   const languageSpecificTerms = languageCultTerms.filter((term) => !ALL_GENERIC_CULT_TERMS.includes(term));
-  const specificTerms = languageSpecificTerms.length > 0 ? languageSpecificTerms : SPECIFIC_CULT_TERMS;
+  const specificTerms = languageSpecificTerms.length > 0 ? languageSpecificTerms : SPECIFIC_CULT_TERMS_FALLBACK;
 
   const genericTermsForLanguage = getGenericCultTermsForLanguage(language);
   const titleSpecificMatch = findMatchingPhrase(titleLower, specificTerms);

@@ -115,5 +115,61 @@
       "\"Royaume-Uni\"",
       "Angleterre"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "contrôle coercitif",
+    "lavage de cerveau",
+    "contrôle mental",
+    "abus religieux",
+    "abus spirituel",
+    "groupe à haut contrôle",
+    "groupe à fort contrôle",
+    "groupe à fortes exigences",
+    "groupe à hautes exigences"
+  ],
+  "groupStopwords": [
+    "alors",
+    "aussi",
+    "avec",
+    "avoir",
+    "cela",
+    "celle",
+    "celle-ci",
+    "celle-là",
+    "comme",
+    "dans",
+    "des",
+    "donc",
+    "elle",
+    "elles",
+    "encore",
+    "entre",
+    "est",
+    "été",
+    "être",
+    "leur",
+    "leurs",
+    "mais",
+    "même",
+    "moins",
+    "nous",
+    "pour",
+    "plus",
+    "sans",
+    "sera",
+    "sont",
+    "sur",
+    "tout",
+    "tous",
+    "une",
+    "vous",
+    "article",
+    "rapport",
+    "actualité"
+  ],
+  "genericCultTerms": [
+    "secte",
+    "sectes",
+    "gourou"
+  ]
 }

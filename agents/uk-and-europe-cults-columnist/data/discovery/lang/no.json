@@ -82,5 +82,21 @@
       "Vatikanet",
       "Kypros"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "tvangskontroll",
+    "hjernevasking",
+    "tankekontroll",
+    "religiøst misbruk",
+    "spirituelt misbruk",
+    "gruppe med høy kontroll",
+    "gruppe med høye krav",
+    "høykontrollerende gruppe"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekt",
+    "sekter",
+    "kult"
+  ]
 }

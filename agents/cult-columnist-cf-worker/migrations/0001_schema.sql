@@ -120,15 +120,15 @@ CREATE TABLE IF NOT EXISTS source_hosts (
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- cult-terms.json + generic-cult-terms.json + strict-cult-term-extensions.json
+-- cult-terms.json + data/discovery/lang/*.json (genericCultTerms, strictCultTermExtensions)
 CREATE TABLE IF NOT EXISTS cult_terms (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   term         TEXT NOT NULL,
   language     TEXT NOT NULL DEFAULT 'en',
   term_type    TEXT NOT NULL,
   -- 'cult_term'            → from cult-terms.json (core match terms)
-  -- 'generic_term'         → from generic-cult-terms.json (weaker signals)
-  -- 'strict_extension'     → from strict-cult-term-extensions.json
+  -- 'generic_term'         → from data/discovery/lang/<code>.json genericCultTerms (weaker signals)
+  -- 'strict_extension'     → from data/discovery/lang/<code>.json strictCultTermExtensions
   UNIQUE (term, language, term_type)
 );
 
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS figurative_terms (
 
 CREATE INDEX IF NOT EXISTS idx_figurative_terms_lang_type ON figurative_terms(language, term_type);
 
--- group-stopwords-by-language.json
+-- data/discovery/lang/*.json groupStopwords
 CREATE TABLE IF NOT EXISTS group_stopwords (
   word         TEXT NOT NULL,
   language     TEXT NOT NULL DEFAULT 'en',

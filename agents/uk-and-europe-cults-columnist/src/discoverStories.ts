@@ -14,6 +14,7 @@ import {
   PRIORITY_WATCHLIST_HOSTS,
   REGION_TERMS,
 } from './discoveryConfig.js';
+import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.js';
 
 type GoogleNewsUrlDecoder = {
   decode: (url: string) => Promise<{ status?: boolean; decoded_url?: string; message?: string }>;
@@ -634,11 +635,9 @@ function loadClusterStopwordsByLang(): Map<string, Set<string>> {
     }
 
     try {
-      const groupUrl = new URL('../data/group-stopwords-by-language.json', import.meta.url);
-      const groupRaw = readFileSync(groupUrl, 'utf-8');
-      const groupParsed = JSON.parse(groupRaw) as Record<string, unknown>;
-      for (const [lang, val] of Object.entries(groupParsed)) {
-        if (lang.startsWith('_') || !Array.isArray(val)) {
+      const groupByLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
+      for (const [lang, val] of Object.entries(groupByLang)) {
+        if (!Array.isArray(val) || val.length === 0) {
           continue;
         }
         const code = lang.toLowerCase();
@@ -650,7 +649,7 @@ function loadClusterStopwordsByLang(): Map<string, Set<string>> {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn('[agent] failed to merge group-stopwords-by-language.json', { message });
+      console.warn('[agent] failed to merge discovery lang groupStopwords', { message });
     }
 
     clusterStopwordsByLangCache = map;

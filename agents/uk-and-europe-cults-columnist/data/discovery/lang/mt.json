@@ -1,0 +1,20 @@
+{
+  "_docs": "Maltese pipeline locale: strict cult term extensions for article matching (Maltese is not in Google News lang groupFiles).",
+  "language": "mt",
+  "strictCultTermExtensions": [
+    "kontroll koercittiv",
+    "xixlin tal-moħħ",
+    "kontroll tal-moħħ",
+    "abbuż reliġjuż",
+    "abbuż spiritwali",
+    "grupp b'kontroll għoli",
+    "grupp b'talbiet għoljin",
+    "grupp b'ħtieġiet għoljin"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "setta",
+    "sette",
+    "kult"
+  ]
+}

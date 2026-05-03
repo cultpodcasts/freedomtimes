@@ -87,5 +87,21 @@
       "Vatican",
       "Cipru"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "control coercitiv",
+    "spălare pe creier",
+    "control mental",
+    "abuz religios",
+    "abuz spiritual",
+    "grup cu control ridicat",
+    "grup cu cerințe ridicate",
+    "grup cu exigențe ridicate"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "secta",
+    "secte",
+    "cult"
+  ]
 }

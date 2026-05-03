@@ -81,5 +81,21 @@
       "Vatikani",
       "Qipro"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "kontrolli detyrues",
+    "larja e trurit",
+    "kontrolli i mendjes",
+    "abuzimi fetar",
+    "abuzimi shpirtëror",
+    "grup me kontroll të lartë",
+    "grup me kërkesa të larta",
+    "grup me kontroll të fortë"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekt",
+    "sekte",
+    "kult"
+  ]
 }

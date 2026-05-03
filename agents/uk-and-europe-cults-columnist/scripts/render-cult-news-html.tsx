@@ -4,6 +4,7 @@
 /** @jsxFrag Fragment */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { detect as detectLanguage } from 'tinyld';
+import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from '../src/discoveryLangGroupStopwords.js';
 import {
   Fragment,
   LOG_PATH,
@@ -594,20 +595,10 @@ const CLUSTER_LABEL_EXCLUDED_TERMS = new Set([
 ]);
 
 const GROUP_STOPWORDS_BY_LANGUAGE: StopwordsByLanguage = (() => {
-  const raw = readFileSync(new URL('../data/group-stopwords-by-language.json', import.meta.url), 'utf-8');
-  const parsed = JSON.parse(raw) as unknown;
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('group-stopwords-by-language.json must be a JSON object keyed by language code');
-  }
-
-  const entries = Object.entries(parsed as Record<string, unknown>).map(([lang, terms]) => {
-    if (!Array.isArray(terms) || !terms.every((value) => typeof value === 'string')) {
-      throw new Error(`Expected a string array for language "${lang}" in group-stopwords-by-language.json`);
-    }
-    return [lang.toLowerCase(), terms.map((value) => value.toLowerCase())] as const;
-  });
-
-  return Object.fromEntries(entries);
+  const byLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
+  return Object.fromEntries(
+    Object.entries(byLang).map(([lang, terms]) => [lang, terms.map((value) => value.toLowerCase())]),
+  );
 })();
 
 function tokenize(value: string, stopwords: Set<string>): string[] {

@@ -82,5 +82,21 @@
       "Vatikán",
       "Kypr"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "donucovací kontrola",
+    "vymývání mozku",
+    "kontrola mysli",
+    "náboženské zneužívání",
+    "duchovní zneužívání",
+    "skupina s vysokou mírou kontroly",
+    "skupina s vysokými nároky",
+    "vysoce kontrolující skupina"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekta",
+    "sekty",
+    "kult"
+  ]
 }

@@ -81,5 +81,21 @@
       "Vatikan",
       "Ciper"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "vsiljena kontrola",
+    "pranje možganov",
+    "nadzor nad mislijo",
+    "verska zloraba",
+    "duhovna zloraba",
+    "skupina z visoko stopnjo nadzora",
+    "skupina z visokimi zahtevami",
+    "visokonadzorna skupina"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekta",
+    "sekte",
+    "kult"
+  ]
 }

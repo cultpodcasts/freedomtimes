@@ -82,5 +82,21 @@
       "Vatikanstaten",
       "Cypern"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "tvangskontrol",
+    "hjernevask",
+    "tankekontrol",
+    "religiøst misbrug",
+    "spirituelt misbrug",
+    "gruppe med høj kontrol",
+    "gruppe med høje krav",
+    "højkontrollerende gruppe"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekt",
+    "sekter",
+    "kult"
+  ]
 }

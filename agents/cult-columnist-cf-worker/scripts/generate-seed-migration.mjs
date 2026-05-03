@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 const legacyBase = resolve('agents/uk-and-europe-cults-columnist');
 const targetSql = resolve('agents/cult-columnist-cf-worker/migrations/0002_seed_config.sql');
@@ -7,14 +7,83 @@ const targetSql = resolve('agents/cult-columnist-cf-worker/migrations/0002_seed_
 const readJson = (relativePath) => JSON.parse(readFileSync(resolve(legacyBase, relativePath), 'utf-8'));
 const sqlString = (value) => `'${String(value).replace(/'/g, "''")}'`;
 
+function loadStrictCultTermExtensionsByLanguage(base) {
+  const dir = resolve(base, 'data/discovery/lang');
+  const result = {};
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.json')) continue;
+    const parsed = JSON.parse(readFileSync(join(dir, name), 'utf-8'));
+    const lang =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().toLowerCase()
+        : name.replace(/\.json$/i, '').toLowerCase();
+    const ext = parsed.strictCultTermExtensions;
+    if (ext === undefined) {
+      result[lang] = [];
+      continue;
+    }
+    if (!Array.isArray(ext) || !ext.every((t) => typeof t === 'string')) {
+      throw new Error(`${name}: strictCultTermExtensions must be a string array when present`);
+    }
+    result[lang] = ext;
+  }
+  return result;
+}
+
+function loadGenericCultTermsFromDiscoveryLangFiles(base) {
+  const dir = resolve(base, 'data/discovery/lang');
+  const result = {};
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.json')) continue;
+    const parsed = JSON.parse(readFileSync(join(dir, name), 'utf-8'));
+    const lang =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().toLowerCase()
+        : name.replace(/\.json$/i, '').toLowerCase();
+    const terms = parsed.genericCultTerms;
+    if (terms === undefined) {
+      result[lang] = [];
+      continue;
+    }
+    if (!Array.isArray(terms) || !terms.every((t) => typeof t === 'string')) {
+      throw new Error(`${name}: genericCultTerms must be a string array when present`);
+    }
+    result[lang] = terms;
+  }
+  return result;
+}
+
 const cultTerms = readJson('cult-terms.json');
-const genericCultTerms = readJson('data/generic-cult-terms.json');
-const strictExtensions = readJson('data/strict-cult-term-extensions.json');
+const genericCultTerms = loadGenericCultTermsFromDiscoveryLangFiles(legacyBase);
+const strictExtensions = loadStrictCultTermExtensionsByLanguage(legacyBase);
 const figurativeContext = readJson('data/figurative-cult-context-terms.json');
 const figurativeCommercial = readJson('data/figurative-cult-commercial-context-terms.json');
 const figurativePhrases = readJson('data/figurative-cult-phrases.json');
 const figurativePatterns = readJson('data/figurative-cult-patterns-by-language.json');
-const stopwords = readJson('data/group-stopwords-by-language.json');
+function loadGroupStopwordsByLanguageFromDiscoveryLangFiles(base) {
+  const dir = resolve(base, 'data/discovery/lang');
+  const result = {};
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith('.json')) continue;
+    const parsed = JSON.parse(readFileSync(join(dir, name), 'utf-8'));
+    const lang =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().toLowerCase()
+        : name.replace(/\.json$/i, '').toLowerCase();
+    const words = parsed.groupStopwords;
+    if (words === undefined) {
+      result[lang] = [];
+      continue;
+    }
+    if (!Array.isArray(words) || !words.every((t) => typeof t === 'string')) {
+      throw new Error(`${name}: groupStopwords must be a string array when present`);
+    }
+    result[lang] = words;
+  }
+  return result;
+}
+
+const stopwords = loadGroupStopwordsByLanguageFromDiscoveryLangFiles(legacyBase);
 const allowedHosts = readJson('allowed-source-hosts.json');
 const excludedHosts = readJson('data/excluded-source-hosts.json');
 const watchlistSites = readJson('watchlist-sites.json');

@@ -81,5 +81,18 @@
       "Vatikán",
       "Cyprus"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "donucovacia kontrola",
+    "vymývanie mozgu",
+    "kontrola mysle",
+    "náboženské zneužívanie",
+    "duchovné zneužívanie",
+    "skupina s vysokou mierou kontroly",
+    "skupina s vysokými nárokmi",
+    "silne kontrolujúca skupina",
+    "skupina s vysokými požiadavkami"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": []
 }

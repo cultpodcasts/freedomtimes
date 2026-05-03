@@ -1,5 +1,5 @@
 {
-  "_docs": "Language-specific Google News query groups for \"en\" (cult-related + Europe country OR list). Locale-pinned templates use {{enHarmSignals}}, {{enJournalismSignals}}, {{enJusticeSignals}}, {{enVictimSignals}}, {{enMediaSignals}}.",
+  "_docs": "Language-specific Google News query groups for \"en\" (cult-related + Europe country OR list). Locale-pinned templates use {{enHarmSignals}}, {{enJournalismSignals}}, {{enJusticeSignals}}, {{enVictimSignals}}, {{enMediaSignals}}. Top-level genericCultTerms: weak cult/sect stems for URL and precision filters; strictCultTermExtensions: harm/control phrases for precise cult-topic matching; groupStopwords: editorial tokens merged into cluster phrase extraction (same directory for all locales).",
   "language": "en",
   "groups": {
     "enHarmSignals": [
@@ -92,5 +92,69 @@
       "Vatican",
       "Cyprus"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "coercive control",
+    "brainwashing",
+    "mind control",
+    "religious abuse",
+    "spiritual abuse",
+    "high-control group",
+    "high control group",
+    "high-demand group",
+    "high demand group"
+  ],
+  "groupStopwords": [
+    "about",
+    "after",
+    "again",
+    "against",
+    "also",
+    "amid",
+    "among",
+    "been",
+    "before",
+    "behind",
+    "being",
+    "between",
+    "could",
+    "does",
+    "from",
+    "have",
+    "into",
+    "more",
+    "most",
+    "over",
+    "said",
+    "says",
+    "story",
+    "that",
+    "their",
+    "there",
+    "these",
+    "this",
+    "those",
+    "through",
+    "under",
+    "with",
+    "would",
+    "your",
+    "news",
+    "report",
+    "reports",
+    "update",
+    "latest",
+    "breaking",
+    "video",
+    "watch",
+    "read",
+    "full",
+    "article"
+  ],
+  "genericCultTerms": [
+    "cult",
+    "cults",
+    "sect",
+    "sects"
+  ]
 }

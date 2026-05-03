@@ -28,7 +28,8 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   no: 'no',
 };
 
-function normalizeLanguageCode(language: string | undefined): string {
+/** BCP-47 base language for cult-term lookups (aliases e.g. nb → no). */
+export function normalizeCultLanguageCode(language: string | undefined): string {
   if (!language) {
     return 'en';
   }
@@ -45,7 +46,7 @@ export const CULT_TERMS_BY_LANGUAGE: Record<string, string[]> = Object.fromEntri
 export const ALL_CULT_TERMS = Array.from(new Set(Object.values(CULT_TERMS_BY_LANGUAGE).flat()));
 
 export function getCultTermsForLanguage(language: string | undefined): string[] {
-  const normalized = normalizeLanguageCode(language);
+  const normalized = normalizeCultLanguageCode(language);
   const englishTerms = CULT_TERMS_BY_LANGUAGE.en ?? [];
   const localTerms = CULT_TERMS_BY_LANGUAGE[normalized] ?? englishTerms;
 

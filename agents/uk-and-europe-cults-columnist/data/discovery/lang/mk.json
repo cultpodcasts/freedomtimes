@@ -82,5 +82,21 @@
       "Ватикан",
       "Кипар"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "prisilna kontrola",
+    "mienje na mozokot",
+    "kontrola na umot",
+    "verska zloupotreba",
+    "duhovna zloupotreba",
+    "grupa so visoka kontrola",
+    "grupa so visoki baranja",
+    "visokokontrolna grupa"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekta",
+    "sekti",
+    "kult"
+  ]
 }

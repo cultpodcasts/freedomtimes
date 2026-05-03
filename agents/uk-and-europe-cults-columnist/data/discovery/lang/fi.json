@@ -86,5 +86,21 @@
       "Vatikaani",
       "Kypros"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "pakottava hallinta",
+    "aivopesu",
+    "mielen hallinta",
+    "uskonnollinen hyväksikäyttö",
+    "hengellinen hyväksikäyttö",
+    "korkean valvonnan ryhmä",
+    "korkeat vaatimukset",
+    "tiukasti hallittu ryhmä"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "lahko",
+    "lahkot",
+    "kultti"
+  ]
 }

@@ -82,5 +82,21 @@
       "Vatikanen",
       "Cypern"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "tvångskontroll",
+    "hjärntvätt",
+    "tankekontroll",
+    "religiöst missbruk",
+    "andligt missbruk",
+    "grupp med hög kontroll",
+    "grupp med höga krav",
+    "hög kontrollgrupp"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekt",
+    "sekter",
+    "kult"
+  ]
 }

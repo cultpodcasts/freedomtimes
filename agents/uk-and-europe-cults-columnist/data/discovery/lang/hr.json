@@ -81,5 +81,21 @@
       "Vatikan",
       "Cipar"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "prisilna kontrola",
+    "pranje mozga",
+    "kontrola uma",
+    "religijsko zlostavljanje",
+    "duhovno zlostavljanje",
+    "grupa s visokom kontrolom",
+    "grupa s visokim zahtjevima",
+    "visokokontrolna grupa"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekta",
+    "sekte",
+    "kult"
+  ]
 }

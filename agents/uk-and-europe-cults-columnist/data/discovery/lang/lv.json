@@ -81,5 +81,21 @@
       "Vatikāns",
       "Kipra"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "piespiedu kontrole",
+    "smadzeņu skalošana",
+    "prāta kontrole",
+    "reliģiska vardarbība",
+    "garīga vardarbība",
+    "grupa ar augstu kontroli",
+    "grupa ar augstām prasībām",
+    "augstas kontroles grupa"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekta",
+    "sektas",
+    "kults"
+  ]
 }

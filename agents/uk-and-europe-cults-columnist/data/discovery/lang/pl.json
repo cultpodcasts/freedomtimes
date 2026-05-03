@@ -87,5 +87,21 @@
       "Watykan",
       "Cypr"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "kontrola współzależności",
+    "pranie mózgu",
+    "kontrola umysłu",
+    "nadużycie religijne",
+    "nadużycie duchowe",
+    "grupa o wysokim poziomie kontroli",
+    "grupa o wysokich wymaganiach",
+    "wysokokontrolna grupa"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekta",
+    "sekty",
+    "kult"
+  ]
 }

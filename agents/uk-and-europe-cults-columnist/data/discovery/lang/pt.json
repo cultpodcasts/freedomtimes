@@ -88,5 +88,20 @@
       "Vaticano",
       "Chipre"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "controle coercitivo",
+    "lavagem cerebral",
+    "controle mental",
+    "abuso religioso",
+    "abuso espiritual",
+    "grupo de alto controle",
+    "grupo de altas exigências",
+    "grupo de alta exigência"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "seita",
+    "seitas"
+  ]
 }

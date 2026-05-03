@@ -81,5 +81,18 @@
       "Vatikán",
       "Ciprus"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "kényszerítő kontroll",
+    "agymosás",
+    "gondolatirányítás",
+    "vallási bántalmazás",
+    "spirituális bántalmazás",
+    "nagy kontrollt gyakorló csoport",
+    "magas követelményű csoport",
+    "szigorúan ellenőrzött közösség",
+    "nagy elvárásokat támasztó közösség"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": []
 }

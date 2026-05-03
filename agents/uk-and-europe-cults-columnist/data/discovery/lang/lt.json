@@ -81,5 +81,21 @@
       "Vatikanas",
       "Kipras"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "prievartinė kontrolė",
+    "smegenų plovimas",
+    "proto kontrolė",
+    "religinis smurtas",
+    "dvasinis smurtas",
+    "grupė su dideliu kontroliavimu",
+    "grupė su dideliais reikalavimais",
+    "aukštos kontrolės grupė"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekta",
+    "sektos",
+    "kultas"
+  ]
 }

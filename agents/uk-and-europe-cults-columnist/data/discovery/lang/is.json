@@ -80,5 +80,18 @@
       "Vatíkanið",
       "Kýpur"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "þvingandi stjórn",
+    "heilaþvottur",
+    "hugstjórn",
+    "trúarleg misnotkun",
+    "andleg misnotkun",
+    "hópur með mikla stjórn",
+    "hópur með háar kröfur",
+    "há-stjórnunarhópur",
+    "hópur með miklar kröfur"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": []
 }

@@ -91,5 +91,58 @@
       "Chipre",
       "Cyprus"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "control coercitivo",
+    "lavado de cerebro",
+    "control mental",
+    "abuso religioso",
+    "abuso espiritual",
+    "grupo de alto control",
+    "grupo de altas exigencias",
+    "grupo de alta exigencia"
+  ],
+  "groupStopwords": [
+    "además",
+    "algo",
+    "algunas",
+    "algunos",
+    "ante",
+    "aquel",
+    "aquí",
+    "como",
+    "con",
+    "contra",
+    "cual",
+    "cuando",
+    "desde",
+    "donde",
+    "durante",
+    "entre",
+    "esta",
+    "estas",
+    "este",
+    "estos",
+    "hacia",
+    "hasta",
+    "más",
+    "mientras",
+    "mucho",
+    "para",
+    "pero",
+    "poco",
+    "porque",
+    "sobre",
+    "tras",
+    "una",
+    "unas",
+    "unos",
+    "noticia",
+    "reporte",
+    "artículo"
+  ],
+  "genericCultTerms": [
+    "secta",
+    "sectas"
+  ]
 }

@@ -81,5 +81,21 @@
       "Vatikan",
       "Küpros"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "sunnitud kontroll",
+    "ajupesu",
+    "mõtete kontrollimine",
+    "religioosne väärkohtlemine",
+    "vaimne väärkohtlemine",
+    "kõrge kontrolliga grupp",
+    "kõrgete nõuetega grupp",
+    "kõrgenõudlik grupp"
+  ],
+  "groupStopwords": [],
+  "genericCultTerms": [
+    "sekt",
+    "sektid",
+    "kultus"
+  ]
 }

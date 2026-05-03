@@ -113,5 +113,58 @@
       "Cipro",
       "Cyprus"
     ]
-  }
+  },
+  "strictCultTermExtensions": [
+    "controllo coercitivo",
+    "lavaggio del cervello",
+    "controllo mentale",
+    "abuso religioso",
+    "abuso spirituale",
+    "gruppo ad alto controllo",
+    "gruppo ad alta richiesta",
+    "gruppo ad alte richieste"
+  ],
+  "groupStopwords": [
+    "anche",
+    "avere",
+    "come",
+    "con",
+    "contro",
+    "dalla",
+    "dalle",
+    "dello",
+    "della",
+    "delle",
+    "dopo",
+    "durante",
+    "essere",
+    "fra",
+    "fino",
+    "gli",
+    "hanno",
+    "nelle",
+    "nello",
+    "oltre",
+    "per",
+    "perché",
+    "prima",
+    "quella",
+    "quello",
+    "senza",
+    "sopra",
+    "sotto",
+    "sulla",
+    "sulle",
+    "tutto",
+    "tutti",
+    "una",
+    "uno",
+    "notizia",
+    "rapporto",
+    "articolo"
+  ],
+  "genericCultTerms": [
+    "setta",
+    "sette"
+  ]
 }
