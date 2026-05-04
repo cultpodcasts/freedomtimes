@@ -127,6 +127,8 @@ export function buildPortableRenderNodes(value: unknown[] | null): ProcessedPort
 			const detailsBody: unknown[] = [];
 			let foundClose = false;
 			let j = i + 2;
+			// Closing `</details>` must be its own PT block (plain text). Without it, the
+			// open/summary/body lines render as literal paragraphs instead of <details>.
 			while (j < value.length) {
 				const innerText = normalizeTagLine(plainTextFromPortableBlock(value[j]));
 				const innerLower = innerText.toLowerCase();

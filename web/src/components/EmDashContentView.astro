@@ -137,6 +137,10 @@ const portableRenderNodes = buildPortableRenderNodes(portableContent);
 		margin: 0.9rem 0 0;
 	}
 
+	/* Translation fold-out: not a blockquote (no left bar); keep distinct from body copy. */
+	:global(.legacy-details.translation) {
+		border-left: none;
+	}
 
 	:global(.article-header h1) {
 		margin: 0;
@@ -342,6 +346,12 @@ const portableRenderNodes = buildPortableRenderNodes(portableContent);
 
 	:global(.pdf-link-wrap a:hover) {
 		text-decoration: underline;
+	}
+
+	/* One column measure for PT + legacy body: headings, embeds, and paragraphs share the same edge. */
+	.content-card :global(.portable-content),
+	.content-card :global(.legacy-content) {
+		max-width: 65ch;
 	}
 
 	.content-card :global(p) {

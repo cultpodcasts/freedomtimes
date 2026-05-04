@@ -73,7 +73,7 @@ const figureClass = [
 				<iframe
 					src={src}
 					title={title}
-					loading="lazy"
+					loading={isApplePodcasts ? 'eager' : 'lazy'}
 					allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
 					allowfullscreen
 				/>
@@ -84,9 +84,11 @@ const figureClass = [
 
 <style is:global>
 	.content-card .audio-embed {
+		display: block;
 		margin: 2rem 0;
+		margin-inline: 0;
 		width: 100%;
-		max-width: min(100%, 65ch);
+		max-width: 100%;
 		box-sizing: border-box;
 	}
 
@@ -98,12 +100,16 @@ const figureClass = [
 		background: #fafafa;
 	}
 
-	/* Apple Podcasts web player (~290×175); avoid a tall empty band under the chrome. */
+	/*
+	 * Apple Podcasts web player: full prose width. Episode UI grows with iframe width;
+	 * do not clip with overflow:hidden + short fixed height (that hid the whole player).
+	 * Fixed iframe height matches Apple’s episode embed; eager load avoids lazy quirks.
+	 */
 	.content-card .audio-embed--apple-podcasts {
-		width: min(100%, 432px);
-		max-width: min(100%, 432px);
-		height: 188px;
-		overflow: hidden;
+		width: 100%;
+		max-width: 100%;
+		height: auto;
+		overflow: visible;
 		border-radius: 12px;
 		border: 1px solid #e0e0e0;
 		background: #ffffff;
@@ -113,8 +119,7 @@ const figureClass = [
 	.content-card .audio-embed--apple-podcasts iframe {
 		display: block;
 		width: 100%;
-		height: 100%;
-		min-height: 175px;
+		height: 232px;
 		border: 0;
 		background: #ffffff;
 	}

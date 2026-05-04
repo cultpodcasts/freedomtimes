@@ -60,7 +60,7 @@ function upgradeTranslateDetailsBlocks(root: ParentNode): void {
 			}
 
 			const details = document.createElement('details');
-			details.className = 'legacy-details';
+			details.className = 'legacy-details translation';
 			const summary = document.createElement('summary');
 			summary.textContent = summaryText;
 			details.appendChild(summary);

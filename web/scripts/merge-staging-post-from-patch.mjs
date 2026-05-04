@@ -11,7 +11,8 @@
  * Default patch path: `web/.emdash/article-patches/<slug>.json`
  * Default base URL: https://staging.freedomtimes.news
  *
- * Requires ~/.config/emdash/auth.json with accessToken for that URL.
+ * Requires ~/.config/emdash/auth.json with accessToken for that URL, or set
+ * `EMDASH_STAGING_TOKEN` (when `EMDASH_STAGING_URL` / default is staging) to override.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -59,10 +60,27 @@ async function main() {
 		process.argv[4] || join(webDir, ".emdash", "article-patches", `${slug}.json`);
 
 	const auth = loadAuth();
-	const token = tokenFor(auth, baseUrl);
+	const token =
+		(baseUrl.replace(/\/$/, "") === STAGING_DEFAULT.replace(/\/$/, "") &&
+			process.env.EMDASH_STAGING_TOKEN?.trim()) ||
+		tokenFor(auth, baseUrl);
 
-	const { item, _rev } = await emdashMcpContentGet(baseUrl, token, { collection, id: slug });
-	let rev = _rev;
+	let item;
+	let rev;
+	try {
+		const out = await emdashMcpContentGet(baseUrl, token, { collection, id: slug });
+		item = out.item;
+		rev = out._rev;
+	} catch (mcpErr) {
+		// MCP and REST tokens differ in some setups; REST matches `emdash content update`.
+		console.warn(`MCP content_get skipped (${mcpErr?.message ?? mcpErr}); using REST GET for current item.`);
+		const g = await apiGetJson(apiUrl(baseUrl, `/content/${collection}/${encodeURIComponent(slug)}`), token);
+		if (!g?.data || typeof g.data !== "object") {
+			throw new Error("REST content GET returned no data object");
+		}
+		item = { data: g.data };
+		rev = g.data._rev;
+	}
 	if (rev == null || rev === "") {
 		const g = await apiGetJson(apiUrl(baseUrl, `/content/${collection}/${encodeURIComponent(slug)}`), token);
 		rev = g.data?._rev;
