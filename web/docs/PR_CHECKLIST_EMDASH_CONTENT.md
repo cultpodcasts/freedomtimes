@@ -18,7 +18,22 @@ Optional full-repo typecheck (currently noisy elsewhere):
 
 ## 2. Canary: what shape is `data.content`? (staging / production)
 
-EmDash can return **`content` as a Portable Text array** or a **markdown string**, depending on collection field type and API version. **`resolveEntryBody`** in `entryBody.ts` branches on that.
+### 2.0 Does the `posts` collection need a schema change for Portable Text?
+
+**In this repo’s seed, it is already Portable Text.** `web/.emdash/seed.json` defines `posts.fields` with `"slug": "content", "type": "portableText"` (same for `pages.content`). That is the **intended** EmDash contract: TipTap in admin, PT JSON in storage.
+
+You only need a **schema change** if the **live** instance (staging/production) disagrees—for example the admin UI still shows `content` as plain **text / markdown**, or `content get` keeps returning a **string** (`STR` in the canary below) after you publish from the rich editor. Then either:
+
+- the database was created or migrated from an older definition (field was **text**), or  
+- a writer path (CLI, MCP, import) is **coercing** arrays to strings even though the column supports JSON.
+
+**Action:** In **`/_emdash/admin`**, open the **Posts** content type and confirm **`content`** is the **rich text / Portable Text** field type, matching `seed.json`. If it is plain text, change it per **EmDash docs** for altering field types (expect a migration / re-save story for existing entries). After that, re-run the canary: you want **`PT blocks N`** for new or re-saved posts.
+
+**`resolveEntryBody`** in `entryBody.ts` already supports both shapes until storage is fully aligned.
+
+---
+
+EmDash can still **return** `content` as a string at read time if the live schema or serializer says so. **`resolveEntryBody`** branches on what the API actually sends.
 
 ### 2a. Save one published post JSON
 
@@ -60,7 +75,7 @@ Pass `.tmp/canary-post-staging.json` and `.tmp/canary-post-production.json`.
 | `PT blocks N` | Portable Text array stored in CMS          | `portableContent` → `astro-portabletext` |
 | `STR chars M` | Legacy string (markdown-ish) body            | `textContent` → legacy parser / `<p>`  |
 
-After a **schema migration** to rich text, you want **`PT`** on canary posts you care about. Until then, **`STR`** is expected for existing posts.
+You want **`PT`** on canary posts once the live **`content`** field is truly **Portable Text** and entries are saved through that type. **`STR`** means either legacy rows, a text field in admin, or coercion on write—use §2.0 to decide which.
 
 ### 2c. Clear stale env tokens (Windows)
 
