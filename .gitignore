@@ -50,3 +50,5 @@ web/.generated/archive-import/*
 secrets/*
 temp/*
 .cursor/*
+web/.tmp/*
+.release/rollback-branches/*

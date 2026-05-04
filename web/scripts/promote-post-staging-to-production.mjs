@@ -1,6 +1,9 @@
 /**
  * Promote a single published EmDash entry from staging to production:
- * - UTF-8-safe staging export
+ * - Staging `data` snapshot: **MCP `content_get` by default** so `portableText` fields
+ *   (e.g. `data.content`) stay **Portable Text arrays** — `npx emdash content get --published --json`
+ *   often serializes rich text to a **markdown string** in JSON even when Turso holds PT.
+ * - Fallback: CLI export if MCP fails or `PROMOTE_STAGING_SOURCE=cli` (degraded for PT).
  * - content create/update using `data`-only payload (required by emdash CLI)
  * - featured_image: if production does not have the staging media id, download from
  *   staging public file URL and re-upload to production, then patch `data.featured_image`
@@ -10,6 +13,9 @@
  * Usage (from repo root):
  *   node web/scripts/promote-post-staging-to-production.mjs posts my-slug
  *
+ * Env:
+ *   PROMOTE_STAGING_SOURCE — `mcp` | `cli` | `auto` (default `auto`: MCP then CLI).
+ *
  * Requires ~/.config/emdash/auth.json with accessToken for both URLs.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -17,6 +23,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
+import { emdashMcpContentGet } from "./emdash-mcp-client.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -138,6 +145,63 @@ function runNpx(webDir, args) {
 	return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 
+/** Minimal document shape for this script (matches CLI `content get --json` fields we use). */
+function stagingDocFromMcpItem(collection, item) {
+	return {
+		id: item.id,
+		type: item.type ?? collection,
+		slug: item.slug,
+		status: item.status,
+		data: item.data,
+		primaryBylineId: item.primaryBylineId ?? null,
+	};
+}
+
+function isPortableTextShape(content) {
+	return content === null || content === undefined || Array.isArray(content);
+}
+
+/** MCP failed in `auto` mode: staging export will use CLI JSON — can stringify PT to markdown. */
+function logSeverePromoteCliFallback(mcpErr) {
+	const detail = String(mcpErr?.message ?? mcpErr).replace(/\s+/g, " ").trim().slice(0, 500);
+	const bar = "!".repeat(78);
+	const row = (s) => `!!! ${s.slice(0, 72).padEnd(72, " ")} !!!`;
+	console.error("");
+	console.error(bar);
+	console.error(row("SEVERE WARNING: STAGING SNAPSHOT IS FROM CLI FALLBACK — NOT MCP"));
+	console.error(bar);
+	console.error(row("emdash content get --published --json often turns portableText"));
+	console.error(row("into a MARKDOWN STRING. Production may get data.content as a string,"));
+	console.error(row("NOT a Portable Text block array — site/renderers can diverge from staging."));
+	console.error(row("Fix: refresh ~/.config/emdash/auth.json (emdash login), check PAT,"));
+	console.error(row("network, and Accept header; then re-run with PROMOTE_STAGING_SOURCE=mcp."));
+	console.error(row(`MCP failure (first 500 chars): ${detail || "(no message)"}`));
+	console.error(bar);
+	console.error(row("Promotion CONTINUES — verify Turso/json_type(content) or MCP after."));
+	console.error(bar);
+	console.error("");
+}
+
+async function fetchStagingDocFromCli(webDir, stagingUrl, stagingToken, collection, slug) {
+	const getPub = runNpx(webDir, [
+		"emdash",
+		"content",
+		"get",
+		collection,
+		slug,
+		"--published",
+		"-u",
+		stagingUrl,
+		"-t",
+		stagingToken,
+		"--json",
+	]);
+	if (getPub.status !== 0) {
+		throw new Error(getPub.stderr || getPub.stdout || "emdash content get failed");
+	}
+	return JSON.parse(getPub.stdout);
+}
+
 async function main() {
 	const collection = process.argv[2] || "posts";
 	const slug = process.argv[3];
@@ -160,26 +224,47 @@ async function main() {
 	const fullPath = join(tmpDir, `promote-${collection}-${slug}-full.json`);
 	const dataPath = join(tmpDir, `promote-${collection}-${slug}-data.json`);
 
-	// 1) Export staging published (CLI preserves transport / field conversion)
-	const getPub = runNpx(webDir, [
-		"emdash",
-		"content",
-		"get",
-		collection,
-		slug,
-		"--published",
-		"-u",
-		stagingUrl,
-		"-t",
-		stagingToken,
-		"--json",
-	]);
-	if (getPub.status !== 0) {
-		console.error(getPub.stderr || getPub.stdout);
+	const sourceMode = (process.env.PROMOTE_STAGING_SOURCE || "auto").toLowerCase();
+	if (!["mcp", "cli", "auto"].includes(sourceMode)) {
+		console.error("PROMOTE_STAGING_SOURCE must be mcp, cli, or auto");
 		process.exit(1);
 	}
-	writeFileSync(fullPath, getPub.stdout.trim(), "utf8");
-	const stagingDoc = JSON.parse(getPub.stdout);
+
+	// 1) Staging snapshot: prefer MCP so `data.content` stays Portable Text (CLI JSON often stringifies PT).
+	let stagingDoc;
+	let stagingFetchMeta = { source: "unknown" };
+	try {
+		if (sourceMode === "cli") {
+			stagingDoc = await fetchStagingDocFromCli(webDir, stagingUrl, stagingToken, collection, slug);
+			stagingFetchMeta = { source: "cli" };
+		} else {
+			try {
+				const { item } = await emdashMcpContentGet(stagingUrl, stagingToken, { collection, id: slug });
+				stagingDoc = stagingDocFromMcpItem(collection, item);
+				const c = stagingDoc.data?.content;
+				if (!isPortableTextShape(c)) {
+					throw new Error(`MCP returned non-array data.content (${typeof c})`);
+				}
+				stagingFetchMeta = { source: "mcp" };
+			} catch (mcpErr) {
+				if (sourceMode === "mcp") {
+					throw mcpErr;
+				}
+				logSeverePromoteCliFallback(mcpErr);
+				stagingDoc = await fetchStagingDocFromCli(webDir, stagingUrl, stagingToken, collection, slug);
+				stagingFetchMeta = { source: "cli", mcpError: String(mcpErr?.message ?? mcpErr) };
+			}
+		}
+	} catch (e) {
+		console.error(e?.message ?? e);
+		process.exit(1);
+	}
+
+	writeFileSync(
+		fullPath,
+		JSON.stringify({ ...stagingDoc, _promoteStagingFetch: stagingFetchMeta }, null, 2),
+		"utf8",
+	);
 	/** Deep clone so we never mutate the staging snapshot on disk */
 	const payloadData = structuredClone(stagingDoc.data);
 

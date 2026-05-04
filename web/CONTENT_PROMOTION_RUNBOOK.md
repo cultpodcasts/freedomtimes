@@ -43,6 +43,8 @@ Agents and operators should treat **scheduler** and **subscriptions** databases 
 
 For **PR review** (EmDash version bumps, `content` / Portable Text refactors), use **`docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — includes a **canary `content get`** to verify whether `data.content` is PT (`array`) or a legacy string.
 
+For **English copy** that cites French media or institutions (glosses on *France Inter*, *France Info*, hoisting stakes in the lede), use **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`**.
+
 Set local env vars before running commands:
 
 ```powershell
@@ -161,7 +163,7 @@ node web/scripts/promote-post-staging-to-production.mjs posts <slug>
 
 This script:
 
-1. Exports published staging content with the CLI (UTF-8-safe).
+1. Loads published staging **`data` via MCP `content_get` by default** (keeps **Portable Text** arrays in `data.content`); if MCP fails in **`PROMOTE_STAGING_SOURCE=auto`**, the script prints a **SEVERE WARNING** banner on **stderr** and falls back to **`emdash content get --published --json`** (risk: PT serialized as markdown in JSON). Set **`PROMOTE_STAGING_SOURCE=cli`** to use the CLI only (no MCP attempt; same serialization risk, no fallback banner). **`PROMOTE_STAGING_SOURCE=mcp`** fails closed if MCP errors.
 2. If `data.featured_image` references a media id that does not exist in production, downloads the file from the **public** staging URL `/_emdash/api/media/file/<storageKey>`, uploads it to production, and rewrites `featured_image` before `content create` / `content update`.
 3. If staging has `primaryBylineId`, sends `PUT` with `bylines: [{ bylineId }]`, then `publish`.
 

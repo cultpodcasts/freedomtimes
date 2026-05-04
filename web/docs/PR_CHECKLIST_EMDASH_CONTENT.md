@@ -33,7 +33,23 @@ You only need a **schema change** if the **live** instance (staging/production) 
 
 ---
 
-EmDash can still **return** `content` as a string at read time if the live schema or serializer says so. **`resolveEntryBody`** branches on what the API actually sends.
+### 2.0a Prefer MCP over CLI when asking “is this post Portable Text?”
+
+**Why:** `npx emdash content get … --json` often shows **`data.content` as a long markdown string** (`STR` in the classifier below) even when the **database stores a PT array** and **MCP `content_get`** returns **`item.data.content`** as **`PT blocks N`**. Defaulting to the CLI for investigations has wasted time and tokens re-litigating “legacy string storage.”
+
+**Do this instead (staging/production):**
+
+1. Use Cursor’s **EmDash MCP** server (or `POST /_emdash/api/mcp` with JSON-RPC `tools/call` / `content_get`) with a valid bearer token.
+2. Parse the tool result’s **`item`** object; inspect **`item.data.content`**. If it is an **array**, the CMS body is **Portable Text** for that read path.
+3. Use **CLI `content get`** when you only need slugs/metadata, or when you explicitly want the markdown export—**not** as the single source of truth for whether PT exists in storage.
+
+**HTTP callers:** send **`Accept: application/json, text/event-stream`** on MCP POSTs. See `web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md` section **CLI vs MCP**.
+
+**CLI-side MCP canary:** `node web/scripts/canary-emdash-content-shape.mjs <baseUrl> posts <slug> --mcp` (uses `~/.config/emdash/auth.json` for that host). Prefer **`… (MCP)`** in the output for PT truth; the default CLI path appends **`(CLI)`** and may show **`STR`** for rich text even when storage is PT.
+
+---
+
+EmDash can still **return** `content` as a string to **some** clients (notably **CLI JSON**) while other paths return PT. The **public site** and **`resolveEntryBody`** depend on what the **Worker read path** supplies—validate with MCP/Turso when in doubt.
 
 ### 2a. Save one published post JSON
 
@@ -75,7 +91,7 @@ Pass `.tmp/canary-post-staging.json` and `.tmp/canary-post-production.json`.
 | `PT blocks N` | Portable Text array stored in CMS          | `portableContent` → `astro-portabletext` |
 | `STR chars M` | Legacy string (markdown-ish) body            | `textContent` → legacy parser / `<p>`  |
 
-You want **`PT`** on canary posts once the live **`content`** field is truly **Portable Text** and entries are saved through that type. **`STR`** means either legacy rows, a text field in admin, or coercion on write—use §2.0 to decide which.
+You want **`PT`** on canary posts once the live **`content`** field is truly **Portable Text** and entries are saved through that type. **`STR` from CLI JSON alone** does **not** prove legacy storage—check **§2.0a (MCP)** or **Turso** before concluding. **`STR`** everywhere (MCP + DB + admin) would indicate legacy rows, plain-text field type, or coercion on write—use §2.0 to decide which.
 
 ### 2c. Clear stale env tokens (Windows)
 
