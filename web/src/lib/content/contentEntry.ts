@@ -1,3 +1,5 @@
+import { resolveEntryBody } from './entryBody';
+
 export type SlideImage = { src: string; pageNumber: number | null };
 
 export type SubjectChip = {
@@ -348,8 +350,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 			.map((paragraph) => paragraph.trim())
 			.filter((paragraph) => paragraph.length > 0)
 		: [];
-	const portableContent = Array.isArray(data.content) ? data.content : null;
-	const textContent = portableContent ? null : readString(data.content);
+	const { portableContent, textContent } = resolveEntryBody(data);
 	const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 	const featuredImageAlt =
 		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;

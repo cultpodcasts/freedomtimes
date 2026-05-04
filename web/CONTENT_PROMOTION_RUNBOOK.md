@@ -23,6 +23,8 @@ This runbook documents the repeatable process for getting verified staging conte
 4. A Turso rollback branch has been created for production before any migration or production content promotion.
 5. The promotion path being used is scripted and UTF-8-safe. Do not use manual copy/paste or ad hoc terminal redirection for content payloads.
 
+For **PR review** (EmDash version bumps, `content` / Portable Text refactors), use **`docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — includes a **canary `content get`** to verify whether `data.content` is PT (`array`) or a legacy string.
+
 Set local env vars before running commands:
 
 ```powershell

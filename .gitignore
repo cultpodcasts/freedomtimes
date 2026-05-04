@@ -46,3 +46,5 @@ request-headers
 web/.generated/archive-import/*
 .cookie
 secrets/*
+temp/*
+.cursor/*
