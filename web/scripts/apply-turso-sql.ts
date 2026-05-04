@@ -1,3 +1,9 @@
+/**
+ * Applies SQL migrations or seeds to the scheduler or subscriptions Turso DB.
+ * Before running against any non-throwaway database: create a backup (for example
+ * `turso db export <db-name> --output-file ...` or a rollback branch). See
+ * `web/CONTENT_PROMOTION_RUNBOOK.md` and `.cursor/rules/database-backup.mdc`.
+ */
 import { createClient } from '@libsql/client';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';

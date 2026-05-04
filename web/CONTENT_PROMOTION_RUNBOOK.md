@@ -23,6 +23,24 @@ This runbook documents the repeatable process for getting verified staging conte
 4. A Turso rollback branch has been created for production before any migration or production content promotion.
 5. The promotion path being used is scripted and UTF-8-safe. Do not use manual copy/paste or ad hoc terminal redirection for content payloads.
 
+## Turso backups before any mutating work
+
+**Rule:** create a **recoverable backup** of the **specific Turso database** you are about to change **before** migrations, seeds, manual SQL, content promotion, or bulk CMS updates. Do not skip this for small or “obvious” edits.
+
+**Option A — file export (any Turso DB you can access with the CLI)**  
+After `turso auth login` (for example in WSL, see [Turso CLI introduction](https://docs.turso.tech/cli/introduction)):
+
+```bash
+turso db export freedomtimes-emdash-staging --output-file ./.release/backups/emdash-staging-$(date +%Y%m%d-%H%M%S).db
+```
+
+Use the real database name from `turso db list` (for example `freedomtimes-emdash-staging`, `freedomtimes-scheduler-staging`). Keep the file until the change is verified. Add `--overwrite` only when re-running the same command intentionally.
+
+**Option B — production rollback branch (EmDash production before risky work)**  
+Use `scripts/turso-create-rollback-branch.ps1` with `-AllowProduction` as already required in the prerequisites below; keep the emitted JSON under `.release/rollback-branches/`.
+
+Agents and operators should treat **scheduler** and **subscriptions** databases the same way whenever `web/scripts/apply-turso-sql.ts` or direct SQL is used against them.
+
 For **PR review** (EmDash version bumps, `content` / Portable Text refactors), use **`docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — includes a **canary `content get`** to verify whether `data.content` is PT (`array`) or a legacy string.
 
 Set local env vars before running commands:

@@ -61,6 +61,11 @@ The new session should **reproduce** MCP failures with a minimal call (e.g. get 
 
 ## Next steps (ordered for a new session)
 
+### Canary log (append as you run checks)
+
+- **2026-05-04 (CLI, UTF-8 via Node `execSync` / new script)** — Staging published `posts/ines-chatin-liberation-investigation-france-context`: **`STR`** (markdown-length string). Production published `posts/breton-mayor-treogan-investigation-review`: **`STR`**. Same slug on production was **not found** (article not promoted yet). **Note:** PowerShell `Out-File` on piped `npx emdash --json` can mojibake Unicode; use **`node web/scripts/canary-emdash-content-shape.mjs`** or capture JSON from Node.
+- Conclusion so far: API still returns **string** bodies for sampled posts even though **`web/.emdash/seed.json`** declares **`portableText`** — treat as **legacy rows and/or serializer** until admin field type + re-save or migration proves **`PT blocks N`**.
+
 1. **Verify live schema** — In EmDash admin, confirm **`posts.content`** (and **`pages.content`**) is actually **Portable Text**, not plain text. Compare to **`web/.emdash/seed.json`**.
 2. **Canary** — Run §2 of **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** on staging (then production when ready). Record a few slugs as **`PT blocks N`** vs **`STR chars M`**.
 3. **Fix writers first** — Ensure CLI, scripts, and **MCP** paths that touch posts send **PT arrays** when the field is PT, or document a temporary “markdown-only” pipeline until migration completes.
