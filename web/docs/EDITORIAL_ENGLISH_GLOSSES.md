@@ -58,6 +58,15 @@ Use **name + role** on **first substantive mention** in the body (excerpt counts
 
 ---
 
+## Portable Text: `audio` vs `video` embeds
+
+- **`_type: "video"`** (`Video.astro`) — **Video**: YouTube / watch URLs, generic video iframes, or `<video>` for direct media files under EmDash.
+- **`_type: "audio"`** (`Audio.astro`) — **Audio / podcast players**: Apple Podcasts (`embed.podcasts.apple.com`), Spotify embed URLs, other `https` iframe players, or `<audio>` for direct `.mp3` / `.m4a` / etc. Do **not** use `video` for podcast web players.
+
+Fields (both): typically **`url`**, **`alt`** (or `title` for `Audio` fallback). Optional **`aspectRatio`** applies only to **`video`**.
+
+---
+
 ## Applying edits to staging (Portable Text)
 
 1. Export the **current** live `data` (MCP `content_get` or admin) so `content` is not shorter than production reality.

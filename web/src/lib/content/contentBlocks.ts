@@ -13,7 +13,8 @@ export type LegacyContentBlock =
 	| { type: 'heading'; level: 2 | 3 | 4; text: string }
 	| { type: 'paragraph'; text: string }
 	| { type: 'details'; summary: string; text: string }
-	| { type: 'video'; value: Record<string, unknown> };
+	| { type: 'video'; value: Record<string, unknown> }
+	| { type: 'audio'; value: Record<string, unknown> };
 
 function readString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value : null;
@@ -231,9 +232,16 @@ export function parseLegacyTextContent(value: string): LegacyContentBlock[] {
 			flushParagraph();
 			try {
 				const parsed = JSON.parse(videoMatch[1]);
-				if (parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>)._type === 'video') {
-					blocks.push({ type: 'video', value: parsed as Record<string, unknown> });
-					continue;
+				if (parsed && typeof parsed === 'object') {
+					const t = (parsed as Record<string, unknown>)._type;
+					if (t === 'video') {
+						blocks.push({ type: 'video', value: parsed as Record<string, unknown> });
+						continue;
+					}
+					if (t === 'audio') {
+						blocks.push({ type: 'audio', value: parsed as Record<string, unknown> });
+						continue;
+					}
 				}
 			} catch {
 				// Fall through to paragraph mode if parsing fails.

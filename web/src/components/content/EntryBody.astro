@@ -1,6 +1,7 @@
 ---
 import { PortableText } from 'astro-portabletext';
-import PortableVideo from '../PortableVideo.astro';
+import Video from '../Video.astro';
+import Audio from '../Audio.astro';
 import type { LegacyContentBlock, ProcessedPortableNode } from '../../lib/content/contentBlocks';
 
 const {
@@ -36,7 +37,9 @@ const {
 	<div class="legacy-content">
 		{legacyBlocks.map((block) => (
 			block.type === 'video' ? (
-				<PortableVideo value={block.value} />
+				<Video value={block.value} />
+			) : block.type === 'audio' ? (
+				<Audio value={block.value} />
 			) : block.type === 'heading' ? (
 				block.level === 2 ? <h2>{block.text}</h2> : block.level === 3 ? <h3>{block.text}</h3> : <h4>{block.text}</h4>
 			) : block.type === 'details' ? (

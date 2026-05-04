@@ -1,7 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
-import PortableVideo from '../components/PortableVideo.astro';
+import Video from '../components/Video.astro';
+import Audio from '../components/Audio.astro';
 import PortableLink from '../components/PortableLink.astro';
 import PushNotificationsCallout from './PushNotificationsCallout.astro';
 import EntryHeader from './content/EntryHeader.astro';
@@ -53,7 +54,8 @@ const {
 } = buildContentEntryViewModel(entry as { slug?: string; data: Record<string, unknown> } & Record<string, unknown>);
 const portableComponents = {
 	type: {
-		video: PortableVideo,
+		video: Video,
+		audio: Audio,
 	},
 	mark: {
 		link: PortableLink,

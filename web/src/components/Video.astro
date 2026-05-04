@@ -1,4 +1,8 @@
 ---
+/**
+ * Portable Text block `_type: "video"` — YouTube, generic video iframes, or `<video>` for direct files.
+ * Use `Audio.astro` for podcast / radio iframe embeds and native `<audio>`.
+ */
 const props = Astro.props as Record<string, unknown>;
 const value =
 	(props.value as Record<string, unknown> | undefined)
@@ -24,7 +28,7 @@ function readAspectRatio(input: unknown): string | null {
 	return null;
 }
 
-function resolvePortableVideoUrl(input: unknown): string | null {
+function resolveVideoUrl(input: unknown): string | null {
 	if (!input || typeof input !== 'object') {
 		return null;
 	}
@@ -61,7 +65,7 @@ function resolvePortableVideoUrl(input: unknown): string | null {
 	return `/_emdash/api/media/file/${directUrl}`;
 }
 
-const src = resolvePortableVideoUrl(value);
+const src = resolveVideoUrl(value);
 const alt = readString(value.alt) ?? 'Embedded video';
 const aspectRatio = readAspectRatio(value.aspectRatio) ?? '16 / 9';
 const youtubeMatch = src?.match(

@@ -66,7 +66,7 @@ The new session should **reproduce** MCP failures with a minimal call (e.g. get 
 - **`web/src/lib/content/entryBody.ts`** — `resolveEntryBody`: non-empty array → PT; non-empty string → legacy markdown; empty otherwise.
 - **`web/src/lib/content/contentEntry.ts`** — `buildContentEntryViewModel` uses `resolveEntryBody` for `data.content`.
 - **`web/src/lib/content/contentBlocks.ts`** — `parseLegacyTextContent`, `buildPortableRenderNodes` (translate `<details class="translate">` pattern in PT).
-- **`web/src/components/EmDashContentView.astro`** — Wires PT components (`PortableLink`, `PortableVideo`) and legacy blocks.
+- **`web/src/components/EmDashContentView.astro`** — Wires PT components (`PortableLink`, `Video.astro`, `Audio.astro`) and legacy blocks.
 - **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — Dependency bump checks + **canary** to classify `data.content` as PT vs string.
 - **`web/CONTENT_PROMOTION_RUNBOOK.md`** — Staging → production promotion, schema parity, UTF-8 notes.
 - **EmDash versions** — `web/package.json`: **`emdash`** and **`@emdash-cms/cloudflare`** on **`^0.9.0`**. As of **2026-05-04**, npm **`latest`** for both packages is still **0.9.0** (`npm install …@latest` does not advance further). **`emdash@1.0.0`** exists on the registry but is **deprecated** (“Please install the latest version”), and **`@emdash-cms/cloudflare@0.9.0`** declares a **pinned** dependency **`emdash@0.9.0`**, so the Worker integration cannot move to 1.x until a new adapter release ships. The CLI banner may show **`v0.0.0`** even when the installed package is **0.9.0** (cosmetic upstream issue).
@@ -119,6 +119,8 @@ The new session should **reproduce** MCP failures with a minimal call (e.g. get 
 | View model | `web/src/lib/content/contentEntry.ts` |
 | Legacy + PT processing | `web/src/lib/content/contentBlocks.ts` |
 | Article layout | `web/src/components/EmDashContentView.astro`, `web/src/components/content/EntryBody.astro` |
+| PT embed: video | `web/src/components/Video.astro` (`_type: "video"`) |
+| PT embed: audio / podcasts | `web/src/components/Audio.astro` (`_type: "audio"`) |
 | Seed / intended schema | `web/.emdash/seed.json` |
 | PR / canary | `web/docs/PR_CHECKLIST_EMDASH_CONTENT.md` |
 | Promotion | `web/CONTENT_PROMOTION_RUNBOOK.md` |
