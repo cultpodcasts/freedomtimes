@@ -1,4 +1,6 @@
-export const TRANSLATE_DETAILS_OPEN_PATTERN = /<details\b[^>]*class\s*=\s*\\?["']translate\\?["'][^>]*>/i;
+/** Matches `<details class="translate">` only (same sentinel as Norway Supreme Court flagship PT). */
+export const TRANSLATE_DETAILS_OPEN_PATTERN =
+	/<details\b[^>]*class\s*=\s*\\?["']translate\\?["'][^>]*>/i;
 export const DETAILS_CLOSE_PATTERN = /<\\?\/details>/i;
 
 const SUMMARY_PATTERN = /<summary(?:\s+[^>]*)?>(?:<strong>)?(.+?)(?:<\\?\/strong>)?<\\?\/summary>/i;

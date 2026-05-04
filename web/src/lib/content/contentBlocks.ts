@@ -93,6 +93,19 @@ function plainTextFromPortableBlock(block: unknown): string | null {
 	return null;
 }
 
+function isDetailsClosingBlock(block: unknown): boolean {
+	const innerText = normalizeTagLine(plainTextFromPortableBlock(block));
+	if (!innerText) {
+		return false;
+	}
+	const collapsed = innerText.toLowerCase().replace(/\s+/g, '');
+	return (
+		DETAILS_CLOSE_PATTERN.test(innerText)
+		|| collapsed.includes('</details>')
+		|| collapsed.includes('<\\/details>')
+	);
+}
+
 export function buildPortableRenderNodes(value: unknown[] | null): ProcessedPortableNode[] {
 	if (!value || value.length === 0) {
 		return [];
@@ -111,10 +124,7 @@ export function buildPortableRenderNodes(value: unknown[] | null): ProcessedPort
 		const node = value[i];
 		const text = normalizeTagLine(plainTextFromPortableBlock(node));
 		const lowerText = text.toLowerCase();
-		const isTranslateOpen = text
-			? TRANSLATE_DETAILS_OPEN_PATTERN.test(text)
-				|| (lowerText.includes('<details') && lowerText.includes('translate'))
-			: false;
+		const isTranslateOpen = text ? TRANSLATE_DETAILS_OPEN_PATTERN.test(text) : false;
 		if (isTranslateOpen) {
 			const summaryFromCurrent = parseDetailsSummary(text);
 			const summaryCandidateRaw = i + 1 < value.length ? plainTextFromPortableBlock(value[i + 1]) : null;
@@ -130,14 +140,7 @@ export function buildPortableRenderNodes(value: unknown[] | null): ProcessedPort
 			// Closing `</details>` must be its own PT block (plain text). Without it, the
 			// open/summary/body lines render as literal paragraphs instead of <details>.
 			while (j < value.length) {
-				const innerText = normalizeTagLine(plainTextFromPortableBlock(value[j]));
-				const innerLower = innerText.toLowerCase();
-				const isDetailsClose = innerText
-					? DETAILS_CLOSE_PATTERN.test(innerText)
-						|| innerLower.includes('</details')
-						|| innerLower.includes('<\\/details')
-					: false;
-				if (isDetailsClose) {
+				if (isDetailsClosingBlock(value[j])) {
 					foundClose = true;
 					break;
 				}

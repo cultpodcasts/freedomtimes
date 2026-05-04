@@ -65,7 +65,7 @@ The new session should **reproduce** MCP failures with a minimal call (e.g. get 
 - **`web/.emdash/seed.json`** — `posts.content` and `pages.content` are defined as **`portableText`** (intended contract).
 - **`web/src/lib/content/entryBody.ts`** — `resolveEntryBody`: non-empty array → PT; non-empty string → legacy markdown; empty otherwise.
 - **`web/src/lib/content/contentEntry.ts`** — `buildContentEntryViewModel` uses `resolveEntryBody` for `data.content`.
-- **`web/src/lib/content/contentBlocks.ts`** — `parseLegacyTextContent`, `buildPortableRenderNodes` (translate `<details class="translate">` pattern in PT).
+- **`web/src/lib/content/contentBlocks.ts`** — `parseLegacyTextContent`, `buildPortableRenderNodes` (translate `<details class="translate">` pattern in PT). **Authoring contract:** **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md` § PT pattern: French `blockquote` + English translation expander (canonical)**.
 - **`web/src/components/EmDashContentView.astro`** — Wires PT components (`PortableLink`, `Video.astro`, `Audio.astro`) and legacy blocks.
 - **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — Dependency bump checks + **canary** to classify `data.content` as PT vs string.
 - **`web/CONTENT_PROMOTION_RUNBOOK.md`** — Staging → production promotion, schema parity, UTF-8 notes.

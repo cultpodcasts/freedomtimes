@@ -45,7 +45,61 @@ Use **name + role** on **first substantive mention** in the body (excerpt counts
 1. **First use:** short gloss in **parentheses** or an **appositive**: *the **Conseil d’État** (France’s highest administrative court)*.
 2. **Bodies and acronyms:** *the **CNIL** (France’s data-protection authority)*.
 3. **Legal “bar”:** in English, **“the bar”** usually means the **legal profession**, not a café — gloss if ambiguity is likely (*lawyers’ professional body*, *disciplinary proceedings for lawyers*).
-4. **Longer explanations:** use a **translate** / expandable block (see `web/src/lib/content/translateDetails.ts` and PT handling in `contentBlocks.ts`) so the lede stays clean.
+4. **Longer explanations:** use the **French `blockquote` + English `<details>`** pattern below (canonical for this site). Do not invent ad‑hoc HTML; follow the block order exactly.
+
+---
+
+## PT pattern: French `blockquote` + English translation expander (canonical)
+
+This is the **only supported shape** for “show the French line, hide the English gloss behind a disclosure”. It matches the **Norway Supreme Court flagship** posts and `buildPortableRenderNodes` in **`web/src/lib/content/contentBlocks.ts`** (patterns in **`web/src/lib/content/translateDetails.ts`**). A legacy client-side upgrade exists in **`web/src/lib/content/contentEnhancements.ts`** for old imports that stuffed the tags into a single paragraph; **new authoring should not rely on that.**
+
+### Block order in the `content` array (strict)
+
+1. **`blockquote`** — **French only** (the line you want visually quoted: guillemets, excerpt, etc.). No fake HTML here; use a real PT block with `style: "blockquote"`.
+2. **`normal`** — one span: **`<details class="translate">`** (literal text). **`translation` is not supported** — use **`translate`** only (matches Norway Supreme Court flagship PT).
+3. **`normal`** — one span: **`<summary>Show English translation</summary>`** (literal text). Prefer this exact summary markup so the parser extracts the label reliably.
+4. **`normal`** — English gloss as **plain body copy** (one or more spans; **do not** prefix with `English:` inside the fold unless editorially necessary).
+5. **`normal`** — one span: **`</details>`** (literal text). **Required.** Without this dedicated closing block, the sequence is not recognised and the tags render as dumb paragraphs (including a visible `</details>` line).
+
+Anything before step 1 stays in ordinary `normal` / `h2` / etc. blocks; anything after step 5 continues the article as usual.
+
+### Minimal example (shape only)
+
+```json
+{
+  "_type": "block",
+  "style": "blockquote",
+  "children": [{ "_type": "span", "text": "« …French line… »", "marks": [] }]
+},
+{
+  "_type": "block",
+  "style": "normal",
+  "children": [{ "_type": "span", "text": "<details class=\"translate\">", "marks": [] }]
+},
+{
+  "_type": "block",
+  "style": "normal",
+  "children": [{ "_type": "span", "text": "<summary>Show English translation</summary>", "marks": [] }]
+},
+{
+  "_type": "block",
+  "style": "normal",
+  "children": [{ "_type": "span", "text": "…English gloss…", "marks": [] }]
+},
+{
+  "_type": "block",
+  "style": "normal",
+  "children": [{ "_type": "span", "text": "</details>", "marks": [] }]
+}
+```
+
+At render time the server emits a real **`<blockquote>`** for step 1, then **`<details class="legacy-details translate">`** (see **`web/src/components/content/EntryBody.astro`**) wrapping **only** the English body from steps 3–4 (the synthetic open/summary/close lines are consumed, not printed). Older pages may still carry the class **`translation`** on `<details>` for styling only; **new PT must use `class="translate"`** in the sentinel block.
+
+### Do not
+
+- Put the French line **inside** the `<details>…</details>` synthetic blocks (use **`blockquote` first**, as above).
+- Omit the **`</details>`** block or merge it into another paragraph.
+- Replace `<summary>…</summary>` with only `<em>Show English translation</em>` unless you accept the fallback parser path (fragile).
 
 ---
 
@@ -55,6 +109,7 @@ Use **name + role** on **first substantive mention** in the body (excerpt counts
 - [ ] **France Inter** and **France Info** (and other cited outlets) glossed on first pass.
 - [ ] **Allegations** framed without **prejudging** outcomes.
 - [ ] URLs may stay French-domain; **visible labels** use the English-forward names above.
+- [ ] Any **French + English translation** pair uses the **canonical `blockquote` + `<details class="translate">` block order** above (including the final **`</details>`** block).
 
 ---
 

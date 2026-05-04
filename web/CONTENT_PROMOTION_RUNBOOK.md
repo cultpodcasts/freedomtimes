@@ -43,7 +43,7 @@ Agents and operators should treat **scheduler** and **subscriptions** databases 
 
 For **PR review** (EmDash version bumps, `content` / Portable Text refactors), use **`docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — includes a **canary `content get`** to verify whether `data.content` is PT (`array`) or a legacy string.
 
-For **English copy** that cites French media or institutions (glosses on *France Inter*, *France Info*, hoisting stakes in the lede), use **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`**.
+For **English copy** that cites French media or institutions (glosses on *France Inter*, *France Info*, hoisting stakes in the lede), use **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`** — including the **canonical Portable Text pattern** for a **French `blockquote` + English `<details>`** translation fold (same section).
 
 Set local env vars before running commands:
 

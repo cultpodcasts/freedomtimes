@@ -108,7 +108,7 @@ Remove-Item Env:EMDASH_STAGING_PAT -ErrorAction SilentlyContinue
 
 - [ ] **Homepage** loads and lists posts.
 - [ ] **`/posts/<slug>`** for the canary slug: headings, paragraphs, **source links** if markdown legacy.
-- [ ] **Translate folds**: if the article uses `<details class="translate">`, confirm summary + body still render (portable and legacy paths both support this pattern).
+- [ ] **Translate folds**: follow **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md` § PT pattern: French `blockquote` + English translation expander (canonical)** — block order, closing `</details>` block, then confirm summary + body render on staging.
 - [ ] **`/archives/...`** if the PR touched archives or shared content code.
 
 ---

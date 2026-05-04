@@ -6,7 +6,7 @@ When the task is to **inspect, migrate, or reason about** `posts` (or `pages`) *
 
 **Default:** use the **EmDash MCP** `content_get` tool (or the same API over HTTP with correct `Accept` headers) and read **`item.data.content`**. Use the CLI for metadata or when the user explicitly wants CLI output.
 
-Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section **CLI vs MCP**) and **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** (§**2.0a**). For **English-ledes, French outlet glosses, and hoisting stakes**, see **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`**.
+Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section **CLI vs MCP**) and **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** (§**2.0a**). For **English-ledes, French outlet glosses, hoisting stakes, and the canonical French `blockquote` + English translation `<details>` PT block order**, see **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`** (same file — do not duplicate elsewhere).
 
 ## Databases: backup before any change
 
