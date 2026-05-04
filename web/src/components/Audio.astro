@@ -84,8 +84,10 @@ const figureClass = [
 
 <style is:global>
 	.content-card .audio-embed {
-		margin: 2rem auto;
+		margin: 2rem 0;
+		width: 100%;
 		max-width: min(100%, 65ch);
+		box-sizing: border-box;
 	}
 
 	.content-card .audio-embed audio {
@@ -98,6 +100,7 @@ const figureClass = [
 
 	/* Apple Podcasts web player (~290×175); avoid a tall empty band under the chrome. */
 	.content-card .audio-embed--apple-podcasts {
+		width: min(100%, 432px);
 		max-width: min(100%, 432px);
 		height: 188px;
 		overflow: hidden;
