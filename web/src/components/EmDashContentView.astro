@@ -64,9 +64,26 @@ const portableComponents = {
 
 const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 const portableRenderNodes = buildPortableRenderNodes(portableContent);
+const description = summaryParagraphs[0] ?? `Read "${title}" on Freedom Times.`;
+const canonicalPath = collectionLabel === 'Archive' ? `/archives/${entry.slug ?? entry.id}` : `/posts/${entry.slug ?? entry.id}`;
+const socialImage = featuredImageSrc
+	? (featuredImageSrc.startsWith('/_emdash/api/media/file/')
+		? featuredImageSrc
+		: `/cdn-cgi/image/width=1200,height=630,fit=cover,quality=85,format=auto${featuredImageSrc}`)
+	: null;
 ---
 
-<Layout>
+<Layout
+	title={title}
+	description={description}
+	canonicalUrl={canonicalPath}
+	ogType="article"
+	ogImage={socialImage}
+	ogImageAlt={featuredImageAlt}
+	publishedTime={publishedAt}
+	modifiedTime={updatedAt}
+	author={primaryByline}
+>
 	<article class="page-wrap">
 		<Header section={collectionLabel} sectionUrl={collectionLabel === 'Archive' ? '/archives' : '/homepage'} isEditor={isEditor} isSignedIn={resolvedIsSignedIn} />
 

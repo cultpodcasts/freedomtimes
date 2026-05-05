@@ -62,6 +62,11 @@ function toCfImageUrl(src: string, width: number, height: number): string {
   return `/cdn-cgi/image/width=${width},height=${height},fit=cover,quality=85,format=auto${trimmed}`;
 }
 
+function buildSocialImage(src: string | null): string | null {
+  if (!src) return null;
+  return toCfImageUrl(src, 1200, 630);
+}
+
 function formatPublicationDate(value: string | null): string {
   if (!value) return '';
   const parsed = new Date(value);
@@ -211,9 +216,19 @@ const stories: Story[] = postEntries.map((entry) => {
 const lead = stories[0] ?? null;
 const secondLead = stories[1] ?? null;
 const rails = stories.slice(2);
+const socialTitle = 'Freedom Times';
+const socialDescription = lead?.dek ?? 'Independent reporting, investigations, and analysis from Freedom Times.';
+const socialImage = buildSocialImage(lead?.imageSrc ?? null);
 ---
 
-<Layout>
+<Layout
+  title={socialTitle}
+  description={socialDescription}
+  canonicalUrl={Astro.url.pathname}
+  ogType="website"
+  ogImage={socialImage}
+  ogImageAlt={lead ? lead.title : 'Freedom Times homepage'}
+>
   <div class="paper-wrap">
     <Header isEditor={isEditor} isSignedIn={isSignedIn} />
 

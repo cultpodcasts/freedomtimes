@@ -4,9 +4,40 @@ import '../styles/global.css';
 
 interface Props {
 	hideFooter?: boolean;
+	title?: string;
+	description?: string;
+	canonicalUrl?: string;
+	ogType?: 'website' | 'article';
+	ogImage?: string | null;
+	ogImageAlt?: string;
+	publishedTime?: string | null;
+	modifiedTime?: string | null;
+	author?: string | null;
+	noindex?: boolean;
 }
 
-const { hideFooter = false } = Astro.props;
+const siteName = 'Freedom Times';
+const defaultDescription = 'Independent reporting, investigations, and analysis from Freedom Times.';
+const {
+	hideFooter = false,
+	title,
+	description,
+	canonicalUrl,
+	ogType = 'website',
+	ogImage,
+	ogImageAlt,
+	publishedTime,
+	modifiedTime,
+	author,
+	noindex = false,
+} = Astro.props as Props;
+
+const resolvedTitle = title?.trim().length ? `${title.trim()} | ${siteName}` : siteName;
+const resolvedDescription = description?.trim().length ? description.trim() : defaultDescription;
+const resolvedCanonicalUrl = canonicalUrl?.trim().length ? canonicalUrl.trim() : Astro.url.href;
+const absoluteCanonical = new URL(resolvedCanonicalUrl, Astro.url).toString();
+const absoluteOgImage = ogImage?.trim().length ? new URL(ogImage.trim(), Astro.url).toString() : null;
+const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${siteName} share preview`;
 ---
 
 <!doctype html>
@@ -21,10 +52,29 @@ const { hideFooter = false } = Astro.props;
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-title" content="Freedom Times" />
 		<meta name="generator" content={Astro.generator} />
+		<meta name="description" content={resolvedDescription} />
+		<meta name="robots" content={noindex ? 'noindex,nofollow' : 'index,follow,max-image-preview:large'} />
+		<link rel="canonical" href={absoluteCanonical} />
+		<meta property="og:site_name" content={siteName} />
+		<meta property="og:type" content={ogType} />
+		<meta property="og:title" content={resolvedTitle} />
+		<meta property="og:description" content={resolvedDescription} />
+		<meta property="og:url" content={absoluteCanonical} />
+		{absoluteOgImage && <meta property="og:image" content={absoluteOgImage} />}
+		{absoluteOgImage && <meta property="og:image:secure_url" content={absoluteOgImage} />}
+		{absoluteOgImage && <meta property="og:image:alt" content={resolvedOgImageAlt} />}
+		{ogType === 'article' && publishedTime && <meta property="article:published_time" content={publishedTime} />}
+		{ogType === 'article' && modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
+		{ogType === 'article' && author && <meta property="article:author" content={author} />}
+		<meta name="twitter:card" content={absoluteOgImage ? 'summary_large_image' : 'summary'} />
+		<meta name="twitter:title" content={resolvedTitle} />
+		<meta name="twitter:description" content={resolvedDescription} />
+		{absoluteOgImage && <meta name="twitter:image" content={absoluteOgImage} />}
+		{absoluteOgImage && <meta name="twitter:image:alt" content={resolvedOgImageAlt} />}
 		<link rel="preconnect" href="https://fonts.googleapis.com">
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 		<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,800;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-		<title>Freedom Times</title>
+		<title>{resolvedTitle}</title>
 	</head>
 	<body>
 		<main class="shell">
