@@ -10,6 +10,7 @@ interface Props {
 	ogType?: 'website' | 'article';
 	ogImage?: string | null;
 	ogImageAlt?: string;
+	socialTitle?: string;
 	publishedTime?: string | null;
 	modifiedTime?: string | null;
 	author?: string | null;
@@ -26,6 +27,7 @@ const {
 	ogType = 'website',
 	ogImage,
 	ogImageAlt,
+	socialTitle,
 	publishedTime,
 	modifiedTime,
 	author,
@@ -33,6 +35,7 @@ const {
 } = Astro.props as Props;
 
 const resolvedTitle = title?.trim().length ? `${title.trim()} | ${siteName}` : siteName;
+const resolvedSocialTitle = socialTitle?.trim().length ? socialTitle.trim() : resolvedTitle;
 const resolvedDescription = description?.trim().length ? description.trim() : defaultDescription;
 const resolvedCanonicalUrl = canonicalUrl?.trim().length ? canonicalUrl.trim() : Astro.url.href;
 const absoluteCanonical = new URL(resolvedCanonicalUrl, Astro.url).toString();
@@ -57,7 +60,7 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 		<link rel="canonical" href={absoluteCanonical} />
 		<meta property="og:site_name" content={siteName} />
 		<meta property="og:type" content={ogType} />
-		<meta property="og:title" content={resolvedTitle} />
+		<meta property="og:title" content={resolvedSocialTitle} />
 		<meta property="og:description" content={resolvedDescription} />
 		<meta property="og:url" content={absoluteCanonical} />
 		{absoluteOgImage && <meta property="og:image" content={absoluteOgImage} />}
@@ -67,7 +70,7 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 		{ogType === 'article' && modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
 		{ogType === 'article' && author && <meta property="article:author" content={author} />}
 		<meta name="twitter:card" content={absoluteOgImage ? 'summary_large_image' : 'summary'} />
-		<meta name="twitter:title" content={resolvedTitle} />
+		<meta name="twitter:title" content={resolvedSocialTitle} />
 		<meta name="twitter:description" content={resolvedDescription} />
 		{absoluteOgImage && <meta name="twitter:image" content={absoluteOgImage} />}
 		{absoluteOgImage && <meta name="twitter:image:alt" content={resolvedOgImageAlt} />}

@@ -66,6 +66,14 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 const portableRenderNodes = buildPortableRenderNodes(portableContent);
 const description = summaryParagraphs[0] ?? `Read "${title}" on Freedom Times.`;
 const canonicalPath = collectionLabel === 'Archive' ? `/archives/${entry.slug ?? entry.id}` : `/posts/${entry.slug ?? entry.id}`;
+const publicationDate = publishedAt
+	? new Date(publishedAt)
+	: null;
+const publicationDateLabel =
+	publicationDate && Number.isFinite(publicationDate.getTime())
+		? publicationDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+		: null;
+const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` : title;
 const socialImage = featuredImageSrc
 	? (featuredImageSrc.startsWith('/_emdash/api/media/file/')
 		? featuredImageSrc
@@ -75,6 +83,7 @@ const socialImage = featuredImageSrc
 
 <Layout
 	title={title}
+	socialTitle={socialTitle}
 	description={description}
 	canonicalUrl={canonicalPath}
 	ogType="article"
