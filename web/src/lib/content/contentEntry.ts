@@ -14,6 +14,7 @@ export type ContentEntryViewModel = {
 	textContent: string | null;
 	featuredImageSrc: string | null;
 	featuredImageAlt: string;
+	socialImageSrc: string | null;
 	volumeNumber: number | null;
 	regionalVariant: 'Lancaster' | 'Newcastle' | 'Nottingham' | null;
 	pageImages: SlideImage[];
@@ -354,6 +355,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 	const featuredImageAlt =
 		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
+	const socialImageSrc = readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
 	const volumeNumber =
 		readNumber(data.volume_number)
 		?? readNumber(data.volumeNumber)
@@ -403,6 +405,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 		textContent,
 		featuredImageSrc,
 		featuredImageAlt,
+		socialImageSrc,
 		volumeNumber,
 		regionalVariant,
 		pageImages,
