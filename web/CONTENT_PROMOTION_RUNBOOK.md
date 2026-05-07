@@ -28,7 +28,7 @@ This runbook documents the repeatable process for getting verified staging conte
 **Rule:** create a **recoverable backup** of the **specific Turso database** you are about to change **before** migrations, seeds, manual SQL, content promotion, or bulk CMS updates. Do not skip this for small or “obvious” edits.
 
 **Option A — file export (any Turso DB you can access with the CLI)**  
-After `turso auth login` (for example in WSL, see [Turso CLI introduction](https://docs.turso.tech/cli/introduction)):
+After `turso auth login` in **WSL** (required in this repo; see [Turso CLI introduction](https://docs.turso.tech/cli/introduction)):
 
 ```bash
 turso db export freedomtimes-emdash-staging --output-file ./.release/backups/emdash-staging-$(date +%Y%m%d-%H%M%S).db

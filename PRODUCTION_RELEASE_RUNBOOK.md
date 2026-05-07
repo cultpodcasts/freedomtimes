@@ -24,7 +24,7 @@ This runbook is the single path for promoting all production-facing changes:
 2. `gh` authenticated (`gh auth status`).
 3. EmDash staging and production API tokens available.
 4. Staging validation complete for schema/content and page rendering.
-5. Turso CLI access available for production rollback checkpoints.
+5. Turso CLI access available in **WSL** for production rollback checkpoints.
 
 Merge rule for EmDash-dependent changes:
 
