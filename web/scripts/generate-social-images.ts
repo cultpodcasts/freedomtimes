@@ -3,11 +3,13 @@ import fs from 'fs/promises';
 import path from 'path';
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
+import sharp from 'sharp';
 import { buildContentEntryViewModel } from '../src/lib/content/contentEntry.js';
 
 /** Open Graph / social share image size (Facebook, X, LinkedIn, etc.). */
 const OG_WIDTH = 1200;
-const OG_HEIGHT = 630;
+const OG_HEIGHT = 675;
+const MAX_SOCIAL_IMAGE_BYTES = 600 * 1024;
 
 /** Side margins (60px each); keeps headline inside the canvas before root overflow clips. */
 const TITLE_BLOCK_MAX_PX = OG_WIDTH - 120;
@@ -205,6 +207,45 @@ async function uploadMedia(filePath: string, altText: string, apiUrl: string, to
 		throw new Error(`Failed to upload media: ${uploadRes.status} ${txt}`);
 	}
 	return await uploadRes.json();
+}
+
+async function optimizePngUnderLimit(
+	input: Buffer,
+	maxBytes = MAX_SOCIAL_IMAGE_BYTES,
+): Promise<Buffer> {
+	if (input.byteLength <= maxBytes) return input;
+
+	const attempts = [
+		{ quality: 92, colors: 256, dither: 1.0 },
+		{ quality: 88, colors: 192, dither: 0.95 },
+		{ quality: 82, colors: 128, dither: 0.9 },
+		{ quality: 76, colors: 96, dither: 0.85 },
+		{ quality: 70, colors: 64, dither: 0.8 },
+		{ quality: 62, colors: 48, dither: 0.75 },
+	] as const;
+
+	let best = input;
+	for (const attempt of attempts) {
+		const candidate = await sharp(input)
+			.png({
+				compressionLevel: 9,
+				palette: true,
+				quality: attempt.quality,
+				colors: attempt.colors,
+				dither: attempt.dither,
+				effort: 10,
+				progressive: false,
+			})
+			.toBuffer();
+		if (candidate.byteLength < best.byteLength) {
+			best = candidate;
+		}
+		if (candidate.byteLength <= maxBytes) {
+			return candidate;
+		}
+	}
+
+	return best;
 }
 
 async function main() {
@@ -411,15 +452,15 @@ async function main() {
 	const resvg = new Resvg(svg, {
 		fitTo: { mode: 'width', value: OG_WIDTH },
 	});
-	const pngData = resvg.render().asPng();
+	const pngDataRaw = resvg.render().asPng();
+	const pngData = await optimizePngUnderLimit(pngDataRaw);
 	const outPath = path.join(process.cwd(), '.release', `${slug}-social.png`);
 	await fs.mkdir(path.dirname(outPath), { recursive: true });
 	await fs.writeFile(outPath, pngData);
 	const pngBytes = pngData.byteLength;
-	const maxOgBytes = 600 * 1024;
-	if (pngBytes > maxOgBytes) {
-		console.warn(
-			`PNG is ${pngBytes} bytes (>${maxOgBytes} target for some social crawlers); consider a simpler background photo or lossy re-encode.`,
+	if (pngBytes > MAX_SOCIAL_IMAGE_BYTES) {
+		throw new Error(
+			`Social image is ${pngBytes} bytes after optimization; must be <= ${MAX_SOCIAL_IMAGE_BYTES}.`,
 		);
 	}
 	console.log(`Saved PNG to ${outPath} (${pngBytes} bytes)`);
@@ -431,7 +472,15 @@ async function main() {
 	console.log("featured_image is:", JSON.stringify(postItem.data.featured_image, null, 2));
 
 	console.log(`Updating post ${slug} using EmDash CLI...`);
-	postItem.data.social_image = uploadResult.data.item.id;
+	const uploaded = uploadResult.data.item as Record<string, unknown>;
+	const storageKey = typeof uploaded.storageKey === 'string' ? uploaded.storageKey : '';
+	postItem.data.social_image = {
+		id: uploaded.id,
+		provider: 'local',
+		filename: uploaded.filename,
+		mimeType: uploaded.mimeType,
+		meta: storageKey ? { storageKey } : {},
+	};
 
 	const tmpDataFile = path.join(process.cwd(), '.release', `${slug}-data.json`);
 	await fs.writeFile(tmpDataFile, JSON.stringify(postItem.data, null, 2));

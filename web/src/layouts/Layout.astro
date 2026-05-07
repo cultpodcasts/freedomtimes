@@ -9,8 +9,11 @@ interface Props {
 	canonicalUrl?: string;
 	ogType?: 'website' | 'article';
 	ogImage?: string | null;
+	ogImageWidth?: number;
+	ogImageHeight?: number;
 	ogImageAlt?: string;
 	socialTitle?: string;
+	twitterTitle?: string | null;
 	publishedTime?: string | null;
 	modifiedTime?: string | null;
 	author?: string | null;
@@ -26,8 +29,11 @@ const {
 	canonicalUrl,
 	ogType = 'website',
 	ogImage,
+	ogImageWidth = 1200,
+	ogImageHeight = 630,
 	ogImageAlt,
 	socialTitle,
+	twitterTitle,
 	publishedTime,
 	modifiedTime,
 	author,
@@ -36,6 +42,9 @@ const {
 
 const resolvedTitle = title?.trim().length ? `${title.trim()} | ${siteName}` : siteName;
 const resolvedSocialTitle = socialTitle?.trim().length ? socialTitle.trim() : resolvedTitle;
+const resolvedTwitterTitle = twitterTitle === null
+	? null
+	: (twitterTitle !== undefined ? twitterTitle : resolvedSocialTitle);
 const resolvedDescription = description?.trim().length ? description.trim() : defaultDescription;
 const resolvedCanonicalUrl = canonicalUrl?.trim().length ? canonicalUrl.trim() : Astro.url.href;
 const absoluteCanonical = new URL(resolvedCanonicalUrl, Astro.url).toString();
@@ -48,8 +57,9 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
+		<link rel="icon" href="/favicon.ico" sizes="any" />
+		<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<meta name="theme-color" content="#1d4b3e" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
@@ -66,13 +76,16 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 		{absoluteOgImage && <meta property="og:image" content={absoluteOgImage} />}
 		{absoluteOgImage && <meta property="og:image:secure_url" content={absoluteOgImage} />}
 		{absoluteOgImage && <meta property="og:image:alt" content={resolvedOgImageAlt} />}
-		{absoluteOgImage && <meta property="og:image:width" content="1200" />}
-		{absoluteOgImage && <meta property="og:image:height" content="630" />}
+		{absoluteOgImage && <meta property="og:image:width" content={String(ogImageWidth)} />}
+		{absoluteOgImage && <meta property="og:image:height" content={String(ogImageHeight)} />}
 		{ogType === 'article' && publishedTime && <meta property="article:published_time" content={publishedTime} />}
 		{ogType === 'article' && modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
 		{ogType === 'article' && author && <meta property="article:author" content={author} />}
 		<meta name="twitter:card" content={absoluteOgImage ? 'summary_large_image' : 'summary'} />
-		<meta name="twitter:title" content={resolvedSocialTitle} />
+		{resolvedTwitterTitle === '' && <meta name="twitter:title" content="" />}
+		{resolvedTwitterTitle !== null && resolvedTwitterTitle !== '' && (
+			<meta name="twitter:title" content={resolvedTwitterTitle} />
+		)}
 		<meta name="twitter:description" content={resolvedDescription} />
 		{absoluteOgImage && <meta name="twitter:image" content={absoluteOgImage} />}
 		{absoluteOgImage && <meta name="twitter:image:alt" content={resolvedOgImageAlt} />}
