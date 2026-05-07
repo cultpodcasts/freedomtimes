@@ -848,6 +848,8 @@ This dispatches and watches `.github/workflows/terraform-production.yml` with ap
 
 Recommended pre-apply checkpoint and rollback helpers:
 
+> Turso CLI operations in this repo should be run from **WSL**.
+
 ```bash
 # Create Turso rollback checkpoint + metadata (includes git hashes)
 .\scripts\turso-create-rollback-branch.ps1 -ProductionDatabaseName <prod-db-name> -AllowProduction

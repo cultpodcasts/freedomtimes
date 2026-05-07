@@ -1,3 +1,6 @@
+import { createClient } from '@libsql/client/web';
+
+import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
 
 export type SlideImage = { src: string; pageNumber: number | null };
@@ -14,6 +17,7 @@ export type ContentEntryViewModel = {
 	textContent: string | null;
 	featuredImageSrc: string | null;
 	featuredImageAlt: string;
+	socialImageSrc: string | null;
 	volumeNumber: number | null;
 	regionalVariant: 'Lancaster' | 'Newcastle' | 'Nottingham' | null;
 	pageImages: SlideImage[];
@@ -68,19 +72,48 @@ function tryParseJsonString(value: string): unknown {
 	}
 }
 
+/**
+ * Public file URLs are only `/_emdash/api/media/file/<storageKey>` where `storageKey` is the
+ * R2 object name (EmDash uses e.g. `<ulid>.png`). Media row `id` is different and returns 404 if
+ * used as `key` (see emdash `addUrlToMedia` / `storage.download(key)`).
+ */
+function normalizeToPublicMediaFilePath(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return null;
+	}
+	if (trimmed.startsWith('/_emdash/api/media/file/')) {
+		return trimmed;
+	}
+	if (trimmed.startsWith('/')) {
+		return null;
+	}
+	if (trimmed.includes('://')) {
+		try {
+			const pathname = new URL(trimmed).pathname;
+			return pathname.startsWith('/_emdash/api/media/file/') ? pathname : null;
+		} catch {
+			return null;
+		}
+	}
+	// Storage keys in this project include a file extension; bare ULIDs are media ids, not keys.
+	if (/\.[a-z0-9]{2,5}$/i.test(trimmed) && !trimmed.includes('/')) {
+		return `/_emdash/api/media/file/${trimmed}`;
+	}
+	return null;
+}
+
 function readFeaturedImageSrc(value: unknown): string | null {
 	if (typeof value === 'string') {
 		const trimmed = value.trim();
-		return trimmed.length > 0 ? trimmed : null;
+		if (trimmed.length === 0) {
+			return null;
+		}
+		return normalizeToPublicMediaFilePath(trimmed);
 	}
 
 	if (value && typeof value === 'object') {
 		const candidate = value as Record<string, unknown>;
-		const src = readString(candidate.src) ?? readString(candidate.url);
-		if (src) {
-			return src;
-		}
-
 		const meta =
 			candidate.meta && typeof candidate.meta === 'object'
 				? (candidate.meta as Record<string, unknown>)
@@ -90,9 +123,9 @@ function readFeaturedImageSrc(value: unknown): string | null {
 			return `/_emdash/api/media/file/${storageKey}`;
 		}
 
-		const mediaId = readString(candidate.id);
-		if (mediaId) {
-			return `/_emdash/api/media/file/${mediaId}`;
+		const src = readString(candidate.src) ?? readString(candidate.url);
+		if (src) {
+			return normalizeToPublicMediaFilePath(src);
 		}
 
 		return null;
@@ -146,12 +179,12 @@ function readMediaFileUrl(value: unknown): string | null {
 		}
 
 		const mediaId = readString(candidate.id);
-		if (mediaId) {
+		if (mediaId && /\.[a-z0-9]{2,5}$/i.test(mediaId)) {
 			return `/_emdash/api/media/file/${mediaId}`;
 		}
 
 		const mediaRef = readString(candidate._ref);
-		if (mediaRef) {
+		if (mediaRef && /\.[a-z0-9]{2,5}$/i.test(mediaRef)) {
 			return `/_emdash/api/media/file/${mediaRef}`;
 		}
 	}
@@ -329,6 +362,92 @@ function readPrimaryByline(entryMeta: Record<string, unknown>, data: Record<stri
 	);
 }
 
+/**
+ * When `social_image` is only a media row id (no `meta.storageKey`), resolve R2 `storage_key` from Turso.
+ * Skips if the field already yields a public `/file/` path from {@link readFeaturedImageSrc}.
+ */
+function extractSocialImageMediaIdForLookup(data: Record<string, unknown>): string | null {
+	const raw = data.social_image ?? data.socialImage;
+	if (typeof raw === 'string') {
+		const t = raw.trim();
+		if (!t) return null;
+		if (normalizeToPublicMediaFilePath(t)) return null;
+		if (/^[0-9A-HJKMNP-TV-Z]{20,36}$/i.test(t)) return t;
+		return null;
+	}
+	if (raw && typeof raw === 'object') {
+		const o = raw as Record<string, unknown>;
+		const meta = o.meta && typeof o.meta === 'object' ? (o.meta as Record<string, unknown>) : null;
+		if (readString(meta?.storageKey) ?? readString(o.storageKey)) {
+			return null;
+		}
+		const id = readString(o.id);
+		if (id && /^[0-9A-HJKMNP-TV-Z]{20,36}$/i.test(id)) return id;
+		const src = readString(o.src) ?? readString(o.url);
+		if (
+			src
+			&& !normalizeToPublicMediaFilePath(src)
+			&& /^[0-9A-HJKMNP-TV-Z]{20,36}$/i.test(src)
+		) {
+			return src;
+		}
+	}
+	return null;
+}
+
+function workerSafeFetch():
+	| ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>)
+	| undefined {
+	if (typeof globalThis.fetch !== 'function') return undefined;
+	return (input: RequestInfo | URL, init?: RequestInit) => {
+		if (input && typeof input === 'object' && 'url' in input) {
+			const request = input as Request;
+			return globalThis.fetch(request.url, {
+				method: request.method,
+				headers: request.headers,
+				body: request.body,
+				redirect: request.redirect,
+				signal: request.signal,
+				...(init || {}),
+			});
+		}
+		return globalThis.fetch(input, init);
+	};
+}
+
+export async function resolveSocialImageSrc(data: Record<string, unknown>): Promise<string | null> {
+	const direct =
+		readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
+	if (direct) return direct;
+
+	const mediaId = extractSocialImageMediaIdForLookup(data);
+	if (!mediaId) return null;
+
+	const url = readOptionalEnv('TURSO_DATABASE_URL').trim();
+	const authToken = readOptionalEnv('TURSO_AUTH_TOKEN').trim();
+	if (!url || !authToken) return null;
+
+	try {
+		const client = createClient({
+			url,
+			authToken,
+			fetch: workerSafeFetch(),
+		});
+		const res = await client.execute({
+			sql: 'select storage_key from media where id = ? limit 1',
+			args: [mediaId],
+		});
+		const row = res.rows[0] as Record<string, unknown> | undefined;
+		const key = row && typeof row.storage_key === 'string' ? row.storage_key.trim() : '';
+		if (key.length > 0) {
+			return `/_emdash/api/media/file/${key}`;
+		}
+	} catch (err) {
+		console.error('[contentEntry] resolveSocialImageSrc failed', err);
+	}
+	return null;
+}
+
 export function buildContentEntryViewModel(entry: { slug?: string; data: Record<string, unknown> } & Record<string, unknown>): ContentEntryViewModel {
 	const data = entry.data;
 	const entryMeta = entry as Record<string, unknown>;
@@ -340,6 +459,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 		readString(entry.slug) ??
 		'Untitled';
 	const summary =
+		readString(data.excerpt) ??
 		readString(data.dek) ??
 		readString(data.abstract) ??
 		readString(data.description) ??
@@ -354,6 +474,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 	const featuredImageAlt =
 		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
+	const socialImageSrc = readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
 	const volumeNumber =
 		readNumber(data.volume_number)
 		?? readNumber(data.volumeNumber)
@@ -403,6 +524,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 		textContent,
 		featuredImageSrc,
 		featuredImageAlt,
+		socialImageSrc,
 		volumeNumber,
 		regionalVariant,
 		pageImages,

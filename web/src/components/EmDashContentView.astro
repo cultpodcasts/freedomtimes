@@ -13,7 +13,7 @@ import {
 	buildPortableRenderNodes,
 	parseLegacyTextContent,
 } from '../lib/content/contentBlocks';
-import { buildContentEntryViewModel } from '../lib/content/contentEntry';
+import { buildContentEntryViewModel, resolveSocialImageSrc } from '../lib/content/contentEntry';
 
 const {
 	entry,
@@ -51,7 +51,10 @@ const {
 	publishedAt,
 	updatedAt,
 	primaryByline,
+	socialImageSrc: socialImageSrcSync,
 } = buildContentEntryViewModel(entry as { slug?: string; data: Record<string, unknown> } & Record<string, unknown>);
+const socialImageSrc =
+	socialImageSrcSync ?? (await resolveSocialImageSrc(entry.data));
 const portableComponents = {
 	type: {
 		video: Video,
@@ -64,9 +67,33 @@ const portableComponents = {
 
 const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 const portableRenderNodes = buildPortableRenderNodes(portableContent);
+const description = summaryParagraphs[0] ?? `Read "${title}" on Freedom Times.`;
+const canonicalPath = collectionLabel === 'Archive' ? `/archives/${entry.slug ?? entry.id}` : `/posts/${entry.slug ?? entry.id}`;
+const publicationDate = publishedAt
+	? new Date(publishedAt)
+	: null;
+const publicationDateLabel =
+	publicationDate && Number.isFinite(publicationDate.getTime())
+		? publicationDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+		: null;
+const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` : title;
 ---
 
-<Layout>
+<Layout
+	title={title}
+	socialTitle={socialTitle}
+	twitterTitle={socialImageSrc ? '_' : socialTitle}
+	description={description}
+	canonicalUrl={canonicalPath}
+	ogType="article"
+	ogImage={socialImageSrc ?? null}
+	ogImageWidth={1200}
+	ogImageHeight={675}
+	ogImageAlt={socialImageSrc ? socialTitle : undefined}
+	publishedTime={publishedAt}
+	modifiedTime={updatedAt}
+	author={primaryByline}
+>
 	<article class="page-wrap">
 		<Header section={collectionLabel} sectionUrl={collectionLabel === 'Archive' ? '/archives' : '/homepage'} isEditor={isEditor} isSignedIn={resolvedIsSignedIn} />
 

@@ -12,4 +12,4 @@ Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section *
 
 Before **any** mutating operation on a database or CMS-backed store (Turso / libSQL, SQL migrations, seeds, EmDash content writes, MCP updates), create a **recoverable backup** of the **target** database first. Do not skip this for small edits.
 
-Concrete steps and examples (Turso `db export`, rollback branches, scheduler/subscriptions): see **`web/CONTENT_PROMOTION_RUNBOOK.md`** section *Turso backups before any mutating work*.
+Concrete steps and examples (Turso `db export`, rollback branches, scheduler/subscriptions — run Turso CLI in **WSL**): see **`web/CONTENT_PROMOTION_RUNBOOK.md`** section *Turso backups before any mutating work*.

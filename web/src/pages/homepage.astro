@@ -211,9 +211,20 @@ const stories: Story[] = postEntries.map((entry) => {
 const lead = stories[0] ?? null;
 const secondLead = stories[1] ?? null;
 const rails = stories.slice(2);
+const socialTitle = 'Freedom Times';
+const socialDescription = 'Telling survivor truths. Protecting sources. Holding cults to account.';
+const socialImage = '/social/homepage-og.png';
 ---
 
-<Layout>
+<Layout
+  title={socialTitle}
+  socialTitle={socialTitle}
+  description={socialDescription}
+  canonicalUrl={Astro.url.pathname}
+  ogType="website"
+  ogImage={socialImage}
+  ogImageAlt="Freedom Times homepage"
+>
   <div class="paper-wrap">
     <Header isEditor={isEditor} isSignedIn={isSignedIn} />
 

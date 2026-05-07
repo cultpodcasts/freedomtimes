@@ -3,6 +3,7 @@
 ## Operations Runbooks
 
 - Content promotion (staging -> production): [CONTENT_PROMOTION_RUNBOOK.md](CONTENT_PROMOTION_RUNBOOK.md)
+- Social images and favicons: [docs/SOCIAL_IMAGES_AND_FAVICONS.md](docs/SOCIAL_IMAGES_AND_FAVICONS.md)
 
 This app implements the current staging auth gate flow:
 
