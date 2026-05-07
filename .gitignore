@@ -54,3 +54,5 @@ web/.tmp/*
 web/.release/*
 .release/rollback-branches/*
 web/scripts/tmp/*
+freedomtimes-emdash-staging.db
+freedomtimes-emdash-staging.db-wal
