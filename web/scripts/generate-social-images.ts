@@ -4,7 +4,6 @@ import path from 'path';
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
 import sharp from 'sharp';
-import { buildContentEntryViewModel } from '../src/lib/content/contentEntry.js';
 
 /** Open Graph / social share image size (Facebook, X, LinkedIn, etc.). */
 const OG_WIDTH = 1200;
@@ -42,6 +41,42 @@ const HTML_NAMED_ENTITIES: Record<string, string> = {
 	copy: '\u00A9',
 	reg: '\u00AE',
 };
+
+function readString(value: unknown): string | null {
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function readDateCandidate(value: unknown): string | null {
+	const v = readString(value);
+	if (!v) return null;
+	const d = new Date(v);
+	return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function normalizeMediaFileUrl(value: unknown): string | null {
+	if (!value) return null;
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+			return trimmed;
+		}
+		return `/_emdash/api/media/file/${trimmed}`;
+	}
+	if (typeof value === 'object') {
+		const rec = value as Record<string, unknown>;
+		const src = readString(rec.src) ?? readString(rec.url);
+		if (src) return src;
+		const key = readString(rec.storageKey)
+			?? readString(rec.storage_key)
+			?? readString((rec.meta as Record<string, unknown> | undefined)?.storageKey)
+			?? readString((rec.meta as Record<string, unknown> | undefined)?.storage_key);
+		if (key) return `/_emdash/api/media/file/${key}`;
+		const id = readString(rec.id);
+		if (id) return `/_emdash/api/media/file/${id}`;
+	}
+	return null;
+}
 
 function decodeHtmlEntitiesOnce(value: string): string {
 	let s = value
@@ -290,23 +325,40 @@ async function main() {
 	console.log("Raw item data keys:", rawItem.data ? Object.keys(rawItem.data) : "undefined");
 	
 	const postItem = rawItem.data?.item || rawItem;
-	const view = buildContentEntryViewModel(postItem as any);
+	const data = (postItem?.data ?? {}) as Record<string, unknown>;
+	const title = readString(data.title)
+		?? readString(data.name)
+		?? readString(data.headline)
+		?? readString(postItem?.slug)
+		?? 'Untitled';
+	const featuredImageSrc =
+		normalizeMediaFileUrl(data.featured_image)
+		?? normalizeMediaFileUrl(data.cover_image);
+	const publishedAt =
+		readDateCandidate((postItem as Record<string, unknown>)?.publishedAt)
+		?? readDateCandidate((postItem as Record<string, unknown>)?.published_at)
+		?? readDateCandidate(data.publishedAt)
+		?? readDateCandidate(data.published_at)
+		?? readDateCandidate((postItem as Record<string, unknown>)?.updatedAt)
+		?? readDateCandidate((postItem as Record<string, unknown>)?.updated_at)
+		?? readDateCandidate(data.updatedAt)
+		?? readDateCandidate(data.updated_at);
 
-	console.log("Extracted title:", view.title);
+	console.log("Extracted title:", title);
 	console.log("postItem.data.title:", postItem.data?.title);
 	if (!postItem.data?.title) {
 		console.warn("WARNING: Title is missing from data!");
 	}
 
-	let bgUrl = view.featuredImageSrc ? new URL(view.featuredImageSrc, apiUrl).toString() : '';
+	let bgUrl = featuredImageSrc ? new URL(featuredImageSrc, apiUrl).toString() : '';
 	// Use absolute internal URL for fetching if relative
-	if (view.featuredImageSrc?.startsWith('/')) {
-		bgUrl = `${apiUrl}${view.featuredImageSrc}`;
+	if (featuredImageSrc?.startsWith('/')) {
+		bgUrl = `${apiUrl}${featuredImageSrc}`;
 	}
 
-	const normalizedTitle = normalizeText(view.title);
+	const normalizedTitle = normalizeText(title);
 	const titleLines = wrapTitle(normalizedTitle);
-	const dateText = formatDate(view.publishedAt ?? view.updatedAt);
+	const dateText = formatDate(publishedAt);
 	
 	const titleLineStyle = {
 		marginBottom: '8px',
