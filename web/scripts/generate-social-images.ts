@@ -288,30 +288,83 @@ async function optimizePngUnderLimit(
 	return best;
 }
 
-async function main() {
-	const args = process.argv.slice(2);
-	const slug = args[0];
+type SocialFonts = { playfair: ArrayBuffer; noto900: ArrayBuffer };
 
-	const apiUrl = process.env.EMDASH_URL || process.env.EMDASH_STAGING_URL || 'https://staging.freedomtimes.news';
-	let token = process.env.EMDASH_TOKEN || process.env.EMDASH_STAGING_TOKEN || '';
+async function listPublishedPostSlugs(
+	apiUrl: string,
+	token: string,
+): Promise<string[]> {
+	const { emdashMcpToolsCall } = await import('./emdash-mcp-client.mjs');
+	const slugs: string[] = [];
+	let cursor: string | undefined;
+	do {
+		const page = (await emdashMcpToolsCall(apiUrl, token, 'content_list', {
+			collection: 'posts',
+			status: 'published',
+			limit: 100,
+			...(cursor ? { cursor } : {}),
+		})) as { items?: unknown[]; nextCursor?: string };
+		const items = page.items;
+		if (!Array.isArray(items)) break;
+		for (const it of items) {
+			if (it && typeof it === 'object' && typeof (it as { slug?: string }).slug === 'string') {
+				slugs.push((it as { slug: string }).slug);
+			}
+		}
+		cursor = page.nextCursor;
+	} while (cursor);
+	return slugs;
+}
+
+async function resolveApiAndToken(): Promise<{ apiUrl: string; token: string }> {
+	const apiUrl =
+		process.env.EMDASH_URL || process.env.EMDASH_STAGING_URL || 'https://staging.freedomtimes.news';
+	let token =
+		process.env.EMDASH_TOKEN?.trim()
+		|| process.env.EMDASH_MCP_TOKEN?.trim()
+		|| process.env.EMDASH_STAGING_TOKEN?.trim()
+		|| '';
 
 	if (!token) {
 		try {
-			const authPath = path.join(process.env.USERPROFILE || process.env.HOME || '', '.config', 'emdash', 'auth.json');
+			const authPath = path.join(
+				process.env.USERPROFILE || process.env.HOME || '',
+				'.config',
+				'emdash',
+				'auth.json',
+			);
 			const authData = JSON.parse(await fs.readFile(authPath, 'utf8'));
 			if (authData[apiUrl] && authData[apiUrl].accessToken) {
 				token = authData[apiUrl].accessToken;
 			}
-		} catch (e) {
-			console.log("Could not read auth.json, proceeding with empty token.");
+		} catch {
+			console.log('Could not read auth.json, proceeding with empty token.');
 		}
 	}
 
-	if (!slug) {
-		console.error("Usage: tsx scripts/generate-social-images.ts <slug>");
-		process.exit(1);
-	}
+	return { apiUrl, token };
+}
 
+async function loadSocialFonts(): Promise<SocialFonts> {
+	const [playfair, noto900] = await Promise.all([
+		loadGoogleFont('Playfair Display', 900),
+		loadGoogleFont('Noto Sans', 900),
+	]);
+	if (!playfair || !noto900) {
+		throw new Error('Could not load fonts (Playfair Display and Noto Sans required)');
+	}
+	return { playfair, noto900 };
+}
+
+/**
+ * Fetches post, renders OG PNG, uploads media (R2), sets `seo.image` via MCP.
+ */
+async function generateSocialImageForSlug(
+	apiUrl: string,
+	token: string,
+	slug: string,
+	fonts: SocialFonts,
+): Promise<void> {
 	console.log(`Fetching post ${slug} from ${apiUrl}...`);
 	const getRes = await fetch(`${apiUrl}/_emdash/api/content/posts/${slug}`, {
 		headers: {
@@ -321,8 +374,7 @@ async function main() {
 	});
 
 	if (!getRes.ok) {
-		console.error(`Failed to fetch post: ${getRes.status}`);
-		process.exit(1);
+		throw new Error(`Failed to fetch post: ${getRes.status}`);
 	}
 
 	const rawItem = await getRes.json();
@@ -420,13 +472,7 @@ async function main() {
 		}
 	}
 
-	const [fontPlayfair, fontNoto900] = await Promise.all([
-		loadGoogleFont('Playfair Display', 900),
-		loadGoogleFont('Noto Sans', 900),
-	]);
-	if (!fontPlayfair || !fontNoto900) {
-		throw new Error('Could not load fonts (Playfair Display and Noto Sans required)');
-	}
+	const { playfair: fontPlayfair, noto900: fontNoto900 } = fonts;
 
 	console.log("Generating layout with Satori...");
 	const vdom = {
@@ -543,28 +589,73 @@ async function main() {
 		(rawItem as { data?: { _rev?: string }; _rev?: string }).data?._rev
 		?? (rawItem as { _rev?: string })._rev;
 	if (typeof rev !== 'string' || !rev) {
-		console.error('Missing _rev on fetched post; cannot content_update');
-		process.exit(1);
+		throw new Error('Missing _rev on fetched post; cannot content_update');
 	}
 
 	const { emdashMcpToolsCall } = await import('./emdash-mcp-client.mjs');
-	try {
-		await emdashMcpToolsCall(apiUrl, token, 'content_update', {
-			collection: 'posts',
-			id: slug,
-			seo: { image: imageForSeo },
-			_rev: rev,
-		});
-		console.log('MCP content_update completed');
-	} catch (err: unknown) {
-		console.error('MCP content_update failed:', err instanceof Error ? err.message : err);
+	await emdashMcpToolsCall(apiUrl, token, 'content_update', {
+		collection: 'posts',
+		id: slug,
+		seo: { image: imageForSeo },
+		_rev: rev,
+	});
+	console.log('MCP content_update completed');
+
+	console.log('Success!');
+}
+
+async function main() {
+	const args = process.argv.slice(2);
+	const all = args[0] === '--all';
+	const slug = all ? undefined : args[0];
+
+	const { apiUrl, token } = await resolveApiAndToken();
+
+	if (!token) {
+		console.error('No bearer token: set EMDASH_TOKEN / EMDASH_STAGING_TOKEN or use ~/.config/emdash/auth.json');
 		process.exit(1);
 	}
 
-	console.log("Success!");
+	if (!slug && !all) {
+		console.error('Usage: tsx scripts/generate-social-images.ts <slug>');
+		console.error('       tsx scripts/generate-social-images.ts --all   # all published posts');
+		process.exit(1);
+	}
+
+	const fonts = await loadSocialFonts();
+
+	if (all) {
+		const slugs = await listPublishedPostSlugs(apiUrl, token);
+		console.log(`Regenerating OG images for ${slugs.length} published post(s) at ${apiUrl}...\n`);
+		const failed: string[] = [];
+		for (let i = 0; i < slugs.length; i++) {
+			const s = slugs[i];
+			console.log(`\n=== [${i + 1}/${slugs.length}] ${s} ===`);
+			try {
+				await generateSocialImageForSlug(apiUrl, token, s, fonts);
+			} catch (e) {
+				console.error(e instanceof Error ? e.message : e);
+				failed.push(s);
+			}
+		}
+		console.log(
+			`\nDone. ok=${slugs.length - failed.length} failed=${failed.length}${
+				failed.length ? `: ${failed.join(', ')}` : ''
+			}`,
+		);
+		if (failed.length) process.exit(1);
+		return;
+	}
+
+	try {
+		await generateSocialImageForSlug(apiUrl, token, slug!, fonts);
+	} catch (e) {
+		console.error(e instanceof Error ? e.message : e);
+		process.exit(1);
+	}
 }
 
-main().catch(e => {
+main().catch((e) => {
 	console.error(e);
 	process.exit(1);
 });

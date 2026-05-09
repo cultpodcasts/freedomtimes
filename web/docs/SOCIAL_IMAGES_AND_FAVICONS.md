@@ -63,7 +63,14 @@ cd web
 npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts building-the-cult-what-katie-simpsons-murder-reveals-about-coercive-control-group-dynamics-and-the-laws-that-should-have-saved-her
 ```
 
-Example article title: *"Building the Cult": How the Law Failed Katie Simpson*. The headline stack is shifted up by **6% of the social image height** (`SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_RATIO` in `web/scripts/generate-social-images.ts`, currently 675px tall → 41px reserve) so X/Twitter’s overlaid title bar is less likely to cover the last line; raise the ratio if a client still clips.
+Regenerate **all published** posts (same upload + `seo.image` update for each; use after changing layout constants such as `SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_PX`):
+
+```powershell
+cd web
+npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts --all
+```
+
+Example article title: *"Building the Cult": How the Law Failed Katie Simpson*. The headline stack is shifted up from the bottom by **`CONTENT_INSET_PX` + `SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_PX`** in `web/scripts/generate-social-images.ts` so X/Twitter’s overlaid title bar is less likely to cover the last line; increase the reserve if a client still clips.
 
 ## Homepage social image
 
