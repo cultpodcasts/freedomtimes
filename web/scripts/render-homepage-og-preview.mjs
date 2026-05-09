@@ -2,23 +2,15 @@ import fs from 'node:fs/promises';
 import satori from 'satori';
 import { Resvg } from '@resvg/resvg-js';
 
+import { loadGoogleFontTtf } from './lib/load-google-font-ttf.mjs';
+
 /** Keep in sync with `src/lib/site-brand.ts`. */
 const SITE_DISPLAY_NAME = 'freedom times';
 
-async function loadGoogleFont(family, weight) {
-  const url = `https://fonts.googleapis.com/css2?family=${family.replace(/\s+/g, '+')}:wght@${weight}&display=swap`;
-  const cssRes = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-  const css = await cssRes.text();
-  const match = css.match(/src:\s*url\((https:\/\/[^)]+)\)\s*format\('(truetype|opentype)'\)/);
-  if (!match?.[1]) throw new Error(`font not found: ${family} ${weight}`);
-  const fontRes = await fetch(match[1]);
-  return await fontRes.arrayBuffer();
-}
-
 const [playfair900, inter700, sourceSerif400] = await Promise.all([
-  loadGoogleFont('Playfair Display', 900),
-  loadGoogleFont('Inter', 700),
-  loadGoogleFont('Source Serif 4', 400),
+  loadGoogleFontTtf('Playfair Display', 900),
+  loadGoogleFontTtf('Inter', 700),
+  loadGoogleFontTtf('Source Serif 4', 400),
 ]);
 
 const vdom = {

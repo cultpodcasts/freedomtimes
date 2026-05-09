@@ -374,12 +374,35 @@ function readPrimaryByline(entryMeta: Record<string, unknown>, data: Record<stri
 	);
 }
 
-function readSeoRecord(entryMeta: Record<string, unknown>): Record<string, unknown> | null {
-	const seo = entryMeta.seo;
-	if (seo && typeof seo === 'object') {
-		return seo as Record<string, unknown>;
-	}
-	return null;
+/**
+ * EmDash exposes SEO as **`entry.seo`**, **`entry.data.seo`**, or both — see `getContentSeo` in `emdash/seo`.
+ *
+ * If we only read **`entry.seo`** when it exists, we can miss **`data.seo.image`** (the OG upload path).
+ * `getSeoMeta` picks one object (`seo ?? data.seo`); live rows often split fields so **`seo.image` lives only
+ * under `data.seo`**. Merge **`data.seo`** first, then overlay **`entry.seo`** so draft/top-level overrides
+ * nested when both set the same key, while **`image` still flows up when only nested defines it.
+ */
+export function readEntrySeoRecord(entryMeta: Record<string, unknown>): Record<string, unknown> | null {
+	const data = entryMeta.data;
+	const nestedRaw =
+		data && typeof data === 'object' && !Array.isArray(data)
+			? (data as Record<string, unknown>).seo
+			: undefined;
+	const topRaw = entryMeta.seo;
+
+	const nestedRec =
+		nestedRaw && typeof nestedRaw === 'object' && !Array.isArray(nestedRaw)
+			? (nestedRaw as Record<string, unknown>)
+			: null;
+	const topRec =
+		topRaw && typeof topRaw === 'object' && !Array.isArray(topRaw)
+			? (topRaw as Record<string, unknown>)
+			: null;
+
+	if (!nestedRec && !topRec) return null;
+	if (!nestedRec) return topRec;
+	if (!topRec) return nestedRec;
+	return { ...nestedRec, ...topRec };
 }
 
 /**
@@ -531,7 +554,7 @@ export async function resolveSocialImageSrc(
 export function buildContentEntryViewModel(entry: { slug?: string; data: Record<string, unknown> } & Record<string, unknown>): ContentEntryViewModel {
 	const data = entry.data;
 	const entryMeta = entry as Record<string, unknown>;
-	const seo = readSeoRecord(entryMeta);
+	const seo = readEntrySeoRecord(entryMeta);
 
 	const title =
 		readString(data.title) ??

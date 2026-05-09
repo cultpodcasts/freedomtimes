@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { Resvg } from '@resvg/resvg-js';
 
+import { loadGoogleFontTtf } from './lib/load-google-font-ttf.mjs';
+
 const fontPath = 'scripts/tmp/playfair-display-900.ttf';
 const baseGlyph = `
   <text
@@ -30,31 +32,6 @@ const icoSvg = `
 </svg>
 `.trim();
 
-async function loadGoogleFont(family, weight) {
-  const url = `https://fonts.googleapis.com/css2?family=${family.replace(/\s+/g, '+')}:wght@${weight}&display=swap`;
-  const cssRes = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-    },
-  });
-  if (!cssRes.ok) {
-    throw new Error(`Failed to fetch font CSS: ${cssRes.status}`);
-  }
-
-  const css = await cssRes.text();
-  const resource = css.match(/src:\s*url\((https:\/\/[^)]+)\)\s*format\('(truetype|opentype)'\)/);
-  if (!resource?.[1]) {
-    throw new Error('Could not locate a TTF/OTF Playfair Display source in Google Fonts CSS');
-  }
-
-  const fontRes = await fetch(resource[1]);
-  if (!fontRes.ok) {
-    throw new Error(`Failed to fetch font file: ${fontRes.status}`);
-  }
-
-  return Buffer.from(await fontRes.arrayBuffer());
-}
-
 function renderPng(size, outputPath, svg = iconSvg) {
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'width', value: size },
@@ -68,7 +45,8 @@ function renderPng(size, outputPath, svg = iconSvg) {
 }
 
 mkdirSync('scripts/tmp', { recursive: true });
-const playfair900 = await loadGoogleFont('Playfair Display', 900);
+mkdirSync('public/social', { recursive: true });
+const playfair900 = Buffer.from(await loadGoogleFontTtf('Playfair Display', 900));
 writeFileSync(fontPath, playfair900);
 
 renderPng(16, 'public/.favicon-16.png', icoSvg);
@@ -78,6 +56,11 @@ renderPng(48, 'public/.favicon-48.png', icoSvg);
 renderPng(64, 'public/.favicon-64.png', icoSvg);
 renderPng(180, 'public/apple-touch-icon.png');
 renderPng(512, 'public/favicon.png');
+
+/** Profile / platform square avatars — same “ft” glyph + Playfair as favicons (matches homepage-og wordmark font file). */
+renderPng(200, 'public/social/avatar-ft-200.png');
+renderPng(400, 'public/social/avatar-ft-400.png');
+renderPng(1024, 'public/social/avatar-ft-1024.png');
 
 const ico = execFileSync(
   'npx',
