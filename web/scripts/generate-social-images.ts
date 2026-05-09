@@ -1,4 +1,3 @@
-import { execSync } from 'node:child_process';
 import fs from 'fs/promises';
 import path from 'path';
 import satori from 'satori';
@@ -12,6 +11,12 @@ const MAX_SOCIAL_IMAGE_BYTES = 600 * 1024;
 
 /** Side margins (60px each); keeps headline inside the canvas before root overflow clips. */
 const TITLE_BLOCK_MAX_PX = OG_WIDTH - 120;
+
+/** Inset from canvas edges for the text stack (matches side margins). */
+const CONTENT_INSET_PX = 60;
+
+/** Share of canvas height reserved above {@link CONTENT_INSET_PX} for X/Twitter’s bottom title strip. */
+const SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_PX = 45;
 
 /** Translucent white behind type (lower alpha = more see-through). */
 const TITLE_PANEL_BG = 'rgba(255, 255, 255, 0.52)';
@@ -442,9 +447,9 @@ async function main() {
 					props: {
 						style: {
 							position: 'absolute',
-							left: '60px',
-							right: '60px',
-							bottom: '60px',
+							left: `${CONTENT_INSET_PX}px`,
+							right: `${CONTENT_INSET_PX}px`,
+							bottom: `${CONTENT_INSET_PX + SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_PX}px`,
 							display: 'flex',
 							flexDirection: 'column',
 							alignItems: 'flex-start',
@@ -523,10 +528,10 @@ async function main() {
 
 	console.log("featured_image is:", JSON.stringify(postItem.data.featured_image, null, 2));
 
-	console.log(`Updating post ${slug} using EmDash CLI...`);
+	console.log(`Updating post ${slug} via EmDash MCP content_update (seo.image)...`);
 	const uploaded = uploadResult.data.item as Record<string, unknown>;
 	const storageKey = typeof uploaded.storageKey === 'string' ? uploaded.storageKey : '';
-	postItem.data.social_image = {
+	const imageForSeo = {
 		id: uploaded.id,
 		provider: 'local',
 		filename: uploaded.filename,
@@ -534,23 +539,25 @@ async function main() {
 		meta: storageKey ? { storageKey } : {},
 	};
 
-	const tmpDataFile = path.join(process.cwd(), '.release', `${slug}-data.json`);
-	await fs.writeFile(tmpDataFile, JSON.stringify(postItem.data, null, 2));
+	const rev =
+		(rawItem as { data?: { _rev?: string }; _rev?: string }).data?._rev
+		?? (rawItem as { _rev?: string })._rev;
+	if (typeof rev !== 'string' || !rev) {
+		console.error('Missing _rev on fetched post; cannot content_update');
+		process.exit(1);
+	}
 
+	const { emdashMcpToolsCall } = await import('./emdash-mcp-client.mjs');
 	try {
-		const updateOut = execSync(`npx emdash content update posts ${slug} --rev ${rawItem.data?._rev || rawItem._rev} --file ${tmpDataFile} --url ${apiUrl} --json`, {
-			env: { ...process.env, EMDASH_TOKEN: token, EMDASH_HEADERS: `Authorization: Bearer ${token}` },
-			encoding: 'utf8'
+		await emdashMcpToolsCall(apiUrl, token, 'content_update', {
+			collection: 'posts',
+			id: slug,
+			seo: { image: imageForSeo },
+			_rev: rev,
 		});
-		console.log("CLI Update output:", updateOut);
+		console.log('MCP content_update completed');
 	} catch (err: unknown) {
-		const detail =
-			err && typeof err === 'object' && 'stdout' in err
-				? String((err as { stdout?: Buffer }).stdout ?? '')
-				: err instanceof Error
-					? err.message
-					: String(err);
-		console.error('CLI Update failed:', detail || err);
+		console.error('MCP content_update failed:', err instanceof Error ? err.message : err);
 		process.exit(1);
 	}
 

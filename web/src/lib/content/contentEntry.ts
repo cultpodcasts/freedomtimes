@@ -362,12 +362,19 @@ function readPrimaryByline(entryMeta: Record<string, unknown>, data: Record<stri
 	);
 }
 
+function readSeoRecord(entryMeta: Record<string, unknown>): Record<string, unknown> | null {
+	const seo = entryMeta.seo;
+	if (seo && typeof seo === 'object') {
+		return seo as Record<string, unknown>;
+	}
+	return null;
+}
+
 /**
- * When `social_image` is only a media row id (no `meta.storageKey`), resolve R2 `storage_key` from Turso.
+ * When an image field is only a media row id (no `meta.storageKey`), resolve R2 `storage_key` from Turso.
  * Skips if the field already yields a public `/file/` path from {@link readFeaturedImageSrc}.
  */
-function extractSocialImageMediaIdForLookup(data: Record<string, unknown>): string | null {
-	const raw = data.social_image ?? data.socialImage;
+function extractImageFieldMediaIdForLookup(raw: unknown): string | null {
 	if (typeof raw === 'string') {
 		const t = raw.trim();
 		if (!t) return null;
@@ -415,12 +422,21 @@ function workerSafeFetch():
 	};
 }
 
-export async function resolveSocialImageSrc(data: Record<string, unknown>): Promise<string | null> {
+export async function resolveSocialImageSrc(
+	data: Record<string, unknown>,
+	seo?: Record<string, unknown> | null,
+): Promise<string | null> {
+	const seoImage = seo ? readFeaturedImageSrc(seo.image) : null;
+	if (seoImage) return seoImage;
+
 	const direct =
 		readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
 	if (direct) return direct;
 
-	const mediaId = extractSocialImageMediaIdForLookup(data);
+	const mediaId =
+		extractImageFieldMediaIdForLookup(seo?.image)
+		?? extractImageFieldMediaIdForLookup(data.social_image)
+		?? extractImageFieldMediaIdForLookup(data.socialImage);
 	if (!mediaId) return null;
 
 	const url = readOptionalEnv('TURSO_DATABASE_URL').trim();
@@ -451,6 +467,7 @@ export async function resolveSocialImageSrc(data: Record<string, unknown>): Prom
 export function buildContentEntryViewModel(entry: { slug?: string; data: Record<string, unknown> } & Record<string, unknown>): ContentEntryViewModel {
 	const data = entry.data;
 	const entryMeta = entry as Record<string, unknown>;
+	const seo = readSeoRecord(entryMeta);
 
 	const title =
 		readString(data.title) ??
@@ -474,7 +491,11 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 	const featuredImageAlt =
 		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
-	const socialImageSrc = readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
+	const socialImageSrc =
+		readFeaturedImageSrc(seo?.image)
+		?? readFeaturedImageSrc(data.social_image)
+		?? readFeaturedImageSrc(data.socialImage)
+		?? null;
 	const volumeNumber =
 		readNumber(data.volume_number)
 		?? readNumber(data.volumeNumber)

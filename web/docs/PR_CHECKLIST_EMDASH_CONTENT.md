@@ -33,19 +33,18 @@ You only need a **schema change** if the **live** instance (staging/production) 
 
 ---
 
-### 2.0a Prefer MCP over CLI when asking “is this post Portable Text?”
+### 2.0a MCP only for content shape (“is this post Portable Text?”)
 
-**Why:** `npx emdash content get … --json` often shows **`data.content` as a long markdown string** (`STR` in the classifier below) even when the **database stores a PT array** and **MCP `content_get`** returns **`item.data.content`** as **`PT blocks N`**. Defaulting to the CLI for investigations has wasted time and tokens re-litigating “legacy string storage.”
+**Policy:** Do **not** use **`npx emdash content get … --json`** to decide what is stored in the CMS. That output often shows **`data.content` as a long markdown string** (`STR` in the classifier below) even when **MCP `content_get`** returns **`item.data.content`** as **`PT blocks N`**.
 
-**Do this instead (staging/production):**
+**Do this (staging/production):**
 
-1. Use Cursor’s **EmDash MCP** server (or `POST /_emdash/api/mcp` with JSON-RPC `tools/call` / `content_get`) with a valid bearer token.
-2. Parse the tool result’s **`item`** object; inspect **`item.data.content`**. If it is an **array**, the CMS body is **Portable Text** for that read path.
-3. Use **CLI `content get`** when you only need slugs/metadata, or when you explicitly want the markdown export—**not** as the single source of truth for whether PT exists in storage.
+1. Cursor **EmDash MCP** `content_get`, or **`node web/scripts/emdash-mcp-tools-call.mjs`** with `content_get` (see **`AGENTS.md`**).
+2. Inspect **`item.data.content`** in the tool result. If it is an **array**, that read path is **Portable Text**.
 
 **HTTP callers:** send **`Accept: application/json, text/event-stream`** on MCP POSTs. See `web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md` section **CLI vs MCP**.
 
-**CLI-side MCP canary:** `node web/scripts/canary-emdash-content-shape.mjs <baseUrl> posts <slug> --mcp` (uses `~/.config/emdash/auth.json` for that host). Prefer **`… (MCP)`** in the output for PT truth; the default CLI path appends **`(CLI)`** and may show **`STR`** for rich text even when storage is PT.
+**Canary:** `node web/scripts/canary-emdash-content-shape.mjs <baseUrl> posts <slug>` (MCP-only).
 
 ---
 
@@ -60,29 +59,31 @@ Pick a **stable slug** (e.g. a flagship article) or a **throwaway canary post** 
 ```powershell
 cd web
 $env:EMDASH_STAGING_URL = "https://staging.freedomtimes.news"
-# Token: env var or ~/.config/emdash/auth.json from `npx emdash login -u $env:EMDASH_STAGING_URL`
+# Token: ~/.config/emdash/auth.json or EMDASH_STAGING_TOKEN
 
-npx emdash content get posts YOUR_SLUG --published -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json |
-  Out-File -Encoding utf8 ..\.tmp\canary-post-staging.json
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL content_get `
+  '{"collection":"posts","id":"YOUR_SLUG"}' | Out-File -Encoding utf8 ..\.tmp\canary-post-staging.json
 ```
 
 **Production** (same, swap URL and token):
 
 ```powershell
 $env:EMDASH_PRODUCTION_URL = "https://freedomtimes.news"
-npx emdash content get posts YOUR_SLUG --published -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json |
-  Out-File -Encoding utf8 ..\.tmp\canary-post-production.json
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_PRODUCTION_URL content_get `
+  '{"collection":"posts","id":"YOUR_SLUG"}' | Out-File -Encoding utf8 ..\.tmp\canary-post-production.json
 ```
+
+The saved files wrap the MCP payload (`item`, `_rev`, …). For §2b, point the classifier at the inner `item` JSON or use **`node web/scripts/canary-emdash-content-shape.mjs`** instead.
 
 ### 2b. Classify `content` (Node one-liner)
 
-From **repo root** (paths match files written above):
+From **repo root**, if you saved MCP output from §2a (`{ "item": { "data": { "content": … } } }`):
 
 ```powershell
-node -e "const fs=require('fs');const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,'utf8'));const c=j.data&&j.data.content;console.log(p, Array.isArray(c)?'PT blocks '+c.length:'STR chars '+(''+c).length);"
+node -e "const fs=require('fs');const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,'utf8'));const root=j.item||j;const c=root.data&&root.data.content;console.log(p, Array.isArray(c)?'PT blocks '+c.length:'STR chars '+(''+c).length);"
 ```
 
-Pass `.tmp/canary-post-staging.json` and `.tmp/canary-post-production.json`.
+Pass `.tmp/canary-post-staging.json` and `.tmp/canary-post-production.json`, or use **`node web/scripts/canary-emdash-content-shape.mjs`** and skip the saved file.
 
 **Interpret:**
 
@@ -95,7 +96,7 @@ You want **`PT`** on canary posts once the live **`content`** field is truly **P
 
 ### 2c. Clear stale env tokens (Windows)
 
-If `content get` returns **401 / invalid token**, clear overrides so the CLI can use **`~/.config/emdash/auth.json`**:
+If MCP returns **401 / invalid token**, clear overrides so **`emdash-mcp-tools-call.mjs`** can use **`~/.config/emdash/auth.json`**:
 
 ```powershell
 Remove-Item Env:EMDASH_STAGING_TOKEN -ErrorAction SilentlyContinue

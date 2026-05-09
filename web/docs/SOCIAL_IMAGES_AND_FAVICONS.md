@@ -54,14 +54,16 @@ What it does:
 3. Applies PNG optimization pass (palette/compression attempts).
 4. Enforces hard limit (`<= 600KB`), failing if still above threshold.
 5. Uploads media to EmDash.
-6. Writes uploaded media object into `social_image` for the post.
+6. Writes uploaded media object into **`seo.image`** (EmDash SEO / OG image) via MCP `content_update`.
 
-Run for one post:
+Run for one post (slug only; uses `EMDASH_URL` / `EMDASH_STAGING_URL` and token from `..\.env.dev` or `~/.config/emdash/auth.json`):
 
 ```powershell
 cd web
-npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts <post-slug>
+npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts building-the-cult-what-katie-simpsons-murder-reveals-about-coercive-control-group-dynamics-and-the-laws-that-should-have-saved-her
 ```
+
+Example article title: *"Building the Cult": How the Law Failed Katie Simpson*. The headline stack is shifted up by **6% of the social image height** (`SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_RATIO` in `web/scripts/generate-social-images.ts`, currently 675px tall → 41px reserve) so X/Twitter’s overlaid title bar is less likely to cover the last line; raise the ratio if a client still clips.
 
 ## Homepage social image
 

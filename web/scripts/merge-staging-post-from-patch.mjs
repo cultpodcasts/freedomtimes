@@ -1,6 +1,6 @@
 /**
  * Merge `item.data` from MCP `content_get` with a local JSON patch, then
- * `emdash content update` + `content publish` on staging (Portable Text-safe).
+ * MCP `content_update` + `content_publish` on staging (Portable Text-safe).
  *
  * Patch file: `{ "data": { ...fields to overlay } }` or `{ "slug", "data" }`.
  * Shallow-merge at the `data` level: patch keys override live keys.
@@ -13,13 +13,13 @@
  *
  * Requires ~/.config/emdash/auth.json with accessToken for that URL, or set
  * `EMDASH_STAGING_TOKEN` (when `EMDASH_STAGING_URL` / default is staging) to override.
+ * Updates and publish use MCP (`content_update`, `content_publish`), not the CLI.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { spawnSync } from "node:child_process";
-import { emdashMcpContentGet } from "./emdash-mcp-client.mjs";
+import { emdashMcpContentGet, emdashMcpToolsCall } from "./emdash-mcp-client.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const webDir = join(__dirname, "..");
@@ -72,7 +72,6 @@ async function main() {
 		item = out.item;
 		rev = out._rev;
 	} catch (mcpErr) {
-		// MCP and REST tokens differ in some setups; REST matches `emdash content update`.
 		console.warn(`MCP content_get skipped (${mcpErr?.message ?? mcpErr}); using REST GET for current item.`);
 		const g = await apiGetJson(apiUrl(baseUrl, `/content/${collection}/${encodeURIComponent(slug)}`), token);
 		if (!g?.data || typeof g.data !== "object") {
@@ -94,6 +93,7 @@ async function main() {
 	}
 
 	const mergedData = { ...item.data, ...overlay };
+	delete mergedData._rev;
 
 	if (
 		Array.isArray(overlay.content) &&
@@ -113,25 +113,13 @@ async function main() {
 	const tmpFile = join(tmpDir, `merge-push-${collection}-${slug}-data.json`);
 	writeFileSync(tmpFile, JSON.stringify(mergedData), "utf8");
 
-	const up = spawnSync(
-		"npx",
-		["emdash", "content", "update", collection, slug, "--rev", String(rev), "--file", tmpFile, "-u", baseUrl, "-t", token, "--json"],
-		{ cwd: webDir, encoding: "utf8", shell: true, maxBuffer: 64 * 1024 * 1024 },
-	);
-	if (up.status !== 0) {
-		console.error(up.stderr || up.stdout);
-		process.exit(up.status ?? 1);
-	}
-
-	const pub = spawnSync(
-		"npx",
-		["emdash", "content", "publish", collection, slug, "-u", baseUrl, "-t", token, "--json"],
-		{ cwd: webDir, encoding: "utf8", shell: true },
-	);
-	if (pub.status !== 0) {
-		console.error(pub.stderr || pub.stdout);
-		process.exit(pub.status ?? 1);
-	}
+	await emdashMcpToolsCall(baseUrl, token, "content_update", {
+		collection,
+		id: slug,
+		data: mergedData,
+		_rev: String(rev),
+	});
+	await emdashMcpToolsCall(baseUrl, token, "content_publish", { collection, id: slug });
 
 	console.log(JSON.stringify({ ok: true, baseUrl, collection, slug, patchPath }, null, 2));
 }
