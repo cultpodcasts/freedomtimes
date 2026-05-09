@@ -23,6 +23,7 @@ import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 const {
 	entry,
 	collectionLabel,
+	emdashCollection,
 	displayName,
 	isPreview = false,
 	isEditor = false,
@@ -30,6 +31,8 @@ const {
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
 	collectionLabel: string;
+	/** EmDash collection slug (`posts`, `pages`, `archives`, …) for `_emdash_seo` OG lookup */
+	emdashCollection: string;
 	displayName: string;
 	isPreview?: boolean;
 	isEditor?: boolean;
@@ -59,7 +62,14 @@ const {
 } = buildContentEntryViewModel(entry as { slug?: string; data: Record<string, unknown> } & Record<string, unknown>);
 const entryRecord = entry as Record<string, unknown>;
 const seoRecord = readEntrySeoRecord(entryRecord);
-const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, { origin: Astro.url.origin });
+const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
+	origin: Astro.url.origin,
+	emdashSeoLookup: {
+		collection: emdashCollection,
+		contentId: String(entry.id ?? ''),
+		slug: typeof entry.slug === 'string' ? entry.slug : undefined,
+	},
+});
 const portableComponents = {
 	type: {
 		video: Video,

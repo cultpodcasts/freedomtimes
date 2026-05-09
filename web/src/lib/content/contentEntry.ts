@@ -469,7 +469,31 @@ function workerSafeFetch():
 export type ResolveSocialImageSrcOptions = {
 	/** Same-origin base URL (e.g. `Astro.url.origin`) for resolving bare media ids without Turso. */
 	origin?: string;
+	/**
+	 * EmDash stores admin SEO (`seo.image`) in **`_emdash_seo`**, not always in `entry.data.seo` JSON.
+	 * Pass **`collection`** (`posts`, `pages`, …) and **`contentId`** (`entry.id`) so Turso can read **`seo_image`**.
+	 */
+	emdashSeoLookup?: { collection: string; contentId: string; slug?: string };
 };
+
+/** Try **`TURSO_DATABASE_URL`** first (matches Astro/emdash), then **`EMDASH_DATABASE_URL`** + same token. */
+function createLibsqlClientForContentQueries(): ReturnType<typeof createClient> | null {
+	const attempts: [string, string][] = [
+		['TURSO_DATABASE_URL', 'TURSO_AUTH_TOKEN'],
+		['EMDASH_DATABASE_URL', 'TURSO_AUTH_TOKEN'],
+	];
+	for (const [urlKey, tokenKey] of attempts) {
+		const url = readOptionalEnv(urlKey).trim();
+		const authToken = readOptionalEnv(tokenKey).trim();
+		if (!url || !authToken) continue;
+		return createClient({
+			url,
+			authToken,
+			fetch: workerSafeFetch(),
+		});
+	}
+	return null;
+}
 
 async function resolveStorageKeyFromMediaApi(origin: string, mediaId: string): Promise<string | null> {
 	const base = origin.replace(/\/$/, '');
@@ -490,38 +514,56 @@ async function resolveStorageKeyFromMediaApi(origin: string, mediaId: string): P
 	}
 }
 
-export async function resolveSocialImageSrc(
-	data: Record<string, unknown>,
-	seo?: Record<string, unknown> | null,
+const EMDASH_COLLECTION_TABLE: Record<string, string> = {
+	posts: 'ec_posts',
+	pages: 'ec_pages',
+	archives: 'ec_archives',
+};
+
+function pickSeoImageRow(rows: unknown): string | null {
+	const row = Array.isArray(rows) ? (rows[0] as Record<string, unknown> | undefined) : undefined;
+	const img = row && typeof row.seo_image === 'string' ? row.seo_image.trim() : '';
+	return img.length > 0 ? img : null;
+}
+
+async function fetchEmdashSeoImageFromTable(
+	collection: string,
+	contentId: string,
+	slug?: string | null,
+): Promise<string | null> {
+	const client = createLibsqlClientForContentQueries();
+	if (!client) return null;
+	try {
+		if (contentId) {
+			const res = await client.execute({
+				sql: 'select seo_image from _emdash_seo where collection = ? and content_id = ? limit 1',
+				args: [collection, contentId],
+			});
+			const found = pickSeoImageRow(res.rows);
+			if (found) return found;
+		}
+
+		const table = EMDASH_COLLECTION_TABLE[collection];
+		if (table && slug) {
+			const res = await client.execute({
+				sql: `select s.seo_image from _emdash_seo s inner join ${table} c on c.id = s.content_id where s.collection = ? and c.slug = ? limit 1`,
+				args: [collection, slug],
+			});
+			return pickSeoImageRow(res.rows);
+		}
+	} catch {
+		return null;
+	}
+	return null;
+}
+
+async function resolveMediaIdToPublicPath(
+	mediaId: string,
 	options?: ResolveSocialImageSrcOptions,
 ): Promise<string | null> {
-	const heroFallback =
-		readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image) ?? null;
-
-	const seoImage = seo ? readFeaturedImageSrc(seo.image) : null;
-	if (seoImage) return seoImage;
-
-	const direct =
-		readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
-	if (direct) return direct;
-
-	const mediaId =
-		extractImageFieldMediaIdForLookup(seo?.image)
-		?? extractImageFieldMediaIdForLookup(data.social_image)
-		?? extractImageFieldMediaIdForLookup(data.socialImage);
-	if (!mediaId) {
-		return heroFallback;
-	}
-
-	const url = readOptionalEnv('TURSO_DATABASE_URL').trim();
-	const authToken = readOptionalEnv('TURSO_AUTH_TOKEN').trim();
-	if (url && authToken) {
+	const client = createLibsqlClientForContentQueries();
+	if (client) {
 		try {
-			const client = createClient({
-				url,
-				authToken,
-				fetch: workerSafeFetch(),
-			});
 			const res = await client.execute({
 				sql: 'select storage_key from media where id = ? limit 1',
 				args: [mediaId],
@@ -541,12 +583,44 @@ export async function resolveSocialImageSrc(
 		const sk = await resolveStorageKeyFromMediaApi(origin, mediaId);
 		if (sk) return `/_emdash/api/media/file/${sk}`;
 	}
+	return null;
+}
+
+export async function resolveSocialImageSrc(
+	data: Record<string, unknown>,
+	seo?: Record<string, unknown> | null,
+	options?: ResolveSocialImageSrcOptions,
+): Promise<string | null> {
+	const heroFallback =
+		readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image) ?? null;
+
+	let fromSeo = seo ? readFeaturedImageSrc(seo.image) : null;
+	if (!fromSeo && seo) {
+		const seoMediaId = extractImageFieldMediaIdForLookup(seo.image);
+		if (seoMediaId) fromSeo = await resolveMediaIdToPublicPath(seoMediaId, options);
+	}
+	if (!fromSeo && options?.emdashSeoLookup) {
+		const lu = options.emdashSeoLookup;
+		const raw = await fetchEmdashSeoImageFromTable(lu.collection, lu.contentId, lu.slug);
+		if (raw) fromSeo = readFeaturedImageSrc(raw);
+	}
+	if (fromSeo) return fromSeo;
+
+	const direct =
+		readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
+	if (direct) return direct;
+
+	const socialMediaId =
+		extractImageFieldMediaIdForLookup(data.social_image)
+		?? extractImageFieldMediaIdForLookup(data.socialImage);
+	if (socialMediaId) {
+		const fromSocial = await resolveMediaIdToPublicPath(socialMediaId, options);
+		if (fromSocial) return fromSocial;
+	}
 
 	/**
-	 * `seo.image` is often a bare media row id. On Workers, Turso may be unset and
-	 * `GET /_emdash/api/media/:id` requires authentication, so lookup fails. Fall back to the hero
-	 * image (always stored with `meta.storageKey` in `data`) so `og:image` / `twitter:image` are never
-	 * empty when the post has a featured image.
+	 * Bare `seo.image` ids may fail lookup if Turso is unset and media API is auth-only. Fall back to the
+	 * hero so `og:image` / `twitter:image` are not empty when the post has a featured image.
 	 */
 	return heroFallback;
 }
