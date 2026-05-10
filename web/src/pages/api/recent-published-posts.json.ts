@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getEmDashCollection, type ContentEntry } from 'emdash';
 
+import { readArticleNotificationImagePath } from '../../lib/content/contentEntry';
 import { readEmDashPublishedAt } from '../../lib/content/emdashTimestamps';
 
 export const prerender = false;
@@ -28,6 +29,8 @@ function summarizeEntryForLog(entry: ContentEntry<Record<string, unknown>>): Rec
 }
 
 export const GET: APIRoute = async ({ request }) => {
+  const siteOrigin = new URL(request.url).origin;
+
   const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
     status: 'published',
     limit: 25,
@@ -63,12 +66,21 @@ export const GET: APIRoute = async ({ request }) => {
       );
     }
 
+    const imagePath = readArticleNotificationImagePath(entry);
+    const image =
+      imagePath === null
+        ? null
+        : imagePath.startsWith('http://') || imagePath.startsWith('https://')
+          ? imagePath
+          : new URL(imagePath, siteOrigin).toString();
+
     return {
       id: entry.id,
       slug,
       title,
       excerpt,
       publishedAt: publishedAtStr,
+      image,
     };
   });
 

@@ -400,6 +400,22 @@ export function readEntrySeoRecord(entryMeta: Record<string, unknown>): Record<s
 }
 
 /**
+ * Image for article push / recent-posts feed: **OG** (`seo.image` from merged `data.seo` / entry SEO), else **featured** (`featured_image` / `cover_image`).
+ * No Turso media-id lookup; uses only JSON on the entry.
+ */
+export function readArticleNotificationImagePath(entry: { data: Record<string, unknown> }): string | null {
+	const data = entry.data;
+	const entryMeta = entry as unknown as Record<string, unknown>;
+	const seo = readEntrySeoRecord(entryMeta);
+	return (
+		readFeaturedImageSrc(seo?.image)
+		?? readFeaturedImageSrc(data.featured_image)
+		?? readFeaturedImageSrc(data.cover_image)
+		?? null
+	);
+}
+
+/**
  * When an image field is only a media row id (no `meta.storageKey`), resolve R2 `storage_key` from Turso.
  * Skips if the field already yields a public `/file/` path from {@link readFeaturedImageSrc}.
  */

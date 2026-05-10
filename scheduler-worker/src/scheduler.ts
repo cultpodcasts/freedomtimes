@@ -1,6 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { importPKCS8, SignJWT } from 'jose';
 import { ApplicationServerKeys, generatePushHTTPRequest } from 'webpush-webcrypto';
+import {
+	buildArticlePushPayload,
+	type PushNotificationPayload,
+	type RecentPostForPush,
+} from './articleNotificationPayload';
 import { type AppDb, createDatabase, pushSubscriptionsTable, schedulerJobsTable, sentArticleNotificationsTable } from './db';
 
 type Env = {
@@ -61,17 +66,6 @@ type IosPushTarget = {
 };
 
 type StoredNotificationTarget = PushTarget | AndroidPushTarget | IosPushTarget;
-
-type PushNotificationPayload = {
-  title: string;
-  body: string;
-  url: string;
-  icon: string;
-  badge: string;
-  tag: string;
-  ttl: number;
-  urgency: 'very-low' | 'low' | 'normal' | 'high';
-};
 
 type DeliveryResult = {
   ok: boolean;
@@ -344,6 +338,9 @@ async function processQueueBatch(batch: MessageBatch<QueuePushMessage>, env: Env
         });
 
         if (deliveryResult.ok) {
+          console.log(
+            `[scheduler] ${jobId}: push delivered ok id=${storedId} platform=${target.platform} tag=${payload.tag}`,
+          );
           await markSubscriptionSuccess(subscriptionsDb, storedId);
           message.ack();
           continue;
@@ -389,7 +386,7 @@ async function processArticleNotifications(jobId: string, env: Env): Promise<voi
     throw new Error(`Failed to fetch recent posts from ${url}: ${response.status} ${response.statusText}`);
   }
 
-  const data = (await response.json()) as { posts?: { id: string; slug: string; title: string; excerpt: string | null; publishedAt: string | null }[] };
+  const data = (await response.json()) as { posts?: RecentPostForPush[] };
   if (!data.posts || !Array.isArray(data.posts)) {
     throw new Error('Invalid response format from recent posts API');
   }
@@ -445,16 +442,7 @@ async function processArticleNotifications(jobId: string, env: Env): Promise<voi
         continue;
       }
 
-      const payload: PushNotificationPayload = {
-        title: post.title,
-        body: post.excerpt || 'Read the latest story on freedom times.',
-        url: `/posts/${post.slug}`,
-        icon: '/favicon.svg',
-        badge: '/favicon.svg',
-        tag: `article-${post.id}`,
-        ttl: 86400,
-        urgency: 'high',
-      };
+      const payload = buildArticlePushPayload(siteOrigin, post);
 
       console.log(`[scheduler] ${jobId}: sending notifications for article ${post.id}`);
       await queueNotifications(jobId, payload, env);
@@ -629,12 +617,14 @@ async function sendAndroidPushNotification(
         notification: {
           title: payload.title,
           body: payload.body,
+          ...(payload.image ? { image: payload.image } : {}),
         },
         data: {
           url: payload.url,
           icon: payload.icon,
           badge: payload.badge,
           tag: payload.tag,
+          ...(payload.image ? { image: payload.image } : {}),
         },
         android: {
           priority: payload.urgency === 'high' ? 'HIGH' : 'NORMAL',
@@ -697,6 +687,7 @@ async function sendIosPushNotification(
       icon: payload.icon,
       badge: payload.badge,
       tag: payload.tag,
+      ...(payload.image ? { image: payload.image } : {}),
     }),
   });
 

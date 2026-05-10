@@ -14,6 +14,8 @@ type PushNotificationPayload = {
   icon?: string;
   badge?: string;
   tag?: string;
+  /** Absolute URL; large image in supporting browsers (e.g. Chrome). */
+  image?: string;
 };
 
 workerScope.addEventListener('install', (event) => {
@@ -55,17 +57,20 @@ workerScope.addEventListener('fetch', (event) => {
 workerScope.addEventListener('push', (event) => {
   const payload = readPushPayload(event.data);
 
-  event.waitUntil(
-    workerScope.registration.showNotification(payload.title, {
-      body: payload.body,
-      icon: payload.icon,
-      badge: payload.badge,
-      tag: payload.tag,
-      data: {
-        url: payload.url,
-      },
-    }),
-  );
+  const options: NotificationOptions = {
+    body: payload.body,
+    icon: payload.icon,
+    badge: payload.badge,
+    tag: payload.tag,
+    data: {
+      url: payload.url,
+    },
+  };
+  if (payload.image) {
+    options.image = payload.image;
+  }
+
+  event.waitUntil(workerScope.registration.showNotification(payload.title, options));
 });
 
 workerScope.addEventListener('notificationclick', (event) => {
@@ -78,7 +83,7 @@ workerScope.addEventListener('notificationclick', (event) => {
   event.waitUntil(focusOrOpenClient(targetUrl));
 });
 
-function readPushPayload(data: PushMessageData | null): Required<PushNotificationPayload> {
+function readPushPayload(data: PushMessageData | null): ReturnType<typeof defaultPushPayload> {
   if (!data) {
     return defaultPushPayload({});
   }
@@ -90,8 +95,11 @@ function readPushPayload(data: PushMessageData | null): Required<PushNotificatio
   }
 }
 
-function defaultPushPayload(payload: PushNotificationPayload): Required<PushNotificationPayload> {
-  return {
+function defaultPushPayload(payload: PushNotificationPayload): Required<Omit<PushNotificationPayload, 'image'>> & {
+  image?: string;
+} {
+  const image = payload.image?.trim();
+  const base = {
     title: payload.title?.trim() || SITE_DISPLAY_NAME,
     body: payload.body?.trim() || 'A new update is available.',
     url: payload.url?.trim() || '/homepage',
@@ -99,6 +107,7 @@ function defaultPushPayload(payload: PushNotificationPayload): Required<PushNoti
     badge: payload.badge?.trim() || '/favicon.svg',
     tag: payload.tag?.trim() || 'freedomtimes-notification',
   };
+  return image ? { ...base, image } : base;
 }
 
 async function focusOrOpenClient(url: string): Promise<void> {
