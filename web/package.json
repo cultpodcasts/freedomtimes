@@ -14,6 +14,7 @@
     "subscriptions:db:migrate": "tsx scripts/apply-turso-sql.ts subscriptions migrate",
     "subscriptions:db:seed": "tsx scripts/apply-turso-sql.ts subscriptions seed",
     "subscriptions:db:deploy": "tsx scripts/apply-turso-sql.ts subscriptions migrate && tsx scripts/apply-turso-sql.ts subscriptions seed",
+    "subscriptions:db:backfill-sent-articles": "tsx scripts/backfill-sent-article-notifications.ts",
     "preview": "astro preview",
     "astro": "astro",
     "archive:prepare": "tsx scripts/prepare-archive-assets.ts",
