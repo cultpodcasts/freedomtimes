@@ -32,7 +32,7 @@
 				"NOTIFICATION_DEFAULT_URL": "/homepage",
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 				"PUSH_IOS_APNS_HOST": "api.push.apple.com",
-				"PUBLISH_NOTIFICATION_DELAY_MINUTES": "120",
+				"PUBLISH_NOTIFICATION_DELAY_MINUTES": "30",
 				"SITE_ORIGIN": "https://freedomtimes.news"
 			}
 		},

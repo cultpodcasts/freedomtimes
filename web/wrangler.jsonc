@@ -61,7 +61,7 @@
 				}
 			],
 			"vars": {
-				"SITE_ACCESS_MODE": "public",
+				"SITE_ACCESS_MODE": "locked",
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
