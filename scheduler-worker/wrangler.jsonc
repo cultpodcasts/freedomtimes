@@ -33,7 +33,7 @@
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 				"PUSH_IOS_APNS_HOST": "api.push.apple.com",
 				"PUBLISH_NOTIFICATION_DELAY_MINUTES": "120",
-				"SITE_ORIGIN": "https://freedomtimes.net"
+				"SITE_ORIGIN": "https://freedomtimes.news"
 			}
 		},
 		"staging": {
@@ -51,7 +51,7 @@
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 				"PUSH_IOS_APNS_HOST": "api.sandbox.push.apple.com",
 				"PUBLISH_NOTIFICATION_DELAY_MINUTES": "0",
-				"SITE_ORIGIN": "https://freedomtimes.net"
+				"SITE_ORIGIN": "https://staging.freedomtimes.news"
 			}
 		}
 	}

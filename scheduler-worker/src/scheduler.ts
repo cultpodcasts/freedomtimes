@@ -371,9 +371,10 @@ async function processArticleNotifications(jobId: string, env: Env): Promise<voi
   }
   const delayMinutes = Number.parseInt(delayStr, 10);
 
-  const response = await fetch(`${siteOrigin}/api/recent-published-posts.json`);
+  const url = `${siteOrigin}/api/recent-published-posts.json`;
+  const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to fetch recent posts: ${response.status} ${response.statusText}`);
+    throw new Error(`Failed to fetch recent posts from ${url}: ${response.status} ${response.statusText}`);
   }
 
   const data = (await response.json()) as { posts?: { id: string; slug: string; title: string; excerpt: string | null; publishedAt: string | null }[] };
