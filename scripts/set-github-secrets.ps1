@@ -131,17 +131,18 @@ function Main {
             $productionPushPublicKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY")
             $productionPushPrivateKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_VAPID_PRIVATE_KEY")
             $productionPushSubject = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_VAPID_SUBJECT")
-            $productionAndroidFcmProjectId = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID")
-            $productionAndroidFcmClientEmail = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL")
-            $productionAndroidFcmPrivateKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY")
+            $productionAndroidFcmProjectId = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID") -ErrorMessage "Missing PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID for production scheduler Worker secret sync (required for Android FCM)."
+            $productionAndroidFcmClientEmail = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL") -ErrorMessage "Missing PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL for production scheduler Worker secret sync (required for Android FCM)."
+            $productionAndroidFcmPrivateKey = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY") -ErrorMessage "Missing PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY for production scheduler Worker secret sync (required for Android FCM)."
             $productionIosApnsTeamId = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_IOS_APNS_TEAM_ID")
             $productionIosApnsKeyId = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_IOS_APNS_KEY_ID")
             $productionIosApnsPrivateKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_IOS_APNS_PRIVATE_KEY")
             $productionIosApnsBundleId = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID")
-            $productionSubscriptionsDbUrl = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL")
-            $productionSubscriptionsDbToken = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SUBSCRIPTIONS_DB_TOKEN")
-            $productionSchedulerDbUrl = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_URL")
-            $productionSchedulerDbToken = Get-EnvValue -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_TOKEN")
+            # Prefer explicit production-prefixed keys; fall back to names documented in .env.dev.example (TURSO_SUBSCRIPTIONS_*, TURSO_SCHEDULER_*).
+            $productionSubscriptionsDbUrl = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL", "TURSO_SUBSCRIPTIONS_DATABASE_URL") -ErrorMessage "Missing production subscriptions Turso URL: set TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL or TURSO_SUBSCRIPTIONS_DATABASE_URL for production Worker secret sync."
+            $productionSubscriptionsDbToken = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SUBSCRIPTIONS_DB_TOKEN", "TURSO_SUBSCRIPTIONS_AUTH_TOKEN") -ErrorMessage "Missing production subscriptions Turso token: set TURSO_PRODUCTION_SUBSCRIPTIONS_DB_TOKEN or TURSO_SUBSCRIPTIONS_AUTH_TOKEN for production Worker secret sync."
+            $productionSchedulerDbUrl = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_URL", "TURSO_SCHEDULER_DATABASE_URL") -ErrorMessage "Missing production scheduler Turso URL: set TURSO_PRODUCTION_SCHEDULER_DB_URL or TURSO_SCHEDULER_DATABASE_URL for production scheduler Worker secret sync."
+            $productionSchedulerDbToken = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_TOKEN", "TURSO_SCHEDULER_AUTH_TOKEN") -ErrorMessage "Missing production scheduler Turso token: set TURSO_PRODUCTION_SCHEDULER_DB_TOKEN or TURSO_SCHEDULER_AUTH_TOKEN for production scheduler Worker secret sync."
             Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for production" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
