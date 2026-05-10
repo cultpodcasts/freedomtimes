@@ -1,7 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { importPKCS8, SignJWT } from 'jose';
 import { ApplicationServerKeys, generatePushHTTPRequest } from 'webpush-webcrypto';
-import { type AppDb, createDatabase, pushSubscriptionsTable, schedulerJobsTable } from './db';
+import {
+	buildArticlePushPayload,
+	type PushNotificationPayload,
+	type RecentPostForPush,
+} from './articleNotificationPayload';
+import { type AppDb, createDatabase, pushSubscriptionsTable, schedulerJobsTable, sentArticleNotificationsTable } from './db';
 
 type Env = {
   TURSO_SCHEDULER_DATABASE_URL?: string;
@@ -22,6 +27,9 @@ type Env = {
   PUSH_IOS_APNS_HOST?: string;
   NOTIFICATION_DEFAULT_TITLE?: string;
   NOTIFICATION_DEFAULT_URL?: string;
+  PUBLISH_NOTIFICATION_DELAY_MINUTES?: string;
+  SITE_ORIGIN?: string;
+  PUSH_QUEUE?: Queue<QueuePushMessage>;
 };
 
 type SchedulerJob = {
@@ -59,17 +67,6 @@ type IosPushTarget = {
 
 type StoredNotificationTarget = PushTarget | AndroidPushTarget | IosPushTarget;
 
-type PushNotificationPayload = {
-  title: string;
-  body: string;
-  url: string;
-  icon: string;
-  badge: string;
-  tag: string;
-  ttl: number;
-  urgency: 'very-low' | 'low' | 'normal' | 'high';
-};
-
 type DeliveryResult = {
   ok: boolean;
   deactivate: boolean;
@@ -97,8 +94,30 @@ type IosPushConfig = {
   host: string;
 };
 
+interface Queue<Message = any> {
+  send(message: Message): Promise<void>;
+  sendBatch(messages: { body: Message }[]): Promise<void>;
+}
+
+interface MessageBatch<Message = any> {
+  queue: string;
+  messages: {
+    id: string;
+    body: Message;
+    retry(): void;
+    ack(): void;
+  }[];
+}
+
+type QueuePushMessage = {
+  jobId: string;
+  storedId: string;
+  endpoint: string;
+  subscriptionJson: string;
+  payload: PushNotificationPayload;
+};
+
 const MAX_JOBS_PER_TICK = 25;
-const MAX_SUBSCRIPTIONS_PER_JOB = 500;
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const FCM_TOKEN_AUDIENCE = 'https://oauth2.googleapis.com/token';
 const DEFAULT_ANDROID_CHANNEL_ID = 'reader-alerts';
@@ -109,6 +128,10 @@ export default {
     return new Response('Scheduler worker is running.', {
       headers: { 'content-type': 'text/plain; charset=utf-8' },
     });
+  },
+
+  async queue(batch: MessageBatch<QueuePushMessage>, env: Env): Promise<void> {
+    await processQueueBatch(batch, env);
   },
 
   async scheduled(_controller: unknown, env: Env): Promise<void> {
@@ -133,6 +156,14 @@ export default {
         .orderBy(sql`datetime(${schedulerJobsTable.nextRunAt}) ASC`)
         .limit(MAX_JOBS_PER_TICK);
 
+      if (jobs.length === 0) {
+        console.log('[scheduler] cron tick: no due jobs (check scheduler_jobs in Turso: active=1 and next_run_at <= now)');
+      } else {
+        console.log(
+          `[scheduler] cron tick: ${jobs.length} due job(s): ${jobs.map((j) => `${j.id}(${j.handler})`).join(', ')}`,
+        );
+      }
+
       for (const job of jobs) {
         const claim = await db.update(schedulerJobsTable)
           .set({
@@ -154,6 +185,7 @@ export default {
         }
 
         try {
+          console.log(`[scheduler] ${job.id}: dispatch handler=${job.handler}`);
           await dispatchJob(job, env);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -177,9 +209,9 @@ async function dispatchJob(job: SchedulerJob, env: Env): Promise<void> {
   const payload = parsePayload(job.payload);
 
   switch (job.handler) {
-    case 'send_hardcoded_notification': {
-      const summary = await deliverNotification(job.id, toPushNotificationPayload(payload, env), env);
-      console.log(`[scheduler] ${job.id}: delivered=${summary.delivered} failed=${summary.failed} deactivated=${summary.deactivated}`);
+
+    case 'send_article_notifications': {
+      await processArticleNotifications(job.id, env);
       return;
     }
     default:
@@ -187,11 +219,69 @@ async function dispatchJob(job: SchedulerJob, env: Env): Promise<void> {
   }
 }
 
-async function deliverNotification(
+async function queueNotifications(
   jobId: string,
   payload: PushNotificationPayload,
   env: Env,
-): Promise<{ delivered: number; failed: number; deactivated: number }> {
+): Promise<void> {
+  const subscriptionsDatabaseUrl = env.TURSO_SUBSCRIPTIONS_DATABASE_URL?.trim();
+  const subscriptionsAuthToken = env.TURSO_SUBSCRIPTIONS_AUTH_TOKEN?.trim();
+
+  if (!subscriptionsDatabaseUrl || !subscriptionsAuthToken) {
+    throw new Error('TURSO_SUBSCRIPTIONS_DATABASE_URL and TURSO_SUBSCRIPTIONS_AUTH_TOKEN are required');
+  }
+
+  const pushQueue = env.PUSH_QUEUE;
+  if (!pushQueue) {
+    throw new Error('PUSH_QUEUE binding is missing');
+  }
+
+  const { client: subscriptionsClient, db: subscriptionsDb } = createDatabase(subscriptionsDatabaseUrl, subscriptionsAuthToken);
+
+  try {
+    let offset = 0;
+    const batchSize = 1000;
+    let queued = 0;
+
+    while (true) {
+      const subscriptions = await subscriptionsDb.select({
+        id: pushSubscriptionsTable.id,
+        endpoint: pushSubscriptionsTable.endpoint,
+        subscription_json: pushSubscriptionsTable.subscriptionJson,
+      }).from(pushSubscriptionsTable)
+        .where(eq(pushSubscriptionsTable.active, 1))
+        .orderBy(sql`datetime(${pushSubscriptionsTable.updatedAt}) DESC`)
+        .limit(batchSize)
+        .offset(offset);
+
+      if (subscriptions.length === 0) {
+        break;
+      }
+
+      const queueBatchSize = 100;
+      for (let i = 0; i < subscriptions.length; i += queueBatchSize) {
+        const chunk = subscriptions.slice(i, i + queueBatchSize);
+        await pushQueue.sendBatch(chunk.map((stored) => ({
+          body: {
+            jobId,
+            storedId: stored.id,
+            endpoint: stored.endpoint,
+            subscriptionJson: stored.subscription_json,
+            payload,
+          }
+        })));
+        queued += chunk.length;
+      }
+
+      offset += batchSize;
+    }
+    console.log(`[scheduler] ${jobId}: queued ${queued} notifications`);
+  } finally {
+    subscriptionsClient.close();
+  }
+}
+
+async function processQueueBatch(batch: MessageBatch<QueuePushMessage>, env: Env): Promise<void> {
   const subscriptionsDatabaseUrl = env.TURSO_SUBSCRIPTIONS_DATABASE_URL?.trim();
   const subscriptionsAuthToken = env.TURSO_SUBSCRIPTIONS_AUTH_TOKEN?.trim();
 
@@ -204,36 +294,19 @@ async function deliverNotification(
   const androidPushConfig = readAndroidPushConfig(env);
   const iosPushConfig = readIosPushConfig(env);
 
-  let delivered = 0;
-  let failed = 0;
-  let deactivated = 0;
   let applicationServerKeysPromise: Promise<ApplicationServerKeys> | null = null;
   let googleAccessTokenPromise: Promise<string> | null = null;
   let apnsTokenPromise: Promise<string> | null = null;
 
   try {
-    const subscriptions = await subscriptionsDb.select({
-      id: pushSubscriptionsTable.id,
-      endpoint: pushSubscriptionsTable.endpoint,
-      subscription_json: pushSubscriptionsTable.subscriptionJson,
-    }).from(pushSubscriptionsTable)
-      .where(eq(pushSubscriptionsTable.active, 1))
-      .orderBy(sql`datetime(${pushSubscriptionsTable.updatedAt}) DESC`)
-      .limit(MAX_SUBSCRIPTIONS_PER_JOB);
-
-    if (subscriptions.length === 0) {
-      console.log(`[scheduler] ${jobId}: no active push subscriptions`);
-      return { delivered, failed, deactivated };
-    }
-
-    for (const stored of subscriptions) {
-      const target = parseStoredTarget(stored.subscription_json);
+    for (const message of batch.messages) {
+      const { jobId, storedId, endpoint, subscriptionJson, payload } = message.body;
+      const target = parseStoredTarget(subscriptionJson);
 
       if (!target) {
-        failed += 1;
-        deactivated += 1;
-        console.warn(`[scheduler] ${jobId}: invalid subscription payload id=${stored.id} endpoint=${stored.endpoint}`);
-        await markSubscriptionFailure(subscriptionsDb, stored.id, 'Invalid stored subscription payload', true);
+        console.warn(`[scheduler] ${jobId}: invalid subscription payload id=${storedId} endpoint=${endpoint}`);
+        await markSubscriptionFailure(subscriptionsDb, storedId, 'Invalid stored subscription payload', true);
+        message.ack();
         continue;
       }
 
@@ -248,53 +321,141 @@ async function deliverNotification(
             if (!applicationServerKeysPromise) {
               applicationServerKeysPromise = createApplicationServerKeys(webPushConfig);
             }
-
             return applicationServerKeysPromise;
           },
           getGoogleAccessToken: () => {
             if (!googleAccessTokenPromise) {
               googleAccessTokenPromise = createGoogleAccessToken(androidPushConfig);
             }
-
             return googleAccessTokenPromise;
           },
           getApnsToken: () => {
             if (!apnsTokenPromise) {
               apnsTokenPromise = createApnsToken(iosPushConfig);
             }
-
             return apnsTokenPromise;
           },
         });
 
         if (deliveryResult.ok) {
-          delivered += 1;
-          await markSubscriptionSuccess(subscriptionsDb, stored.id);
+          console.log(
+            `[scheduler] ${jobId}: push delivered ok id=${storedId} platform=${target.platform} tag=${payload.tag}`,
+          );
+          await markSubscriptionSuccess(subscriptionsDb, storedId);
+          message.ack();
           continue;
         }
 
-        failed += 1;
-        if (deliveryResult.deactivate) {
-          deactivated += 1;
-        }
         console.warn(
-          `[scheduler] ${jobId}: delivery failed id=${stored.id} endpoint=${stored.endpoint} deactivate=${deliveryResult.deactivate} reason=${deliveryResult.reason ?? 'Push delivery failed'}`,
+          `[scheduler] ${jobId}: delivery failed id=${storedId} endpoint=${endpoint} deactivate=${deliveryResult.deactivate} reason=${deliveryResult.reason ?? 'Push delivery failed'}`,
         );
         await markSubscriptionFailure(
           subscriptionsDb,
-          stored.id,
+          storedId,
           deliveryResult.reason ?? 'Push delivery failed',
           deliveryResult.deactivate,
         );
+        message.ack();
       } catch (error) {
-        failed += 1;
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`[scheduler] ${jobId}: delivery exception id=${stored.id} endpoint=${stored.endpoint} reason=${message}`);
-        await markSubscriptionFailure(subscriptionsDb, stored.id, message, false);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.warn(`[scheduler] ${jobId}: delivery exception id=${storedId} endpoint=${endpoint} reason=${errorMessage}`);
+        await markSubscriptionFailure(subscriptionsDb, storedId, errorMessage, false);
+        message.retry();
       }
     }
+  } finally {
+    subscriptionsClient.close();
+  }
+}
 
-    return { delivered, failed, deactivated };
+async function processArticleNotifications(jobId: string, env: Env): Promise<void> {
+  const siteOrigin = env.SITE_ORIGIN?.trim() || 'https://freedomtimes.net';
+  
+  const delayStr = env.PUBLISH_NOTIFICATION_DELAY_MINUTES?.trim();
+  if (!delayStr) {
+    throw new Error('PUBLISH_NOTIFICATION_DELAY_MINUTES is required');
+  }
+  const delayMinutes = Number.parseInt(delayStr, 10);
+  if (!Number.isFinite(delayMinutes) || delayMinutes < 0) {
+    throw new Error(`PUBLISH_NOTIFICATION_DELAY_MINUTES must be a non-negative integer, got: ${delayStr}`);
+  }
+
+  const url = `${siteOrigin}/api/recent-published-posts.json`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch recent posts from ${url}: ${response.status} ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as { posts?: RecentPostForPush[] };
+  if (!data.posts || !Array.isArray(data.posts)) {
+    throw new Error('Invalid response format from recent posts API');
+  }
+
+  const subscriptionsDatabaseUrl = env.TURSO_SUBSCRIPTIONS_DATABASE_URL?.trim();
+  const subscriptionsAuthToken = env.TURSO_SUBSCRIPTIONS_AUTH_TOKEN?.trim();
+
+  if (!subscriptionsDatabaseUrl || !subscriptionsAuthToken) {
+    throw new Error('TURSO_SUBSCRIPTIONS_DATABASE_URL and TURSO_SUBSCRIPTIONS_AUTH_TOKEN are required');
+  }
+
+  const { client: subscriptionsClient, db: subscriptionsDb } = createDatabase(subscriptionsDatabaseUrl, subscriptionsAuthToken);
+
+  const thresholdDate = new Date(Date.now() - delayMinutes * 60 * 1000);
+  const scan = {
+    postsInFeed: data.posts.length,
+    skippedNoPublishedAt: 0,
+    skippedInvalidDate: 0,
+    skippedTooNew: 0,
+    skippedAlreadySent: 0,
+    articlesQueued: 0,
+  };
+
+  try {
+    console.log(
+      `[scheduler] ${jobId}: article notification scan start url=${url} delayMinutes=${delayMinutes} threshold=${thresholdDate.toISOString()} postsInFeed=${scan.postsInFeed}`,
+    );
+
+    for (const post of data.posts) {
+      if (!post.publishedAt) {
+        scan.skippedNoPublishedAt++;
+        continue;
+      }
+
+      const publishDate = new Date(post.publishedAt);
+      if (Number.isNaN(publishDate.getTime())) {
+        scan.skippedInvalidDate++;
+        continue;
+      }
+
+      if (publishDate > thresholdDate) {
+        scan.skippedTooNew++;
+        continue;
+      }
+
+      const existing = await subscriptionsDb.select({ articleId: sentArticleNotificationsTable.articleId })
+        .from(sentArticleNotificationsTable)
+        .where(eq(sentArticleNotificationsTable.articleId, post.id))
+        .limit(1);
+
+      if (existing.length > 0) {
+        scan.skippedAlreadySent++;
+        continue;
+      }
+
+      const payload = buildArticlePushPayload(siteOrigin, post);
+
+      console.log(`[scheduler] ${jobId}: sending notifications for article ${post.id}`);
+      await queueNotifications(jobId, payload, env);
+      console.log(`[scheduler] ${jobId}: finished queuing for article ${post.id}`);
+      scan.articlesQueued++;
+
+      await subscriptionsDb.insert(sentArticleNotificationsTable).values({
+        articleId: post.id,
+        sentAt: sql`CURRENT_TIMESTAMP`,
+      }).run();
+    }
+
+    console.log(`[scheduler] ${jobId}: article notification scan done ${JSON.stringify(scan)}`);
   } finally {
     subscriptionsClient.close();
   }
@@ -355,46 +516,7 @@ function parseStoredTarget(rawSubscription: string): StoredNotificationTarget | 
   }
 }
 
-function toPushNotificationPayload(payload: Record<string, unknown>, env: Env): PushNotificationPayload {
-  return {
-    title:
-      readTrimmedString(payload.title)
-      || env.NOTIFICATION_DEFAULT_TITLE?.trim()
-      || 'freedom times',
-    body: readTrimmedString(payload.body) || readTrimmedString(payload.message) || 'Scheduled notification',
-    url: readTrimmedString(payload.url) || env.NOTIFICATION_DEFAULT_URL?.trim() || '/homepage',
-    icon: readTrimmedString(payload.icon) || '/favicon.svg',
-    badge: readTrimmedString(payload.badge) || '/favicon.svg',
-    tag: readTrimmedString(payload.tag) || 'freedomtimes-notification',
-    ttl: readPositiveInteger(payload.ttl) || 3600,
-    urgency: readUrgency(payload.urgency),
-  };
-}
 
-function readTrimmedString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function readPositiveInteger(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isInteger(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-
-  return null;
-}
-
-function readUrgency(value: unknown): PushNotificationPayload['urgency'] {
-  return value === 'very-low' || value === 'low' || value === 'normal' || value === 'high'
-    ? value
-    : 'high';
-}
 
 async function deliverToStoredTarget(params: {
   target: StoredNotificationTarget;
@@ -495,12 +617,14 @@ async function sendAndroidPushNotification(
         notification: {
           title: payload.title,
           body: payload.body,
+          ...(payload.image ? { image: payload.image } : {}),
         },
         data: {
           url: payload.url,
           icon: payload.icon,
           badge: payload.badge,
           tag: payload.tag,
+          ...(payload.image ? { image: payload.image } : {}),
         },
         android: {
           priority: payload.urgency === 'high' ? 'HIGH' : 'NORMAL',
@@ -563,6 +687,7 @@ async function sendIosPushNotification(
       icon: payload.icon,
       badge: payload.badge,
       tag: payload.tag,
+      ...(payload.image ? { image: payload.image } : {}),
     }),
   });
 
