@@ -2,6 +2,10 @@ import { createClient } from '@libsql/client/web';
 
 import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
+import {
+	readEmDashPublishedOrCreatedAt,
+	readEmDashUpdatedAt,
+} from './emdashTimestamps';
 
 export type SlideImage = { src: string; pageNumber: number | null };
 
@@ -46,16 +50,6 @@ function readNumber(value: unknown): number | null {
 		return Number.isFinite(parsed) ? parsed : null;
 	}
 
-	return null;
-}
-
-function readDateCandidate(value: unknown): string | null {
-	if (typeof value === 'string' && value.trim().length > 0) {
-		return value.trim();
-	}
-	if (value instanceof Date && Number.isFinite(value.getTime())) {
-		return value.toISOString();
-	}
 	return null;
 }
 
@@ -676,20 +670,8 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const pdfLink = normalizeEmdashMediaFileUrl(readMediaFileUrl(data.pdf_file) ?? '');
 	const subjects = readSubjects(data.subjects);
 	const issueDate = readString(data.date);
-	const publishedAt =
-		readDateCandidate(entryMeta.publishedAt)
-		?? readDateCandidate(entryMeta.published_at)
-		?? readDateCandidate(data.publishedAt)
-		?? readDateCandidate(data.published_at)
-		?? readDateCandidate(entryMeta.createdAt)
-		?? readDateCandidate(entryMeta.created_at)
-		?? readDateCandidate(data.createdAt)
-		?? readDateCandidate(data.created_at);
-	const updatedAt =
-		readDateCandidate(entryMeta.updatedAt)
-		?? readDateCandidate(entryMeta.updated_at)
-		?? readDateCandidate(data.updatedAt)
-		?? readDateCandidate(data.updated_at);
+	const publishedAt = readEmDashPublishedOrCreatedAt(entry);
+	const updatedAt = readEmDashUpdatedAt(entry);
 	const primaryByline = readPrimaryByline(entryMeta, data);
 	const subjectChips = subjects.map((subject) => {
 		const colors = subjectColorTokens(subject);

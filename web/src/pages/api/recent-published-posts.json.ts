@@ -1,9 +1,33 @@
 import type { APIRoute } from 'astro';
-import { getEmDashCollection } from 'emdash';
+import { getEmDashCollection, type ContentEntry } from 'emdash';
+
+import { readEmDashPublishedAt } from '../../lib/content/emdashTimestamps';
 
 export const prerender = false;
 
-export const GET: APIRoute = async () => {
+function summarizeEntryForLog(entry: ContentEntry<Record<string, unknown>>): Record<string, unknown> {
+  const data = entry.data;
+  const entryRecord = entry as unknown as Record<string, unknown>;
+  return {
+    id: entry.id,
+    topLevelKeys: Object.keys(entryRecord),
+    dataKeys: data && typeof data === 'object' ? Object.keys(data) : [],
+    publishedAt: {
+      top: entryRecord.publishedAt,
+      topType: typeof entryRecord.publishedAt,
+      data: data?.publishedAt,
+      dataType: typeof data?.publishedAt,
+    },
+    published_at: {
+      top: entryRecord.published_at,
+      topType: typeof entryRecord.published_at,
+      data: data?.published_at,
+      dataType: typeof data?.published_at,
+    },
+  };
+}
+
+export const GET: APIRoute = async ({ request }) => {
   const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
     status: 'published',
     limit: 25,
@@ -18,9 +42,8 @@ export const GET: APIRoute = async () => {
   }
 
   const posts = postEntries.map((entry) => {
-    const data = entry.data as Record<string, unknown>;
-    const entryRecord = entry as Record<string, unknown>;
-    
+    const data = entry.data;
+
     const title = typeof data.title === 'string' && data.title.length > 0
       ? data.title
       : 'Untitled post';
@@ -31,19 +54,21 @@ export const GET: APIRoute = async () => {
 
     const excerpt = typeof data.excerpt === 'string' ? data.excerpt : null;
 
-    const publishedAt =
-      (typeof entryRecord.publishedAt === 'string' ? entryRecord.publishedAt : null)
-      ?? (typeof entryRecord.published_at === 'string' ? entryRecord.published_at : null)
-      ?? (typeof data.publishedAt === 'string' ? data.publishedAt : null)
-      ?? (typeof data.published_at === 'string' ? data.published_at : null)
-      ?? null;
+    const publishedAtStr = readEmDashPublishedAt({ data: entry.data });
+
+    if (publishedAtStr == null) {
+      console.warn(
+        '[recent-published-posts] missing publishedAt after normalization',
+        JSON.stringify(summarizeEntryForLog(entry)),
+      );
+    }
 
     return {
       id: entry.id,
       slug,
       title,
       excerpt,
-      publishedAt,
+      publishedAt: publishedAtStr,
     };
   });
 

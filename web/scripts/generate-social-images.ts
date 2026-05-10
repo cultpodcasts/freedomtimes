@@ -5,6 +5,11 @@ import { Resvg } from '@resvg/resvg-js';
 import sharp from 'sharp';
 
 import { SITE_DISPLAY_NAME } from '../src/lib/site-brand';
+import {
+	readEmDashPublishedAt,
+	readEmDashUpdatedAt,
+	type EmDashTimestampSource,
+} from '../src/lib/content/emdashTimestamps';
 
 /** Open Graph / social share image size (Facebook, X, LinkedIn, etc.). */
 const OG_WIDTH = 1200;
@@ -51,13 +56,6 @@ const HTML_NAMED_ENTITIES: Record<string, string> = {
 
 function readString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
-}
-
-function readDateCandidate(value: unknown): string | null {
-	const v = readString(value);
-	if (!v) return null;
-	const d = new Date(v);
-	return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 function normalizeMediaFileUrl(value: unknown): string | null {
@@ -951,15 +949,14 @@ async function generateSocialImageForSlug(
 	const featuredImageSrc =
 		normalizeMediaFileUrl(data.featured_image)
 		?? normalizeMediaFileUrl(data.cover_image);
+	const entryLike = {
+		...(postItem !== null && postItem !== undefined
+			? (postItem as Record<string, unknown>)
+			: {}),
+		data,
+	} as EmDashTimestampSource;
 	const publishedAt =
-		readDateCandidate((postItem as Record<string, unknown>)?.publishedAt)
-		?? readDateCandidate((postItem as Record<string, unknown>)?.published_at)
-		?? readDateCandidate(data.publishedAt)
-		?? readDateCandidate(data.published_at)
-		?? readDateCandidate((postItem as Record<string, unknown>)?.updatedAt)
-		?? readDateCandidate((postItem as Record<string, unknown>)?.updated_at)
-		?? readDateCandidate(data.updatedAt)
-		?? readDateCandidate(data.updated_at);
+		readEmDashPublishedAt(entryLike) ?? readEmDashUpdatedAt(entryLike);
 
 	console.log("Extracted title:", title);
 	console.log("data.title:", data.title);

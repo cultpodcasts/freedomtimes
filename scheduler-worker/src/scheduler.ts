@@ -162,6 +162,14 @@ export default {
         .orderBy(sql`datetime(${schedulerJobsTable.nextRunAt}) ASC`)
         .limit(MAX_JOBS_PER_TICK);
 
+      if (jobs.length === 0) {
+        console.log('[scheduler] cron tick: no due jobs (check scheduler_jobs in Turso: active=1 and next_run_at <= now)');
+      } else {
+        console.log(
+          `[scheduler] cron tick: ${jobs.length} due job(s): ${jobs.map((j) => `${j.id}(${j.handler})`).join(', ')}`,
+        );
+      }
+
       for (const job of jobs) {
         const claim = await db.update(schedulerJobsTable)
           .set({
@@ -183,6 +191,7 @@ export default {
         }
 
         try {
+          console.log(`[scheduler] ${job.id}: dispatch handler=${job.handler}`);
           await dispatchJob(job, env);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -370,6 +379,9 @@ async function processArticleNotifications(jobId: string, env: Env): Promise<voi
     throw new Error('PUBLISH_NOTIFICATION_DELAY_MINUTES is required');
   }
   const delayMinutes = Number.parseInt(delayStr, 10);
+  if (!Number.isFinite(delayMinutes) || delayMinutes < 0) {
+    throw new Error(`PUBLISH_NOTIFICATION_DELAY_MINUTES must be a non-negative integer, got: ${delayStr}`);
+  }
 
   const url = `${siteOrigin}/api/recent-published-posts.json`;
   const response = await fetch(url);
@@ -391,17 +403,35 @@ async function processArticleNotifications(jobId: string, env: Env): Promise<voi
 
   const { client: subscriptionsClient, db: subscriptionsDb } = createDatabase(subscriptionsDatabaseUrl, subscriptionsAuthToken);
 
+  const thresholdDate = new Date(Date.now() - delayMinutes * 60 * 1000);
+  const scan = {
+    postsInFeed: data.posts.length,
+    skippedNoPublishedAt: 0,
+    skippedInvalidDate: 0,
+    skippedTooNew: 0,
+    skippedAlreadySent: 0,
+    articlesQueued: 0,
+  };
+
   try {
-    const thresholdDate = new Date(Date.now() - delayMinutes * 60 * 1000);
+    console.log(
+      `[scheduler] ${jobId}: article notification scan start url=${url} delayMinutes=${delayMinutes} threshold=${thresholdDate.toISOString()} postsInFeed=${scan.postsInFeed}`,
+    );
 
     for (const post of data.posts) {
-      if (!post.publishedAt) continue;
+      if (!post.publishedAt) {
+        scan.skippedNoPublishedAt++;
+        continue;
+      }
 
       const publishDate = new Date(post.publishedAt);
-      if (Number.isNaN(publishDate.getTime())) continue;
+      if (Number.isNaN(publishDate.getTime())) {
+        scan.skippedInvalidDate++;
+        continue;
+      }
 
       if (publishDate > thresholdDate) {
-        // Not old enough yet
+        scan.skippedTooNew++;
         continue;
       }
 
@@ -411,6 +441,7 @@ async function processArticleNotifications(jobId: string, env: Env): Promise<voi
         .limit(1);
 
       if (existing.length > 0) {
+        scan.skippedAlreadySent++;
         continue;
       }
 
@@ -428,12 +459,15 @@ async function processArticleNotifications(jobId: string, env: Env): Promise<voi
       console.log(`[scheduler] ${jobId}: sending notifications for article ${post.id}`);
       await queueNotifications(jobId, payload, env);
       console.log(`[scheduler] ${jobId}: finished queuing for article ${post.id}`);
+      scan.articlesQueued++;
 
       await subscriptionsDb.insert(sentArticleNotificationsTable).values({
         articleId: post.id,
         sentAt: sql`CURRENT_TIMESTAMP`,
       }).run();
     }
+
+    console.log(`[scheduler] ${jobId}: article notification scan done ${JSON.stringify(scan)}`);
   } finally {
     subscriptionsClient.close();
   }
