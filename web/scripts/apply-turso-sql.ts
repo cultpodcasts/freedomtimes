@@ -3,6 +3,9 @@
  * Before running against any non-throwaway database: create a backup (for example
  * `turso db export <db-name> --output-file ...` or a rollback branch). See
  * `web/CONTENT_PROMOTION_RUNBOOK.md` and `.cursor/rules/database-backup.mdc`.
+ *
+ * Production: set `TURSO_SCHEDULER_*` and `TURSO_SUBSCRIPTIONS_*` in `.env.dev`
+ * (see repo `.env.dev.example`). Staging fallbacks are only used when those are unset.
  */
 import { createClient } from '@libsql/client';
 import { readdir, readFile } from 'node:fs/promises';
@@ -33,9 +36,13 @@ const sqlDir = path.join(
   mode === 'migrate' ? 'migrations' : 'seeds',
 );
 
+const urlBinding = pickFirstEnv(getUrlEnvNames(databaseTarget));
+const tokenBinding = pickFirstEnv(getAuthTokenEnvNames(databaseTarget));
+console.log(`[${databaseTarget}-db] ${mode}: using ${urlBinding.name} + ${tokenBinding.name}`);
+
 const client = createClient({
-  url: getRequiredEnv(getUrlEnvNames(databaseTarget)),
-  authToken: getRequiredEnv(getAuthTokenEnvNames(databaseTarget)),
+  url: urlBinding.value,
+  authToken: tokenBinding.value,
 });
 
 try {
@@ -74,11 +81,11 @@ function getAuthTokenEnvNames(databaseTarget: DatabaseTarget): string[] {
     : ['TURSO_SUBSCRIPTIONS_AUTH_TOKEN', 'TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN'];
 }
 
-function getRequiredEnv(names: string[]): string {
+function pickFirstEnv(names: string[]): { name: string; value: string } {
   for (const name of names) {
     const value = process.env[name]?.trim();
     if (value) {
-      return value;
+      return { name, value };
     }
   }
 
