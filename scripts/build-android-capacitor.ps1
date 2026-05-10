@@ -142,6 +142,9 @@ if ($BuildType -eq 'Release') {
 Write-Step "Build finished."
 if (Test-Path $apkPath) {
     Write-Host "APK: $apkPath" -ForegroundColor Green
+    if ($BuildType -eq 'Release' -and $apkPath -match 'unsigned') {
+        Write-Warning "Unsigned release APK — adb install will fail. Add ANDROID_STAGING_SIGNING_* or ANDROID_PRODUCTION_SIGNING_* to repo-root .env.dev (see web/docs/ANDROID_CAPACITOR_BUILD.md)."
+    }
 } else {
     Write-Warning "Expected APK not found at $apkPath — check app/build/outputs/apk/"
 }

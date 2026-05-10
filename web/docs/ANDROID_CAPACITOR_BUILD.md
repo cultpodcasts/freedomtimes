@@ -42,8 +42,8 @@ From the **repository root**:
 
 ## Signing notes
 
-- **Debug:** `web/android/app/build.gradle` can use **`ANDROID_STAGING_*`** signing values from repo-root `.env.dev` when all four variables are set (see CI and `LOCAL_DEV_REQUIREMENTS.md`).
-- **Release:** the current Gradle file does **not** define a `signingConfig` for the `release` build type. Local `assembleRelease` may produce an **unsigned** APK until you add a release signing block (or sign manually / via Play App Signing). Treat release artifacts accordingly.
+- **Debug:** uses **`ANDROID_STAGING_SIGNING_*`** from repo-root `.env.dev` when all four are set; otherwise the default debug keystore.
+- **Release:** uses **`ANDROID_PRODUCTION_SIGNING_*`** when all four are set; if not, **falls back to the same staging keystore** as debug so local `assembleRelease` produces a signed **`app-release.apk`** you can `adb install`. If neither staging nor production signing is configured, release stays **unsigned** (`app-release-unsigned.apk`) and install fails with errors like `INSTALL_PARSE_FAILED_NO_CERTIFICATES`.
 
 ## Launcher icons from `favicon.svg`
 
