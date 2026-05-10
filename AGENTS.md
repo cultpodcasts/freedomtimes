@@ -1,12 +1,23 @@
 # Agent and operator notes
 
-## EmDash: use MCP for `posts.content` / Portable Text shape
+## EmDash: MCP only for schema and content (hard rule)
 
-When the task is to **inspect, migrate, or reason about** `posts` (or `pages`) **`content`** for **Portable Text vs markdown string**, **do not rely only on** `npx emdash content get … --json`. That output often shows **`data.content` as a markdown string** even when **MCP `content_get`** returns **`item.data.content`** as a **PT array** and Turso stores JSON arrays—CLI-first checks have misled sessions and wasted tokens.
+**Do not use the EmDash CLI** (`npx emdash schema …`, `npx emdash content …`) **to inspect collection schema or to read/edit/publish content** when you care about the **real stored JSON** (especially **`posts` / `pages` `content`** as Portable Text). The CLI’s JSON output **does not reliably expose** the underlying document shape and has misled debugging repeatedly.
 
-**Default:** use the **EmDash MCP** `content_get` tool (or the same API over HTTP with correct `Accept` headers) and read **`item.data.content`**. Use the CLI for metadata or when the user explicitly wants CLI output.
+**Allowed instead:**
 
-Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section **CLI vs MCP**) and **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** (§**2.0a**). For **English-ledes, French outlet glosses, hoisting stakes, and the canonical French `blockquote` + English translation `<details>` PT block order**, see **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`** (same file — do not duplicate elsewhere).
+- **Cursor** EmDash MCP servers from `.cursor/mcp.json` (`freedomtimes-staging`, `freedomtimes-production`), when they appear under **Tools & MCP**, **or**
+- **HTTP MCP** from the shell: `node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> '<json-args>'` — same `POST /_emdash/api/mcp` + JSON-RPC `tools/call` as the IDE.
+
+**Examples:** `content_get` → `{"collection":"posts","id":"<slug>"}`; **`schema_list_collections`** → `{}`; **`schema_get_collection`** → `{"slug":"posts"}` (there is no `schema_get` tool); **`content_update`** / **`content_publish`** / **`content_create`** with arguments from `tools/list` on the instance. Token: `~/.config/emdash/auth.json` or `EMDASH_STAGING_TOKEN` / `EMDASH_PRODUCTION_TOKEN` / `EMDASH_MCP_TOKEN`.
+
+Repo scripts **`promote-post-staging-to-production.mjs`** and **`merge-staging-post-from-patch.mjs`** apply this rule: staging reads and production writes use **MCP** (or REST only where noted for `_rev` resolution), not `emdash content` / `emdash schema`.
+
+**CLI exceptions (outside schema + content JSON):** e.g. **`emdash login`**, **`emdash media upload`**, **`emdash doctor`** — only when the task is explicitly about auth, binary upload, or local diagnostics, not about inspecting or editing entry JSON.
+
+**Cursor `call_mcp_tool` vs this repo:** Some agent sessions only register built-in MCP servers (e.g. `cursor-ide-browser`) and do **not** see Freedom Times EmDash servers. Use **Ctrl+Shift+J → Tools & MCP** (enable servers, restart Cursor, **Output → MCP Logs**). Until then, use **`emdash-mcp-tools-call.mjs`** so behavior stays MCP-equivalent.
+
+Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section **CLI vs MCP**) and **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** (§**2.0a**). For **English-ledes, French outlet glosses, hoisting stakes, and the canonical French `blockquote` + English translation `<details>` PT block order**, see **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`**.
 
 ## Databases: backup before any change
 

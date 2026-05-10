@@ -109,6 +109,10 @@ function readFeaturedImageSrc(value: unknown): string | null {
 		if (trimmed.length === 0) {
 			return null;
 		}
+		const parsed = tryParseJsonString(trimmed);
+		if (parsed && typeof parsed === 'object' && parsed !== null) {
+			return readFeaturedImageSrc(parsed);
+		}
 		return normalizeToPublicMediaFilePath(trimmed);
 	}
 
@@ -118,7 +122,11 @@ function readFeaturedImageSrc(value: unknown): string | null {
 			candidate.meta && typeof candidate.meta === 'object'
 				? (candidate.meta as Record<string, unknown>)
 				: null;
-		const storageKey = readString(meta?.storageKey) ?? readString(candidate.storageKey);
+		const storageKey =
+			readString(meta?.storageKey)
+			?? readString(meta?.storage_key)
+			?? readString(candidate.storageKey)
+			?? readString(candidate.storage_key);
 		if (storageKey) {
 			return `/_emdash/api/media/file/${storageKey}`;
 		}
@@ -173,7 +181,11 @@ function readMediaFileUrl(value: unknown): string | null {
 			candidate.meta && typeof candidate.meta === 'object'
 				? (candidate.meta as Record<string, unknown>)
 				: null;
-		const storageKey = readString(meta?.storageKey) ?? readString(candidate.storageKey);
+		const storageKey =
+			readString(meta?.storageKey)
+			?? readString(meta?.storage_key)
+			?? readString(candidate.storageKey)
+			?? readString(candidate.storage_key);
 		if (storageKey) {
 			return `/_emdash/api/media/file/${storageKey}`;
 		}
@@ -363,14 +375,48 @@ function readPrimaryByline(entryMeta: Record<string, unknown>, data: Record<stri
 }
 
 /**
- * When `social_image` is only a media row id (no `meta.storageKey`), resolve R2 `storage_key` from Turso.
+ * EmDash exposes SEO as **`entry.seo`**, **`entry.data.seo`**, or both — see `getContentSeo` in `emdash/seo`.
+ *
+ * If we only read **`entry.seo`** when it exists, we can miss **`data.seo.image`** (the OG upload path).
+ * `getSeoMeta` picks one object (`seo ?? data.seo`); live rows often split fields so **`seo.image` lives only
+ * under `data.seo`**. Merge **`data.seo`** first, then overlay **`entry.seo`** so draft/top-level overrides
+ * nested when both set the same key, while **`image` still flows up when only nested defines it.
+ */
+export function readEntrySeoRecord(entryMeta: Record<string, unknown>): Record<string, unknown> | null {
+	const data = entryMeta.data;
+	const nestedRaw =
+		data && typeof data === 'object' && !Array.isArray(data)
+			? (data as Record<string, unknown>).seo
+			: undefined;
+	const topRaw = entryMeta.seo;
+
+	const nestedRec =
+		nestedRaw && typeof nestedRaw === 'object' && !Array.isArray(nestedRaw)
+			? (nestedRaw as Record<string, unknown>)
+			: null;
+	const topRec =
+		topRaw && typeof topRaw === 'object' && !Array.isArray(topRaw)
+			? (topRaw as Record<string, unknown>)
+			: null;
+
+	if (!nestedRec && !topRec) return null;
+	if (!nestedRec) return topRec;
+	if (!topRec) return nestedRec;
+	return { ...nestedRec, ...topRec };
+}
+
+/**
+ * When an image field is only a media row id (no `meta.storageKey`), resolve R2 `storage_key` from Turso.
  * Skips if the field already yields a public `/file/` path from {@link readFeaturedImageSrc}.
  */
-function extractSocialImageMediaIdForLookup(data: Record<string, unknown>): string | null {
-	const raw = data.social_image ?? data.socialImage;
+function extractImageFieldMediaIdForLookup(raw: unknown): string | null {
 	if (typeof raw === 'string') {
 		const t = raw.trim();
 		if (!t) return null;
+		const parsed = tryParseJsonString(t);
+		if (parsed && typeof parsed === 'object' && parsed !== null) {
+			return extractImageFieldMediaIdForLookup(parsed);
+		}
 		if (normalizeToPublicMediaFilePath(t)) return null;
 		if (/^[0-9A-HJKMNP-TV-Z]{20,36}$/i.test(t)) return t;
 		return null;
@@ -378,7 +424,12 @@ function extractSocialImageMediaIdForLookup(data: Record<string, unknown>): stri
 	if (raw && typeof raw === 'object') {
 		const o = raw as Record<string, unknown>;
 		const meta = o.meta && typeof o.meta === 'object' ? (o.meta as Record<string, unknown>) : null;
-		if (readString(meta?.storageKey) ?? readString(o.storageKey)) {
+		if (
+			readString(meta?.storageKey)
+			?? readString(meta?.storage_key)
+			?? readString(o.storageKey)
+			?? readString(o.storage_key)
+		) {
 			return null;
 		}
 		const id = readString(o.id);
@@ -415,42 +466,169 @@ function workerSafeFetch():
 	};
 }
 
-export async function resolveSocialImageSrc(data: Record<string, unknown>): Promise<string | null> {
-	const direct =
-		readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
-	if (direct) return direct;
+export type ResolveSocialImageSrcOptions = {
+	/** Same-origin base URL (e.g. `Astro.url.origin`) for resolving bare media ids without Turso. */
+	origin?: string;
+	/**
+	 * EmDash stores admin SEO (`seo.image`) in **`_emdash_seo`**, not always in `entry.data.seo` JSON.
+	 * Pass **`collection`** (`posts`, `pages`, …) and **`contentId`** (`entry.id`) so Turso can read **`seo_image`**.
+	 */
+	emdashSeoLookup?: { collection: string; contentId: string; slug?: string };
+};
 
-	const mediaId = extractSocialImageMediaIdForLookup(data);
-	if (!mediaId) return null;
-
-	const url = readOptionalEnv('TURSO_DATABASE_URL').trim();
-	const authToken = readOptionalEnv('TURSO_AUTH_TOKEN').trim();
-	if (!url || !authToken) return null;
-
-	try {
-		const client = createClient({
+/** Try **`TURSO_DATABASE_URL`** first (matches Astro/emdash), then **`EMDASH_DATABASE_URL`** + same token. */
+function createLibsqlClientForContentQueries(): ReturnType<typeof createClient> | null {
+	const attempts: [string, string][] = [
+		['TURSO_DATABASE_URL', 'TURSO_AUTH_TOKEN'],
+		['EMDASH_DATABASE_URL', 'TURSO_AUTH_TOKEN'],
+	];
+	for (const [urlKey, tokenKey] of attempts) {
+		const url = readOptionalEnv(urlKey).trim();
+		const authToken = readOptionalEnv(tokenKey).trim();
+		if (!url || !authToken) continue;
+		return createClient({
 			url,
 			authToken,
 			fetch: workerSafeFetch(),
 		});
-		const res = await client.execute({
-			sql: 'select storage_key from media where id = ? limit 1',
-			args: [mediaId],
-		});
-		const row = res.rows[0] as Record<string, unknown> | undefined;
-		const key = row && typeof row.storage_key === 'string' ? row.storage_key.trim() : '';
-		if (key.length > 0) {
-			return `/_emdash/api/media/file/${key}`;
-		}
-	} catch (err) {
-		console.error('[contentEntry] resolveSocialImageSrc failed', err);
 	}
 	return null;
+}
+
+async function resolveStorageKeyFromMediaApi(origin: string, mediaId: string): Promise<string | null> {
+	const base = origin.replace(/\/$/, '');
+	try {
+		const r = await fetch(`${base}/_emdash/api/media/${encodeURIComponent(mediaId)}`, {
+			headers: { Accept: 'application/json' },
+		});
+		if (!r.ok) return null;
+		const j = (await r.json()) as {
+			data?: { item?: { storageKey?: string } };
+			item?: { storageKey?: string };
+		};
+		const item = j.data?.item ?? j.item;
+		const sk = item && typeof item.storageKey === 'string' ? item.storageKey.trim() : '';
+		return sk.length > 0 ? sk : null;
+	} catch {
+		return null;
+	}
+}
+
+const EMDASH_COLLECTION_TABLE: Record<string, string> = {
+	posts: 'ec_posts',
+	pages: 'ec_pages',
+	archives: 'ec_archives',
+};
+
+function pickSeoImageRow(rows: unknown): string | null {
+	const row = Array.isArray(rows) ? (rows[0] as Record<string, unknown> | undefined) : undefined;
+	const img = row && typeof row.seo_image === 'string' ? row.seo_image.trim() : '';
+	return img.length > 0 ? img : null;
+}
+
+async function fetchEmdashSeoImageFromTable(
+	collection: string,
+	contentId: string,
+	slug?: string | null,
+): Promise<string | null> {
+	const client = createLibsqlClientForContentQueries();
+	if (!client) return null;
+	try {
+		if (contentId) {
+			const res = await client.execute({
+				sql: 'select seo_image from _emdash_seo where collection = ? and content_id = ? limit 1',
+				args: [collection, contentId],
+			});
+			const found = pickSeoImageRow(res.rows);
+			if (found) return found;
+		}
+
+		const table = EMDASH_COLLECTION_TABLE[collection];
+		if (table && slug) {
+			const res = await client.execute({
+				sql: `select s.seo_image from _emdash_seo s inner join ${table} c on c.id = s.content_id where s.collection = ? and c.slug = ? limit 1`,
+				args: [collection, slug],
+			});
+			return pickSeoImageRow(res.rows);
+		}
+	} catch {
+		return null;
+	}
+	return null;
+}
+
+async function resolveMediaIdToPublicPath(
+	mediaId: string,
+	options?: ResolveSocialImageSrcOptions,
+): Promise<string | null> {
+	const client = createLibsqlClientForContentQueries();
+	if (client) {
+		try {
+			const res = await client.execute({
+				sql: 'select storage_key from media where id = ? limit 1',
+				args: [mediaId],
+			});
+			const row = res.rows[0] as Record<string, unknown> | undefined;
+			const key = row && typeof row.storage_key === 'string' ? row.storage_key.trim() : '';
+			if (key.length > 0) {
+				return `/_emdash/api/media/file/${key}`;
+			}
+		} catch (err) {
+			console.error('[contentEntry] resolveSocialImageSrc Turso lookup failed', err);
+		}
+	}
+
+	const origin = options?.origin?.trim();
+	if (origin) {
+		const sk = await resolveStorageKeyFromMediaApi(origin, mediaId);
+		if (sk) return `/_emdash/api/media/file/${sk}`;
+	}
+	return null;
+}
+
+export async function resolveSocialImageSrc(
+	data: Record<string, unknown>,
+	seo?: Record<string, unknown> | null,
+	options?: ResolveSocialImageSrcOptions,
+): Promise<string | null> {
+	const heroFallback =
+		readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image) ?? null;
+
+	let fromSeo = seo ? readFeaturedImageSrc(seo.image) : null;
+	if (!fromSeo && seo) {
+		const seoMediaId = extractImageFieldMediaIdForLookup(seo.image);
+		if (seoMediaId) fromSeo = await resolveMediaIdToPublicPath(seoMediaId, options);
+	}
+	if (!fromSeo && options?.emdashSeoLookup) {
+		const lu = options.emdashSeoLookup;
+		const raw = await fetchEmdashSeoImageFromTable(lu.collection, lu.contentId, lu.slug);
+		if (raw) fromSeo = readFeaturedImageSrc(raw);
+	}
+	if (fromSeo) return fromSeo;
+
+	const direct =
+		readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
+	if (direct) return direct;
+
+	const socialMediaId =
+		extractImageFieldMediaIdForLookup(data.social_image)
+		?? extractImageFieldMediaIdForLookup(data.socialImage);
+	if (socialMediaId) {
+		const fromSocial = await resolveMediaIdToPublicPath(socialMediaId, options);
+		if (fromSocial) return fromSocial;
+	}
+
+	/**
+	 * Bare `seo.image` ids may fail lookup if Turso is unset and media API is auth-only. Fall back to the
+	 * hero so `og:image` / `twitter:image` are not empty when the post has a featured image.
+	 */
+	return heroFallback;
 }
 
 export function buildContentEntryViewModel(entry: { slug?: string; data: Record<string, unknown> } & Record<string, unknown>): ContentEntryViewModel {
 	const data = entry.data;
 	const entryMeta = entry as Record<string, unknown>;
+	const seo = readEntrySeoRecord(entryMeta);
 
 	const title =
 		readString(data.title) ??
@@ -474,7 +652,11 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 	const featuredImageAlt =
 		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
-	const socialImageSrc = readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
+	const socialImageSrc =
+		readFeaturedImageSrc(seo?.image)
+		?? readFeaturedImageSrc(data.social_image)
+		?? readFeaturedImageSrc(data.socialImage)
+		?? null;
 	const volumeNumber =
 		readNumber(data.volume_number)
 		?? readNumber(data.volumeNumber)

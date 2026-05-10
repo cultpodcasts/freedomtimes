@@ -1,5 +1,7 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
+import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
+
 const serverUrl = process.env.CAPACITOR_SERVER_URL?.trim() || 'https://staging.freedomtimes.news';
 const usesCleartext = serverUrl.startsWith('http://');
 
@@ -25,7 +27,7 @@ const appendedUserAgent = resolveAppendedUserAgent();
 
 const config: CapacitorConfig = {
   appId: 'news.freedomtimes.app',
-  appName: 'Freedom Times',
+  appName: SITE_DISPLAY_NAME,
   webDir: 'cap-web',
   server: {
     url: serverUrl,

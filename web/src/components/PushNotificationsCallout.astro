@@ -1,5 +1,6 @@
 ---
 import { getPushSubscribePublicKey } from '../lib/push-subscriptions';
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 
 const pushSubscribePublicKey = getPushSubscribePublicKey();
 ---
@@ -9,7 +10,7 @@ const pushSubscribePublicKey = getPushSubscribePublicKey();
 		<p class="eyebrow">Reader Alerts</p>
 		<h2 id="notifications-heading">Get notified when major stories land</h2>
 		<p id="notification-status" class="notification-copy">
-			Enable notifications on this device to receive published Freedom Times alerts.
+			Enable notifications on this device to receive published {SITE_DISPLAY_NAME} alerts.
 		</p>
 	</div>
 	<button

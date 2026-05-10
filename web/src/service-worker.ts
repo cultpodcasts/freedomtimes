@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
 
+import { SITE_DISPLAY_NAME } from './lib/site-brand';
+
 const workerScope = self as ServiceWorkerGlobalScope;
 
 const CACHE_NAME = 'freedomtimes-shell-v1';
@@ -90,7 +92,7 @@ function readPushPayload(data: PushMessageData | null): Required<PushNotificatio
 
 function defaultPushPayload(payload: PushNotificationPayload): Required<PushNotificationPayload> {
   return {
-    title: payload.title?.trim() || 'Freedom Times',
+    title: payload.title?.trim() || SITE_DISPLAY_NAME,
     body: payload.body?.trim() || 'A new update is available.',
     url: payload.url?.trim() || '/homepage',
     icon: payload.icon?.trim() || '/favicon.svg',

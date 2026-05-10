@@ -54,14 +54,43 @@ What it does:
 3. Applies PNG optimization pass (palette/compression attempts).
 4. Enforces hard limit (`<= 600KB`), failing if still above threshold.
 5. Uploads media to EmDash.
-6. Writes uploaded media object into `social_image` for the post.
+6. Persists **`seo.image`** as the **media row id string** returned by the upload API (`item.id`). EmDash types **`ContentSeo.image`** as **`string | null` only** — objects are rejected by REST validation; **`storageKey`** strings must not be stored here (after deduplicated uploads, the R2 key’s ULID differs from **`media.id`**). The **admin OG Image** picker resolves previews by **media id**. The **public site** resolves bare ids in **`resolveSocialImageSrc`** (Turso and/or **`/_emdash/api/media/:id`**). Writes use **`PUT /_emdash/api/content/posts/:slug`** with a partial body (`seo` only once `social_image` is removed from schema).
+7. For **published** posts, **`POST …/publish`** only if there is a **pending draft** (`draftRevisionId` set). If the PUT applied with no separate draft, publish is **skipped** (calling publish with nothing pending returns 500 in current EmDash).
 
-Run for one post:
+8. After **`--all`** completes, **orphan cleanup**: deletes **`image/png`** media whose **`filename`** ends with **`-social.png`** and whose **`id`** is **not** referenced by any post (`seo.image`, featured image, etc.). Use **`--no-cleanup-media`** to skip deletion.
+
+**`updatedAt`:** EmDash advances this timestamp on successful content writes. There is **no supported** REST/MCP flag to keep the old value.
+
+**Remove the legacy “Social Image” field from the schema** (stops the empty field in admin; **irreversible**, drops column data — run after posts use **`seo.image`**):
 
 ```powershell
 cd web
-npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts <post-slug>
+npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts --all --drop-social-image-field
 ```
+
+That calls MCP **`schema_delete_field`** for **`posts.social_image`**, then skips `data.social_image` in PUTs for that run.
+
+Run for one post (slug only; uses `EMDASH_URL` / `EMDASH_STAGING_URL` and token from `..\.env.dev` or `~/.config/emdash/auth.json`):
+
+```powershell
+cd web
+npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts building-the-cult-what-katie-simpsons-murder-reveals-about-coercive-control-group-dynamics-and-the-laws-that-should-have-saved-her
+```
+
+Regenerate **all draft and published** posts (upload + REST partial PUT + **`content_publish`** when published, unless `--no-publish`). Use after changing layout constants such as `SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_PX`.
+
+```powershell
+cd web
+npx --yes dotenv-cli -e "..\.env.dev" -- tsx scripts/generate-social-images.ts --all
+```
+
+Published-only (previous behaviour):
+
+```powershell
+tsx scripts/generate-social-images.ts --all --published-only
+```
+
+Example article title: *"Building the Cult": How the Law Failed Katie Simpson*. The headline stack is shifted up from the bottom by **`CONTENT_INSET_PX` + `SOCIAL_CLIENT_BOTTOM_TITLEBAR_RESERVE_PX`** in `web/scripts/generate-social-images.ts` so X/Twitter’s overlaid title bar is less likely to cover the last line; increase the reserve if a client still clips.
 
 ## Homepage social image
 

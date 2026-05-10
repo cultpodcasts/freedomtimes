@@ -357,7 +357,10 @@ function parseStoredTarget(rawSubscription: string): StoredNotificationTarget | 
 
 function toPushNotificationPayload(payload: Record<string, unknown>, env: Env): PushNotificationPayload {
   return {
-    title: readTrimmedString(payload.title) || env.NOTIFICATION_DEFAULT_TITLE?.trim() || 'Freedom Times',
+    title:
+      readTrimmedString(payload.title)
+      || env.NOTIFICATION_DEFAULT_TITLE?.trim()
+      || 'freedom times',
     body: readTrimmedString(payload.body) || readTrimmedString(payload.message) || 'Scheduled notification',
     url: readTrimmedString(payload.url) || env.NOTIFICATION_DEFAULT_URL?.trim() || '/homepage',
     icon: readTrimmedString(payload.icon) || '/favicon.svg',

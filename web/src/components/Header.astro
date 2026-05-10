@@ -1,5 +1,6 @@
 ---
 import { readOptionalEnv } from '../lib/auth';
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 
 interface Props {
 	section?: string;
@@ -16,7 +17,7 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 <header class="masthead">
 	<p class="edition">UK & Europe | Investigations & Public Interest</p>
 	<div class="brand-wrap">
-		<a href={homePath}><h1>Freedom Times</h1></a>
+		<a href={homePath}><h1>{SITE_DISPLAY_NAME}</h1></a>
 	</div>
 	<p class="tagline">Telling survivor truths. Protecting sources. Holding cults to account.</p>
 	

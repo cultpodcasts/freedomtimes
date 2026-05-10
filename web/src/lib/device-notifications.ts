@@ -1,9 +1,11 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
+import { SITE_DISPLAY_NAME } from './site-brand';
+
 const NATIVE_CHANNEL_ID = 'reader-alerts';
 const NATIVE_CHANNEL_NAME = 'Reader Alerts';
-const NATIVE_CHANNEL_DESCRIPTION = 'Breaking and important Freedom Times notifications';
+const NATIVE_CHANNEL_DESCRIPTION = `Breaking and important ${SITE_DISPLAY_NAME} notifications`;
 const REGISTRATION_TIMEOUT_MS = 30000;
 
 type NativePlatform = 'android' | 'ios';
@@ -91,7 +93,7 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
   return {
     supported: true,
     buttonDisabled: false,
-    message: 'Enable browser notifications on this device to receive published Freedom Times alerts.',
+    message: `Enable browser notifications on this device to receive published ${SITE_DISPLAY_NAME} alerts.`,
   };
 }
 

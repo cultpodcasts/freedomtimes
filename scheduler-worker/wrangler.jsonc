@@ -10,7 +10,7 @@
 		"head_sampling_rate": 1
 	},
 	"vars": {
-		"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+		"NOTIFICATION_DEFAULT_TITLE": "freedom times",
 		"NOTIFICATION_DEFAULT_URL": "/homepage",
 		"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 		"PUSH_IOS_APNS_HOST": "api.push.apple.com"
@@ -22,7 +22,7 @@
 				"crons": ["*/10 * * * *"]
 			},
 			"vars": {
-				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+				"NOTIFICATION_DEFAULT_TITLE": "freedom times",
 				"NOTIFICATION_DEFAULT_URL": "/homepage",
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 				"PUSH_IOS_APNS_HOST": "api.push.apple.com"
@@ -34,7 +34,7 @@
 				"crons": ["*/10 * * * *"]
 			},
 			"vars": {
-				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times Staging",
+				"NOTIFICATION_DEFAULT_TITLE": "freedom times (staging)",
 				"NOTIFICATION_DEFAULT_URL": "/homepage",
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
 				"PUSH_IOS_APNS_HOST": "api.sandbox.push.apple.com"

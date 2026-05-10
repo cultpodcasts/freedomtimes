@@ -1,23 +1,29 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import Header from '../components/Header.astro';
-import Video from '../components/Video.astro';
-import Audio from '../components/Audio.astro';
-import PortableLink from '../components/PortableLink.astro';
-import PushNotificationsCallout from './PushNotificationsCallout.astro';
-import EntryHeader from './content/EntryHeader.astro';
-import EntryMedia from './content/EntryMedia.astro';
-import EntryBody from './content/EntryBody.astro';
-import { readOptionalEnv } from '../lib/auth';
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import Video from "../components/Video.astro";
+import Audio from "../components/Audio.astro";
+import PortableLink from "../components/PortableLink.astro";
+import PushNotificationsCallout from "./PushNotificationsCallout.astro";
+import EntryHeader from "./content/EntryHeader.astro";
+import EntryMedia from "./content/EntryMedia.astro";
+import EntryBody from "./content/EntryBody.astro";
+import { readOptionalEnv } from "../lib/auth";
 import {
 	buildPortableRenderNodes,
 	parseLegacyTextContent,
-} from '../lib/content/contentBlocks';
-import { buildContentEntryViewModel, resolveSocialImageSrc } from '../lib/content/contentEntry';
+} from "../lib/content/contentBlocks";
+import {
+	buildContentEntryViewModel,
+	readEntrySeoRecord,
+	resolveSocialImageSrc,
+} from "../lib/content/contentEntry";
+import { SITE_DISPLAY_NAME } from "../lib/site-brand";
 
 const {
 	entry,
 	collectionLabel,
+	emdashCollection,
 	displayName,
 	isPreview = false,
 	isEditor = false,
@@ -25,14 +31,16 @@ const {
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
 	collectionLabel: string;
+	/** EmDash collection slug (`posts`, `pages`, `archives`, …) for `_emdash_seo` OG lookup */
+	emdashCollection: string;
 	displayName: string;
 	isPreview?: boolean;
 	isEditor?: boolean;
 	isSignedIn?: boolean;
 };
 
-const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
-const resolvedIsSignedIn = isSignedIn ?? siteAccessMode !== 'public';
+const siteAccessMode = readOptionalEnv("SITE_ACCESS_MODE").trim().toLowerCase();
+const resolvedIsSignedIn = isSignedIn ?? siteAccessMode !== "public";
 const {
 	title,
 	summaryParagraphs,
@@ -51,10 +59,22 @@ const {
 	publishedAt,
 	updatedAt,
 	primaryByline,
-	socialImageSrc: socialImageSrcSync,
-} = buildContentEntryViewModel(entry as { slug?: string; data: Record<string, unknown> } & Record<string, unknown>);
-const socialImageSrc =
-	socialImageSrcSync ?? (await resolveSocialImageSrc(entry.data));
+} = buildContentEntryViewModel(
+	entry as { slug?: string; data: Record<string, unknown> } & Record<
+		string,
+		unknown
+	>,
+);
+const entryRecord = entry as Record<string, unknown>;
+const seoRecord = readEntrySeoRecord(entryRecord);
+const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
+	origin: Astro.url.origin,
+	emdashSeoLookup: {
+		collection: emdashCollection,
+		contentId: String(entry.id ?? ""),
+		slug: typeof entry.slug === "string" ? entry.slug : undefined,
+	},
+});
 const portableComponents = {
 	type: {
 		video: Video,
@@ -67,23 +87,29 @@ const portableComponents = {
 
 const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 const portableRenderNodes = buildPortableRenderNodes(portableContent);
-const description = summaryParagraphs[0] ?? `Read "${title}" on Freedom Times.`;
-const canonicalPath = collectionLabel === 'Archive' ? `/archives/${entry.slug ?? entry.id}` : `/posts/${entry.slug ?? entry.id}`;
-const publicationDate = publishedAt
-	? new Date(publishedAt)
-	: null;
+const description =
+	summaryParagraphs[0] ?? `Read "${title}" on ${SITE_DISPLAY_NAME}.`;
+const canonicalPath =
+	collectionLabel === "Archive"
+		? `/archives/${entry.slug ?? entry.id}`
+		: `/posts/${entry.slug ?? entry.id}`;
+const publicationDate = publishedAt ? new Date(publishedAt) : null;
 const publicationDateLabel =
 	publicationDate && Number.isFinite(publicationDate.getTime())
-		? publicationDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+		? publicationDate.toLocaleDateString("en-GB", {
+				day: "2-digit",
+				month: "short",
+				year: "numeric",
+			})
 		: null;
-const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` : title;
+const socialTitle = publicationDateLabel
+	? `${title} - ${publicationDateLabel}`
+	: title;
 ---
 
 <Layout
 	title={title}
 	socialTitle={socialTitle}
-	twitterTitle={socialImageSrc ? '_' : socialTitle}
-	twitterDescription={socialImageSrc ? '_' : description}
 	description={description}
 	canonicalUrl={canonicalPath}
 	ogType="article"
@@ -96,7 +122,14 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 	author={primaryByline}
 >
 	<article class="page-wrap">
-		<Header section={collectionLabel} sectionUrl={collectionLabel === 'Archive' ? '/archives' : '/homepage'} isEditor={isEditor} isSignedIn={resolvedIsSignedIn} />
+		<Header
+			section={collectionLabel}
+			sectionUrl={collectionLabel === "Archive"
+				? "/archives"
+				: "/homepage"}
+			isEditor={isEditor}
+			isSignedIn={resolvedIsSignedIn}
+		/>
 
 		<EntryHeader
 			title={title}
@@ -133,7 +166,6 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 </Layout>
 
 <style>
-
 	.page-wrap {
 		max-width: var(--max-width-article);
 		margin: 0 auto;
@@ -150,7 +182,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 
 	:global(.legacy-details summary) {
 		cursor: pointer;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-weight: 600;
 	}
 
@@ -166,7 +198,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 
 	:global(.article-header h1) {
 		margin: 0;
-		font-family: 'Playfair Display', serif;
+		font-family: "Playfair Display", serif;
 		font-size: clamp(2.5rem, 7vw, 4.5rem);
 		font-weight: 900;
 		line-height: 1;
@@ -175,13 +207,12 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 
 	:global(.issue-date) {
 		margin: 1rem 0 0;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.85rem;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 		color: #333333;
 	}
-
 
 	:global(.article-header) {
 		margin-bottom: 2.5rem;
@@ -193,7 +224,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 		display: flex;
 		gap: 1.5rem;
 		margin-top: 1rem;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.75rem;
 		color: #777777;
 		letter-spacing: 0.05em;
@@ -213,7 +244,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 	}
 
 	:global(.subject-list li) {
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.7rem;
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
@@ -258,7 +289,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 		justify-content: space-between;
 		gap: 1rem;
 		margin-bottom: 1.5rem;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		letter-spacing: 0.1em;
 	}
 
@@ -314,7 +345,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 		border: 1px solid #dddddd;
 		color: #111111;
 		padding: 0.75rem 1rem;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-weight: 700;
 		font-size: 0.7rem;
 		letter-spacing: 0.1em;
@@ -331,7 +362,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 	:global(.slide-status) {
 		margin: 1.5rem 0 0;
 		text-align: center;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.8rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
@@ -343,7 +374,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 	}
 
 	:global(.pdf-link-wrap a) {
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.8rem;
 		font-weight: 700;
 		letter-spacing: 0.05em;
@@ -369,7 +400,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 	.content-card :global(h2),
 	.content-card :global(h3),
 	.content-card :global(h4) {
-		font-family: 'Playfair Display', serif;
+		font-family: "Playfair Display", serif;
 		font-weight: 800;
 		line-height: 1.2;
 		margin: 3rem 0 1rem;
@@ -392,7 +423,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 
 	.content-card :global(blockquote p) {
 		margin: 0;
-		font-family: 'Source Serif 4', serif;
+		font-family: "Source Serif 4", serif;
 		font-style: italic;
 		color: #1f1f1f;
 	}
@@ -443,7 +474,7 @@ const socialTitle = publicationDateLabel ? `${title} - ${publicationDateLabel}` 
 </style>
 
 <script>
-	import { initContentEnhancements } from '../lib/content/contentEnhancements';
+	import { initContentEnhancements } from "../lib/content/contentEnhancements";
 
 	initContentEnhancements();
 </script>

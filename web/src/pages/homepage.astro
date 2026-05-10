@@ -5,6 +5,7 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import NotificationPermission from '../components/NotificationPermission';
 import { readOptionalEnv } from '../lib/auth';
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 import { requireEditorialSession } from '../lib/editorial-session';
 
 type Story = {
@@ -211,7 +212,7 @@ const stories: Story[] = postEntries.map((entry) => {
 const lead = stories[0] ?? null;
 const secondLead = stories[1] ?? null;
 const rails = stories.slice(2);
-const socialTitle = 'Freedom Times';
+const socialTitle = SITE_DISPLAY_NAME;
 const socialDescription = 'Telling survivor truths. Protecting sources. Holding cults to account.';
 const socialImage = '/social/homepage-og.png';
 ---
@@ -223,7 +224,7 @@ const socialImage = '/social/homepage-og.png';
   canonicalUrl={Astro.url.pathname}
   ogType="website"
   ogImage={socialImage}
-  ogImageAlt="Freedom Times homepage"
+  ogImageAlt={`${SITE_DISPLAY_NAME} homepage`}
 >
   <div class="paper-wrap">
     <Header isEditor={isEditor} isSignedIn={isSignedIn} />
