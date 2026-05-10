@@ -19,6 +19,7 @@
     "astro": "astro",
     "archive:prepare": "tsx scripts/prepare-archive-assets.ts",
     "archive:prepare:py": "c:/Users/jonbr/source/repos/freedomtimes-branch2/.venv/Scripts/python.exe scripts/prepare_archive_assets.py",
+    "android:launcher-icons": "node scripts/generate-android-launcher-icons.mjs",
     "build:service-worker": "tsx scripts/build-service-worker.ts",
     "cap:doctor": "cap doctor",
     "cap:add:android": "cap add android",
