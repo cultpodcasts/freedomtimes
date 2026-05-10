@@ -44,45 +44,47 @@ export const GET: APIRoute = async ({ request }) => {
     });
   }
 
-  const posts = postEntries.map((entry) => {
-    const data = entry.data;
+  const posts = await Promise.all(
+    postEntries.map(async (entry) => {
+      const data = entry.data;
 
-    const title = typeof data.title === 'string' && data.title.length > 0
-      ? data.title
-      : 'Untitled post';
-      
-    const slug = typeof data.slug === 'string' && data.slug.length > 0
-      ? data.slug
-      : entry.id;
+      const title = typeof data.title === 'string' && data.title.length > 0
+        ? data.title
+        : 'Untitled post';
 
-    const excerpt = typeof data.excerpt === 'string' ? data.excerpt : null;
+      const slug = typeof data.slug === 'string' && data.slug.length > 0
+        ? data.slug
+        : entry.id;
 
-    const publishedAtStr = readEmDashPublishedAt({ data: entry.data });
+      const excerpt = typeof data.excerpt === 'string' ? data.excerpt : null;
 
-    if (publishedAtStr == null) {
-      console.warn(
-        '[recent-published-posts] missing publishedAt after normalization',
-        JSON.stringify(summarizeEntryForLog(entry)),
-      );
-    }
+      const publishedAtStr = readEmDashPublishedAt({ data: entry.data });
 
-    const imagePath = readArticleNotificationImagePath(entry);
-    const image =
-      imagePath === null
-        ? null
-        : imagePath.startsWith('http://') || imagePath.startsWith('https://')
-          ? imagePath
-          : new URL(imagePath, siteOrigin).toString();
+      if (publishedAtStr == null) {
+        console.warn(
+          '[recent-published-posts] missing publishedAt after normalization',
+          JSON.stringify(summarizeEntryForLog(entry)),
+        );
+      }
 
-    return {
-      id: entry.id,
-      slug,
-      title,
-      excerpt,
-      publishedAt: publishedAtStr,
-      image,
-    };
-  });
+      const imagePath = await readArticleNotificationImagePath(entry, siteOrigin);
+      const image =
+        imagePath === null
+          ? null
+          : imagePath.startsWith('http://') || imagePath.startsWith('https://')
+            ? imagePath
+            : new URL(imagePath, siteOrigin).toString();
+
+      return {
+        id: entry.id,
+        slug,
+        title,
+        excerpt,
+        publishedAt: publishedAtStr,
+        image,
+      };
+    }),
+  );
 
   return new Response(JSON.stringify({ posts }), {
     status: 200,

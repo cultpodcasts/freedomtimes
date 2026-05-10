@@ -400,19 +400,21 @@ export function readEntrySeoRecord(entryMeta: Record<string, unknown>): Record<s
 }
 
 /**
- * Image for article push / recent-posts feed: **OG** (`seo.image` from merged `data.seo` / entry SEO), else **featured** (`featured_image` / `cover_image`).
- * No Turso media-id lookup; uses only JSON on the entry.
+ * Image for article push / recent-posts feed: same resolution as {@link resolveSocialImageSrc}
+ * (**OG** / `_emdash_seo`, bare media ids, `social_image`, then **featured** / **cover**).
  */
-export function readArticleNotificationImagePath(entry: { data: Record<string, unknown> }): string | null {
+export async function readArticleNotificationImagePath(
+	entry: { id: string; data: Record<string, unknown> },
+	siteOrigin: string,
+): Promise<string | null> {
 	const data = entry.data;
 	const entryMeta = entry as unknown as Record<string, unknown>;
 	const seo = readEntrySeoRecord(entryMeta);
-	return (
-		readFeaturedImageSrc(seo?.image)
-		?? readFeaturedImageSrc(data.featured_image)
-		?? readFeaturedImageSrc(data.cover_image)
-		?? null
-	);
+	const slug = readString(data.slug) ?? undefined;
+	return resolveSocialImageSrc(data, seo, {
+		origin: siteOrigin.trim().replace(/\/$/, ''),
+		emdashSeoLookup: { collection: 'posts', contentId: entry.id, slug },
+	});
 }
 
 /**
