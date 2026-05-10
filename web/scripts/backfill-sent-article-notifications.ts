@@ -4,7 +4,6 @@
  *
  * Usage (from web/):
  *   npx tsx scripts/backfill-sent-article-notifications.ts --origin https://freedomtimes.news
- *   npx tsx scripts/backfill-sent-article-notifications.ts --origin https://freedomtimes.news --limit 200
  *
  * Env: TURSO_SUBSCRIPTIONS_DATABASE_URL (+ TURSO_STAGING_* fallback) and matching AUTH_TOKEN — same as apply-turso-sql.
  * If unset, loads repo-root `.env.dev` when present (does not override existing process.env).
@@ -51,32 +50,28 @@ function pickFirstEnv(names: string[]): { name: string; value: string } {
   throw new Error(`${names.join(' or ')} is required`);
 }
 
-function parseArgs(): { origin: string; limit: number } {
+function parseArgs(): { origin: string } {
   const argv = process.argv.slice(2);
   let origin = 'https://freedomtimes.news';
-  let limit = 200;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--origin' && argv[i + 1]) {
       origin = argv[i + 1].replace(/\/$/, '');
       i++;
-    } else if (argv[i] === '--limit' && argv[i + 1]) {
-      const n = Number.parseInt(argv[i + 1], 10);
-      if (Number.isFinite(n) && n > 0) limit = Math.min(200, n);
-      i++;
     }
   }
-  return { origin, limit };
+  return { origin };
 }
 
 async function main(): Promise<void> {
   loadEnvDevIfNeeded();
-  const { origin, limit } = parseArgs();
+  const { origin } = parseArgs();
   const urlBinding = pickFirstEnv(['TURSO_SUBSCRIPTIONS_DATABASE_URL', 'TURSO_STAGING_SUBSCRIPTIONS_DB_URL']);
   const tokenBinding = pickFirstEnv(['TURSO_SUBSCRIPTIONS_AUTH_TOKEN', 'TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN']);
+  const feedUrl = `${origin}/api/recent-published-posts.json`;
   console.log(`[backfill-sent] subscriptions: ${urlBinding.name} + ${tokenBinding.name}`);
-  console.log(`[backfill-sent] feed: ${origin}/api/recent-published-posts.json?limit=${limit}`);
+  console.log(`[backfill-sent] feed: ${feedUrl}`);
 
-  const feedRes = await fetch(`${origin}/api/recent-published-posts.json?limit=${limit}`);
+  const feedRes = await fetch(feedUrl);
   if (!feedRes.ok) {
     throw new Error(`Feed HTTP ${feedRes.status}: ${feedRes.statusText}`);
   }

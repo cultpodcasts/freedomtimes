@@ -28,20 +28,12 @@ function summarizeEntryForLog(entry: ContentEntry<Record<string, unknown>>): Rec
   };
 }
 
-const DEFAULT_RECENT_POSTS_LIMIT = 25;
-const MAX_RECENT_POSTS_LIMIT = 200;
-
 export const GET: APIRoute = async ({ request }) => {
   const siteOrigin = new URL(request.url).origin;
-  const limitRaw = new URL(request.url).searchParams.get('limit');
-  const parsed = limitRaw !== null ? Number.parseInt(limitRaw, 10) : Number.NaN;
-  const limit = Number.isFinite(parsed)
-    ? Math.min(MAX_RECENT_POSTS_LIMIT, Math.max(1, parsed))
-    : DEFAULT_RECENT_POSTS_LIMIT;
 
   const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
     status: 'published',
-    limit,
+    limit: 25,
     orderBy: { published_at: 'desc', updated_at: 'desc' },
   });
 
