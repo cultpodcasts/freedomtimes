@@ -632,7 +632,7 @@ async function sendAndroidPushNotification(
             channelId: config.channelId,
             clickAction: 'FCM_PLUGIN_ACTIVITY',
             tag: payload.tag,
-            icon: 'ic_launcher_foreground',
+            icon: 'ic_notification',
             color: '#234D69',
             // Android often only shows the large image when set here (not only on message.notification).
             ...(payload.image ? { image: payload.image } : {}),

@@ -111,19 +111,10 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 			import { initializePwa } from '../lib/pwa';
 
 			if (Capacitor.isNativePlatform()) {
-				console.info('[layout] native shell detected', {
-					platform: Capacitor.getPlatform(),
-					userAgent: navigator.userAgent,
-				});
 				document.documentElement.dataset.nativeShell = '1';
 				const removeWebPushCallout = () => {
-					const callout = document.querySelector('#push-notifications-callout');
-					if (callout) {
-						callout.remove();
-						console.info('[layout] removed push callout from native shell');
-					} else {
-						console.info('[layout] no push callout found in native shell');
-					}
+					const callouts = Array.from(document.querySelectorAll('#push-notifications-callout'));
+					callouts.forEach((node) => node.remove());
 				};
 				// Remove immediately and after dynamic content settles.
 				removeWebPushCallout();
