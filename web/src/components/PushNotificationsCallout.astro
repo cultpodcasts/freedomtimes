@@ -5,7 +5,7 @@ import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 const pushSubscribePublicKey = getPushSubscribePublicKey();
 ---
 
-<section id="push-notifications-callout" class="notifications" aria-labelledby="notifications-heading" style="display:none">
+<section id="push-notifications-callout" class="notifications" aria-labelledby="notifications-heading">
 	<div>
 		<p class="eyebrow">Reader Alerts</p>
 		<h2 id="notifications-heading">Get notified when major stories land</h2>
@@ -38,11 +38,7 @@ const pushSubscribePublicKey = getPushSubscribePublicKey();
 	const callout = document.querySelector('#push-notifications-callout');
 	const button = document.querySelector('#notifications-enable');
 	const status = document.querySelector('#notification-status');
-	const isNativeShell = isLikelyNativeShellClient();
-
-	if (callout instanceof HTMLElement && !isNativeShell) {
-		callout.style.display = '';
-	}
+const isNativeShell = isLikelyNativeShellClient();
 
 	if (!isNativeShell && button instanceof HTMLButtonElement && status instanceof HTMLParagraphElement) {
 		void initializeNativePushBridge();

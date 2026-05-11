@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { getNotificationSupportState, enableNotificationsForCurrentDevice } from '../lib/device-notifications';
-import { getPushSubscribePublicKey } from '../lib/push-subscriptions';
 
 type NotificationPermissionState = 'loading' | 'unsupported' | 'enabled' | 'prompt';
 
-export default function NotificationPermission() {
+type NotificationPermissionProps = {
+  publicKey: string;
+};
+
+export default function NotificationPermission({ publicKey }: NotificationPermissionProps) {
   const [state, setState] = useState<NotificationPermissionState>('loading');
   const [message, setMessage] = useState<string>('');
   const [isEnabling, setIsEnabling] = useState(false);
@@ -18,7 +21,6 @@ export default function NotificationPermission() {
       }
 
       try {
-        const publicKey = getPushSubscribePublicKey();
         const supportState = await getNotificationSupportState(publicKey);
 
         if (!supportState.supported) {
@@ -48,7 +50,6 @@ export default function NotificationPermission() {
   const handleEnable = async () => {
     setIsEnabling(true);
     try {
-      const publicKey = getPushSubscribePublicKey();
       const result = await enableNotificationsForCurrentDevice(publicKey);
       setState('enabled');
       setMessage(result);

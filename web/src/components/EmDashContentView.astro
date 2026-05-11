@@ -1,6 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 import Header from "../components/Header.astro";
+import PushNotificationsCallout from "../components/PushNotificationsCallout.astro";
 import Video from "../components/Video.astro";
 import Audio from "../components/Audio.astro";
 import PortableLink from "../components/PortableLink.astro";
@@ -130,36 +131,39 @@ const socialTitle = publicationDateLabel
 			isSignedIn={resolvedIsSignedIn}
 		/>
 
-		<EntryHeader
-			title={title}
-			issueDate={issueDate}
-			primaryByline={primaryByline}
-			publishedAt={publishedAt}
-			updatedAt={updatedAt}
-			isPreview={isPreview}
-			subjectChips={subjectChips}
-		/>
-
-		<section class="content-card">
-			<EntryMedia
+		<div class="entry-shell">
+			<EntryHeader
 				title={title}
-				pageImages={pageImages}
-				slidePageNumbers={slidePageNumbers}
-				slidePageTotal={slidePageTotal}
-				volumeNumber={volumeNumber}
-				regionalVariant={regionalVariant}
-				pdfLink={pdfLink}
-				featuredImageSrc={featuredImageSrc}
-				featuredImageAlt={featuredImageAlt}
+				issueDate={issueDate}
+				primaryByline={primaryByline}
+				publishedAt={publishedAt}
+				updatedAt={updatedAt}
+				isPreview={isPreview}
+				subjectChips={subjectChips}
 			/>
-			<EntryBody
-				portableRenderNodes={portableRenderNodes}
-				portableContent={portableContent}
-				textContent={textContent}
-				legacyBlocks={legacyBlocks}
-				portableComponents={portableComponents}
-			/>
-		</section>
+
+			<section class="content-card">
+				<EntryMedia
+					title={title}
+					pageImages={pageImages}
+					slidePageNumbers={slidePageNumbers}
+					slidePageTotal={slidePageTotal}
+					volumeNumber={volumeNumber}
+					regionalVariant={regionalVariant}
+					pdfLink={pdfLink}
+					featuredImageSrc={featuredImageSrc}
+					featuredImageAlt={featuredImageAlt}
+				/>
+				<EntryBody
+					portableRenderNodes={portableRenderNodes}
+					portableContent={portableContent}
+					textContent={textContent}
+					legacyBlocks={legacyBlocks}
+					portableComponents={portableComponents}
+				/>
+				<PushNotificationsCallout />
+			</section>
+		</div>
 	</article>
 </Layout>
 
@@ -261,6 +265,9 @@ const socialTitle = publicationDateLabel
 	.content-card {
 		line-height: 1.7;
 		font-size: 1.15rem;
+	}
+
+	.entry-shell {
 		padding: 0 var(--page-padding-side);
 	}
 
