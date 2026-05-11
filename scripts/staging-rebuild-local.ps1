@@ -112,10 +112,7 @@ function Assert-StagingPushSecretsReady {
     $requiredKeys = @(
         "PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY",
         "PUSH_STAGING_VAPID_PRIVATE_KEY",
-        "PUSH_STAGING_VAPID_SUBJECT",
-        "PUSH_STAGING_ANDROID_FCM_PROJECT_ID",
-        "PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL",
-        "PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY"
+        "PUSH_STAGING_VAPID_SUBJECT"
     )
 
     $missing = @()

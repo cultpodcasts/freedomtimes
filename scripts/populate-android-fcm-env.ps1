@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Staging", "Production")]
-    [string]$Target = "Staging",
+    [ValidateSet("Production")]
+    [string]$Target = "Production",
     [string]$EnvPath,
     [string]$ProjectId,
     [string]$ServiceAccountEmail,
@@ -120,7 +120,7 @@ function Set-OrAppendEnvValue {
 }
 
 $resolvedProjectId = Get-ResolvedProjectId -RequestedProjectId $ProjectId
-$prefix = if ($Target -eq "Production") { "PUSH_PRODUCTION_ANDROID_FCM" } else { "PUSH_STAGING_ANDROID_FCM" }
+$prefix = "PUSH_PRODUCTION_ANDROID_FCM"
 $keyMaterial = $null
 
 try {

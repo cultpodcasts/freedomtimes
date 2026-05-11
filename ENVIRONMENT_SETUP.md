@@ -231,16 +231,15 @@ Use `scripts/populate-android-fcm-env.ps1` to populate the Android FCM entries i
 Examples:
 
 ```powershell
-# Staging: generate a temporary key via gcloud for an existing service account,
-# write PUSH_STAGING_ANDROID_FCM_* into .env.dev, then delete the temp key file.
+# Populate PUSH_PRODUCTION_ANDROID_FCM_* in .env.dev (production scheduler owns Android FCM; staging does not).
+
+# Generate a temporary key via gcloud for an existing service account:
 .\scripts\populate-android-fcm-env.ps1 `
-  -Target Staging `
   -ProjectId <firebase-project-id> `
   -ServiceAccountEmail <service-account-email>
 
-# Production: reuse an existing downloaded JSON key file.
+# Or reuse an existing downloaded JSON key file:
 .\scripts\populate-android-fcm-env.ps1 `
-  -Target Production `
   -JsonKeyPath C:\path\to\firebase-service-account.json
 ```
 

@@ -570,7 +570,7 @@ async function sendWebPushNotification(
     adminContact: config.subject,
     ttl: payload.ttl,
     urgency: payload.urgency,
-    topic: payload.tag,
+    topic: toWebPushTopic(payload.tag),
   });
 
   const response = await fetch(request.endpoint, {
@@ -819,6 +819,31 @@ function normalizePrivateKey(value: string): string {
     .replace(/\\n/g, '\n')   // handle \n (correctly single-escaped)
     .replace(/\r/g, '')      // strip stray carriage returns
     .trim();
+}
+
+function toWebPushTopic(tag: string): string {
+  const TOPIC_MAX_LENGTH = 32;
+  const normalized = tag.trim();
+  if (!normalized) {
+    return 'default';
+  }
+  if (normalized.length <= TOPIC_MAX_LENGTH) {
+    return normalized;
+  }
+
+  // Keep a readable prefix and append a stable hash so collapsed topics remain unique.
+  const suffix = fnv1aHex(normalized).slice(0, 8);
+  const prefixMaxLength = TOPIC_MAX_LENGTH - suffix.length - 1;
+  return `${normalized.slice(0, prefixMaxLength)}-${suffix}`;
+}
+
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 async function markSubscriptionSuccess(db: AppDb, id: string): Promise<void> {
