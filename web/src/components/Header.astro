@@ -150,7 +150,7 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 
 	@media (max-width: 768px) {
 		.masthead {
-			margin: 0 auto 1.25rem;
+			margin: 0 auto 0.6rem;
 			padding: 0.9rem var(--page-padding-side) 0.9rem;
 		}
 		.mobile-nav-toggle {
@@ -241,7 +241,7 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 		document.addEventListener('click', (event) => {
 			const target = event.target;
 			if (!(target instanceof Node)) return;
-			if (!nav.contains(target)) closeMenu();
+			if (!nav.contains(target) && !toggle.contains(target)) closeMenu();
 		});
 		window.addEventListener('resize', () => {
 			if (window.innerWidth > 768) closeMenu();
