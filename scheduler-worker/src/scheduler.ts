@@ -827,6 +827,10 @@ function toWebPushTopic(tag: string): string {
   if (!normalized) {
     return 'default';
   }
+  const articleUuidTopic = toArticleUuidTopic(normalized);
+  if (articleUuidTopic) {
+    return articleUuidTopic;
+  }
   if (normalized.length <= TOPIC_MAX_LENGTH) {
     return normalized;
   }
@@ -835,6 +839,14 @@ function toWebPushTopic(tag: string): string {
   const suffix = fnv1aHex(normalized).slice(0, 8);
   const prefixMaxLength = TOPIC_MAX_LENGTH - suffix.length - 1;
   return `${normalized.slice(0, prefixMaxLength)}-${suffix}`;
+}
+
+function toArticleUuidTopic(tag: string): string | null {
+  const match = /^article-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(tag);
+  if (!match) {
+    return null;
+  }
+  return match[1].replace(/-/g, '').toLowerCase();
 }
 
 function fnv1aHex(input: string): string {
