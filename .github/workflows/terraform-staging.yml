@@ -387,9 +387,6 @@ jobs:
           PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
           PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_VAPID_PRIVATE_KEY }}
           PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_STAGING_VAPID_SUBJECT }}
-          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PROJECT_ID }}
-          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL }}
-          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY }}
           PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_TEAM_ID }}
           PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_KEY_ID }}
           PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_PRIVATE_KEY }}
@@ -405,9 +402,6 @@ jobs:
             PUSH_VAPID_PUBLIC_KEY_VALUE
             PUSH_VAPID_PRIVATE_KEY_VALUE
             PUSH_VAPID_SUBJECT_VALUE
-            PUSH_ANDROID_FCM_PROJECT_ID_VALUE
-            PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE
-            PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE
           )
 
           missing=()
@@ -621,9 +615,6 @@ jobs:
           PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
           PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_VAPID_PRIVATE_KEY }}
           PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_STAGING_VAPID_SUBJECT }}
-          PUSH_ANDROID_FCM_PROJECT_ID_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PROJECT_ID }}
-          PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL }}
-          PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY }}
           PUSH_IOS_APNS_TEAM_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_TEAM_ID }}
           PUSH_IOS_APNS_KEY_ID_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_KEY_ID }}
           PUSH_IOS_APNS_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_STAGING_IOS_APNS_PRIVATE_KEY }}
@@ -638,9 +629,6 @@ jobs:
           printf '%s' "$PUSH_VAPID_PUBLIC_KEY_VALUE" | npx wrangler secret put PUSH_VAPID_PUBLIC_KEY --config wrangler.jsonc --env staging
           printf '%s' "$PUSH_VAPID_PRIVATE_KEY_VALUE" | npx wrangler secret put PUSH_VAPID_PRIVATE_KEY --config wrangler.jsonc --env staging
           printf '%s' "$PUSH_VAPID_SUBJECT_VALUE" | npx wrangler secret put PUSH_VAPID_SUBJECT --config wrangler.jsonc --env staging
-          printf '%s' "$PUSH_ANDROID_FCM_PROJECT_ID_VALUE" | npx wrangler secret put PUSH_ANDROID_FCM_PROJECT_ID --config wrangler.jsonc --env staging
-          printf '%s' "$PUSH_ANDROID_FCM_CLIENT_EMAIL_VALUE" | npx wrangler secret put PUSH_ANDROID_FCM_CLIENT_EMAIL --config wrangler.jsonc --env staging
-          printf '%s' "$PUSH_ANDROID_FCM_PRIVATE_KEY_VALUE" | npx wrangler secret put PUSH_ANDROID_FCM_PRIVATE_KEY --config wrangler.jsonc --env staging
 
           if [ -n "${PUSH_IOS_APNS_TEAM_ID_VALUE:-}" ] && [ -n "${PUSH_IOS_APNS_KEY_ID_VALUE:-}" ] && [ -n "${PUSH_IOS_APNS_PRIVATE_KEY_VALUE:-}" ] && [ -n "${PUSH_IOS_APNS_BUNDLE_ID_VALUE:-}" ]; then
             printf '%s' "$PUSH_IOS_APNS_TEAM_ID_VALUE" | npx wrangler secret put PUSH_IOS_APNS_TEAM_ID --config wrangler.jsonc --env staging

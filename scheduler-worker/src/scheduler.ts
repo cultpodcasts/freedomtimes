@@ -570,7 +570,7 @@ async function sendWebPushNotification(
     adminContact: config.subject,
     ttl: payload.ttl,
     urgency: payload.urgency,
-    topic: payload.tag,
+    topic: toWebPushTopic(payload.tag),
   });
 
   const response = await fetch(request.endpoint, {
@@ -632,6 +632,10 @@ async function sendAndroidPushNotification(
             channelId: config.channelId,
             clickAction: 'FCM_PLUGIN_ACTIVITY',
             tag: payload.tag,
+            icon: 'ic_notification',
+            color: '#234D69',
+            // Android often only shows the large image when set here (not only on message.notification).
+            ...(payload.image ? { image: payload.image } : {}),
           },
         },
       },
@@ -819,6 +823,43 @@ function normalizePrivateKey(value: string): string {
     .replace(/\\n/g, '\n')   // handle \n (correctly single-escaped)
     .replace(/\r/g, '')      // strip stray carriage returns
     .trim();
+}
+
+function toWebPushTopic(tag: string): string {
+  const TOPIC_MAX_LENGTH = 32;
+  const normalized = tag.trim();
+  if (!normalized) {
+    return 'default';
+  }
+  const articleUuidTopic = toArticleUuidTopic(normalized);
+  if (articleUuidTopic) {
+    return articleUuidTopic;
+  }
+  if (normalized.length <= TOPIC_MAX_LENGTH) {
+    return normalized;
+  }
+
+  // Keep a readable prefix and append a stable hash so collapsed topics remain unique.
+  const suffix = fnv1aHex(normalized).slice(0, 8);
+  const prefixMaxLength = TOPIC_MAX_LENGTH - suffix.length - 1;
+  return `${normalized.slice(0, prefixMaxLength)}-${suffix}`;
+}
+
+function toArticleUuidTopic(tag: string): string | null {
+  const match = /^article-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.exec(tag);
+  if (!match) {
+    return null;
+  }
+  return match[1].replace(/-/g, '').toLowerCase();
+}
+
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 async function markSubscriptionSuccess(db: AppDb, id: string): Promise<void> {

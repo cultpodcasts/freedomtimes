@@ -45,9 +45,6 @@ function Main {
                 "PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY",
                 "PUSH_STAGING_VAPID_PRIVATE_KEY",
                 "PUSH_STAGING_VAPID_SUBJECT",
-                "PUSH_STAGING_ANDROID_FCM_PROJECT_ID",
-                "PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL",
-                "PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY",
                 "PUSH_STAGING_IOS_APNS_TEAM_ID",
                 "PUSH_STAGING_IOS_APNS_KEY_ID",
                 "PUSH_STAGING_IOS_APNS_PRIVATE_KEY",
@@ -67,9 +64,6 @@ function Main {
             $stagingPushPublicKey = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY") -ErrorMessage "Missing PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY for staging Worker secret sync."
             $stagingPushPrivateKey = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_VAPID_PRIVATE_KEY") -ErrorMessage "Missing PUSH_STAGING_VAPID_PRIVATE_KEY for staging scheduler Worker secret sync."
             $stagingPushSubject = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_VAPID_SUBJECT") -ErrorMessage "Missing PUSH_STAGING_VAPID_SUBJECT for staging scheduler Worker secret sync."
-            $stagingAndroidFcmProjectId = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_ANDROID_FCM_PROJECT_ID") -ErrorMessage "Missing PUSH_STAGING_ANDROID_FCM_PROJECT_ID for staging scheduler Worker secret sync."
-            $stagingAndroidFcmClientEmail = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL") -ErrorMessage "Missing PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL for staging scheduler Worker secret sync."
-            $stagingAndroidFcmPrivateKey = Get-EnvValueOrThrow -Values $stagingEnvValues -Keys @("PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY") -ErrorMessage "Missing PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY for staging scheduler Worker secret sync."
             $stagingIosApnsTeamId = Get-EnvValue -Values $stagingEnvValues -Keys @("PUSH_STAGING_IOS_APNS_TEAM_ID")
             $stagingIosApnsKeyId = Get-EnvValue -Values $stagingEnvValues -Keys @("PUSH_STAGING_IOS_APNS_KEY_ID")
             $stagingIosApnsPrivateKey = Get-EnvValue -Values $stagingEnvValues -Keys @("PUSH_STAGING_IOS_APNS_PRIVATE_KEY")
@@ -90,9 +84,6 @@ function Main {
             Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_VAPID_PUBLIC_KEY" -Value $stagingPushPublicKey -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_VAPID_PRIVATE_KEY" -Value $stagingPushPrivateKey -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_VAPID_SUBJECT" -Value $stagingPushSubject -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_ANDROID_FCM_PROJECT_ID" -Value $stagingAndroidFcmProjectId -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_ANDROID_FCM_CLIENT_EMAIL" -Value $stagingAndroidFcmClientEmail -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_ANDROID_FCM_PRIVATE_KEY" -Value $stagingAndroidFcmPrivateKey -WhatIfOnly:$DryRun
             if (-not [string]::IsNullOrWhiteSpace($stagingIosApnsTeamId) -and -not [string]::IsNullOrWhiteSpace($stagingIosApnsKeyId) -and -not [string]::IsNullOrWhiteSpace($stagingIosApnsPrivateKey) -and -not [string]::IsNullOrWhiteSpace($stagingIosApnsBundleId)) {
                 Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_IOS_APNS_TEAM_ID" -Value $stagingIosApnsTeamId -WhatIfOnly:$DryRun
                 Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_IOS_APNS_KEY_ID" -Value $stagingIosApnsKeyId -WhatIfOnly:$DryRun
@@ -203,9 +194,6 @@ function Main {
             "PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY",
             "PUSH_STAGING_VAPID_PRIVATE_KEY",
             "PUSH_STAGING_VAPID_SUBJECT",
-            "PUSH_STAGING_ANDROID_FCM_PROJECT_ID",
-            "PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL",
-            "PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY",
             "PUSH_STAGING_ANDROID_GOOGLE_SERVICES_JSON_BASE64",
             "PUSH_STAGING_IOS_APNS_TEAM_ID",
             "PUSH_STAGING_IOS_APNS_KEY_ID",
