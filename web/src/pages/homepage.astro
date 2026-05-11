@@ -146,8 +146,6 @@ if (isLocked) {
   isSignedIn = true;
 }
 
-const showWebNotificationPanel = !isLikelyNativeShellRequest(Astro.request);
-
 const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
   status: 'published',
   limit: 12,
@@ -198,6 +196,7 @@ const rails = stories.slice(2);
 const socialTitle = SITE_DISPLAY_NAME;
 const socialDescription = 'Telling survivor truths. Protecting sources. Holding cults to account.';
 const socialImage = '/social/homepage-og.png';
+const showWebNotificationPanel = !isLikelyNativeShellRequest(Astro.request);
 ---
 
 <Layout

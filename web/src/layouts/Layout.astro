@@ -105,9 +105,31 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 			<slot />
 		</main>
 		<script>
+			import { Capacitor } from '@capacitor/core';
 			import { initializeNativeAuthBridge } from '../lib/native-auth-bridge';
 			import { initializeNativePushBridge } from '../lib/device-notifications';
 			import { initializePwa } from '../lib/pwa';
+
+			if (Capacitor.isNativePlatform()) {
+				console.info('[layout] native shell detected', {
+					platform: Capacitor.getPlatform(),
+					userAgent: navigator.userAgent,
+				});
+				document.documentElement.dataset.nativeShell = '1';
+				const removeWebPushCallout = () => {
+					const callout = document.querySelector('#push-notifications-callout');
+					if (callout) {
+						callout.remove();
+						console.info('[layout] removed push callout from native shell');
+					} else {
+						console.info('[layout] no push callout found in native shell');
+					}
+				};
+				// Remove immediately and after dynamic content settles.
+				removeWebPushCallout();
+				window.setTimeout(removeWebPushCallout, 0);
+				window.setTimeout(removeWebPushCallout, 250);
+			}
 
 			void initializeNativeAuthBridge();
 			void initializeNativePushBridge();
