@@ -16,6 +16,8 @@ import {
   FIGURATIVE_CULT_PHRASES_BY_LANGUAGE,
   FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE,
   GENERIC_CULT_TERMS_BY_LANGUAGE,
+  getCoerciveHarmTermsForLanguage,
+  getReligiousGroupTermsForLanguage,
   getStrictCultTermExtensionsForLanguage,
 } from './pipelineTerms.js';
 import { fetchTextWithCache } from './httpCache.js';
@@ -82,24 +84,6 @@ const SPECIFIC_CULT_TERMS_FALLBACK = ALL_CULT_TERMS.filter((term) => !ALL_GENERI
 const AMBIGUOUS_SPECIFIC_CULT_TERMS = new Set(['lahko']);
 const genericCultUrlPattern = ALL_GENERIC_CULT_TERMS.map((term) => escapeRegExp(term)).join('|');
 const GENERIC_CULT_URL_SIGNAL_PATTERN = new RegExp(`/(${genericCultUrlPattern})([/-]|$)`, 'i');
-const RELIGIOUS_GROUP_TERMS = [
-  'religious group',
-  'religious community',
-  'new religious movement',
-  'spiritual movement',
-  'sect member',
-  'sect members',
-];
-const COERCIVE_HARM_TERMS = [
-  'modern slavery',
-  'human trafficking',
-  'forced marriage',
-  'sexual abuse',
-  'sexual assault',
-  'rape',
-  'coercive control',
-];
-
 function getGenericCultTermsForLanguage(language?: string): string[] {
   const en = GENERIC_CULT_TERMS_BY_LANGUAGE.en ?? [];
   if (!language || language === 'en') return en;
@@ -215,8 +199,8 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
   );
   const hasOnlyAmbiguousSpecific = (titleSpecificSignal || bodySpecificSignal) && !hasNonAmbiguousSpecific;
   const hasLegalCultEquivalentSignal =
-    includesAnyPhrase(`${titleLower} ${bodyLeadLower}`, RELIGIOUS_GROUP_TERMS) &&
-    includesAnyPhrase(`${titleLower} ${bodyLeadLower}`, COERCIVE_HARM_TERMS);
+    includesAnyPhrase(`${titleLower} ${bodyLeadLower}`, getReligiousGroupTermsForLanguage(language)) &&
+    includesAnyPhrase(`${titleLower} ${bodyLeadLower}`, getCoerciveHarmTermsForLanguage(language));
 
   if (hasLegalCultEquivalentSignal) {
     return true;
@@ -711,7 +695,7 @@ export async function runPipeline(
   const language = detectLanguageFromHtml(html);
   const title = detectTitle(html, 'Untitled source story');
   const text = stripHtml(html);
-  const relevance = evaluateRelevance(`${title} ${text}`);
+  const relevance = evaluateRelevance(`${title} ${text}`, language);
   const leadRegionSignal = hasConfiguredRegionalSignalInText(`${title} ${text.slice(0, 2800)}`);
 
   const textPreview = previewPlainText(text, 420);

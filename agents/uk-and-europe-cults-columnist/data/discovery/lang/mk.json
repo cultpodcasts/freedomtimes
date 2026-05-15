@@ -8,13 +8,19 @@
       "cult",
       "cults",
       "sect",
-      "sects"
+      "sects",
+      "\"верска група\"",
+      "\"верски групи\"",
+      "\"верска заедница\""
     ],
     "mkHarmSignals": [
       "принудна контрола",
       "миење мозок",
       "духовна злоупотреба",
-      "верска злоупотреба"
+      "верска злоупотреба",
+      "ропство",
+      "\"модерно ропство\"",
+      "\"трговија со луѓе\""
     ],
     "mkJournalismSignals": [
       "вести",
@@ -81,6 +87,11 @@
       "Андора",
       "Ватикан",
       "Кипар"
+    ],
+    "mkReligiousGroupTerms": [
+      "\"верска група\"",
+      "\"верски групи\"",
+      "\"верска заедница\""
     ]
   },
   "strictCultTermExtensions": [
@@ -91,12 +102,25 @@
     "duhovna zloupotreba",
     "grupa so visoka kontrola",
     "grupa so visoki baranja",
-    "visokokontrolna grupa"
+    "visokokontrolna grupa",
+    "ропство",
+    "модерно ропство",
+    "трговија со луѓе"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekti",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "верска група",
+    "верски групи",
+    "верска заедница"
+  ],
+  "coerciveHarmTerms": [
+    "ропство",
+    "модерно ропство",
+    "трговија со луѓе"
   ]
 }

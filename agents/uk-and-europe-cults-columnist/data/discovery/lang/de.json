@@ -10,13 +10,19 @@
       "cults",
       "guru",
       "\"geistlicher missbrauch\"",
-      "\"psychische manipulation\""
+      "\"psychische manipulation\"",
+      "\"religiöse gruppe\"",
+      "\"religiöse gruppen\"",
+      "\"religiöse gemeinschaft\""
     ],
     "deHarmSignals": [
       "Zwangskontrolle",
       "Gehirnwäsche",
       "\"psychische Manipulation\"",
-      "\"geistlicher Missbrauch\""
+      "\"geistlicher Missbrauch\"",
+      "Sklaverei",
+      "\"moderne Sklaverei\"",
+      "Menschenhandel"
     ],
     "deJournalismSignals": [
       "Nachrichten",
@@ -123,6 +129,11 @@
       "Andorra",
       "Vatikan",
       "Vatican"
+    ],
+    "deReligiousGroupTerms": [
+      "\"religiöse gruppe\"",
+      "\"religiöse gruppen\"",
+      "\"religiöse gemeinschaft\""
     ]
   },
   "strictCultTermExtensions": [
@@ -134,7 +145,10 @@
     "hochkontrollierende Gruppe",
     "hoch kontrollierende Gruppe",
     "hochanfordernde Gruppe",
-    "hoch anfordernde Gruppe"
+    "hoch anfordernde Gruppe",
+    "Sklaverei",
+    "moderne Sklaverei",
+    "Menschenhandel"
   ],
   "groupStopwords": [
     "aber",
@@ -183,5 +197,15 @@
     "kulte",
     "sekte",
     "sekten"
+  ],
+  "religiousGroupTerms": [
+    "religiöse gruppe",
+    "religiöse gruppen",
+    "religiöse gemeinschaft"
+  ],
+  "coerciveHarmTerms": [
+    "Sklaverei",
+    "moderne Sklaverei",
+    "Menschenhandel"
   ]
 }

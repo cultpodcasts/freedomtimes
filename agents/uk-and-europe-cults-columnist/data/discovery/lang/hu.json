@@ -7,13 +7,19 @@
       "szekták",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"vallási csoport\"",
+      "\"vallási csoportok\"",
+      "\"vallási közösség\""
     ],
     "huHarmSignals": [
       "\"kényszerítő kontroll\"",
       "agymosás",
       "\"lelki visszaélés\"",
-      "\"vallási visszaélés\""
+      "\"vallási visszaélés\"",
+      "rabszolgaság",
+      "\"modern rabszolgaság\"",
+      "emberkereskedelem"
     ],
     "huJournalismSignals": [
       "hírek",
@@ -80,6 +86,11 @@
       "Andorra",
       "Vatikán",
       "Ciprus"
+    ],
+    "huReligiousGroupTerms": [
+      "\"vallási csoport\"",
+      "\"vallási csoportok\"",
+      "\"vallási közösség\""
     ]
   },
   "strictCultTermExtensions": [
@@ -91,8 +102,21 @@
     "nagy kontrollt gyakorló csoport",
     "magas követelményű csoport",
     "szigorúan ellenőrzött közösség",
-    "nagy elvárásokat támasztó közösség"
+    "nagy elvárásokat támasztó közösség",
+    "rabszolgaság",
+    "modern rabszolgaság",
+    "emberkereskedelem"
   ],
   "groupStopwords": [],
-  "genericCultTerms": []
+  "genericCultTerms": [],
+  "religiousGroupTerms": [
+    "vallási csoport",
+    "vallási csoportok",
+    "vallási közösség"
+  ],
+  "coerciveHarmTerms": [
+    "rabszolgaság",
+    "modern rabszolgaság",
+    "emberkereskedelem"
+  ]
 }

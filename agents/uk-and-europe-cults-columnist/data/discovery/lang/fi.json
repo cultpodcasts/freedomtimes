@@ -8,13 +8,19 @@
       "sect",
       "cult",
       "cults",
-      "\"hengellinen vaara\""
+      "\"hengellinen vaara\"",
+      "\"uskonnollinen ryhmä\"",
+      "\"uskonnolliset ryhmät\"",
+      "\"uskonnollinen yhteisö\""
     ],
     "fiHarmSignals": [
       "\"pakottava hallinta\"",
       "aivopesu",
       "\"hengellinen väkivalta\"",
-      "\"uskonnollinen väkivalta\""
+      "\"uskonnollinen väkivalta\"",
+      "orjuus",
+      "\"nykyaikainen orjuus\"",
+      "ihmiskauppa"
     ],
     "fiJournalismSignals": [
       "uutiset",
@@ -85,6 +91,11 @@
       "Andorra",
       "Vatikaani",
       "Kypros"
+    ],
+    "fiReligiousGroupTerms": [
+      "\"uskonnollinen ryhmä\"",
+      "\"uskonnolliset ryhmät\"",
+      "\"uskonnollinen yhteisö\""
     ]
   },
   "strictCultTermExtensions": [
@@ -95,12 +106,25 @@
     "hengellinen hyväksikäyttö",
     "korkean valvonnan ryhmä",
     "korkeat vaatimukset",
-    "tiukasti hallittu ryhmä"
+    "tiukasti hallittu ryhmä",
+    "orjuus",
+    "nykyaikainen orjuus",
+    "ihmiskauppa"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "lahko",
     "lahkot",
     "kultti"
+  ],
+  "religiousGroupTerms": [
+    "uskonnollinen ryhmä",
+    "uskonnolliset ryhmät",
+    "uskonnollinen yhteisö"
+  ],
+  "coerciveHarmTerms": [
+    "orjuus",
+    "nykyaikainen orjuus",
+    "ihmiskauppa"
   ]
 }

@@ -10,12 +10,18 @@
       "cults",
       "\"derive sectaire\"",
       "emprise",
-      "gourou"
+      "gourou",
+      "\"groupe religieux\"",
+      "\"groupes religieux\"",
+      "\"communauté religieuse\""
     ],
     "frHarmSignals": [
       "\"contrôle coercitif\"",
       "\"lavage de cerveau\"",
-      "\"abus spirituel\""
+      "\"abus spirituel\"",
+      "esclavage",
+      "\"esclavage moderne\"",
+      "\"traite des êtres humains\""
     ],
     "frJournalismSignals": [
       "actualités",
@@ -114,6 +120,11 @@
       "UK",
       "\"Royaume-Uni\"",
       "Angleterre"
+    ],
+    "frReligiousGroupTerms": [
+      "\"groupe religieux\"",
+      "\"groupes religieux\"",
+      "\"communauté religieuse\""
     ]
   },
   "strictCultTermExtensions": [
@@ -125,7 +136,10 @@
     "groupe à haut contrôle",
     "groupe à fort contrôle",
     "groupe à fortes exigences",
-    "groupe à hautes exigences"
+    "groupe à hautes exigences",
+    "esclavage",
+    "esclavage moderne",
+    "traite des êtres humains"
   ],
   "groupStopwords": [
     "alors",
@@ -171,5 +185,15 @@
     "secte",
     "sectes",
     "gourou"
+  ],
+  "religiousGroupTerms": [
+    "groupe religieux",
+    "groupes religieux",
+    "communauté religieuse"
+  ],
+  "coerciveHarmTerms": [
+    "esclavage",
+    "esclavage moderne",
+    "traite des êtres humains"
   ]
 }

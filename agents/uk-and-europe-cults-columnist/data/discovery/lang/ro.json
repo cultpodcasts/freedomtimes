@@ -8,13 +8,19 @@
       "cult",
       "cults",
       "\"control mental\"",
-      "\"control mintal\""
+      "\"control mintal\"",
+      "\"grup religios\"",
+      "\"grupuri religioase\"",
+      "\"comunitate religioasă\""
     ],
     "roHarmSignals": [
       "\"control coercitiv\"",
       "\"spălare pe creier\"",
       "\"abuz spiritual\"",
-      "\"abuz religios\""
+      "\"abuz religios\"",
+      "sclavie",
+      "\"sclavie modernă\"",
+      "\"trafic de persoane\""
     ],
     "roJournalismSignals": [
       "știri",
@@ -86,6 +92,11 @@
       "Andorra",
       "Vatican",
       "Cipru"
+    ],
+    "roReligiousGroupTerms": [
+      "\"grup religios\"",
+      "\"grupuri religioase\"",
+      "\"comunitate religioasă\""
     ]
   },
   "strictCultTermExtensions": [
@@ -96,12 +107,25 @@
     "abuz spiritual",
     "grup cu control ridicat",
     "grup cu cerințe ridicate",
-    "grup cu exigențe ridicate"
+    "grup cu exigențe ridicate",
+    "sclavie",
+    "sclavie modernă",
+    "trafic de persoane"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "secta",
     "secte",
     "cult"
+  ],
+  "religiousGroupTerms": [
+    "grup religios",
+    "grupuri religioase",
+    "comunitate religioasă"
+  ],
+  "coerciveHarmTerms": [
+    "sclavie",
+    "sclavie modernă",
+    "trafic de persoane"
   ]
 }

@@ -9,12 +9,25 @@
     "abbuż spiritwali",
     "grupp b'kontroll għoli",
     "grupp b'talbiet għoljin",
-    "grupp b'ħtieġiet għoljin"
+    "grupp b'ħtieġiet għoljin",
+    "skjavitù",
+    "skjavitù moderna",
+    "traffikar tal-bnedmin"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "setta",
     "sette",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "grupp reliġjuż",
+    "gruppi reliġjużi",
+    "komunità reliġjuża"
+  ],
+  "coerciveHarmTerms": [
+    "skjavitù",
+    "skjavitù moderna",
+    "traffikar tal-bnedmin"
   ]
 }

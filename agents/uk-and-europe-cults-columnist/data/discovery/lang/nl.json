@@ -8,13 +8,19 @@
       "sect",
       "cult",
       "cults",
-      "\"geestelijke manipulatie\""
+      "\"geestelijke manipulatie\"",
+      "\"religieuze groep\"",
+      "\"religieuze groepen\"",
+      "\"religieuze gemeenschap\""
     ],
     "nlHarmSignals": [
       "\"dwangmatige controle\"",
       "hersenspoeling",
       "\"geestelijk misbruik\"",
-      "\"religieus misbruik\""
+      "\"religieus misbruik\"",
+      "slavernij",
+      "\"moderne slavernij\"",
+      "mensenhandel"
     ],
     "nlJournalismSignals": [
       "nieuws",
@@ -86,6 +92,11 @@
       "Andorra",
       "Vaticaan",
       "Cyprus"
+    ],
+    "nlReligiousGroupTerms": [
+      "\"religieuze groep\"",
+      "\"religieuze groepen\"",
+      "\"religieuze gemeenschap\""
     ]
   },
   "strictCultTermExtensions": [
@@ -96,7 +107,10 @@
     "spiritueel misbruik",
     "groep met hoge controle",
     "groep met hoge eisen",
-    "groep met strenge eisen"
+    "groep met strenge eisen",
+    "slavernij",
+    "moderne slavernij",
+    "mensenhandel"
   ],
   "groupStopwords": [
     "aan",
@@ -145,5 +159,15 @@
     "kult",
     "sekte",
     "sekten"
+  ],
+  "religiousGroupTerms": [
+    "religieuze groep",
+    "religieuze groepen",
+    "religieuze gemeenschap"
+  ],
+  "coerciveHarmTerms": [
+    "slavernij",
+    "moderne slavernij",
+    "mensenhandel"
   ]
 }

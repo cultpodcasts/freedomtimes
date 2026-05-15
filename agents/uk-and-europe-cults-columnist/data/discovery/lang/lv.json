@@ -7,13 +7,19 @@
       "kults",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"reliģiska grupa\"",
+      "\"reliģiskas grupas\"",
+      "\"reliģiska kopiena\""
     ],
     "lvHarmSignals": [
       "piespiedu kontrole",
       "smadzeņu skalošana",
       "garīga vardarbība",
-      "garīga izmantošana"
+      "garīga izmantošana",
+      "verdzība",
+      "\"mūsdienu verdzība\"",
+      "\"cilvēku tirdzniecība\""
     ],
     "lvJournalismSignals": [
       "ziņas",
@@ -80,6 +86,11 @@
       "Andora",
       "Vatikāns",
       "Kipra"
+    ],
+    "lvReligiousGroupTerms": [
+      "\"reliģiska grupa\"",
+      "\"reliģiskas grupas\"",
+      "\"reliģiska kopiena\""
     ]
   },
   "strictCultTermExtensions": [
@@ -90,12 +101,25 @@
     "garīga vardarbība",
     "grupa ar augstu kontroli",
     "grupa ar augstām prasībām",
-    "augstas kontroles grupa"
+    "augstas kontroles grupa",
+    "verdzība",
+    "mūsdienu verdzība",
+    "cilvēku tirdzniecība"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sektas",
     "kults"
+  ],
+  "religiousGroupTerms": [
+    "reliģiska grupa",
+    "reliģiskas grupas",
+    "reliģiska kopiena"
+  ],
+  "coerciveHarmTerms": [
+    "verdzība",
+    "mūsdienu verdzība",
+    "cilvēku tirdzniecība"
   ]
 }

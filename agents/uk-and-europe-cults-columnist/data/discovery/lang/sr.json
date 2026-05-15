@@ -7,13 +7,21 @@
       "kult",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"верска група\"",
+      "\"верске групе\"",
+      "\"верска заједница\"",
+      "\"vjerska grupa\""
     ],
     "srHarmSignals": [
       "prinudna kontrola",
       "pranje mozga",
       "duhovno zlostavljanje",
-      "versko zlostavljanje"
+      "versko zlostavljanje",
+      "ропство",
+      "\"модерно ропство\"",
+      "\"трговина људима\"",
+      "ropstvo"
     ],
     "srJournalismSignals": [
       "vesti",
@@ -80,6 +88,12 @@
       "Andora",
       "Vatikan",
       "Kipar"
+    ],
+    "srReligiousGroupTerms": [
+      "\"верска група\"",
+      "\"верске групе\"",
+      "\"верска заједница\"",
+      "\"vjerska grupa\""
     ]
   },
   "strictCultTermExtensions": [
@@ -90,12 +104,28 @@
     "duhovno zlostavljanje",
     "grupa s visokom kontrolom",
     "grupa s visokim zahtevima",
-    "visokokontrolna grupa"
+    "visokokontrolna grupa",
+    "ропство",
+    "модерно ропство",
+    "трговина људима",
+    "ropstvo"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekte",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "верска група",
+    "верске групе",
+    "верска заједница",
+    "vjerska grupa"
+  ],
+  "coerciveHarmTerms": [
+    "ропство",
+    "модерно ропство",
+    "трговина људима",
+    "ropstvo"
   ]
 }

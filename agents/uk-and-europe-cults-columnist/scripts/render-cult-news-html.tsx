@@ -34,8 +34,40 @@ type StoryGroup = {
 
 type DraftStory = ReturnType<typeof extractDraftsFromLog>[number];
 
+const RENDER_MAX_AGE_HOURS = (() => {
+  const raw = process.env.CULT_NEWS_RENDER_MAX_AGE_HOURS?.trim() || process.env.DISCOVERY_MAX_AGE_HOURS?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error('CULT_NEWS_RENDER_MAX_AGE_HOURS or DISCOVERY_MAX_AGE_HOURS must be a positive integer');
+  }
+
+  return parsed;
+})();
+
 function normalizeHost(host: string): string {
   return host.replace(/^www\./i, '').toLowerCase();
+}
+
+function isWithinRenderFreshnessWindow(publishedAt: string | undefined): boolean {
+  if (RENDER_MAX_AGE_HOURS === undefined || !publishedAt) {
+    return true;
+  }
+
+  const publishedAtEpochMs = Date.parse(publishedAt);
+  if (!Number.isFinite(publishedAtEpochMs)) {
+    return false;
+  }
+
+  const ageMs = Date.now() - publishedAtEpochMs;
+  if (ageMs < 0) {
+    return true;
+  }
+
+  return ageMs <= RENDER_MAX_AGE_HOURS * 60 * 60 * 1000;
 }
 
 function canonicalizeStoryUrl(rawUrl: string): string {
@@ -960,7 +992,19 @@ async function main(): Promise<void> {
     });
   }
 
-  const figurativeFilteredStories = fetchedStories.filter((story) => {
+  const freshnessFilteredStories = fetchedStories.filter((story) => {
+    if (isWithinRenderFreshnessWindow(story.publishedAt)) {
+      return true;
+    }
+
+    excluded.push({
+      url: story.url,
+      reason: `Publication time ${formatPublishedAt(story.publishedAt)} is older than ${RENDER_MAX_AGE_HOURS} hours.`,
+    });
+    return false;
+  });
+
+  const figurativeFilteredStories = freshnessFilteredStories.filter((story) => {
     const reason = getFigurativeCultExclusionReason(story);
     if (!reason) {
       return true;

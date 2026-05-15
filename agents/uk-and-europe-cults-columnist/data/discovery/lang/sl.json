@@ -7,13 +7,19 @@
       "kult",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"verska skupina\"",
+      "\"verske skupine\"",
+      "\"verska skupnost\""
     ],
     "slHarmSignals": [
       "prisilni nadzor",
       "pranje možganov",
       "duhovno zlorabljanje",
-      "versko zlorabljanje"
+      "versko zlorabljanje",
+      "suženjstvo",
+      "\"moderno suženjstvo\"",
+      "\"trgovina z ljudmi\""
     ],
     "slJournalismSignals": [
       "novice",
@@ -80,6 +86,11 @@
       "Andora",
       "Vatikan",
       "Ciper"
+    ],
+    "slReligiousGroupTerms": [
+      "\"verska skupina\"",
+      "\"verske skupine\"",
+      "\"verska skupnost\""
     ]
   },
   "strictCultTermExtensions": [
@@ -90,12 +101,25 @@
     "duhovna zloraba",
     "skupina z visoko stopnjo nadzora",
     "skupina z visokimi zahtevami",
-    "visokonadzorna skupina"
+    "visokonadzorna skupina",
+    "suženjstvo",
+    "moderno suženjstvo",
+    "trgovina z ljudmi"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekte",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "verska skupina",
+    "verske skupine",
+    "verska skupnost"
+  ],
+  "coerciveHarmTerms": [
+    "suženjstvo",
+    "moderno suženjstvo",
+    "trgovina z ljudmi"
   ]
 }

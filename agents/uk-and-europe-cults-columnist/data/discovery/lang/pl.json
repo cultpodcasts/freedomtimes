@@ -8,13 +8,19 @@
       "sect",
       "cult",
       "cults",
-      "\"kontrola umyslu\""
+      "\"kontrola umyslu\"",
+      "\"grupa religijna\"",
+      "\"grupy religijne\"",
+      "\"wspólnota religijna\""
     ],
     "plHarmSignals": [
       "\"przymusowa kontrola\"",
       "\"pranie mózgu\"",
       "\"wykorzystywanie duchowe\"",
-      "\"nadużycie religijne\""
+      "\"nadużycie religijne\"",
+      "niewolnictwo",
+      "\"współczesne niewolnictwo\"",
+      "\"handel ludźmi\""
     ],
     "plJournalismSignals": [
       "wiadomości",
@@ -86,6 +92,11 @@
       "Andora",
       "Watykan",
       "Cypr"
+    ],
+    "plReligiousGroupTerms": [
+      "\"grupa religijna\"",
+      "\"grupy religijne\"",
+      "\"wspólnota religijna\""
     ]
   },
   "strictCultTermExtensions": [
@@ -96,12 +107,25 @@
     "nadużycie duchowe",
     "grupa o wysokim poziomie kontroli",
     "grupa o wysokich wymaganiach",
-    "wysokokontrolna grupa"
+    "wysokokontrolna grupa",
+    "niewolnictwo",
+    "współczesne niewolnictwo",
+    "handel ludźmi"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekty",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "grupa religijna",
+    "grupy religijne",
+    "wspólnota religijna"
+  ],
+  "coerciveHarmTerms": [
+    "niewolnictwo",
+    "współczesne niewolnictwo",
+    "handel ludźmi"
   ]
 }

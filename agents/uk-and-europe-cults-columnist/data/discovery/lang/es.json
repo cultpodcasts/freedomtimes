@@ -9,14 +9,20 @@
       "cult",
       "cults",
       "\"abuso espiritual\"",
-      "\"control coercitivo\""
+      "\"control coercitivo\"",
+      "\"grupo religioso\"",
+      "\"grupos religiosos\"",
+      "\"comunidad religiosa\""
     ],
     "esHarmSignals": [
       "\"control coercitivo\"",
       "\"lavado de cerebro\"",
       "\"abuso espiritual\"",
       "\"abuso religioso\"",
-      "\"grupo de alto control\""
+      "\"grupo de alto control\"",
+      "esclavitud",
+      "\"esclavitud moderna\"",
+      "\"trata de personas\""
     ],
     "esJournalismSignals": [
       "noticias",
@@ -90,6 +96,11 @@
       "Vaticano",
       "Chipre",
       "Cyprus"
+    ],
+    "esReligiousGroupTerms": [
+      "\"grupo religioso\"",
+      "\"grupos religiosos\"",
+      "\"comunidad religiosa\""
     ]
   },
   "strictCultTermExtensions": [
@@ -100,7 +111,10 @@
     "abuso espiritual",
     "grupo de alto control",
     "grupo de altas exigencias",
-    "grupo de alta exigencia"
+    "grupo de alta exigencia",
+    "esclavitud",
+    "esclavitud moderna",
+    "trata de personas"
   ],
   "groupStopwords": [
     "además",
@@ -144,5 +158,15 @@
   "genericCultTerms": [
     "secta",
     "sectas"
+  ],
+  "religiousGroupTerms": [
+    "grupo religioso",
+    "grupos religiosos",
+    "comunidad religiosa"
+  ],
+  "coerciveHarmTerms": [
+    "esclavitud",
+    "esclavitud moderna",
+    "trata de personas"
   ]
 }

@@ -504,5 +504,13 @@ export const NEWSDATA_COUNTRY_CODES = MERGED_DISCOVERY_CONFIG.newsdataCountryCod
 export const NEWSDATA_LANGUAGES = MERGED_DISCOVERY_CONFIG.newsdataLanguages;
 export const NEWSDATA_QUERIES = MERGED_DISCOVERY_CONFIG.newsdataQueries;
 export const REGION_TERMS = MERGED_DISCOVERY_CONFIG.regionTerms;
+export const UK_REGION_TERMS = uniqueOrdered([
+  ...(MERGED_DISCOVERY_CONFIG.googleNewsQueryGroups.ukGeo ?? []),
+  ...(MERGED_DISCOVERY_CONFIG.googleNewsQueryGroups.ukGeoTight ?? []),
+]);
+export const EUROPE_REGION_TERMS = uniqueOrdered([
+  ...MERGED_DISCOVERY_CONFIG.regionTerms,
+  ...(MERGED_DISCOVERY_CONFIG.googleNewsQueryGroups.europeGeo ?? []),
+]);
 export const REGIONAL_HOST_SUFFIXES = MERGED_DISCOVERY_CONFIG.regionalHostSuffixes;
 export const FOCUS_SIGNAL_TERMS = MERGED_DISCOVERY_CONFIG.focusSignalTerms;

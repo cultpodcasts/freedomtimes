@@ -9,13 +9,19 @@
       "cult",
       "cults",
       "\"grupo coercivo\"",
-      "\"abuso espiritual\""
+      "\"abuso espiritual\"",
+      "\"grupo religioso\"",
+      "\"grupos religiosos\"",
+      "\"comunidade religiosa\""
     ],
     "ptHarmSignals": [
       "\"controlo coercivo\"",
       "\"lavagem cerebral\"",
       "\"abuso espiritual\"",
-      "\"abuso religioso\""
+      "\"abuso religioso\"",
+      "escravidão",
+      "\"escravidão moderna\"",
+      "\"tráfico de pessoas\""
     ],
     "ptJournalismSignals": [
       "notícias",
@@ -87,6 +93,11 @@
       "Andorra",
       "Vaticano",
       "Chipre"
+    ],
+    "ptReligiousGroupTerms": [
+      "\"grupo religioso\"",
+      "\"grupos religiosos\"",
+      "\"comunidade religiosa\""
     ]
   },
   "strictCultTermExtensions": [
@@ -97,11 +108,24 @@
     "abuso espiritual",
     "grupo de alto controle",
     "grupo de altas exigências",
-    "grupo de alta exigência"
+    "grupo de alta exigência",
+    "escravidão",
+    "escravidão moderna",
+    "tráfico de pessoas"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "seita",
     "seitas"
+  ],
+  "religiousGroupTerms": [
+    "grupo religioso",
+    "grupos religiosos",
+    "comunidade religiosa"
+  ],
+  "coerciveHarmTerms": [
+    "escravidão",
+    "escravidão moderna",
+    "tráfico de pessoas"
   ]
 }

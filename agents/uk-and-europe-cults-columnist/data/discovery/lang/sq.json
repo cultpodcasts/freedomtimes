@@ -7,13 +7,19 @@
       "kult",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"grup fetar\"",
+      "\"grupe fetare\"",
+      "\"komunitet fetar\""
     ],
     "sqHarmSignals": [
       "kontroll detyrues",
       "larje e trurit",
       "abuzim shpirtëror",
-      "abuzim fetar"
+      "abuzim fetar",
+      "skllavëri",
+      "\"skllavëri moderne\"",
+      "\"trafikim njerëzor\""
     ],
     "sqJournalismSignals": [
       "lajme",
@@ -80,6 +86,11 @@
       "Andorra",
       "Vatikani",
       "Qipro"
+    ],
+    "sqReligiousGroupTerms": [
+      "\"grup fetar\"",
+      "\"grupe fetare\"",
+      "\"komunitet fetar\""
     ]
   },
   "strictCultTermExtensions": [
@@ -90,12 +101,25 @@
     "abuzimi shpirtëror",
     "grup me kontroll të lartë",
     "grup me kërkesa të larta",
-    "grup me kontroll të fortë"
+    "grup me kontroll të fortë",
+    "skllavëri",
+    "skllavëri moderne",
+    "trafikim njerëzor"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekt",
     "sekte",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "grup fetar",
+    "grupe fetare",
+    "komunitet fetar"
+  ],
+  "coerciveHarmTerms": [
+    "skllavëri",
+    "skllavëri moderne",
+    "trafikim njerëzor"
   ]
 }

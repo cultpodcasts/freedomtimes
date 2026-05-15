@@ -7,13 +7,19 @@
       "sect",
       "sects",
       "cult",
-      "cults"
+      "cults",
+      "\"religiøs gruppe\"",
+      "\"religiøse grupper\"",
+      "\"religiøst samfunn\""
     ],
     "noHarmSignals": [
       "tvangskontroll",
       "hjernevasking",
       "åndelig misbruk",
-      "religiøst misbruk"
+      "religiøst misbruk",
+      "slaveri",
+      "\"moderne slaveri\"",
+      "menneskehandel"
     ],
     "noJournalismSignals": [
       "nyheter",
@@ -81,6 +87,11 @@
       "Andorra",
       "Vatikanet",
       "Kypros"
+    ],
+    "noReligiousGroupTerms": [
+      "\"religiøs gruppe\"",
+      "\"religiøse grupper\"",
+      "\"religiøst samfunn\""
     ]
   },
   "strictCultTermExtensions": [
@@ -91,12 +102,25 @@
     "spirituelt misbruk",
     "gruppe med høy kontroll",
     "gruppe med høye krav",
-    "høykontrollerende gruppe"
+    "høykontrollerende gruppe",
+    "slaveri",
+    "moderne slaveri",
+    "menneskehandel"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekt",
     "sekter",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "religiøs gruppe",
+    "religiøse grupper",
+    "religiøst samfunn"
+  ],
+  "coerciveHarmTerms": [
+    "slaveri",
+    "moderne slaveri",
+    "menneskehandel"
   ]
 }

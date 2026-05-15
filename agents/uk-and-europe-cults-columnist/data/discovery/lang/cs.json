@@ -7,13 +7,19 @@
       "sekty",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"náboženská skupina\"",
+      "\"náboženské skupiny\"",
+      "\"náboženská komunita\""
     ],
     "csHarmSignals": [
       "donucovací kontrola",
       "mýcení mozku",
       "duchovní zneužívání",
-      "náboženské zneužívání"
+      "náboženské zneužívání",
+      "otroctví",
+      "\"moderní otroctví\"",
+      "\"obchodování s lidmi\""
     ],
     "csJournalismSignals": [
       "zprávy",
@@ -81,6 +87,11 @@
       "Andorra",
       "Vatikán",
       "Kypr"
+    ],
+    "csReligiousGroupTerms": [
+      "\"náboženská skupina\"",
+      "\"náboženské skupiny\"",
+      "\"náboženská komunita\""
     ]
   },
   "strictCultTermExtensions": [
@@ -91,12 +102,25 @@
     "duchovní zneužívání",
     "skupina s vysokou mírou kontroly",
     "skupina s vysokými nároky",
-    "vysoce kontrolující skupina"
+    "vysoce kontrolující skupina",
+    "otroctví",
+    "moderní otroctví",
+    "obchodování s lidmi"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekty",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "náboženská skupina",
+    "náboženské skupiny",
+    "náboženská komunita"
+  ],
+  "coerciveHarmTerms": [
+    "otroctví",
+    "moderní otroctví",
+    "obchodování s lidmi"
   ]
 }

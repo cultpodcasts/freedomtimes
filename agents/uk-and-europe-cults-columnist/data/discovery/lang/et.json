@@ -7,13 +7,19 @@
       "kult",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"usurühmitus\"",
+      "\"religioosne rühmitus\"",
+      "\"usuline kogukond\""
     ],
     "etHarmSignals": [
       "sunnevaldne kontroll",
       "ajupesu",
       "vaimne väärkohtlemine",
-      "usuline väärkohtlemine"
+      "usuline väärkohtlemine",
+      "orjus",
+      "\"kaasaegne orjus\"",
+      "inimkaubandus"
     ],
     "etJournalismSignals": [
       "uudised",
@@ -80,6 +86,11 @@
       "Andorra",
       "Vatikan",
       "Küpros"
+    ],
+    "etReligiousGroupTerms": [
+      "usurühmitus",
+      "\"religioosne rühmitus\"",
+      "\"usuline kogukond\""
     ]
   },
   "strictCultTermExtensions": [
@@ -90,12 +101,25 @@
     "vaimne väärkohtlemine",
     "kõrge kontrolliga grupp",
     "kõrgete nõuetega grupp",
-    "kõrgenõudlik grupp"
+    "kõrgenõudlik grupp",
+    "orjus",
+    "kaasaegne orjus",
+    "inimkaubandus"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekt",
     "sektid",
     "kultus"
+  ],
+  "religiousGroupTerms": [
+    "usurühmitus",
+    "religioosne rühmitus",
+    "usuline kogukond"
+  ],
+  "coerciveHarmTerms": [
+    "orjus",
+    "kaasaegne orjus",
+    "inimkaubandus"
   ]
 }

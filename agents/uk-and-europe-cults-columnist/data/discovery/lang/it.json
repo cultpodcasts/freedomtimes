@@ -9,13 +9,19 @@
       "cult",
       "cults",
       "\"abuso spirituale\"",
-      "\"manipolazione mentale\""
+      "\"manipolazione mentale\"",
+      "\"gruppo religioso\"",
+      "\"gruppi religiosi\"",
+      "\"comunità religiosa\""
     ],
     "itHarmSignals": [
       "\"controllo coercitivo\"",
       "\"lavaggio del cervello\"",
       "\"abuso spirituale\"",
-      "\"alto controllo\""
+      "\"alto controllo\"",
+      "schiavitù",
+      "\"schiavitù moderna\"",
+      "\"tratta di esseri umani\""
     ],
     "itJournalismSignals": [
       "notizie",
@@ -112,6 +118,11 @@
       "Vatican",
       "Cipro",
       "Cyprus"
+    ],
+    "itReligiousGroupTerms": [
+      "\"gruppo religioso\"",
+      "\"gruppi religiosi\"",
+      "\"comunità religiosa\""
     ]
   },
   "strictCultTermExtensions": [
@@ -122,7 +133,10 @@
     "abuso spirituale",
     "gruppo ad alto controllo",
     "gruppo ad alta richiesta",
-    "gruppo ad alte richieste"
+    "gruppo ad alte richieste",
+    "schiavitù",
+    "schiavitù moderna",
+    "tratta di esseri umani"
   ],
   "groupStopwords": [
     "anche",
@@ -166,5 +180,15 @@
   "genericCultTerms": [
     "setta",
     "sette"
+  ],
+  "religiousGroupTerms": [
+    "gruppo religioso",
+    "gruppi religiosi",
+    "comunità religiosa"
+  ],
+  "coerciveHarmTerms": [
+    "schiavitù",
+    "schiavitù moderna",
+    "tratta di esseri umani"
   ]
 }

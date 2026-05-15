@@ -7,13 +7,19 @@
       "sect",
       "sects",
       "cult",
-      "cults"
+      "cults",
+      "\"religiös grupp\"",
+      "\"religiösa grupper\"",
+      "\"religiöst samfund\""
     ],
     "svHarmSignals": [
       "tvångskontroll",
       "hjärntvätt",
       "andligt missbruk",
-      "religiöst missbruk"
+      "religiöst missbruk",
+      "slaveri",
+      "\"modernt slaveri\"",
+      "människohandel"
     ],
     "svJournalismSignals": [
       "nyheter",
@@ -81,6 +87,11 @@
       "Andorra",
       "Vatikanen",
       "Cypern"
+    ],
+    "svReligiousGroupTerms": [
+      "\"religiös grupp\"",
+      "\"religiösa grupper\"",
+      "\"religiöst samfund\""
     ]
   },
   "strictCultTermExtensions": [
@@ -91,12 +102,25 @@
     "andligt missbruk",
     "grupp med hög kontroll",
     "grupp med höga krav",
-    "hög kontrollgrupp"
+    "hög kontrollgrupp",
+    "slaveri",
+    "modernt slaveri",
+    "människohandel"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekt",
     "sekter",
     "kult"
+  ],
+  "religiousGroupTerms": [
+    "religiös grupp",
+    "religiösa grupper",
+    "religiöst samfund"
+  ],
+  "coerciveHarmTerms": [
+    "slaveri",
+    "modernt slaveri",
+    "människohandel"
   ]
 }

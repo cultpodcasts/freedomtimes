@@ -8,7 +8,10 @@
       "\"high control group\"",
       "\"high control groups\"",
       "\"religious abuse\"",
-      "\"spiritual abuse\""
+      "\"spiritual abuse\"",
+      "slavery",
+      "\"modern slavery\"",
+      "\"human trafficking\""
     ],
     "enJournalismSignals": [
       "news",
@@ -42,7 +45,10 @@
       "\"high control group\"",
       "\"high control groups\"",
       "\"religious abuse\"",
-      "\"spiritual abuse\""
+      "\"spiritual abuse\"",
+      "\"religious group\"",
+      "\"religious groups\"",
+      "\"religious community\""
     ],
     "enEuropeCountryOr": [
       "Europe",
@@ -91,6 +97,15 @@
       "Andorra",
       "Vatican",
       "Cyprus"
+    ],
+    "enReligiousGroupTerms": [
+      "\"religious group\"",
+      "\"religious groups\"",
+      "\"religious community\"",
+      "\"new religious movement\"",
+      "\"spiritual movement\"",
+      "\"sect member\"",
+      "\"sect members\""
     ]
   },
   "strictCultTermExtensions": [
@@ -102,7 +117,10 @@
     "high-control group",
     "high control group",
     "high-demand group",
-    "high demand group"
+    "high demand group",
+    "slavery",
+    "modern slavery",
+    "human trafficking"
   ],
   "groupStopwords": [
     "about",
@@ -156,5 +174,24 @@
     "cults",
     "sect",
     "sects"
+  ],
+  "religiousGroupTerms": [
+    "religious group",
+    "religious groups",
+    "religious community",
+    "new religious movement",
+    "spiritual movement",
+    "sect member",
+    "sect members"
+  ],
+  "coerciveHarmTerms": [
+    "slavery",
+    "modern slavery",
+    "human trafficking",
+    "forced marriage",
+    "sexual abuse",
+    "sexual assault",
+    "rape",
+    "coercive control"
   ]
 }

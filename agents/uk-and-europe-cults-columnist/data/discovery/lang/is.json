@@ -6,13 +6,19 @@
       "sect",
       "sects",
       "cult",
-      "cults"
+      "cults",
+      "\"trúarhópur\"",
+      "\"trúarhópar\"",
+      "\"trúarsamfélag\""
     ],
     "isHarmSignals": [
       "þvingandi stjórn",
       "heilaþvottur",
       "andleg misnotkun",
-      "trúarleg misnotkun"
+      "trúarleg misnotkun",
+      "þrælahald",
+      "\"nútíma þrælahald\"",
+      "mansal"
     ],
     "isJournalismSignals": [
       "fréttir",
@@ -79,6 +85,11 @@
       "Andorra",
       "Vatíkanið",
       "Kýpur"
+    ],
+    "isReligiousGroupTerms": [
+      "trúarhópur",
+      "trúarhópar",
+      "trúarsamfélag"
     ]
   },
   "strictCultTermExtensions": [
@@ -90,8 +101,21 @@
     "hópur með mikla stjórn",
     "hópur með háar kröfur",
     "há-stjórnunarhópur",
-    "hópur með miklar kröfur"
+    "hópur með miklar kröfur",
+    "þrælahald",
+    "nútíma þrælahald",
+    "mansal"
   ],
   "groupStopwords": [],
-  "genericCultTerms": []
+  "genericCultTerms": [],
+  "religiousGroupTerms": [
+    "trúarhópur",
+    "trúarhópar",
+    "trúarsamfélag"
+  ],
+  "coerciveHarmTerms": [
+    "þrælahald",
+    "nútíma þrælahald",
+    "mansal"
+  ]
 }

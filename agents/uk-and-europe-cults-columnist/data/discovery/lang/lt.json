@@ -7,13 +7,19 @@
       "kultas",
       "sect",
       "cult",
-      "cults"
+      "cults",
+      "\"religinė grupė\"",
+      "\"religinės grupės\"",
+      "\"religinė bendruomenė\""
     ],
     "ltHarmSignals": [
       "prievartinė kontrolė",
       "smegenų plovimas",
       "dvasinis smurtas",
-      "religinis smurtas"
+      "religinis smurtas",
+      "vergija",
+      "\"šiuolaikinė vergija\"",
+      "\"prekyba žmonėmis\""
     ],
     "ltJournalismSignals": [
       "naujienos",
@@ -80,6 +86,11 @@
       "Andora",
       "Vatikanas",
       "Kipras"
+    ],
+    "ltReligiousGroupTerms": [
+      "\"religinė grupė\"",
+      "\"religinės grupės\"",
+      "\"religinė bendruomenė\""
     ]
   },
   "strictCultTermExtensions": [
@@ -90,12 +101,25 @@
     "dvasinis smurtas",
     "grupė su dideliu kontroliavimu",
     "grupė su dideliais reikalavimais",
-    "aukštos kontrolės grupė"
+    "aukštos kontrolės grupė",
+    "vergija",
+    "šiuolaikinė vergija",
+    "prekyba žmonėmis"
   ],
   "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sektos",
     "kultas"
+  ],
+  "religiousGroupTerms": [
+    "religinė grupė",
+    "religinės grupės",
+    "religinė bendruomenė"
+  ],
+  "coerciveHarmTerms": [
+    "vergija",
+    "šiuolaikinė vergija",
+    "prekyba žmonėmis"
   ]
 }
