@@ -229,6 +229,15 @@ function normalizeHost(host: string): string {
   return host.toLowerCase().replace(/^www\./, '');
 }
 
+function isGoogleNewsWrapperUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return normalizeHost(parsed.hostname) === 'news.google.com' && parsed.pathname.startsWith('/rss/articles/');
+  } catch {
+    return false;
+  }
+}
+
 function loadResolverHostConfigs(): Map<string, ResolverKey> {
   try {
     const feedsUrl = new URL('../feeds.json', import.meta.url);
@@ -598,6 +607,28 @@ export async function runPipeline(
   options: RunPipelineOptions = {},
   archiveFallbackHosts: Set<string> = new Set(),
 ): Promise<PipelineResult> {
+  if (isGoogleNewsWrapperUrl(url)) {
+    const now = new Date().toISOString();
+    return {
+      status: 'rejected',
+      source: {
+        url,
+        publisher: 'Google News',
+        host: 'news.google.com',
+        retrievedAt: now,
+        reliabilityScore: 0,
+        reliabilityReasons: ['Unresolved Google News RSS wrapper URL'],
+      },
+      relevance: {
+        accepted: false,
+        region: 'Unknown',
+        confidence: 0,
+        reasons: ['Article URL could not be resolved from Google News wrapper'],
+      },
+      reason: 'Unresolved Google News wrapper URL',
+    };
+  }
+
   let effectiveUrl = url;
   let response = await fetchTextWithCache(effectiveUrl);
 

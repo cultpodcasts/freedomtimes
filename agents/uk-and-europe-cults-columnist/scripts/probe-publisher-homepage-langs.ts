@@ -346,7 +346,18 @@ function loadWatchlistHosts(): string[] {
   if (!Array.isArray(list)) {
     throw new Error('watchlist-sites.json must be a JSON array');
   }
-  return list.filter((x): x is string => typeof x === 'string').map(normalizeHost);
+  const regionalUrl = new URL('../data/regional-publisher-sites.json', import.meta.url);
+  const regionalRaw = readFileSync(regionalUrl, 'utf-8');
+  const regionalList = JSON.parse(regionalRaw) as unknown;
+  if (!Array.isArray(regionalList)) {
+    throw new Error('data/regional-publisher-sites.json must be a JSON array');
+  }
+  return Array.from(
+    new Set([
+      ...list.filter((x): x is string => typeof x === 'string').map(normalizeHost),
+      ...regionalList.filter((x): x is string => typeof x === 'string').map(normalizeHost),
+    ]),
+  );
 }
 
 function loadConfiguredHostsFromConfig(): Set<string> {

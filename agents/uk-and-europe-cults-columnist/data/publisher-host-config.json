@@ -36,6 +36,13 @@
       "homepageLang": "es",
       "localeSource": "probe"
     },
+    "abendblatt.de": {
+      "googleNewsLocaleIds": [
+        "DE-de"
+      ],
+      "homepageLang": "de-DE",
+      "localeSource": "regional-seed"
+    },
     "ad.nl": {
       "googleNewsLocaleIds": [
         "NL-nl"
@@ -99,12 +106,26 @@
       "homepageLang": "en-GB",
       "localeSource": "manual"
     },
+    "berliner-zeitung.de": {
+      "googleNewsLocaleIds": [
+        "DE-de"
+      ],
+      "homepageLang": "de-DE",
+      "localeSource": "regional-seed"
+    },
     "berlingske.dk": {
       "googleNewsLocaleIds": [
         "DK-da"
       ],
       "homepageLang": "da-DK",
       "localeSource": "probe"
+    },
+    "birminghammail.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "blick.ch": {
       "googleNewsLocaleIds": [
@@ -120,12 +141,26 @@
       "homepageLang": "bg",
       "localeSource": "probe"
     },
+    "bristolpost.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
+    },
     "bta.bg": {
       "googleNewsLocaleIds": [
         "BG-bg"
       ],
       "homepageLang": "bg",
       "localeSource": "probe"
+    },
+    "chroniclelive.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "corriere.it": {
       "googleNewsLocaleIds": [
@@ -217,6 +252,13 @@
       ],
       "homepageLang": "de",
       "localeSource": "manual"
+    },
+    "diariodesevilla.es": {
+      "googleNewsLocaleIds": [
+        "ES-es"
+      ],
+      "homepageLang": "es-ES",
+      "localeSource": "regional-seed"
     },
     "diepresse.com": {
       "googleNewsLocaleIds": [
@@ -330,12 +372,26 @@
       "homepageLang": "fr",
       "localeSource": "manual"
     },
+    "examinerlive.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
+    },
     "expressen.se": {
       "googleNewsLocaleIds": [
         "SE-sv"
       ],
       "homepageLang": "sv",
       "localeSource": "probe"
+    },
+    "farodevigo.es": {
+      "googleNewsLocaleIds": [
+        "ES-es"
+      ],
+      "homepageLang": "es-ES",
+      "localeSource": "regional-seed"
     },
     "faz.net": {
       "googleNewsLocaleIds": [
@@ -371,6 +427,13 @@
       ],
       "homepageLang": "ro",
       "localeSource": "probe"
+    },
+    "gazettelive.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "heraldscotland.com": {
       "googleNewsLocaleIds": [
@@ -412,6 +475,27 @@
       ],
       "homepageLang": "cs",
       "localeSource": "probe"
+    },
+    "ilgazzettino.it": {
+      "googleNewsLocaleIds": [
+        "IT-it"
+      ],
+      "homepageLang": "it-IT",
+      "localeSource": "regional-seed"
+    },
+    "ilmattino.it": {
+      "googleNewsLocaleIds": [
+        "IT-it"
+      ],
+      "homepageLang": "it-IT",
+      "localeSource": "regional-seed"
+    },
+    "ilrestodelcarlino.it": {
+      "googleNewsLocaleIds": [
+        "IT-it"
+      ],
+      "homepageLang": "it-IT",
+      "localeSource": "regional-seed"
     },
     "ilsole24ore.com": {
       "googleNewsLocaleIds": [
@@ -490,6 +574,13 @@
       "homepageLang": "el",
       "localeSource": "probe"
     },
+    "ksta.de": {
+      "googleNewsLocaleIds": [
+        "DE-de"
+      ],
+      "homepageLang": "de-DE",
+      "localeSource": "regional-seed"
+    },
     "kurier.at": {
       "googleNewsLocaleIds": [
         "AT-de"
@@ -511,6 +602,27 @@
       "homepageLang": "es",
       "localeSource": "manual"
     },
+    "lavoixdunord.fr": {
+      "googleNewsLocaleIds": [
+        "FR-fr"
+      ],
+      "homepageLang": "fr-FR",
+      "localeSource": "regional-seed"
+    },
+    "lavozdegalicia.es": {
+      "googleNewsLocaleIds": [
+        "ES-es"
+      ],
+      "homepageLang": "es-ES",
+      "localeSource": "regional-seed"
+    },
+    "ledauphine.com": {
+      "googleNewsLocaleIds": [
+        "FR-fr"
+      ],
+      "homepageLang": "fr-FR",
+      "localeSource": "regional-seed"
+    },
     "lefigaro.fr": {
       "googleNewsLocaleIds": [
         "FR-fr"
@@ -524,6 +636,13 @@
       ],
       "homepageLang": "en",
       "localeSource": "probe"
+    },
+    "lep.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "leparisien.fr": {
       "googleNewsLocaleIds": [
@@ -552,6 +671,13 @@
       ],
       "localeSource": "probe"
     },
+    "liverpoolecho.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
+    },
     "lrt.lt": {
       "googleNewsLocaleIds": [
         "LT-lt"
@@ -579,6 +705,20 @@
       "homepageLang": "hu",
       "localeSource": "probe"
     },
+    "manchestereveningnews.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
+    },
+    "messaggeroveneto.gelocal.it": {
+      "googleNewsLocaleIds": [
+        "IT-it"
+      ],
+      "homepageLang": "it-IT",
+      "localeSource": "regional-seed"
+    },
     "mirror.co.uk": {
       "googleNewsLocaleIds": [
         "GB-en"
@@ -593,12 +733,26 @@
       "homepageLang": "en",
       "localeSource": "probe"
     },
+    "nicematin.com": {
+      "googleNewsLocaleIds": [
+        "FR-fr"
+      ],
+      "homepageLang": "fr-FR",
+      "localeSource": "regional-seed"
+    },
     "nos.nl": {
       "googleNewsLocaleIds": [
         "NL-nl"
       ],
       "homepageLang": "nl",
       "localeSource": "probe"
+    },
+    "nottinghampost.com": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "novinite.com": {
       "googleNewsLocaleIds": [
@@ -663,6 +817,13 @@
       "homepageLang": "de",
       "localeSource": "probe"
     },
+    "ouest-france.fr": {
+      "googleNewsLocaleIds": [
+        "FR-fr"
+      ],
+      "homepageLang": "fr-FR",
+      "localeSource": "regional-seed"
+    },
     "pap.pl": {
       "googleNewsLocaleIds": [
         "PL-pl"
@@ -682,6 +843,13 @@
       ],
       "homepageLang": "da-DK",
       "localeSource": "probe"
+    },
+    "portsmouth.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "postimees.ee": {
       "googleNewsLocaleIds": [
@@ -731,6 +899,13 @@
       ],
       "homepageLang": "en",
       "localeSource": "manual"
+    },
+    "rheinische-post.de": {
+      "googleNewsLocaleIds": [
+        "DE-de"
+      ],
+      "homepageLang": "de-DE",
+      "localeSource": "regional-seed"
     },
     "rp.pl": {
       "googleNewsLocaleIds": [
@@ -842,12 +1017,26 @@
       "homepageLang": "en",
       "localeSource": "probe"
     },
+    "sudouest.fr": {
+      "googleNewsLocaleIds": [
+        "FR-fr"
+      ],
+      "homepageLang": "fr-FR",
+      "localeSource": "regional-seed"
+    },
     "sueddeutsche.de": {
       "googleNewsLocaleIds": [
         "DE-de"
       ],
       "homepageLang": "de",
       "localeSource": "probe"
+    },
+    "sussexexpress.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "svd.se": {
       "googleNewsLocaleIds": [
@@ -902,12 +1091,26 @@
       "homepageLang": "hu",
       "localeSource": "probe"
     },
+    "theargus.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
+    },
     "theguardian.com": {
       "googleNewsLocaleIds": [
         "GB-en"
       ],
       "homepageLang": "en",
       "localeSource": "manual"
+    },
+    "thenorthernecho.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "thesun.co.uk": {
       "googleNewsLocaleIds": [
@@ -970,6 +1173,20 @@
       "homepageLang": "nl",
       "localeSource": "probe"
     },
+    "walesonline.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
+    },
+    "waz.de": {
+      "googleNewsLocaleIds": [
+        "DE-de"
+      ],
+      "homepageLang": "de-DE",
+      "localeSource": "regional-seed"
+    },
     "welt.de": {
       "googleNewsLocaleIds": [
         "DE-de"
@@ -990,6 +1207,13 @@
       ],
       "homepageLang": "fi",
       "localeSource": "probe"
+    },
+    "yorkshirepost.co.uk": {
+      "googleNewsLocaleIds": [
+        "GB-en"
+      ],
+      "homepageLang": "en-GB",
+      "localeSource": "regional-seed"
     },
     "zeit.de": {
       "googleNewsLocaleIds": [

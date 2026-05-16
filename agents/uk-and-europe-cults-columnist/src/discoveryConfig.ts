@@ -226,6 +226,13 @@ function loadWatchlistSites(): string[] {
   return expectStringArray(parsed, 'watchlist-sites');
 }
 
+function loadRegionalPublisherSites(): string[] {
+  const configUrl = new URL('../data/regional-publisher-sites.json', import.meta.url);
+  const raw = readFileSync(configUrl, 'utf-8');
+  const parsed = JSON.parse(raw) as unknown;
+  return expectStringArray(parsed, 'data/regional-publisher-sites');
+}
+
 /**
  * Merge `googleNewsQueryDefinitions.groups` (optional, legacy) with each JSON file in `groupFiles`
  * (paths relative to the package root, same directory as `discovery-config.json`).
@@ -418,6 +425,7 @@ function loadDiscoveryFocusInput(): DiscoveryFocusInput | null {
 
 const DISCOVERY_CONFIG = loadDiscoveryConfig();
 const WATCHLIST_SITES = loadWatchlistSites();
+const REGIONAL_PUBLISHER_SITES = loadRegionalPublisherSites();
 const DISCOVERY_FOCUS_INPUT = loadDiscoveryFocusInput();
 
 const MERGED_DISCOVERY_CONFIG = (() => {
@@ -479,8 +487,10 @@ const MERGED_DISCOVERY_CONFIG = (() => {
 })();
 
 const MERGED_WATCHLIST_SITES = (() => {
+  const configuredSites = uniqueOrdered([...WATCHLIST_SITES, ...REGIONAL_PUBLISHER_SITES]);
+
   if (!DISCOVERY_FOCUS_INPUT) {
-    return WATCHLIST_SITES;
+    return configuredSites;
   }
 
   const extraPriority = DISCOVERY_FOCUS_INPUT.priorityWatchlistHosts
@@ -490,9 +500,10 @@ const MERGED_WATCHLIST_SITES = (() => {
     ? expectStringArray(DISCOVERY_FOCUS_INPUT.googleNewsWatchlistSites, 'focus.googleNewsWatchlistSites')
     : [];
 
-  return uniqueOrdered([...WATCHLIST_SITES, ...extraPriority, ...extraGoogle]);
+  return uniqueOrdered([...configuredSites, ...extraPriority, ...extraGoogle]);
 })();
 
+export const REGIONAL_PUBLISHER_HOSTS = REGIONAL_PUBLISHER_SITES;
 export const PRIORITY_WATCHLIST_HOSTS = MERGED_WATCHLIST_SITES;
 export const GOOGLE_NEWS_WATCHLIST_SITES = MERGED_WATCHLIST_SITES;
 /** Expanded generic Google News `q=` strings with optional per-row locale pins (see `templateLocaleHlPrefixes` in discovery-config). */

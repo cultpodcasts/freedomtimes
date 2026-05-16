@@ -1,4 +1,26 @@
+import { readFileSync } from 'node:fs';
 import type { SourceMetadata } from './types.js';
+
+function loadPublisherDisplayNames(): Record<string, string> {
+  const fileUrl = new URL('../data/publisher-display-names.json', import.meta.url);
+  const raw = readFileSync(fileUrl, 'utf-8');
+  const parsed = JSON.parse(raw) as unknown;
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('data/publisher-display-names.json must be a JSON object');
+  }
+
+  const result: Record<string, string> = {};
+  for (const [host, name] of Object.entries(parsed)) {
+    if (typeof name !== 'string') {
+      throw new Error(`data/publisher-display-names.json: publisher name for "${host}" must be a string`);
+    }
+    result[host.toLowerCase().replace(/^www\./, '')] = name;
+  }
+  return result;
+}
+
+const PUBLISHER_DISPLAY_NAMES = loadPublisherDisplayNames();
 
 function hostFromUrl(url: string): string {
   const parsed = new URL(url);
@@ -6,29 +28,7 @@ function hostFromUrl(url: string): string {
 }
 
 function publisherFromHost(host: string): string {
-  const mapping: Record<string, string> = {
-    'culteducation.com': 'Cult Education Institute',
-    'cultnews.net': 'CultNews',
-    'cultnews101.com': 'CultNews101',
-    'thetimes.co.uk': 'The Times',
-    'telegraph.co.uk': 'The Telegraph',
-    'dailyrecord.co.uk': 'Daily Record',
-    'dailymail.co.uk': 'Daily Mail',
-    'thesun.co.uk': 'The Sun',
-    'mirror.co.uk': 'Mirror',
-    'bbc.com': 'BBC',
-    'theguardian.com': 'The Guardian',
-    'reuters.com': 'Reuters',
-    'apnews.com': 'Associated Press',
-    'ft.com': 'Financial Times',
-    'politico.eu': 'POLITICO Europe',
-    'euobserver.com': 'EUobserver',
-    'dw.com': 'Deutsche Welle',
-    'lemonde.fr': 'Le Monde',
-    'elpais.com': 'El Pais',
-  };
-
-  return mapping[host] ?? host;
+  return PUBLISHER_DISPLAY_NAMES[host] ?? host;
 }
 
 export function evaluateSourceReliability(
