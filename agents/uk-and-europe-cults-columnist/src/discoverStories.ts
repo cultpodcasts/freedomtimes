@@ -178,7 +178,7 @@ const GOOGLE_NEWS_GENERIC_QUERY_LIMIT = readPositiveIntCapOrUnlimited(
  * Max `site:` hosts per OR-merge before splitting (`0` / unset = one query with every host for that bundle).
  */
 const GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK = readPositiveIntCapOrUnlimited(
-  process.env.GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK,
+  process.env.GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK ?? '6',
 );
 
 const GOOGLE_NEWS_RESOLVE_USE_PLAYWRIGHT =
@@ -279,7 +279,17 @@ const GOOGLE_NEWS_RSS_REQUEST_GAP_MS = Math.max(
 /** Extra pause after a 503 on Google News RSS so rate limits can recover (0 = off). */
 const GOOGLE_NEWS_RSS_AFTER_503_MS = Math.max(
   0,
-  Number.parseInt(process.env.GOOGLE_NEWS_RSS_AFTER_503_MS ?? '5000', 10) || 0,
+  Number.parseInt(process.env.GOOGLE_NEWS_RSS_AFTER_503_MS ?? '0', 10) || 0,
+);
+
+const GOOGLE_NEWS_RSS_TIMEOUT_MS = Math.max(
+  1000,
+  Number.parseInt(process.env.GOOGLE_NEWS_RSS_TIMEOUT_MS ?? '8000', 10) || 8000,
+);
+
+const GOOGLE_NEWS_RSS_MAX_CONSECUTIVE_THROTTLES = Math.max(
+  1,
+  Number.parseInt(process.env.GOOGLE_NEWS_RSS_MAX_CONSECUTIVE_THROTTLES ?? '5', 10) || 5,
 );
 
 /** Concurrent article link resolutions after each RSS parse (same URL shares one in-flight job). */
@@ -2567,6 +2577,7 @@ async function discoverFromGoogleNewsQueries(
   const perRequestLimit = 100;
   const totalRequests = countGoogleNewsRssCells(specs, localesFull);
   let requestIndex = 0;
+  let consecutiveGoogleNewsThrottles = 0;
   const gridStartedAt = Date.now();
 
   try {
@@ -2655,6 +2666,7 @@ async function discoverFromGoogleNewsQueries(
             'User-Agent': 'FreedomTimes-Local-Agent/0.1',
             Accept: 'application/rss+xml, application/xml, text/xml',
           },
+          signal: AbortSignal.timeout(GOOGLE_NEWS_RSS_TIMEOUT_MS),
         });
 
         fetchOk = response.ok;
@@ -2662,6 +2674,8 @@ async function discoverFromGoogleNewsQueries(
         fromCache = response.fromCache;
         httpDurationMs = response.requestDurationMs;
         httpNetworkAttempts = response.networkAttempts;
+        consecutiveGoogleNewsThrottles =
+          !fromCache && (httpStatus === 429 || httpStatus === 503) ? consecutiveGoogleNewsThrottles + 1 : 0;
 
         if (DISCOVERY_LOG_GOOGLE_NEWS_FETCH_LIFECYCLE) {
           logDiscoveryProgress('google-news-rss', {
@@ -2693,7 +2707,21 @@ async function discoverFromGoogleNewsQueries(
         }
 
         if (!response.ok) {
-          // fall through to logging
+          if (consecutiveGoogleNewsThrottles >= GOOGLE_NEWS_RSS_MAX_CONSECUTIVE_THROTTLES) {
+            logDiscoveryProgress('google-news-complete', {
+              sourcePrefix,
+              reason: 'consecutive_google_news_throttles',
+              requestIndex,
+              rssRequests: totalRequests,
+              httpStatus,
+              consecutiveGoogleNewsThrottles,
+              maxConsecutiveGoogleNewsThrottles: GOOGLE_NEWS_RSS_MAX_CONSECUTIVE_THROTTLES,
+              discovered: discovered.length,
+              elapsedMs: Date.now() - gridStartedAt,
+              wrappedLinksBuffered: googleNewsWrappedLinkBuffer.length,
+            });
+            return discovered;
+          }
         } else {
           const parsed = parseGoogleNewsFeed(response.text);
           rssItemCount = parsed.length;
