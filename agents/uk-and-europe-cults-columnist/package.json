@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node --enable-source-maps dist/index.js",
     "dev": "cmd /c \"set DISCOVERY_MAX_AGE_HOURS=168&& set GOOGLE_NEWS_GENERIC_QUERY_LIMIT=20&& set GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK=6&& .\\node_modules\\.bin\\tsx.cmd src/index.ts\"",
+    "pipeline:only": "cmd /c \"set SKIP_DISCOVERY=true&& set DISCOVERY_MAX_AGE_HOURS=168&& .\\node_modules\\.bin\\tsx.cmd src/index.ts\"",
     "render:html": "cmd /c \"set CULT_NEWS_RENDER_MAX_AGE_HOURS=168&& tsx scripts/render-cult-news-html.tsx\"",
     "render:cult-news": "cmd /c \"set CULT_NEWS_RENDER_MAX_AGE_HOURS=168&& tsx scripts/render-cult-news-html.tsx\"",
     "recover:failed-urls": "tsx scripts/recover-failed-urls.ts",

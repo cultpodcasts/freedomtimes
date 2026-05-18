@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
 import { PRIORITY_WATCHLIST_HOSTS } from './discoveryConfig.js';
 import { type DiscoveredStory, discoverCandidateStories } from './discoverStories.js';
@@ -94,6 +94,7 @@ async function main(): Promise<void> {
     maxApproved: maxApproved ?? 'unbounded',
   });
 
+  const skipDiscovery = (process.env.SKIP_DISCOVERY ?? '').toLowerCase() === 'true';
   const candidatesByUrl = new Map<string, DiscoveredStory>();
 
   if (url) {
@@ -105,6 +106,19 @@ async function main(): Promise<void> {
       sourceCategory: 'web-page',
       requiresUrlResolution: false,
     });
+  } else if (skipDiscovery) {
+    const raw = JSON.parse(readFileSync('reports/last-run-candidates.json', 'utf-8')) as { urls: string[] };
+    for (const u of raw.urls) {
+      candidatesByUrl.set(u, {
+        url: u,
+        title: '',
+        sourceFeed: 'last-run-candidates',
+        sourceFormat: 'html',
+        sourceCategory: 'web-page',
+        requiresUrlResolution: u.includes('news.google.com'),
+      });
+    }
+    console.log('[agent] skipped discovery, loaded candidates from last-run-candidates.json', { count: candidatesByUrl.size });
   } else {
     const discovered = await discoverCandidateStories(config.allowedSourceHosts);
     for (const item of discovered) {
@@ -357,20 +371,6 @@ async function main(): Promise<void> {
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
-  if (pipelineRejections.length > 0) {
-    mkdirSync('reports', { recursive: true });
-    const rejectionOut = {
-      generatedAt: new Date().toISOString(),
-      candidatePool: candidatesByUrl.size,
-      rows: pipelineRejections,
-    };
-    writeFileSync('reports/pipeline-rejections-latest.json', `${JSON.stringify(rejectionOut, null, 2)}\n`, 'utf-8');
-    console.log('[agent] pipeline rejections written', {
-      path: 'reports/pipeline-rejections-latest.json',
-      count: pipelineRejections.length,
-    });
-  }
-
   mkdirSync('reports', { recursive: true });
   writeFileSync(
     'reports/last-run-drafts.json',
@@ -389,6 +389,20 @@ async function main(): Promise<void> {
     path: 'reports/last-run-drafts.json',
     count: runDrafts.length,
   });
+
+  if (pipelineRejections.length > 0) {
+    mkdirSync('reports', { recursive: true });
+    const rejectionOut = {
+      generatedAt: new Date().toISOString(),
+      candidatePool: candidatesByUrl.size,
+      rows: pipelineRejections,
+    };
+    writeFileSync('reports/pipeline-rejections-latest.json', `${JSON.stringify(rejectionOut, null, 2)}\n`, 'utf-8');
+    console.log('[agent] pipeline rejections written', {
+      path: 'reports/pipeline-rejections-latest.json',
+      count: pipelineRejections.length,
+    });
+  }
 
   if (failedUrls.length > 0) {
     mkdirSync('reports', { recursive: true });
