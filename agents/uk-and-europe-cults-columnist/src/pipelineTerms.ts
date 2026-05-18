@@ -146,13 +146,44 @@ function loadTermFieldFromDiscoveryLangFiles(field: 'religiousGroupTerms' | 'coe
   return result;
 }
 
+function loadAmbiguousCultTermsFromDiscoveryLangFiles(): Record<string, string[]> {
+  const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
+  const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));
+  const result: Record<string, string[]> = {};
+
+  for (const name of names) {
+    const fileUrl = new URL(name, langDirUrl);
+    const raw = readFileSync(fileUrl, 'utf-8');
+    const parsed = JSON.parse(raw) as { language?: unknown; ambiguousCultTerms?: unknown };
+    const fromFileName = name.replace(/\.json$/i, '').toLowerCase();
+    const lang =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().toLowerCase()
+        : fromFileName;
+
+    const terms = parsed.ambiguousCultTerms;
+    if (terms === undefined) {
+      result[lang] = [];
+      continue;
+    }
+    if (!Array.isArray(terms) || !terms.every((t) => typeof t === 'string')) {
+      throw new Error(`data/discovery/lang/${name}: ambiguousCultTerms must be a string array when present`);
+    }
+    result[lang] = terms as string[];
+  }
+
+  return result;
+}
+
+/** Weak cult/sect tokens per locale — from `data/discovery/lang/<code>.json`. */
+export const AMBIGUOUS_CULT_TERMS_BY_LANGUAGE = loadAmbiguousCultTermsFromDiscoveryLangFiles();
+
 /** Per-locale “harm / control” phrases for precise cult-topic matching — from `data/discovery/lang/<code>.json`. */
 export const STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE = loadStrictCultTermExtensionsFromDiscoveryLangFiles();
 
 export const RELIGIOUS_GROUP_TERMS_BY_LANGUAGE = loadTermFieldFromDiscoveryLangFiles('religiousGroupTerms');
 export const COERCIVE_HARM_TERMS_BY_LANGUAGE = loadTermFieldFromDiscoveryLangFiles('coerciveHarmTerms');
 
-/** Strict “harm / control” phrases for precise cult-topic matching — only the article locale’s list (no cross-locale merge). */
 export function getStrictCultTermExtensionsForLanguage(language: string | undefined): string[] {
   const code = normalizeCultLanguageCode(language);
   return STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE[code] ?? [];

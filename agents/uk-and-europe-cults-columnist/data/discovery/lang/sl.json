@@ -107,6 +107,9 @@
     "trgovina z ljudmi"
   ],
   "groupStopwords": [],
+  "ambiguousCultTerms": [
+    "lahko"
+  ],
   "genericCultTerms": [
     "sekta",
     "sekte",

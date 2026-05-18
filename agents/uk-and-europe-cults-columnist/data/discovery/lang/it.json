@@ -177,6 +177,9 @@
     "rapporto",
     "articolo"
   ],
+  "ambiguousCultTerms": [
+    "sette"
+  ],
   "genericCultTerms": [
     "setta",
     "sette"

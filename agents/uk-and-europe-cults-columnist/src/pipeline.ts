@@ -10,6 +10,7 @@ import {
 } from './http-cache/config.js';
 import {
   ALL_GENERIC_CULT_TERMS,
+  AMBIGUOUS_CULT_TERMS_BY_LANGUAGE,
   EXCLUDED_SOURCE_HOSTS,
   FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE,
   FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE,
@@ -81,7 +82,12 @@ const FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE: Record<string, RegExp[]> = (() => {
 
 /** Union of cult-terms.json only (no locale-specific strict extensions) — fallback when a language yields no specific terms. */
 const SPECIFIC_CULT_TERMS_FALLBACK = ALL_CULT_TERMS.filter((term) => !ALL_GENERIC_CULT_TERMS.includes(term));
-const AMBIGUOUS_SPECIFIC_CULT_TERMS = new Set(['lahko']);
+function getAmbiguousCultTermsForLanguage(language: string | undefined): Set<string> {
+  const code = language ? (language.toLowerCase().split('-')[0] ?? 'en') : 'en';
+  const localTerms = AMBIGUOUS_CULT_TERMS_BY_LANGUAGE[code] ?? [];
+  const englishTerms = AMBIGUOUS_CULT_TERMS_BY_LANGUAGE.en ?? [];
+  return new Set([...localTerms, ...englishTerms]);
+}
 const genericCultUrlPattern = ALL_GENERIC_CULT_TERMS.map((term) => escapeRegExp(term)).join('|');
 const GENERIC_CULT_URL_SIGNAL_PATTERN = new RegExp(`/(${genericCultUrlPattern})([/-]|$)`, 'i');
 function getGenericCultTermsForLanguage(language?: string): string[] {
@@ -194,8 +200,9 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
   const titleGenericSignal = includesAnyPhrase(titleLower, genericTermsForLanguage);
   const bodyGenericSignal = includesAnyPhrase(bodyLeadLower, genericTermsForLanguage);
   const urlSignal = GENERIC_CULT_URL_SIGNAL_PATTERN.test(urlLower);
+  const ambiguousCultTerms = getAmbiguousCultTermsForLanguage(language);
   const hasNonAmbiguousSpecific = [titleSpecificMatch, bodySpecificMatch].some(
-    (match) => Boolean(match) && !AMBIGUOUS_SPECIFIC_CULT_TERMS.has(match ?? ''),
+    (match) => Boolean(match) && !ambiguousCultTerms.has(match ?? ''),
   );
   const hasOnlyAmbiguousSpecific = (titleSpecificSignal || bodySpecificSignal) && !hasNonAmbiguousSpecific;
   const hasLegalCultEquivalentSignal =
