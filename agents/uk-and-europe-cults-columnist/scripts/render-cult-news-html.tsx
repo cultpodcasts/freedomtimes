@@ -338,9 +338,10 @@ function summarizeExclusions(excluded: Array<{ url: string; reason: string }>): 
   }
 }
 
-function renderCard(story: EnrichedStory) {
+function renderCard(story: EnrichedStory, language?: string) {
   const hostname = story.host || new URL(story.url).hostname.replace(/^www\./, '');
   const logo = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`;
+  const isNonEnglish = language && language !== 'en';
   return (
     <article className="card">
       {story.image ? (
@@ -354,13 +355,14 @@ function renderCard(story: EnrichedStory) {
           <span className="publisher">{hostname}</span>
           <span className="dot">•</span>
           <span className="published">{formatPublishedAt(story.publishedAt)}</span>
+          {isNonEnglish ? <span className="lang-tag">{language}</span> : null}
         </div>
-        <h2>
+        <h2 {...(isNonEnglish ? { lang: language } : {})}>
           <a href={story.url} target="_blank" rel="noopener noreferrer">
             {story.title}
           </a>
         </h2>
-        <p>{story.description || 'No abstract available.'}</p>
+        <p {...(isNonEnglish ? { lang: language } : {})}>{story.description || 'No abstract available.'}</p>
         <a className="read" href={story.url} target="_blank" rel="noopener noreferrer">
           Read full story
         </a>
@@ -440,6 +442,28 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
           .group-badge.independent {
             background: #dff0e8;
             color: #1a5c38;
+          }
+          .lang-tag {
+            font-size: 0.72rem;
+            font-family: system-ui, sans-serif;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: #e8e4d8;
+            color: #6b6355;
+          }
+          .latest-heading {
+            margin: 28px 0 14px;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #756f63;
+            font-family: system-ui, sans-serif;
+            border-top: 2px solid var(--line);
+            padding-top: 18px;
           }
           .group-count {
             font-size: 0.85rem;
@@ -528,18 +552,25 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
           </header>
           {hasStories ? (
             groups.map((group) => (
-              <div className="story-group">
-                <div className="group-header">
-                  <h3 className="group-label">{group.label}</h3>
-                  <span className={`group-badge ${group.type}`}>
-                    {group.type === 'detected' ? 'Detected Cluster' : 'Independent'}
-                  </span>
-                  <span className="group-count">{group.stories.length} {group.stories.length === 1 ? 'article' : 'articles'}</span>
+              group.type === 'independent' ? (
+                <div className="story-group">
+                  <p className="latest-heading">Latest Stories</p>
+                  <div className="grid">
+                    {group.stories.map((story) => renderCard(story, detectStoryLanguage(story)))}
+                  </div>
                 </div>
-                <div className="grid">
-                  {group.stories.map((story) => renderCard(story))}
+              ) : (
+                <div className="story-group">
+                  <div className="group-header">
+                    <h3 className="group-label">{group.label}</h3>
+                    <span className={`group-badge ${group.type}`}>Cluster</span>
+                    <span className="group-count">{group.stories.length} {group.stories.length === 1 ? 'article' : 'articles'}</span>
+                  </div>
+                  <div className="grid">
+                    {group.stories.map((story) => renderCard(story, detectStoryLanguage(story)))}
+                  </div>
                 </div>
-              </div>
+              )
             ))
           ) : (
             <div className="story-group">
