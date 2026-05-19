@@ -527,8 +527,7 @@ function buildQuerySpecsForLocale(
 /**
  * Scan `data/discovery/lang/` for files implementing LocaleLangFile and generate
  * query specs for each locale that has the well-known interface keys.
- * Files using only the legacy `groups`/`queryTemplates` mechanism are skipped here
- * (they are handled by the existing groupFiles path).
+ * Files without the well-known interface keys are skipped.
  */
 function loadLocaleQuerySpecs(
   packageRootUrl: URL,
