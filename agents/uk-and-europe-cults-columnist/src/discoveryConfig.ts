@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 type DiscoveryConfig = {
   googleNewsGenericQueries?: unknown;
@@ -110,8 +110,83 @@ function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+/** Max URL-encoded query length before auto-splitting the largest group. */
+const QUERY_MAX_LENGTH = 500;
+
 function formatGroupExpression(values: string[]): string {
   return `(${values.join(' OR ')})`;
+}
+
+/**
+ * If `template` expanded with `groups` exceeds QUERY_MAX_LENGTH, find the largest
+ * group placeholder and chunk it — return one expanded query string per chunk.
+ * Otherwise return a single-element array with the full expansion.
+ */
+function expandTemplateWithAutoSplit(
+  template: string,
+  groups: Record<string, string[]>,
+): string[] {
+  // Full expansion first.
+  const full = template.replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_m, name: string) => {
+    const g = groups[name];
+    if (!g) throw new Error(`Template references unknown group '${name}'`);
+    return formatGroupExpression(g);
+  });
+  const normalized = normalizeWhitespace(full);
+
+  if (normalized.length <= QUERY_MAX_LENGTH) {
+    return [normalized];
+  }
+
+  // Find the placeholder whose group contributes the most characters.
+  const placeholders = [...template.matchAll(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g)].map((m) => m[1]!);
+  let largestName = '';
+  let largestLen = 0;
+  for (const name of placeholders) {
+    const g = groups[name];
+    if (!g) throw new Error(`Template references unknown group '${name}'`);
+    const len = formatGroupExpression(g).length;
+    if (len > largestLen) {
+      largestLen = len;
+      largestName = name;
+    }
+  }
+
+  if (!largestName) return [normalized];
+
+  // Build the template with every group EXCEPT the largest already substituted.
+  const prefixTemplate = template.replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_m, name: string) => {
+    if (name === largestName) return `{{${name}}}`; // keep as placeholder
+    const g = groups[name];
+    if (!g) throw new Error(`Template references unknown group '${name}'`);
+    return formatGroupExpression(g);
+  });
+  const prefixExpanded = normalizeWhitespace(prefixTemplate.replace(`{{${largestName}}}`, ''));
+  const overhead = prefixExpanded.length + ' ()'.length; // parentheses + space
+  const termBudget = QUERY_MAX_LENGTH - overhead;
+
+  // Chunk the largest group's terms so each chunk fits within the budget.
+  const terms = groups[largestName]!;
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let currentLen = 0;
+  for (const term of terms) {
+    const addLen = (current.length === 0 ? 0 : ' OR '.length) + term.length;
+    if (current.length > 0 && currentLen + addLen > termBudget) {
+      chunks.push(current);
+      current = [term];
+      currentLen = term.length;
+    } else {
+      current.push(term);
+      currentLen += addLen;
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+
+  return chunks.map((chunk) => {
+    const q = prefixTemplate.replace(`{{${largestName}}}`, formatGroupExpression(chunk));
+    return normalizeWhitespace(q);
+  });
 }
 
 function parseTemplateLocaleHlPrefixes(raw: unknown, templateCount: number): (string[] | null)[] {
@@ -173,29 +248,21 @@ function buildGoogleNewsTemplateQuerySpecs(
 
   const pinSpecs = parseTemplateLocaleHlPrefixes(definitions.templateLocaleHlPrefixes, templates.length);
 
-  const expanded: GoogleNewsTemplateQuerySpec[] = templates.map((template, idx) => {
-    const query = template.replace(/\{\{\s*([a-zA-Z0-9_-]+)\s*\}\}/g, (_match, groupName: string) => {
-      const groupValues = groups[groupName];
-      if (!groupValues) {
-        throw new Error(
-          `discovery-config.json template references unknown group '${groupName}' in googleNewsQueryDefinitions.templates`,
-        );
-      }
-      return formatGroupExpression(groupValues);
-    });
-
-    const normalized = normalizeWhitespace(query);
+  const expanded: GoogleNewsTemplateQuerySpec[] = [];
+  for (let idx = 0; idx < templates.length; idx++) {
+    const template = templates[idx]!;
     const pin = pinSpecs[idx] ?? null;
     const googleNewsLocaleIds =
       pin === null || pin.length === 0
         ? undefined
         : localeIdsForHlSubtags(localeRows, pin);
-    return {
-      query: normalized,
-      googleNewsLocaleIds:
-        googleNewsLocaleIds && googleNewsLocaleIds.length > 0 ? googleNewsLocaleIds : undefined,
-    };
-  });
+    const localeIds = googleNewsLocaleIds && googleNewsLocaleIds.length > 0 ? googleNewsLocaleIds : undefined;
+
+    const queries = expandTemplateWithAutoSplit(template, groups);
+    for (const query of queries) {
+      expanded.push({ query, googleNewsLocaleIds: localeIds });
+    }
+  }
 
   for (const raw of rawQueries) {
     expanded.push({ query: normalizeWhitespace(raw) });
@@ -330,6 +397,186 @@ function loadMergedGoogleNewsQueryGroups(
   return { groups: merged, localeTemplates };
 }
 
+/**
+ * Well-known keys every locale lang file may implement.
+ * All fields are optional — missing fields are skipped in query generation.
+ */
+export type LocaleLangFile = {
+  language: string;
+  /** Primary cult/sect terms for this locale. */
+  cultTerms?: string[];
+  /** Religious group descriptor phrases. */
+  religiousGroupTerms?: string[];
+  /** Harm/coercion signal terms. */
+  harmSignals?: string[];
+  /** Journalism signal terms (news, report, investigation…). */
+  journalismSignals?: string[];
+  /** Justice signal terms (trial, court, police…). */
+  justiceSignals?: string[];
+  /** Victim signal terms (survivor, victims, abuse…). */
+  victimSignals?: string[];
+  /** Media signal terms (documentary, series…). */
+  mediaSignals?: string[];
+  /** Full Europe country OR list for broad geo pinning. */
+  europeCountryOr?: string[];
+  /** Tight local geo (e.g. France+Belgium for fr, DACH for de, UK regions for en). */
+  focusGeo?: string[];
+  /**
+   * Override the default query strategy. Each entry produces one or more specs
+   * (auto-split if too long). Keys reference the well-known field names above.
+   * `or` groups are OR'd into a prefix; `and` is AND'd after the prefix.
+   */
+  queryStrategy?: Array<{ or: string[]; and?: string }>;
+  /** Legacy: arbitrary named groups — kept for backward compat with groupFiles. */
+  groups?: Record<string, string[]>;
+  /** Legacy: explicit template strings — kept for backward compat. */
+  queryTemplates?: string[];
+};
+
+/**
+ * Default query strategy applied to every locale that has the well-known keys.
+ * Each entry: `or` → groups OR'd into prefix; `and` → single group AND'd after (optional).
+ */
+const DEFAULT_LOCALE_QUERY_STRATEGY: Array<{ or: string[]; and?: string }> = [
+  { or: ['cultTerms', 'religiousGroupTerms', 'harmSignals'], and: 'europeCountryOr' },
+  { or: ['cultTerms', 'religiousGroupTerms'] },
+  { or: ['cultTerms', 'religiousGroupTerms'], and: 'focusGeo' },
+  { or: ['cultTerms', 'religiousGroupTerms'], and: 'journalismSignals' },
+  { or: ['cultTerms', 'religiousGroupTerms'], and: 'justiceSignals' },
+  { or: ['cultTerms', 'religiousGroupTerms'], and: 'victimSignals' },
+  { or: ['cultTerms', 'religiousGroupTerms'], and: 'mediaSignals' },
+];
+
+/**
+ * Build a flat `string[][]` of OR-term arrays from a strategy entry's `or` field names,
+ * resolving each name against the locale's well-known fields.
+ */
+function resolveOrGroups(
+  entry: { or: string[]; and?: string },
+  locale: LocaleLangFile,
+): string[] {
+  const terms: string[] = [];
+  for (const key of entry.or) {
+    const vals = locale[key as keyof LocaleLangFile];
+    if (Array.isArray(vals)) {
+      terms.push(...(vals as string[]));
+    }
+  }
+  return terms;
+}
+
+/**
+ * Generate query specs for a single locale lang file using the default strategy
+ * (or the file's own queryStrategy override). Auto-splits when queries exceed
+ * QUERY_MAX_LENGTH by chunking the `and` group.
+ */
+function buildQuerySpecsForLocale(
+  locale: LocaleLangFile,
+  localeIds: string[],
+): GoogleNewsTemplateQuerySpec[] {
+  const strategy = locale.queryStrategy ?? DEFAULT_LOCALE_QUERY_STRATEGY;
+  const specs: GoogleNewsTemplateQuerySpec[] = [];
+
+  for (const entry of strategy) {
+    const prefixTerms = resolveOrGroups(entry, locale);
+    if (prefixTerms.length === 0) continue;
+
+    const prefixExpr = formatGroupExpression(prefixTerms);
+
+    if (!entry.and) {
+      const query = normalizeWhitespace(prefixExpr);
+      if (query) specs.push({ query, googleNewsLocaleIds: localeIds });
+      continue;
+    }
+
+    const andVals = locale[entry.and as keyof LocaleLangFile];
+    if (!Array.isArray(andVals) || andVals.length === 0) continue;
+    const andTerms = andVals as string[];
+
+    const fullQuery = normalizeWhitespace(`${prefixExpr} ${formatGroupExpression(andTerms)}`);
+
+    if (fullQuery.length <= QUERY_MAX_LENGTH) {
+      specs.push({ query: fullQuery, googleNewsLocaleIds: localeIds });
+      continue;
+    }
+
+    // Auto-split: chunk the `and` group so each query fits under the limit.
+    const overhead = prefixExpr.length + ' ()'.length;
+    const termBudget = QUERY_MAX_LENGTH - overhead;
+    const chunks: string[][] = [];
+    let current: string[] = [];
+    let currentLen = 0;
+    for (const term of andTerms) {
+      const addLen = (current.length === 0 ? 0 : ' OR '.length) + term.length;
+      if (current.length > 0 && currentLen + addLen > termBudget) {
+        chunks.push(current);
+        current = [term];
+        currentLen = term.length;
+      } else {
+        current.push(term);
+        currentLen += addLen;
+      }
+    }
+    if (current.length > 0) chunks.push(current);
+
+    for (const chunk of chunks) {
+      const q = normalizeWhitespace(`${prefixExpr} ${formatGroupExpression(chunk)}`);
+      specs.push({ query: q, googleNewsLocaleIds: localeIds });
+    }
+  }
+
+  return specs;
+}
+
+/**
+ * Scan `data/discovery/lang/` for files implementing LocaleLangFile and generate
+ * query specs for each locale that has the well-known interface keys.
+ * Files using only the legacy `groups`/`queryTemplates` mechanism are skipped here
+ * (they are handled by the existing groupFiles path).
+ */
+function loadLocaleQuerySpecs(
+  packageRootUrl: URL,
+  localeRows: GoogleNewsLocaleRow[],
+): GoogleNewsTemplateQuerySpec[] {
+  const langDirUrl = new URL('data/discovery/lang/', packageRootUrl);
+  let files: string[];
+  try {
+    files = readdirSync(langDirUrl).filter((f) => f.endsWith('.json'));
+  } catch {
+    return [];
+  }
+
+  const allSpecs: GoogleNewsTemplateQuerySpec[] = [];
+
+  for (const file of files) {
+    const fileUrl = new URL(file, langDirUrl);
+    let locale: LocaleLangFile;
+    try {
+      locale = JSON.parse(readFileSync(fileUrl, 'utf-8')) as LocaleLangFile;
+    } catch {
+      continue;
+    }
+
+    if (typeof locale.language !== 'string' || !locale.language.trim()) continue;
+
+    // Only process files that have at least one well-known interface key.
+    const hasInterfaceKeys = ['cultTerms', 'religiousGroupTerms', 'harmSignals',
+      'journalismSignals', 'justiceSignals', 'victimSignals', 'mediaSignals',
+      'europeCountryOr', 'focusGeo'].some(
+      (k) => Array.isArray(locale[k as keyof LocaleLangFile]),
+    );
+    if (!hasInterfaceKeys) continue;
+
+    const localeIds = localeIdsForHlSubtags(localeRows, [locale.language]);
+    if (localeIds.length === 0) continue;
+
+    const specs = buildQuerySpecsForLocale(locale, localeIds);
+    allSpecs.push(...specs);
+  }
+
+  return allSpecs;
+}
+
 function loadDiscoveryConfig(): {
   googleNewsGenericQueries: string[];
   googleNewsGenericQuerySpecs: GoogleNewsTemplateQuerySpec[];
@@ -384,11 +631,25 @@ function loadDiscoveryConfig(): {
     ];
   }
 
-  const googleNewsGenericQuerySpecs = buildGoogleNewsTemplateQuerySpecs(
+  const templateSpecs = buildGoogleNewsTemplateQuerySpecs(
     syntheticDefinitions,
     fallbackGoogleQueries,
     localeRows,
   );
+
+  // Specs generated from lang files implementing the LocaleLangFile interface.
+  const localeInterfaceSpecs = loadLocaleQuerySpecs(packageRootUrl, localeRows);
+
+  // Merge: template-based specs first, then interface-based, deduplicating by query+pin.
+  const seenMerge = new Set<string>();
+  const googleNewsGenericQuerySpecs: GoogleNewsTemplateQuerySpec[] = [];
+  for (const spec of [...templateSpecs, ...localeInterfaceSpecs]) {
+    const k = `${spec.query}|||${pinKeyForSpecs(spec.googleNewsLocaleIds)}`;
+    if (!seenMerge.has(k)) {
+      seenMerge.add(k);
+      googleNewsGenericQuerySpecs.push(spec);
+    }
+  }
 
   return {
     googleNewsGenericQueries: uniqueOrdered(googleNewsGenericQuerySpecs.map((s) => s.query)),
@@ -564,6 +825,31 @@ const MERGED_WATCHLIST_SITES = (() => {
 
   return uniqueOrdered([...configuredSites, ...extraPriority, ...extraGoogle]);
 })();
+
+/** Load all lang files from data/discovery/lang/ and return a map keyed by `language` field. */
+function loadAllLocaleLangFiles(): Map<string, LocaleLangFile> {
+  const langDirUrl = new URL('data/discovery/lang/', new URL('../', import.meta.url));
+  const map = new Map<string, LocaleLangFile>();
+  let files: string[];
+  try {
+    files = readdirSync(langDirUrl).filter((f) => f.endsWith('.json'));
+  } catch {
+    return map;
+  }
+  for (const file of files) {
+    try {
+      const locale = JSON.parse(readFileSync(new URL(file, langDirUrl), 'utf-8')) as LocaleLangFile;
+      if (typeof locale.language === 'string' && locale.language.trim()) {
+        map.set(locale.language.trim(), locale);
+      }
+    } catch {
+      // skip unreadable files
+    }
+  }
+  return map;
+}
+
+export const LOCALE_LANG_FILES: Map<string, LocaleLangFile> = loadAllLocaleLangFiles();
 
 export const REGIONAL_PUBLISHER_HOSTS = REGIONAL_PUBLISHER_SITES;
 export const PRIORITY_WATCHLIST_HOSTS = MERGED_WATCHLIST_SITES;

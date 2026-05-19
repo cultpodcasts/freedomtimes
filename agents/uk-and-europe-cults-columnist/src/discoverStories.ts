@@ -8,6 +8,7 @@ import {
   GOOGLE_NEWS_GENERIC_QUERY_SPECS,
   GOOGLE_NEWS_QUERY_GROUPS,
   GOOGLE_NEWS_WATCHLIST_SITES,
+  LOCALE_LANG_FILES,
   NEWSDATA_COUNTRY_CODES,
   NEWSDATA_LANGUAGES,
   NEWSDATA_QUERIES,
@@ -617,83 +618,27 @@ function formatSiteOrClause(sites: readonly string[]): string {
   return parts.length === 1 ? parts[0]! : `(${parts.join(' OR ')})`;
 }
 
-type WatchlistQueryBundle = {
-  cultGroup: string;
-  countryGroup: string;
-};
-
-type WatchlistQueryBundlesFileCache = {
-  bundles: Record<string, WatchlistQueryBundle>;
-  europeCountryOrMergeGroupKeys: string[];
-};
-
-let watchlistQueryBundlesFileCache: WatchlistQueryBundlesFileCache | undefined;
 let europeCountryOrMultilingualCache: string[] | undefined;
 
-function loadWatchlistQueryBundlesFile(): WatchlistQueryBundlesFileCache {
-  if (watchlistQueryBundlesFileCache) {
-    return watchlistQueryBundlesFileCache;
-  }
-
-  try {
-    const configUrl = new URL('../data/google-news-watchlist-query-bundles.json', import.meta.url);
-    const raw = readFileSync(configUrl, 'utf-8');
-    const parsed = JSON.parse(raw) as {
-      bundles?: Record<string, WatchlistQueryBundle>;
-      europeCountryOrMergeGroupKeys?: unknown;
-    };
-    const rawBundles = parsed.bundles ?? {};
-    const out: Record<string, WatchlistQueryBundle> = {};
-    for (const [key, bundle] of Object.entries(rawBundles)) {
-      if (key.startsWith('_')) {
-        continue;
-      }
-      if (
-        !bundle ||
-        typeof bundle.cultGroup !== 'string' ||
-        typeof bundle.countryGroup !== 'string'
-      ) {
-        continue;
-      }
-      out[key.toLowerCase()] = bundle;
-    }
-
-    const fromFile = Array.isArray(parsed.europeCountryOrMergeGroupKeys)
-      ? parsed.europeCountryOrMergeGroupKeys.filter(
-          (k): k is string => typeof k === 'string' && k.length > 0 && !k.startsWith('_'),
-        )
-      : [];
-
-    watchlistQueryBundlesFileCache = { bundles: out, europeCountryOrMergeGroupKeys: fromFile };
-    return watchlistQueryBundlesFileCache;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn('[agent] failed to load google-news-watchlist-query-bundles.json', { message });
-    watchlistQueryBundlesFileCache = { bundles: {}, europeCountryOrMergeGroupKeys: [] };
-    return watchlistQueryBundlesFileCache;
-  }
+/** Resolve cult terms for a locale hl subtag from the LocaleLangFile interface. */
+function resolveLocaleCultTerms(hl: string): string[] | undefined {
+  const locale = LOCALE_LANG_FILES.get(hl);
+  if (!locale) return undefined;
+  const terms: string[] = [
+    ...(locale.cultTerms ?? []),
+    ...(locale.harmSignals ?? []),
+    ...(locale.religiousGroupTerms ?? []),
+  ];
+  return terms.length > 0 ? terms : undefined;
 }
 
-function loadWatchlistQueryBundles(): Record<string, WatchlistQueryBundle> {
-  return loadWatchlistQueryBundlesFile().bundles;
-}
-
-function resolveWatchlistCountryTerms(
-  countryGroup: string,
-  groups: Record<string, string[] | undefined>,
-): string[] | undefined {
-  if (countryGroup === 'europeCountryOrMultilingual') {
-    const mergeKeys = loadWatchlistQueryBundlesFile().europeCountryOrMergeGroupKeys;
-    if (mergeKeys.length === 0) {
-      console.warn(
-        '[agent] europeCountryOrMultilingual bundle needs europeCountryOrMergeGroupKeys in google-news-watchlist-query-bundles.json',
-      );
-      return undefined;
-    }
+/** Resolve europeCountryOr terms for a locale hl subtag, or union all locales if 'multilingual'. */
+function resolveLocaleCountryTerms(hl: string | 'multilingual'): string[] | undefined {
+  if (hl === 'multilingual') {
     if (!europeCountryOrMultilingualCache) {
       const set = new Set<string>();
-      for (const key of mergeKeys) {
-        for (const term of groups[key] ?? []) {
+      for (const locale of LOCALE_LANG_FILES.values()) {
+        for (const term of locale.europeCountryOr ?? []) {
           set.add(term);
         }
       }
@@ -701,10 +646,23 @@ function resolveWatchlistCountryTerms(
     }
     return europeCountryOrMultilingualCache.length > 0 ? europeCountryOrMultilingualCache : undefined;
   }
-
-  const list = groups[countryGroup];
-  return list && list.length > 0 ? list : undefined;
+  const terms = LOCALE_LANG_FILES.get(hl)?.europeCountryOr;
+  return terms && terms.length > 0 ? terms : undefined;
 }
+
+/** Load the set of language keys that have watchlist bundles (from the bundles file, keyed by hl). */
+function loadWatchlistBundleHls(): Set<string> {
+  try {
+    const configUrl = new URL('../data/google-news-watchlist-locales.json', import.meta.url);
+    const parsed = JSON.parse(readFileSync(configUrl, 'utf-8')) as { locales?: unknown[] };
+    const locales = (parsed.locales ?? []).filter((k): k is string => typeof k === 'string' && k.length > 0);
+    return new Set(locales.map((k) => k.toLowerCase()));
+  } catch {
+    return new Set(LOCALE_LANG_FILES.keys());
+  }
+}
+
+const WATCHLIST_BUNDLE_HLS: Set<string> = loadWatchlistBundleHls();
 
 /** Primary BCP47 subtag for Google News `hl` (e.g. en-GB → en, pt-PT → pt). */
 function primaryGoogleNewsHlSubtag(hl: string): string {
@@ -720,7 +678,6 @@ function primaryGoogleNewsHlSubtag(hl: string): string {
  * returns that language key; otherwise null (one English aggregate OR+OR query per site).
  */
 function watchlistUnifiedLanguageKeyForSite(site: string): string | null {
-  const bundles = loadWatchlistQueryBundles();
   const host = normalizePublisherSiteHost(site);
   const probe = `site:${host} cult`;
   const allLocales = loadEuropeGoogleNewsLocales();
@@ -736,7 +693,7 @@ function watchlistUnifiedLanguageKeyForSite(site: string): string | null {
   }
 
   const lang = [...unique][0]!;
-  return bundles[lang] ? lang : null;
+  return WATCHLIST_BUNDLE_HLS.has(lang) ? lang : null;
 }
 
 /** When `publisher-host-config.json` pins a watchlist bundle (e.g. German OR+OR for DW despite many `hl`s). */
@@ -746,8 +703,7 @@ function watchlistExplicitBundleKeyForSite(site: string): string | null {
   if (!key) {
     return null;
   }
-  const bundles = loadWatchlistQueryBundles();
-  return bundles[key] ? key : null;
+  return WATCHLIST_BUNDLE_HLS.has(key.toLowerCase()) ? key.toLowerCase() : null;
 }
 
 function watchlistLocaleKeyForSite(site: string): string {
@@ -755,50 +711,32 @@ function watchlistLocaleKeyForSite(site: string): string {
 }
 
 function buildWatchlistQuerySuffixForSite(site: string): { kind: 'bundle'; suffix: string } | { kind: 'legacy' } {
-  const groups = GOOGLE_NEWS_QUERY_GROUPS as Record<string, string[] | undefined>;
-  const bundles = loadWatchlistQueryBundles();
-
   const explicitLang = watchlistExplicitBundleKeyForSite(site);
   if (explicitLang) {
-    const bundle = bundles[explicitLang];
-    if (bundle) {
-      const cult = groups[bundle.cultGroup];
-      if (cult?.length) {
-        return { kind: 'bundle', suffix: formatWatchlistOrGroup(cult) };
-      }
+    const cult = resolveLocaleCultTerms(explicitLang);
+    if (cult?.length) {
+      return { kind: 'bundle', suffix: formatWatchlistOrGroup(cult) };
     }
   }
 
   const lang = watchlistUnifiedLanguageKeyForSite(site);
   if (lang) {
-    const bundle = bundles[lang];
-    if (bundle) {
-      const cult = groups[bundle.cultGroup];
-      if (cult?.length) {
-        return { kind: 'bundle', suffix: formatWatchlistOrGroup(cult) };
-      }
-    }
-  }
-
-  const enBundle = bundles['en'];
-  if (enBundle) {
-    const cult = groups[enBundle.cultGroup];
+    const cult = resolveLocaleCultTerms(lang);
     if (cult?.length) {
       return { kind: 'bundle', suffix: formatWatchlistOrGroup(cult) };
     }
+  }
+
+  const enCult = resolveLocaleCultTerms('en');
+  if (enCult?.length) {
+    return { kind: 'bundle', suffix: formatWatchlistOrGroup(enCult) };
   }
 
   return { kind: 'legacy' };
 }
 
 function buildEnglishWatchlistFallbackSuffix(): string | null {
-  const groups = GOOGLE_NEWS_QUERY_GROUPS as Record<string, string[] | undefined>;
-  const bundles = loadWatchlistQueryBundles();
-  const enBundle = bundles['en'];
-  if (!enBundle) {
-    return null;
-  }
-  const cult = groups[enBundle.cultGroup];
+  const cult = resolveLocaleCultTerms('en');
   if (!cult?.length) {
     return null;
   }
