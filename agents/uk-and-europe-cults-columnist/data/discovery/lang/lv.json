@@ -1,105 +1,95 @@
 {
   "language": "lv",
-  "queryTemplates": [
-    "({{lvTerms}} OR {{lvReligiousGroupTerms}} OR {{lvHarmSignals}}) {{lvEuropeCountryOr}}",
-    "({{lvTerms}} OR {{lvReligiousGroupTerms}}) {{lvJournalismSignals}}",
-    "({{lvTerms}} OR {{lvReligiousGroupTerms}}) {{lvJusticeSignals}}",
-    "({{lvTerms}} OR {{lvReligiousGroupTerms}}) {{lvVictimSignals}}",
-    "({{lvTerms}} OR {{lvReligiousGroupTerms}}) {{lvMediaSignals}}"
+  "cultTerms": [
+    "sekta",
+    "kults",
+    "sect",
+    "cult",
+    "cults",
+    "\"reliģiska grupa\"",
+    "\"reliģiskas grupas\"",
+    "\"reliģiska kopiena\""
   ],
-  "_docs": "Language-specific Google News query groups for \"lv\" (cult-related + Europe country OR list).",
-  "groups": {
-    "lvTerms": [
-      "sekta",
-      "kults",
-      "sect",
-      "cult",
-      "cults",
-      "\"reliģiska grupa\"",
-      "\"reliģiskas grupas\"",
-      "\"reliģiska kopiena\""
-    ],
-    "lvHarmSignals": [
-      "piespiedu kontrole",
-      "smadzeņu skalošana",
-      "garīga vardarbība",
-      "garīga izmantošana",
-      "verdzība",
-      "\"mūsdienu verdzība\"",
-      "\"cilvēku tirdzniecība\""
-    ],
-    "lvJournalismSignals": [
-      "ziņas",
-      "reportāža",
-      "izmeklēšana"
-    ],
-    "lvJusticeSignals": [
-      "tiesa",
-      "tiesas process",
-      "policija",
-      "aizturēts"
-    ],
-    "lvVictimSignals": [
-      "izdzīvojušie",
-      "upuri",
-      "vardarbība",
-      "izmantošana"
-    ],
-    "lvMediaSignals": [
-      "documentālā filma",
-      "netflix",
-      "seriāls"
-    ],
-    "lvEuropeCountryOr": [
-      "Eiropa",
-      "Europe",
-      "Apvienotā Karaliste",
-      "UK",
-      "Francija",
-      "Vācija",
-      "Spānija",
-      "Itālija",
-      "Nīderlande",
-      "Īrija",
-      "Polija",
-      "Rumānija",
-      "Portugāle",
-      "Grieķija",
-      "Beļģija",
-      "Zviedrija",
-      "Norvēģija",
-      "Dānija",
-      "Austrija",
-      "Somija",
-      "Šveice",
-      "Čehija",
-      "Horvātija",
-      "Serbija",
-      "Slovēnija",
-      "Bosnija",
-      "Melnkalne",
-      "\"Ziemeļmaķedonija\"",
-      "\"North Macedonia\"",
-      "Kosova",
-      "Albānija",
-      "Igaunija",
-      "Latvija",
-      "Lietuva",
-      "Malta",
-      "Luksemburga",
-      "Monako",
-      "\"Sanmarīno\"",
-      "Lihtenšteina",
-      "Andora",
-      "Vatikāns",
-      "Kipra"
-    ],
-    "lvReligiousGroupTerms": [
-      "\"reliģiska grupa\"",
-      "\"reliģiskas grupas\"",
-      "\"reliģiska kopiena\""
-    ]
-  },
+  "europeCountryOr": [
+    "Eiropa",
+    "Europe",
+    "Apvienotā Karaliste",
+    "UK",
+    "Francija",
+    "Vācija",
+    "Spānija",
+    "Itālija",
+    "Nīderlande",
+    "Īrija",
+    "Polija",
+    "Rumānija",
+    "Portugāle",
+    "Grieķija",
+    "Beļģija",
+    "Zviedrija",
+    "Norvēģija",
+    "Dānija",
+    "Austrija",
+    "Somija",
+    "Šveice",
+    "Čehija",
+    "Horvātija",
+    "Serbija",
+    "Slovēnija",
+    "Bosnija",
+    "Melnkalne",
+    "\"Ziemeļmaķedonija\"",
+    "\"North Macedonia\"",
+    "Kosova",
+    "Albānija",
+    "Igaunija",
+    "Latvija",
+    "Lietuva",
+    "Malta",
+    "Luksemburga",
+    "Monako",
+    "\"Sanmarīno\"",
+    "Lihtenšteina",
+    "Andora",
+    "Vatikāns",
+    "Kipra"
+  ],
+  "harmSignals": [
+    "piespiedu kontrole",
+    "smadzeņu skalošana",
+    "garīga vardarbība",
+    "garīga izmantošana",
+    "verdzība",
+    "\"mūsdienu verdzība\"",
+    "\"cilvēku tirdzniecība\""
+  ],
+  "journalismSignals": [
+    "ziņas",
+    "reportāža",
+    "izmeklēšana"
+  ],
+  "justiceSignals": [
+    "tiesa",
+    "tiesas process",
+    "policija",
+    "aizturēts"
+  ],
+  "mediaSignals": [
+    "documentālā filma",
+    "netflix",
+    "seriāls"
+  ],
+  "religiousGroupTerms": [
+    "\"reliģiska grupa\"",
+    "\"reliģiskas grupas\"",
+    "\"reliģiska kopiena\""
+  ],
+  "victimSignals": [
+    "izdzīvojušie",
+    "upuri",
+    "vardarbība",
+    "izmantošana"
+  ],
   "strictCultTermExtensions": [
     "piespiedu kontrole",
     "smadzeņu skalošana",
@@ -113,20 +103,15 @@
     "mūsdienu verdzība",
     "cilvēku tirdzniecība"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sektas",
     "kults"
   ],
-  "religiousGroupTerms": [
-    "reliģiska grupa",
-    "reliģiskas grupas",
-    "reliģiska kopiena"
-  ],
   "coerciveHarmTerms": [
     "verdzība",
     "mūsdienu verdzība",
     "cilvēku tirdzniecība"
-  ]
+  ],
+  "groupStopwords": []
 }

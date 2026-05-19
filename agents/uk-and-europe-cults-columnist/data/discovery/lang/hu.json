@@ -1,105 +1,95 @@
 {
   "language": "hu",
-  "queryTemplates": [
-    "({{huTerms}} OR {{huReligiousGroupTerms}} OR {{huHarmSignals}}) {{huEuropeCountryOr}}",
-    "({{huTerms}} OR {{huReligiousGroupTerms}}) {{huJournalismSignals}}",
-    "({{huTerms}} OR {{huReligiousGroupTerms}}) {{huJusticeSignals}}",
-    "({{huTerms}} OR {{huReligiousGroupTerms}}) {{huVictimSignals}}",
-    "({{huTerms}} OR {{huReligiousGroupTerms}}) {{huMediaSignals}}"
+  "cultTerms": [
+    "szekta",
+    "szekták",
+    "sect",
+    "cult",
+    "cults",
+    "\"vallási csoport\"",
+    "\"vallási csoportok\"",
+    "\"vallási közösség\""
   ],
-  "_docs": "Language-specific Google News query groups for \"hu\" (cult-related + Europe country OR list).",
-  "groups": {
-    "huTerms": [
-      "szekta",
-      "szekták",
-      "sect",
-      "cult",
-      "cults",
-      "\"vallási csoport\"",
-      "\"vallási csoportok\"",
-      "\"vallási közösség\""
-    ],
-    "huHarmSignals": [
-      "\"kényszerítő kontroll\"",
-      "agymosás",
-      "\"lelki visszaélés\"",
-      "\"vallási visszaélés\"",
-      "rabszolgaság",
-      "\"modern rabszolgaság\"",
-      "emberkereskedelem"
-    ],
-    "huJournalismSignals": [
-      "hírek",
-      "riport",
-      "nyomozás"
-    ],
-    "huJusticeSignals": [
-      "tárgyalás",
-      "bíróság",
-      "rendőrség",
-      "letartóztatott"
-    ],
-    "huVictimSignals": [
-      "túlélők",
-      "áldozatok",
-      "visszaélés",
-      "kizsákmányolás"
-    ],
-    "huMediaSignals": [
-      "dokumentumfilm",
-      "netflix",
-      "sorozat"
-    ],
-    "huEuropeCountryOr": [
-      "Európa",
-      "Europe",
-      "Egyesült Királyság",
-      "UK",
-      "Franciaország",
-      "Németország",
-      "Spanyolország",
-      "Olaszország",
-      "Hollandia",
-      "Írország",
-      "Lengyelország",
-      "Románia",
-      "Portugália",
-      "Görögország",
-      "Belgium",
-      "Svédország",
-      "Norvégia",
-      "Dánia",
-      "Ausztria",
-      "Finnország",
-      "Svájc",
-      "Csehország",
-      "Horvátország",
-      "Szerbia",
-      "Szlovénia",
-      "Bosznia",
-      "Montenegró",
-      "\"Észak-Macedónia\"",
-      "\"North Macedonia\"",
-      "Koszovó",
-      "Albánia",
-      "Észtország",
-      "Lettország",
-      "Litvánia",
-      "Málta",
-      "Luxemburg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatikán",
-      "Ciprus"
-    ],
-    "huReligiousGroupTerms": [
-      "\"vallási csoport\"",
-      "\"vallási csoportok\"",
-      "\"vallási közösség\""
-    ]
-  },
+  "europeCountryOr": [
+    "Európa",
+    "Europe",
+    "Egyesült Királyság",
+    "UK",
+    "Franciaország",
+    "Németország",
+    "Spanyolország",
+    "Olaszország",
+    "Hollandia",
+    "Írország",
+    "Lengyelország",
+    "Románia",
+    "Portugália",
+    "Görögország",
+    "Belgium",
+    "Svédország",
+    "Norvégia",
+    "Dánia",
+    "Ausztria",
+    "Finnország",
+    "Svájc",
+    "Csehország",
+    "Horvátország",
+    "Szerbia",
+    "Szlovénia",
+    "Bosznia",
+    "Montenegró",
+    "\"Észak-Macedónia\"",
+    "\"North Macedonia\"",
+    "Koszovó",
+    "Albánia",
+    "Észtország",
+    "Lettország",
+    "Litvánia",
+    "Málta",
+    "Luxemburg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vatikán",
+    "Ciprus"
+  ],
+  "harmSignals": [
+    "\"kényszerítő kontroll\"",
+    "agymosás",
+    "\"lelki visszaélés\"",
+    "\"vallási visszaélés\"",
+    "rabszolgaság",
+    "\"modern rabszolgaság\"",
+    "emberkereskedelem"
+  ],
+  "journalismSignals": [
+    "hírek",
+    "riport",
+    "nyomozás"
+  ],
+  "justiceSignals": [
+    "tárgyalás",
+    "bíróság",
+    "rendőrség",
+    "letartóztatott"
+  ],
+  "mediaSignals": [
+    "dokumentumfilm",
+    "netflix",
+    "sorozat"
+  ],
+  "religiousGroupTerms": [
+    "\"vallási csoport\"",
+    "\"vallási csoportok\"",
+    "\"vallási közösség\""
+  ],
+  "victimSignals": [
+    "túlélők",
+    "áldozatok",
+    "visszaélés",
+    "kizsákmányolás"
+  ],
   "strictCultTermExtensions": [
     "kényszerítő kontroll",
     "agymosás",
@@ -114,16 +104,11 @@
     "modern rabszolgaság",
     "emberkereskedelem"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [],
-  "religiousGroupTerms": [
-    "vallási csoport",
-    "vallási csoportok",
-    "vallási közösség"
-  ],
   "coerciveHarmTerms": [
     "rabszolgaság",
     "modern rabszolgaság",
     "emberkereskedelem"
-  ]
+  ],
+  "groupStopwords": []
 }

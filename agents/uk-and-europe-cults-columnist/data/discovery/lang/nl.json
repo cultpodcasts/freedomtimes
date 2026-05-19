@@ -1,112 +1,101 @@
 {
   "language": "nl",
-  "queryTemplates": [
-    "({{nlTerms}} OR {{nlReligiousGroupTerms}} OR {{nlHarmSignals}}) {{nlEuropeCountryOr}}",
-    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlNetherlandsGeo}}",
-    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlJournalismSignals}}",
-    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlJusticeSignals}}",
-    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlVictimSignals}}",
-    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlMediaSignals}}"
+  "cultTerms": [
+    "sekte",
+    "secte",
+    "sect",
+    "cult",
+    "cults",
+    "\"geestelijke manipulatie\"",
+    "\"religieuze groep\"",
+    "\"religieuze groepen\"",
+    "\"religieuze gemeenschap\""
   ],
-  "_docs": "Language-specific Google News query groups for \"nl\" (cult-related + Europe country OR list).",
-  "groups": {
-    "nlTerms": [
-      "sekte",
-      "secte",
-      "sect",
-      "cult",
-      "cults",
-      "\"geestelijke manipulatie\"",
-      "\"religieuze groep\"",
-      "\"religieuze groepen\"",
-      "\"religieuze gemeenschap\""
-    ],
-    "nlHarmSignals": [
-      "\"dwangmatige controle\"",
-      "hersenspoeling",
-      "\"geestelijk misbruik\"",
-      "\"religieus misbruik\"",
-      "slavernij",
-      "\"moderne slavernij\"",
-      "mensenhandel"
-    ],
-    "nlJournalismSignals": [
-      "nieuws",
-      "verslag",
-      "onderzoek"
-    ],
-    "nlJusticeSignals": [
-      "rechtszaak",
-      "rechtbank",
-      "politie",
-      "gearresteerd"
-    ],
-    "nlVictimSignals": [
-      "overlevenden",
-      "slachtoffers",
-      "misbruik",
-      "uitbuiting"
-    ],
-    "nlMediaSignals": [
-      "documentaire",
-      "netflix",
-      "serie"
-    ],
-    "nlNetherlandsGeo": [
-      "Nederland"
-    ],
-    "nlEuropeCountryOr": [
-      "Europa",
-      "Europe",
-      "Verenigd Koninkrijk",
-      "UK",
-      "Groot-Brittannië",
-      "Frankrijk",
-      "Duitsland",
-      "Spanje",
-      "Italië",
-      "Nederland",
-      "Ierland",
-      "Polen",
-      "Roemenië",
-      "Portugal",
-      "Griekenland",
-      "België",
-      "Zweden",
-      "Noorwegen",
-      "Denemarken",
-      "Oostenrijk",
-      "Finland",
-      "Zwitserland",
-      "Tsjechië",
-      "\"Tsjechische Republiek\"",
-      "Kroatië",
-      "Servië",
-      "Slovenië",
-      "Bosnië",
-      "Montenegro",
-      "\"Noord-Macedonië\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albanië",
-      "Estland",
-      "Letland",
-      "Litouwen",
-      "Malta",
-      "Luxemburg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vaticaan",
-      "Cyprus"
-    ],
-    "nlReligiousGroupTerms": [
-      "\"religieuze groep\"",
-      "\"religieuze groepen\"",
-      "\"religieuze gemeenschap\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europa",
+    "Europe",
+    "Verenigd Koninkrijk",
+    "UK",
+    "Groot-Brittannië",
+    "Frankrijk",
+    "Duitsland",
+    "Spanje",
+    "Italië",
+    "Nederland",
+    "Ierland",
+    "Polen",
+    "Roemenië",
+    "Portugal",
+    "Griekenland",
+    "België",
+    "Zweden",
+    "Noorwegen",
+    "Denemarken",
+    "Oostenrijk",
+    "Finland",
+    "Zwitserland",
+    "Tsjechië",
+    "\"Tsjechische Republiek\"",
+    "Kroatië",
+    "Servië",
+    "Slovenië",
+    "Bosnië",
+    "Montenegro",
+    "\"Noord-Macedonië\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albanië",
+    "Estland",
+    "Letland",
+    "Litouwen",
+    "Malta",
+    "Luxemburg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vaticaan",
+    "Cyprus"
+  ],
+  "focusGeo": [
+    "Nederland"
+  ],
+  "harmSignals": [
+    "\"dwangmatige controle\"",
+    "hersenspoeling",
+    "\"geestelijk misbruik\"",
+    "\"religieus misbruik\"",
+    "slavernij",
+    "\"moderne slavernij\"",
+    "mensenhandel"
+  ],
+  "journalismSignals": [
+    "nieuws",
+    "verslag",
+    "onderzoek"
+  ],
+  "justiceSignals": [
+    "rechtszaak",
+    "rechtbank",
+    "politie",
+    "gearresteerd"
+  ],
+  "mediaSignals": [
+    "documentaire",
+    "netflix",
+    "serie"
+  ],
+  "religiousGroupTerms": [
+    "\"religieuze groep\"",
+    "\"religieuze groepen\"",
+    "\"religieuze gemeenschap\""
+  ],
+  "victimSignals": [
+    "overlevenden",
+    "slachtoffers",
+    "misbruik",
+    "uitbuiting"
+  ],
   "strictCultTermExtensions": [
     "dwangmatige controle",
     "hersenspoeling",
@@ -116,6 +105,16 @@
     "groep met hoge controle",
     "groep met hoge eisen",
     "groep met strenge eisen",
+    "slavernij",
+    "moderne slavernij",
+    "mensenhandel"
+  ],
+  "genericCultTerms": [
+    "kult",
+    "sekte",
+    "sekten"
+  ],
+  "coerciveHarmTerms": [
     "slavernij",
     "moderne slavernij",
     "mensenhandel"
@@ -162,20 +161,5 @@
     "nieuws",
     "bericht",
     "artikel"
-  ],
-  "genericCultTerms": [
-    "kult",
-    "sekte",
-    "sekten"
-  ],
-  "religiousGroupTerms": [
-    "religieuze groep",
-    "religieuze groepen",
-    "religieuze gemeenschap"
-  ],
-  "coerciveHarmTerms": [
-    "slavernij",
-    "moderne slavernij",
-    "mensenhandel"
   ]
 }

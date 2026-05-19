@@ -1,106 +1,96 @@
 {
   "language": "no",
-  "queryTemplates": [
-    "({{noTerms}} OR {{noReligiousGroupTerms}} OR {{noHarmSignals}}) {{noEuropeCountryOr}}",
-    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noJournalismSignals}}",
-    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noJusticeSignals}}",
-    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noVictimSignals}}",
-    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noMediaSignals}}"
+  "cultTerms": [
+    "sekt",
+    "sect",
+    "sects",
+    "cult",
+    "cults",
+    "\"religiøs gruppe\"",
+    "\"religiøse grupper\"",
+    "\"religiøst samfunn\""
   ],
-  "_docs": "Language-specific Google News query groups for \"no\" (cult-related + Europe country OR list).",
-  "groups": {
-    "noTerms": [
-      "sekt",
-      "sect",
-      "sects",
-      "cult",
-      "cults",
-      "\"religiøs gruppe\"",
-      "\"religiøse grupper\"",
-      "\"religiøst samfunn\""
-    ],
-    "noHarmSignals": [
-      "tvangskontroll",
-      "hjernevasking",
-      "åndelig misbruk",
-      "religiøst misbruk",
-      "slaveri",
-      "\"moderne slaveri\"",
-      "menneskehandel"
-    ],
-    "noJournalismSignals": [
-      "nyheter",
-      "reportasje",
-      "etterforskning"
-    ],
-    "noJusticeSignals": [
-      "rettssak",
-      "domstol",
-      "politi",
-      "arrestert"
-    ],
-    "noVictimSignals": [
-      "overlevende",
-      "ofre",
-      "misbruk",
-      "utnyttelse"
-    ],
-    "noMediaSignals": [
-      "dokumentar",
-      "netflix",
-      "serie"
-    ],
-    "noEuropeCountryOr": [
-      "Europa",
-      "Europe",
-      "Storbritannia",
-      "UK",
-      "Frankrike",
-      "Tyskland",
-      "Spania",
-      "Italia",
-      "Nederland",
-      "Irland",
-      "Polen",
-      "Romania",
-      "Portugal",
-      "Hellas",
-      "Greece",
-      "Belgia",
-      "Sverige",
-      "Norge",
-      "Danmark",
-      "Østerrike",
-      "Finland",
-      "Sveits",
-      "Tsjekkia",
-      "Kroatia",
-      "Serbia",
-      "Slovenia",
-      "Bosnia",
-      "Montenegro",
-      "\"Nord-Makedonia\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albania",
-      "Estland",
-      "Latvia",
-      "Litauen",
-      "Malta",
-      "Luxembourg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatikanet",
-      "Kypros"
-    ],
-    "noReligiousGroupTerms": [
-      "\"religiøs gruppe\"",
-      "\"religiøse grupper\"",
-      "\"religiøst samfunn\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europa",
+    "Europe",
+    "Storbritannia",
+    "UK",
+    "Frankrike",
+    "Tyskland",
+    "Spania",
+    "Italia",
+    "Nederland",
+    "Irland",
+    "Polen",
+    "Romania",
+    "Portugal",
+    "Hellas",
+    "Greece",
+    "Belgia",
+    "Sverige",
+    "Norge",
+    "Danmark",
+    "Østerrike",
+    "Finland",
+    "Sveits",
+    "Tsjekkia",
+    "Kroatia",
+    "Serbia",
+    "Slovenia",
+    "Bosnia",
+    "Montenegro",
+    "\"Nord-Makedonia\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albania",
+    "Estland",
+    "Latvia",
+    "Litauen",
+    "Malta",
+    "Luxembourg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vatikanet",
+    "Kypros"
+  ],
+  "harmSignals": [
+    "tvangskontroll",
+    "hjernevasking",
+    "åndelig misbruk",
+    "religiøst misbruk",
+    "slaveri",
+    "\"moderne slaveri\"",
+    "menneskehandel"
+  ],
+  "journalismSignals": [
+    "nyheter",
+    "reportasje",
+    "etterforskning"
+  ],
+  "justiceSignals": [
+    "rettssak",
+    "domstol",
+    "politi",
+    "arrestert"
+  ],
+  "mediaSignals": [
+    "dokumentar",
+    "netflix",
+    "serie"
+  ],
+  "religiousGroupTerms": [
+    "\"religiøs gruppe\"",
+    "\"religiøse grupper\"",
+    "\"religiøst samfunn\""
+  ],
+  "victimSignals": [
+    "overlevende",
+    "ofre",
+    "misbruk",
+    "utnyttelse"
+  ],
   "strictCultTermExtensions": [
     "tvangskontroll",
     "hjernevasking",
@@ -114,20 +104,15 @@
     "moderne slaveri",
     "menneskehandel"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekt",
     "sekter",
     "kult"
   ],
-  "religiousGroupTerms": [
-    "religiøs gruppe",
-    "religiøse grupper",
-    "religiøst samfunn"
-  ],
   "coerciveHarmTerms": [
     "slaveri",
     "moderne slaveri",
     "menneskehandel"
-  ]
+  ],
+  "groupStopwords": []
 }

@@ -1,111 +1,100 @@
 {
   "language": "fi",
-  "queryTemplates": [
-    "({{fiTerms}} OR {{fiReligiousGroupTerms}} OR {{fiHarmSignals}}) {{fiEuropeCountryOr}}",
-    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiFinlandGeo}}",
-    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiJournalismSignals}}",
-    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiJusticeSignals}}",
-    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiVictimSignals}}",
-    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiMediaSignals}}"
+  "cultTerms": [
+    "lahko",
+    "lahkot",
+    "sect",
+    "cult",
+    "cults",
+    "\"hengellinen vaara\"",
+    "\"uskonnollinen ryhmä\"",
+    "\"uskonnolliset ryhmät\"",
+    "\"uskonnollinen yhteisö\""
   ],
-  "_docs": "Language-specific Google News query groups for \"fi\" (cult-related + Europe country OR list).",
-  "groups": {
-    "fiTerms": [
-      "lahko",
-      "lahkot",
-      "sect",
-      "cult",
-      "cults",
-      "\"hengellinen vaara\"",
-      "\"uskonnollinen ryhmä\"",
-      "\"uskonnolliset ryhmät\"",
-      "\"uskonnollinen yhteisö\""
-    ],
-    "fiHarmSignals": [
-      "\"pakottava hallinta\"",
-      "aivopesu",
-      "\"hengellinen väkivalta\"",
-      "\"uskonnollinen väkivalta\"",
-      "orjuus",
-      "\"nykyaikainen orjuus\"",
-      "ihmiskauppa"
-    ],
-    "fiJournalismSignals": [
-      "uutiset",
-      "reportaasi",
-      "tutkinta"
-    ],
-    "fiJusticeSignals": [
-      "oikeudenkäynti",
-      "oikeus",
-      "poliisi",
-      "pidätetty"
-    ],
-    "fiVictimSignals": [
-      "selviytyjät",
-      "uhrit",
-      "väkivalta",
-      "hyväksikäyttö"
-    ],
-    "fiMediaSignals": [
-      "dokumentti",
-      "netflix",
-      "sarja"
-    ],
-    "fiFinlandGeo": [
-      "Suomi"
-    ],
-    "fiEuropeCountryOr": [
-      "Eurooppa",
-      "Europe",
-      "Yhdistynyt kuningaskunta",
-      "UK",
-      "Ranska",
-      "Saksa",
-      "Espanja",
-      "Italia",
-      "Alankomaat",
-      "Hollanti",
-      "Irlanti",
-      "Puola",
-      "Romania",
-      "Portugali",
-      "Kreikka",
-      "Belgia",
-      "Ruotsi",
-      "Norja",
-      "Tanska",
-      "Itävalta",
-      "Suomi",
-      "Sveitsi",
-      "Tšekki",
-      "Kroatia",
-      "Serbia",
-      "Slovenia",
-      "Bosnia",
-      "Montenegro",
-      "\"Pohjois-Makedonia\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albania",
-      "Viro",
-      "Latvia",
-      "Liettua",
-      "Malta",
-      "Luxemburg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatikaani",
-      "Kypros"
-    ],
-    "fiReligiousGroupTerms": [
-      "\"uskonnollinen ryhmä\"",
-      "\"uskonnolliset ryhmät\"",
-      "\"uskonnollinen yhteisö\""
-    ]
-  },
+  "europeCountryOr": [
+    "Eurooppa",
+    "Europe",
+    "Yhdistynyt kuningaskunta",
+    "UK",
+    "Ranska",
+    "Saksa",
+    "Espanja",
+    "Italia",
+    "Alankomaat",
+    "Hollanti",
+    "Irlanti",
+    "Puola",
+    "Romania",
+    "Portugali",
+    "Kreikka",
+    "Belgia",
+    "Ruotsi",
+    "Norja",
+    "Tanska",
+    "Itävalta",
+    "Suomi",
+    "Sveitsi",
+    "Tšekki",
+    "Kroatia",
+    "Serbia",
+    "Slovenia",
+    "Bosnia",
+    "Montenegro",
+    "\"Pohjois-Makedonia\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albania",
+    "Viro",
+    "Latvia",
+    "Liettua",
+    "Malta",
+    "Luxemburg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vatikaani",
+    "Kypros"
+  ],
+  "focusGeo": [
+    "Suomi"
+  ],
+  "harmSignals": [
+    "\"pakottava hallinta\"",
+    "aivopesu",
+    "\"hengellinen väkivalta\"",
+    "\"uskonnollinen väkivalta\"",
+    "orjuus",
+    "\"nykyaikainen orjuus\"",
+    "ihmiskauppa"
+  ],
+  "journalismSignals": [
+    "uutiset",
+    "reportaasi",
+    "tutkinta"
+  ],
+  "justiceSignals": [
+    "oikeudenkäynti",
+    "oikeus",
+    "poliisi",
+    "pidätetty"
+  ],
+  "mediaSignals": [
+    "dokumentti",
+    "netflix",
+    "sarja"
+  ],
+  "religiousGroupTerms": [
+    "\"uskonnollinen ryhmä\"",
+    "\"uskonnolliset ryhmät\"",
+    "\"uskonnollinen yhteisö\""
+  ],
+  "victimSignals": [
+    "selviytyjät",
+    "uhrit",
+    "väkivalta",
+    "hyväksikäyttö"
+  ],
   "strictCultTermExtensions": [
     "pakottava hallinta",
     "aivopesu",
@@ -119,20 +108,15 @@
     "nykyaikainen orjuus",
     "ihmiskauppa"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "lahko",
     "lahkot",
     "kultti"
   ],
-  "religiousGroupTerms": [
-    "uskonnollinen ryhmä",
-    "uskonnolliset ryhmät",
-    "uskonnollinen yhteisö"
-  ],
   "coerciveHarmTerms": [
     "orjuus",
     "nykyaikainen orjuus",
     "ihmiskauppa"
-  ]
+  ],
+  "groupStopwords": []
 }

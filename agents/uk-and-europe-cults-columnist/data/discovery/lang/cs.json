@@ -1,106 +1,96 @@
 {
   "language": "cs",
-  "queryTemplates": [
-    "({{csTerms}} OR {{csReligiousGroupTerms}} OR {{csHarmSignals}}) {{csEuropeCountryOr}}",
-    "({{csTerms}} OR {{csReligiousGroupTerms}}) {{csJournalismSignals}}",
-    "({{csTerms}} OR {{csReligiousGroupTerms}}) {{csJusticeSignals}}",
-    "({{csTerms}} OR {{csReligiousGroupTerms}}) {{csVictimSignals}}",
-    "({{csTerms}} OR {{csReligiousGroupTerms}}) {{csMediaSignals}}"
+  "cultTerms": [
+    "sekta",
+    "sekty",
+    "sect",
+    "cult",
+    "cults",
+    "\"náboženská skupina\"",
+    "\"náboženské skupiny\"",
+    "\"náboženská komunita\""
   ],
-  "_docs": "Language-specific Google News query groups for \"cs\" (cult-related + Europe country OR list).",
-  "groups": {
-    "csTerms": [
-      "sekta",
-      "sekty",
-      "sect",
-      "cult",
-      "cults",
-      "\"náboženská skupina\"",
-      "\"náboženské skupiny\"",
-      "\"náboženská komunita\""
-    ],
-    "csHarmSignals": [
-      "donucovací kontrola",
-      "mýcení mozku",
-      "duchovní zneužívání",
-      "náboženské zneužívání",
-      "otroctví",
-      "\"moderní otroctví\"",
-      "\"obchodování s lidmi\""
-    ],
-    "csJournalismSignals": [
-      "zprávy",
-      "reportáž",
-      "vyšetřování"
-    ],
-    "csJusticeSignals": [
-      "soud",
-      "soudní proces",
-      "policie",
-      "zatčen"
-    ],
-    "csVictimSignals": [
-      "přeživší",
-      "oběti",
-      "zneužívání",
-      "vykořisťování"
-    ],
-    "csMediaSignals": [
-      "dokument",
-      "netflix",
-      "seriál"
-    ],
-    "csEuropeCountryOr": [
-      "Evropa",
-      "Europe",
-      "Spojené království",
-      "UK",
-      "Francie",
-      "Německo",
-      "Španělsko",
-      "Itálie",
-      "Nizozemsko",
-      "Irsko",
-      "Polsko",
-      "Rumunsko",
-      "Portugalsko",
-      "Řecko",
-      "Belgie",
-      "Švédsko",
-      "Norsko",
-      "Dánsko",
-      "Rakousko",
-      "Finsko",
-      "Švýcarsko",
-      "Česko",
-      "\"Česká republika\"",
-      "Chorvatsko",
-      "Srbsko",
-      "Slovinsko",
-      "Bosna",
-      "Černá Hora",
-      "\"Severní Makedonie\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albánie",
-      "Estonsko",
-      "Lotyšsko",
-      "Litva",
-      "Malta",
-      "Lucembursko",
-      "Monako",
-      "\"San Marino\"",
-      "Lichtenštejnsko",
-      "Andorra",
-      "Vatikán",
-      "Kypr"
-    ],
-    "csReligiousGroupTerms": [
-      "\"náboženská skupina\"",
-      "\"náboženské skupiny\"",
-      "\"náboženská komunita\""
-    ]
-  },
+  "europeCountryOr": [
+    "Evropa",
+    "Europe",
+    "Spojené království",
+    "UK",
+    "Francie",
+    "Německo",
+    "Španělsko",
+    "Itálie",
+    "Nizozemsko",
+    "Irsko",
+    "Polsko",
+    "Rumunsko",
+    "Portugalsko",
+    "Řecko",
+    "Belgie",
+    "Švédsko",
+    "Norsko",
+    "Dánsko",
+    "Rakousko",
+    "Finsko",
+    "Švýcarsko",
+    "Česko",
+    "\"Česká republika\"",
+    "Chorvatsko",
+    "Srbsko",
+    "Slovinsko",
+    "Bosna",
+    "Černá Hora",
+    "\"Severní Makedonie\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albánie",
+    "Estonsko",
+    "Lotyšsko",
+    "Litva",
+    "Malta",
+    "Lucembursko",
+    "Monako",
+    "\"San Marino\"",
+    "Lichtenštejnsko",
+    "Andorra",
+    "Vatikán",
+    "Kypr"
+  ],
+  "harmSignals": [
+    "donucovací kontrola",
+    "mýcení mozku",
+    "duchovní zneužívání",
+    "náboženské zneužívání",
+    "otroctví",
+    "\"moderní otroctví\"",
+    "\"obchodování s lidmi\""
+  ],
+  "journalismSignals": [
+    "zprávy",
+    "reportáž",
+    "vyšetřování"
+  ],
+  "justiceSignals": [
+    "soud",
+    "soudní proces",
+    "policie",
+    "zatčen"
+  ],
+  "mediaSignals": [
+    "dokument",
+    "netflix",
+    "seriál"
+  ],
+  "religiousGroupTerms": [
+    "\"náboženská skupina\"",
+    "\"náboženské skupiny\"",
+    "\"náboženská komunita\""
+  ],
+  "victimSignals": [
+    "přeživší",
+    "oběti",
+    "zneužívání",
+    "vykořisťování"
+  ],
   "strictCultTermExtensions": [
     "donucovací kontrola",
     "vymývání mozku",
@@ -114,20 +104,15 @@
     "moderní otroctví",
     "obchodování s lidmi"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekty",
     "kult"
   ],
-  "religiousGroupTerms": [
-    "náboženská skupina",
-    "náboženské skupiny",
-    "náboženská komunita"
-  ],
   "coerciveHarmTerms": [
     "otroctví",
     "moderní otroctví",
     "obchodování s lidmi"
-  ]
+  ],
+  "groupStopwords": []
 }

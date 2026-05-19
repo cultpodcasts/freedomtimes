@@ -1,112 +1,101 @@
 {
   "language": "pl",
-  "queryTemplates": [
-    "({{plTerms}} OR {{plReligiousGroupTerms}} OR {{plHarmSignals}}) {{plEuropeCountryOr}}",
-    "({{plTerms}} OR {{plReligiousGroupTerms}}) {{plPolandGeo}}",
-    "({{plTerms}} OR {{plReligiousGroupTerms}}) {{plJournalismSignals}}",
-    "({{plTerms}} OR {{plReligiousGroupTerms}}) {{plJusticeSignals}}",
-    "({{plTerms}} OR {{plReligiousGroupTerms}}) {{plVictimSignals}}",
-    "({{plTerms}} OR {{plReligiousGroupTerms}}) {{plMediaSignals}}"
+  "cultTerms": [
+    "sekta",
+    "sekty",
+    "sect",
+    "cult",
+    "cults",
+    "\"kontrola umyslu\"",
+    "\"grupa religijna\"",
+    "\"grupy religijne\"",
+    "\"wspólnota religijna\""
   ],
-  "_docs": "Language-specific Google News query groups for \"pl\" (cult-related + Europe country OR list).",
-  "groups": {
-    "plTerms": [
-      "sekta",
-      "sekty",
-      "sect",
-      "cult",
-      "cults",
-      "\"kontrola umyslu\"",
-      "\"grupa religijna\"",
-      "\"grupy religijne\"",
-      "\"wspólnota religijna\""
-    ],
-    "plHarmSignals": [
-      "\"przymusowa kontrola\"",
-      "\"pranie mózgu\"",
-      "\"wykorzystywanie duchowe\"",
-      "\"nadużycie religijne\"",
-      "niewolnictwo",
-      "\"współczesne niewolnictwo\"",
-      "\"handel ludźmi\""
-    ],
-    "plJournalismSignals": [
-      "wiadomości",
-      "reportaż",
-      "śledztwo"
-    ],
-    "plJusticeSignals": [
-      "proces",
-      "sąd",
-      "policja",
-      "aresztowany"
-    ],
-    "plVictimSignals": [
-      "ocaleni",
-      "ofiary",
-      "wykorzystanie",
-      "eksploatacja"
-    ],
-    "plMediaSignals": [
-      "dokument",
-      "netflix",
-      "serial"
-    ],
-    "plPolandGeo": [
-      "Polska"
-    ],
-    "plEuropeCountryOr": [
-      "Europa",
-      "Europe",
-      "Wielka Brytania",
-      "UK",
-      "Francja",
-      "Niemcy",
-      "Hiszpania",
-      "Włochy",
-      "Holandia",
-      "Niderlandy",
-      "Irlandia",
-      "Polska",
-      "Rumunia",
-      "Portugalia",
-      "Grecja",
-      "Belgia",
-      "Szwecja",
-      "Norwegia",
-      "Dania",
-      "Austria",
-      "Finlandia",
-      "Szwajcaria",
-      "Czechy",
-      "\"Republika Czeska\"",
-      "Chorwacja",
-      "Serbia",
-      "Słowenia",
-      "Bośnia",
-      "Czarnogóra",
-      "\"Macedonia Północna\"",
-      "\"North Macedonia\"",
-      "Kosowo",
-      "Albania",
-      "Estonia",
-      "Łotwa",
-      "Litwa",
-      "Malta",
-      "Luksemburg",
-      "Monako",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andora",
-      "Watykan",
-      "Cypr"
-    ],
-    "plReligiousGroupTerms": [
-      "\"grupa religijna\"",
-      "\"grupy religijne\"",
-      "\"wspólnota religijna\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europa",
+    "Europe",
+    "Wielka Brytania",
+    "UK",
+    "Francja",
+    "Niemcy",
+    "Hiszpania",
+    "Włochy",
+    "Holandia",
+    "Niderlandy",
+    "Irlandia",
+    "Polska",
+    "Rumunia",
+    "Portugalia",
+    "Grecja",
+    "Belgia",
+    "Szwecja",
+    "Norwegia",
+    "Dania",
+    "Austria",
+    "Finlandia",
+    "Szwajcaria",
+    "Czechy",
+    "\"Republika Czeska\"",
+    "Chorwacja",
+    "Serbia",
+    "Słowenia",
+    "Bośnia",
+    "Czarnogóra",
+    "\"Macedonia Północna\"",
+    "\"North Macedonia\"",
+    "Kosowo",
+    "Albania",
+    "Estonia",
+    "Łotwa",
+    "Litwa",
+    "Malta",
+    "Luksemburg",
+    "Monako",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andora",
+    "Watykan",
+    "Cypr"
+  ],
+  "focusGeo": [
+    "Polska"
+  ],
+  "harmSignals": [
+    "\"przymusowa kontrola\"",
+    "\"pranie mózgu\"",
+    "\"wykorzystywanie duchowe\"",
+    "\"nadużycie religijne\"",
+    "niewolnictwo",
+    "\"współczesne niewolnictwo\"",
+    "\"handel ludźmi\""
+  ],
+  "journalismSignals": [
+    "wiadomości",
+    "reportaż",
+    "śledztwo"
+  ],
+  "justiceSignals": [
+    "proces",
+    "sąd",
+    "policja",
+    "aresztowany"
+  ],
+  "mediaSignals": [
+    "dokument",
+    "netflix",
+    "serial"
+  ],
+  "religiousGroupTerms": [
+    "\"grupa religijna\"",
+    "\"grupy religijne\"",
+    "\"wspólnota religijna\""
+  ],
+  "victimSignals": [
+    "ocaleni",
+    "ofiary",
+    "wykorzystanie",
+    "eksploatacja"
+  ],
   "strictCultTermExtensions": [
     "kontrola współzależności",
     "pranie mózgu",
@@ -120,20 +109,15 @@
     "współczesne niewolnictwo",
     "handel ludźmi"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekty",
     "kult"
   ],
-  "religiousGroupTerms": [
-    "grupa religijna",
-    "grupy religijne",
-    "wspólnota religijna"
-  ],
   "coerciveHarmTerms": [
     "niewolnictwo",
     "współczesne niewolnictwo",
     "handel ludźmi"
-  ]
+  ],
+  "groupStopwords": []
 }

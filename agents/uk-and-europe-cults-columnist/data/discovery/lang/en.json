@@ -1,125 +1,100 @@
 {
   "language": "en",
-  "queryTemplates": [
-    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enEuropeCountryOr}}",
-    "({{cultCore}} OR {{enReligiousGroupTerms}} OR {{enHarmSignals}}) {{enEuropeCountryOr}}",
-    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{ukGeo}}",
-    "({{enHarmSignals}} AND ({{cultCore}} OR {{enReligiousGroupTerms}})) {{ukGeoTight}}",
-    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enJournalismSignals}}",
-    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enJusticeSignals}}",
-    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enVictimSignals}}",
-    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enMediaSignals}}"
+  "cultTerms": [
+    "cult",
+    "cults",
+    "sect",
+    "sects"
   ],
-  "_docs": "Language-specific Google News query groups for \"en\" (cult-related + Europe country OR list). Locale-pinned templates use {{enHarmSignals}}, {{enJournalismSignals}}, {{enJusticeSignals}}, {{enVictimSignals}}, {{enMediaSignals}}. Top-level genericCultTerms: weak cult/sect stems for URL and precision filters; strictCultTermExtensions: harm/control phrases for precise cult-topic matching; groupStopwords: editorial tokens merged into cluster phrase extraction (same directory for all locales).",
-  "groups": {
-    "enHarmSignals": [
-      "\"coercive control\"",
-      "brainwashing",
-      "\"high control group\"",
-      "\"high control groups\"",
-      "\"religious abuse\"",
-      "\"spiritual abuse\"",
-      "slavery",
-      "\"modern slavery\"",
-      "\"human trafficking\""
-    ],
-    "enJournalismSignals": [
-      "news",
-      "report",
-      "investigation"
-    ],
-    "enJusticeSignals": [
-      "trial",
-      "court",
-      "police",
-      "arrested"
-    ],
-    "enVictimSignals": [
-      "survivor",
-      "victims",
-      "abuse",
-      "exploitation"
-    ],
-    "enMediaSignals": [
-      "documentary",
-      "netflix",
-      "series"
-    ],
-    "enWatchlistTerms": [
-      "cult",
-      "cults",
-      "sect",
-      "sects",
-      "\"coercive control\"",
-      "brainwashing",
-      "\"high control group\"",
-      "\"high control groups\"",
-      "\"religious abuse\"",
-      "\"spiritual abuse\"",
-      "slavery",
-      "\"modern slavery\"",
-      "\"human trafficking\"",
-      "\"religious group\"",
-      "\"religious groups\"",
-      "\"religious community\""
-    ],
-    "enEuropeCountryOr": [
-      "Europe",
-      "UK",
-      "\"United Kingdom\"",
-      "Britain",
-      "England",
-      "Scotland",
-      "Wales",
-      "\"Northern Ireland\"",
-      "Ireland",
-      "France",
-      "Germany",
-      "Spain",
-      "Italy",
-      "Netherlands",
-      "Poland",
-      "Romania",
-      "Portugal",
-      "Greece",
-      "Belgium",
-      "Sweden",
-      "Norway",
-      "Denmark",
-      "Austria",
-      "Finland",
-      "Switzerland",
-      "\"Czech Republic\"",
-      "Croatia",
-      "Serbia",
-      "Slovenia",
-      "Bosnia",
-      "Montenegro",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albania",
-      "Estonia",
-      "Latvia",
-      "Lithuania",
-      "Malta",
-      "Luxembourg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatican",
-      "Cyprus"
-    ],
-    "enReligiousGroupTerms": [
-      "\"religious group\"",
-      "\"religious groups\"",
-      "\"religious community\"",
-      "\"new religious movement\"",
-      "\"spiritual movement\"",
-      "\"sect member\"",
-      "\"sect members\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europe",
+    "UK",
+    "\"United Kingdom\"",
+    "Britain",
+    "England",
+    "Scotland",
+    "Wales",
+    "\"Northern Ireland\"",
+    "Ireland",
+    "France",
+    "Germany",
+    "Spain",
+    "Italy",
+    "Netherlands",
+    "Poland",
+    "Romania",
+    "Portugal",
+    "Greece",
+    "Belgium",
+    "Sweden",
+    "Norway",
+    "Denmark",
+    "Austria",
+    "Finland",
+    "Switzerland",
+    "\"Czech Republic\"",
+    "Croatia",
+    "Serbia",
+    "Slovenia",
+    "Bosnia",
+    "Montenegro",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albania",
+    "Estonia",
+    "Latvia",
+    "Lithuania",
+    "Malta",
+    "Luxembourg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vatican",
+    "Cyprus"
+  ],
+  "harmSignals": [
+    "\"coercive control\"",
+    "brainwashing",
+    "\"high control group\"",
+    "\"high control groups\"",
+    "\"religious abuse\"",
+    "\"spiritual abuse\"",
+    "slavery",
+    "\"modern slavery\"",
+    "\"human trafficking\""
+  ],
+  "journalismSignals": [
+    "news",
+    "report",
+    "investigation"
+  ],
+  "justiceSignals": [
+    "trial",
+    "court",
+    "police",
+    "arrested"
+  ],
+  "mediaSignals": [
+    "documentary",
+    "netflix",
+    "series"
+  ],
+  "religiousGroupTerms": [
+    "\"religious group\"",
+    "\"religious groups\"",
+    "\"religious community\"",
+    "\"new religious movement\"",
+    "\"spiritual movement\"",
+    "\"sect member\"",
+    "\"sect members\""
+  ],
+  "victimSignals": [
+    "survivor",
+    "victims",
+    "abuse",
+    "exploitation"
+  ],
   "strictCultTermExtensions": [
     "coercive control",
     "brainwashing",
@@ -133,6 +108,22 @@
     "slavery",
     "modern slavery",
     "human trafficking"
+  ],
+  "genericCultTerms": [
+    "cult",
+    "cults",
+    "sect",
+    "sects"
+  ],
+  "coerciveHarmTerms": [
+    "slavery",
+    "modern slavery",
+    "human trafficking",
+    "forced marriage",
+    "sexual abuse",
+    "sexual assault",
+    "rape",
+    "coercive control"
   ],
   "groupStopwords": [
     "about",
@@ -180,30 +171,5 @@
     "read",
     "full",
     "article"
-  ],
-  "genericCultTerms": [
-    "cult",
-    "cults",
-    "sect",
-    "sects"
-  ],
-  "religiousGroupTerms": [
-    "religious group",
-    "religious groups",
-    "religious community",
-    "new religious movement",
-    "spiritual movement",
-    "sect member",
-    "sect members"
-  ],
-  "coerciveHarmTerms": [
-    "slavery",
-    "modern slavery",
-    "human trafficking",
-    "forced marriage",
-    "sexual abuse",
-    "sexual assault",
-    "rape",
-    "coercive control"
   ]
 }

@@ -1,107 +1,97 @@
 {
   "language": "bs",
-  "queryTemplates": [
-    "({{bsTerms}} OR {{bsReligiousGroupTerms}} OR {{bsHarmSignals}}) {{bsEuropeCountryOr}}",
-    "({{bsTerms}} OR {{bsReligiousGroupTerms}}) {{bsJournalismSignals}}",
-    "({{bsTerms}} OR {{bsReligiousGroupTerms}}) {{bsJusticeSignals}}",
-    "({{bsTerms}} OR {{bsReligiousGroupTerms}}) {{bsVictimSignals}}",
-    "({{bsTerms}} OR {{bsReligiousGroupTerms}}) {{bsMediaSignals}}"
+  "cultTerms": [
+    "sekta",
+    "kult",
+    "sect",
+    "cult",
+    "cults",
+    "\"vjerska grupa\"",
+    "\"vjerske grupe\"",
+    "\"vjerska zajednica\"",
+    "\"religijska grupa\""
   ],
-  "_docs": "Language-specific Google News query groups for \"bs\" (cult-related + Europe country OR list).",
-  "groups": {
-    "bsTerms": [
-      "sekta",
-      "kult",
-      "sect",
-      "cult",
-      "cults",
-      "\"vjerska grupa\"",
-      "\"vjerske grupe\"",
-      "\"vjerska zajednica\"",
-      "\"religijska grupa\""
-    ],
-    "bsHarmSignals": [
-      "prisilna kontrola",
-      "pranje mozga",
-      "duhovno zlostavljanje",
-      "religijsko zlostavljanje",
-      "ropstvo",
-      "\"moderno ropstvo\"",
-      "\"trgovina ljudima\""
-    ],
-    "bsJournalismSignals": [
-      "vijesti",
-      "izvještaj",
-      "istraga"
-    ],
-    "bsJusticeSignals": [
-      "suđenje",
-      "sud",
-      "policija",
-      "uhapšen"
-    ],
-    "bsVictimSignals": [
-      "preživjeli",
-      "žrtve",
-      "zlostavljanje",
-      "eksploatacija"
-    ],
-    "bsMediaSignals": [
-      "dokumentarni",
-      "netflix",
-      "serija"
-    ],
-    "bsEuropeCountryOr": [
-      "Evropa",
-      "Europe",
-      "Ujedinjeno Kraljevstvo",
-      "UK",
-      "Francuska",
-      "Njemačka",
-      "Španija",
-      "Italija",
-      "Holandija",
-      "Irska",
-      "Poljska",
-      "Rumunija",
-      "Portugal",
-      "Grčka",
-      "Belgija",
-      "Švedska",
-      "Norveška",
-      "Danska",
-      "Austrija",
-      "Finska",
-      "Švicarska",
-      "Češka",
-      "Hrvatska",
-      "Srbija",
-      "Slovenija",
-      "Bosna",
-      "Crna Gora",
-      "\"Sjeverna Makedonija\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albanija",
-      "Estonija",
-      "Latvija",
-      "Litvanija",
-      "Malta",
-      "Luksemburg",
-      "Monako",
-      "\"San Marino\"",
-      "Lihtenštajn",
-      "Andora",
-      "Vatikan",
-      "Kipar"
-    ],
-    "bsReligiousGroupTerms": [
-      "\"vjerska grupa\"",
-      "\"vjerske grupe\"",
-      "\"vjerska zajednica\"",
-      "\"religijska grupa\""
-    ]
-  },
+  "europeCountryOr": [
+    "Evropa",
+    "Europe",
+    "Ujedinjeno Kraljevstvo",
+    "UK",
+    "Francuska",
+    "Njemačka",
+    "Španija",
+    "Italija",
+    "Holandija",
+    "Irska",
+    "Poljska",
+    "Rumunija",
+    "Portugal",
+    "Grčka",
+    "Belgija",
+    "Švedska",
+    "Norveška",
+    "Danska",
+    "Austrija",
+    "Finska",
+    "Švicarska",
+    "Češka",
+    "Hrvatska",
+    "Srbija",
+    "Slovenija",
+    "Bosna",
+    "Crna Gora",
+    "\"Sjeverna Makedonija\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albanija",
+    "Estonija",
+    "Latvija",
+    "Litvanija",
+    "Malta",
+    "Luksemburg",
+    "Monako",
+    "\"San Marino\"",
+    "Lihtenštajn",
+    "Andora",
+    "Vatikan",
+    "Kipar"
+  ],
+  "harmSignals": [
+    "prisilna kontrola",
+    "pranje mozga",
+    "duhovno zlostavljanje",
+    "religijsko zlostavljanje",
+    "ropstvo",
+    "\"moderno ropstvo\"",
+    "\"trgovina ljudima\""
+  ],
+  "journalismSignals": [
+    "vijesti",
+    "izvještaj",
+    "istraga"
+  ],
+  "justiceSignals": [
+    "suđenje",
+    "sud",
+    "policija",
+    "uhapšen"
+  ],
+  "mediaSignals": [
+    "dokumentarni",
+    "netflix",
+    "serija"
+  ],
+  "religiousGroupTerms": [
+    "\"vjerska grupa\"",
+    "\"vjerske grupe\"",
+    "\"vjerska zajednica\"",
+    "\"religijska grupa\""
+  ],
+  "victimSignals": [
+    "preživjeli",
+    "žrtve",
+    "zlostavljanje",
+    "eksploatacija"
+  ],
   "strictCultTermExtensions": [
     "prisilna kontrola",
     "pranje mozga",
@@ -115,21 +105,15 @@
     "moderno ropstvo",
     "trgovina ljudima"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sekte",
     "kult"
   ],
-  "religiousGroupTerms": [
-    "vjerska grupa",
-    "vjerske grupe",
-    "vjerska zajednica",
-    "religijska grupa"
-  ],
   "coerciveHarmTerms": [
     "ropstvo",
     "moderno ropstvo",
     "trgovina ljudima"
-  ]
+  ],
+  "groupStopwords": []
 }

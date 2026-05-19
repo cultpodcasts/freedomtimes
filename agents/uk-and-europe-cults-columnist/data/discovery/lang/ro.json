@@ -1,112 +1,101 @@
 {
   "language": "ro",
-  "queryTemplates": [
-    "({{roTerms}} OR {{roReligiousGroupTerms}} OR {{roHarmSignals}}) {{roEuropeCountryOr}}",
-    "({{roTerms}} OR {{roReligiousGroupTerms}}) {{roRomaniaGeo}}",
-    "({{roTerms}} OR {{roReligiousGroupTerms}}) {{roJournalismSignals}}",
-    "({{roTerms}} OR {{roReligiousGroupTerms}}) {{roJusticeSignals}}",
-    "({{roTerms}} OR {{roReligiousGroupTerms}}) {{roVictimSignals}}",
-    "({{roTerms}} OR {{roReligiousGroupTerms}}) {{roMediaSignals}}"
+  "cultTerms": [
+    "secta",
+    "sect",
+    "cult",
+    "cults",
+    "\"control mental\"",
+    "\"control mintal\"",
+    "\"grup religios\"",
+    "\"grupuri religioase\"",
+    "\"comunitate religioasă\""
   ],
-  "_docs": "Language-specific Google News query groups for \"ro\" (cult-related + Europe country OR list).",
-  "groups": {
-    "roTerms": [
-      "secta",
-      "sect",
-      "cult",
-      "cults",
-      "\"control mental\"",
-      "\"control mintal\"",
-      "\"grup religios\"",
-      "\"grupuri religioase\"",
-      "\"comunitate religioasă\""
-    ],
-    "roHarmSignals": [
-      "\"control coercitiv\"",
-      "\"spălare pe creier\"",
-      "\"abuz spiritual\"",
-      "\"abuz religios\"",
-      "sclavie",
-      "\"sclavie modernă\"",
-      "\"trafic de persoane\""
-    ],
-    "roJournalismSignals": [
-      "știri",
-      "reportaj",
-      "investigație"
-    ],
-    "roJusticeSignals": [
-      "proces",
-      "tribunal",
-      "poliție",
-      "arestat"
-    ],
-    "roVictimSignals": [
-      "supraviețuitori",
-      "victime",
-      "abuz",
-      "exploatare"
-    ],
-    "roMediaSignals": [
-      "documentar",
-      "netflix",
-      "serial"
-    ],
-    "roRomaniaGeo": [
-      "România"
-    ],
-    "roEuropeCountryOr": [
-      "Europa",
-      "Europe",
-      "Regatul Unit",
-      "UK",
-      "Franța",
-      "Germania",
-      "Spania",
-      "Italia",
-      "Țările de Jos",
-      "Olanda",
-      "Irlanda",
-      "Polonia",
-      "România",
-      "Portugalia",
-      "Grecia",
-      "Belgia",
-      "Suedia",
-      "Norvegia",
-      "Danemarca",
-      "Austria",
-      "Finlanda",
-      "Elveția",
-      "Cehia",
-      "\"Republica Cehă\"",
-      "Croația",
-      "Serbia",
-      "Slovenia",
-      "Bosnia",
-      "Muntenegru",
-      "\"Macedonia de Nord\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albania",
-      "Estonia",
-      "Letonia",
-      "Lituania",
-      "Malta",
-      "Luxemburg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatican",
-      "Cipru"
-    ],
-    "roReligiousGroupTerms": [
-      "\"grup religios\"",
-      "\"grupuri religioase\"",
-      "\"comunitate religioasă\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europa",
+    "Europe",
+    "Regatul Unit",
+    "UK",
+    "Franța",
+    "Germania",
+    "Spania",
+    "Italia",
+    "Țările de Jos",
+    "Olanda",
+    "Irlanda",
+    "Polonia",
+    "România",
+    "Portugalia",
+    "Grecia",
+    "Belgia",
+    "Suedia",
+    "Norvegia",
+    "Danemarca",
+    "Austria",
+    "Finlanda",
+    "Elveția",
+    "Cehia",
+    "\"Republica Cehă\"",
+    "Croația",
+    "Serbia",
+    "Slovenia",
+    "Bosnia",
+    "Muntenegru",
+    "\"Macedonia de Nord\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albania",
+    "Estonia",
+    "Letonia",
+    "Lituania",
+    "Malta",
+    "Luxemburg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vatican",
+    "Cipru"
+  ],
+  "focusGeo": [
+    "România"
+  ],
+  "harmSignals": [
+    "\"control coercitiv\"",
+    "\"spălare pe creier\"",
+    "\"abuz spiritual\"",
+    "\"abuz religios\"",
+    "sclavie",
+    "\"sclavie modernă\"",
+    "\"trafic de persoane\""
+  ],
+  "journalismSignals": [
+    "știri",
+    "reportaj",
+    "investigație"
+  ],
+  "justiceSignals": [
+    "proces",
+    "tribunal",
+    "poliție",
+    "arestat"
+  ],
+  "mediaSignals": [
+    "documentar",
+    "netflix",
+    "serial"
+  ],
+  "religiousGroupTerms": [
+    "\"grup religios\"",
+    "\"grupuri religioase\"",
+    "\"comunitate religioasă\""
+  ],
+  "victimSignals": [
+    "supraviețuitori",
+    "victime",
+    "abuz",
+    "exploatare"
+  ],
   "strictCultTermExtensions": [
     "control coercitiv",
     "spălare pe creier",
@@ -120,20 +109,15 @@
     "sclavie modernă",
     "trafic de persoane"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "secta",
     "secte",
     "cult"
   ],
-  "religiousGroupTerms": [
-    "grup religios",
-    "grupuri religioase",
-    "comunitate religioasă"
-  ],
   "coerciveHarmTerms": [
     "sclavie",
     "sclavie modernă",
     "trafic de persoane"
-  ]
+  ],
+  "groupStopwords": []
 }

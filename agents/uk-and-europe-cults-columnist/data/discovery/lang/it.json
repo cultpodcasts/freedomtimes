@@ -1,138 +1,130 @@
 {
   "language": "it",
-  "queryTemplates": [
-    "({{itTerms}} OR {{itReligiousGroupTerms}} OR {{itHarmSignals}}) {{itEuropeCountryOr}}",
-    "({{itTerms}} OR {{itReligiousGroupTerms}}) {{itItalyGeo}}",
-    "({{itTerms}} OR {{itReligiousGroupTerms}}) {{itJournalismSignals}}",
-    "({{itTerms}} OR {{itReligiousGroupTerms}}) {{itJusticeSignals}}",
-    "({{itTerms}} OR {{itReligiousGroupTerms}}) {{itVictimSignals}}",
-    "({{itTerms}} OR {{itReligiousGroupTerms}}) {{itMediaSignals}}"
+  "cultTerms": [
+    "setta",
+    "sette",
+    "sect",
+    "cult",
+    "cults",
+    "\"abuso spirituale\"",
+    "\"manipolazione mentale\"",
+    "\"gruppo religioso\"",
+    "\"gruppi religiosi\"",
+    "\"comunità religiosa\""
   ],
-  "_docs": "Language-specific Google News query groups for \"it\" (cult-related + Europe country OR list).",
-  "groups": {
-    "itTerms": [
-      "setta",
-      "sette",
-      "sect",
-      "cult",
-      "cults",
-      "\"abuso spirituale\"",
-      "\"manipolazione mentale\"",
-      "\"gruppo religioso\"",
-      "\"gruppi religiosi\"",
-      "\"comunità religiosa\""
-    ],
-    "itHarmSignals": [
-      "\"controllo coercitivo\"",
-      "\"lavaggio del cervello\"",
-      "\"abuso spirituale\"",
-      "\"alto controllo\"",
-      "schiavitù",
-      "\"schiavitù moderna\"",
-      "\"tratta di esseri umani\""
-    ],
-    "itJournalismSignals": [
-      "notizie",
-      "inchiesta",
-      "reportage"
-    ],
-    "itJusticeSignals": [
-      "processo",
-      "tribunale",
-      "polizia",
-      "arrestato"
-    ],
-    "itVictimSignals": [
-      "sopravvissuti",
-      "vittime",
-      "abuso",
-      "sfruttamento"
-    ],
-    "itMediaSignals": [
-      "documentario",
-      "netflix",
-      "serie"
-    ],
-    "itItalyGeo": [
-      "Italia"
-    ],
-    "itEuropeCountryOr": [
-      "Europa",
-      "Europe",
-      "Italia",
-      "Italy",
-      "Regno Unito",
-      "UK",
-      "Gran Bretagna",
-      "Britain",
-      "Inghilterra",
-      "Francia",
-      "France",
-      "Germania",
-      "Germany",
-      "Spagna",
-      "Spain",
-      "Paesi Bassi",
-      "Netherlands",
-      "Olanda",
-      "Irlanda",
-      "Ireland",
-      "Polonia",
-      "Poland",
-      "Romania",
-      "Portogallo",
-      "Portugal",
-      "Grecia",
-      "Greece",
-      "Belgio",
-      "Belgium",
-      "Svezia",
-      "Sweden",
-      "Norvegia",
-      "Norway",
-      "Danimarca",
-      "Denmark",
-      "Austria",
-      "Finlandia",
-      "Finland",
-      "Svizzera",
-      "Switzerland",
-      "Repubblica Ceca",
-      "Cechia",
-      "\"Czech Republic\"",
-      "Croazia",
-      "Croatia",
-      "Serbia",
-      "Slovenia",
-      "Bosnia",
-      "Montenegro",
-      "\"Macedonia del Nord\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albania",
-      "Estonia",
-      "Lettonia",
-      "Latvia",
-      "Lituania",
-      "Lithuania",
-      "Malta",
-      "Lussemburgo",
-      "Luxembourg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vaticano",
-      "Vatican",
-      "Cipro",
-      "Cyprus"
-    ],
-    "itReligiousGroupTerms": [
-      "\"gruppo religioso\"",
-      "\"gruppi religiosi\"",
-      "\"comunità religiosa\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europa",
+    "Europe",
+    "Italia",
+    "Italy",
+    "Regno Unito",
+    "UK",
+    "Gran Bretagna",
+    "Britain",
+    "Inghilterra",
+    "Francia",
+    "France",
+    "Germania",
+    "Germany",
+    "Spagna",
+    "Spain",
+    "Paesi Bassi",
+    "Netherlands",
+    "Olanda",
+    "Irlanda",
+    "Ireland",
+    "Polonia",
+    "Poland",
+    "Romania",
+    "Portogallo",
+    "Portugal",
+    "Grecia",
+    "Greece",
+    "Belgio",
+    "Belgium",
+    "Svezia",
+    "Sweden",
+    "Norvegia",
+    "Norway",
+    "Danimarca",
+    "Denmark",
+    "Austria",
+    "Finlandia",
+    "Finland",
+    "Svizzera",
+    "Switzerland",
+    "Repubblica Ceca",
+    "Cechia",
+    "\"Czech Republic\"",
+    "Croazia",
+    "Croatia",
+    "Serbia",
+    "Slovenia",
+    "Bosnia",
+    "Montenegro",
+    "\"Macedonia del Nord\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albania",
+    "Estonia",
+    "Lettonia",
+    "Latvia",
+    "Lituania",
+    "Lithuania",
+    "Malta",
+    "Lussemburgo",
+    "Luxembourg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vaticano",
+    "Vatican",
+    "Cipro",
+    "Cyprus"
+  ],
+  "focusGeo": [
+    "Italia"
+  ],
+  "harmSignals": [
+    "\"controllo coercitivo\"",
+    "\"lavaggio del cervello\"",
+    "\"abuso spirituale\"",
+    "\"alto controllo\"",
+    "schiavitù",
+    "\"schiavitù moderna\"",
+    "\"tratta di esseri umani\""
+  ],
+  "journalismSignals": [
+    "notizie",
+    "inchiesta",
+    "reportage"
+  ],
+  "justiceSignals": [
+    "processo",
+    "tribunale",
+    "polizia",
+    "arrestato"
+  ],
+  "mediaSignals": [
+    "documentario",
+    "netflix",
+    "serie"
+  ],
+  "religiousGroupTerms": [
+    "\"gruppo religioso\"",
+    "\"gruppi religiosi\"",
+    "\"comunità religiosa\""
+  ],
+  "victimSignals": [
+    "sopravvissuti",
+    "vittime",
+    "abuso",
+    "sfruttamento"
+  ],
+  "ambiguousCultTerms": [
+    "sette"
+  ],
   "strictCultTermExtensions": [
     "controllo coercitivo",
     "lavaggio del cervello",
@@ -142,6 +134,15 @@
     "gruppo ad alto controllo",
     "gruppo ad alta richiesta",
     "gruppo ad alte richieste",
+    "schiavitù",
+    "schiavitù moderna",
+    "tratta di esseri umani"
+  ],
+  "genericCultTerms": [
+    "setta",
+    "sette"
+  ],
+  "coerciveHarmTerms": [
     "schiavitù",
     "schiavitù moderna",
     "tratta di esseri umani"
@@ -184,22 +185,5 @@
     "notizia",
     "rapporto",
     "articolo"
-  ],
-  "ambiguousCultTerms": [
-    "sette"
-  ],
-  "genericCultTerms": [
-    "setta",
-    "sette"
-  ],
-  "religiousGroupTerms": [
-    "gruppo religioso",
-    "gruppi religiosi",
-    "comunità religiosa"
-  ],
-  "coerciveHarmTerms": [
-    "schiavitù",
-    "schiavitù moderna",
-    "tratta di esseri umani"
   ]
 }

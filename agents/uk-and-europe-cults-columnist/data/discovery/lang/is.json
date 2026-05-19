@@ -1,104 +1,94 @@
 {
   "language": "is",
-  "queryTemplates": [
-    "({{isTerms}} OR {{isReligiousGroupTerms}} OR {{isHarmSignals}}) {{isEuropeCountryOr}}",
-    "({{isTerms}} OR {{isReligiousGroupTerms}}) {{isJournalismSignals}}",
-    "({{isTerms}} OR {{isReligiousGroupTerms}}) {{isJusticeSignals}}",
-    "({{isTerms}} OR {{isReligiousGroupTerms}}) {{isVictimSignals}}",
-    "({{isTerms}} OR {{isReligiousGroupTerms}}) {{isMediaSignals}}"
+  "cultTerms": [
+    "sect",
+    "sects",
+    "cult",
+    "cults",
+    "\"trúarhópur\"",
+    "\"trúarhópar\"",
+    "\"trúarsamfélag\""
   ],
-  "_docs": "Language-specific Google News query groups for \"is\" (cult-related + Europe country OR list).",
-  "groups": {
-    "isTerms": [
-      "sect",
-      "sects",
-      "cult",
-      "cults",
-      "\"trúarhópur\"",
-      "\"trúarhópar\"",
-      "\"trúarsamfélag\""
-    ],
-    "isHarmSignals": [
-      "þvingandi stjórn",
-      "heilaþvottur",
-      "andleg misnotkun",
-      "trúarleg misnotkun",
-      "þrælahald",
-      "\"nútíma þrælahald\"",
-      "mansal"
-    ],
-    "isJournalismSignals": [
-      "fréttir",
-      "skýrsla",
-      "rannsókn"
-    ],
-    "isJusticeSignals": [
-      "réttarhöld",
-      "dómstóll",
-      "lögregla",
-      "handtekinn"
-    ],
-    "isVictimSignals": [
-      "lífstjónar",
-      "fórnarlömb",
-      "misnotkun",
-      "nýting"
-    ],
-    "isMediaSignals": [
-      "heimildarmynd",
-      "netflix",
-      "þáttaröð"
-    ],
-    "isEuropeCountryOr": [
-      "Evrópa",
-      "Europe",
-      "Bretland",
-      "UK",
-      "Frakkland",
-      "Þýskaland",
-      "Spánn",
-      "Ítalía",
-      "Holland",
-      "Írland",
-      "Pólland",
-      "Rúmenía",
-      "Portúgal",
-      "Grikkland",
-      "Belgía",
-      "Svíþjóð",
-      "Noregur",
-      "Danmörk",
-      "Austri",
-      "Finnland",
-      "Sviss",
-      "Tékkland",
-      "Króatía",
-      "Serbía",
-      "Slóvenía",
-      "Bosníía",
-      "Svartfjallaland",
-      "\"Norður-Makedónía\"",
-      "\"North Macedonia\"",
-      "Kósóvó",
-      "Albanía",
-      "Eistland",
-      "Lettland",
-      "Litháen",
-      "Malta",
-      "Lúxemborg",
-      "Mónakó",
-      "\"San Marínó\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatíkanið",
-      "Kýpur"
-    ],
-    "isReligiousGroupTerms": [
-      "trúarhópur",
-      "trúarhópar",
-      "trúarsamfélag"
-    ]
-  },
+  "europeCountryOr": [
+    "Evrópa",
+    "Europe",
+    "Bretland",
+    "UK",
+    "Frakkland",
+    "Þýskaland",
+    "Spánn",
+    "Ítalía",
+    "Holland",
+    "Írland",
+    "Pólland",
+    "Rúmenía",
+    "Portúgal",
+    "Grikkland",
+    "Belgía",
+    "Svíþjóð",
+    "Noregur",
+    "Danmörk",
+    "Austri",
+    "Finnland",
+    "Sviss",
+    "Tékkland",
+    "Króatía",
+    "Serbía",
+    "Slóvenía",
+    "Bosníía",
+    "Svartfjallaland",
+    "\"Norður-Makedónía\"",
+    "\"North Macedonia\"",
+    "Kósóvó",
+    "Albanía",
+    "Eistland",
+    "Lettland",
+    "Litháen",
+    "Malta",
+    "Lúxemborg",
+    "Mónakó",
+    "\"San Marínó\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vatíkanið",
+    "Kýpur"
+  ],
+  "harmSignals": [
+    "þvingandi stjórn",
+    "heilaþvottur",
+    "andleg misnotkun",
+    "trúarleg misnotkun",
+    "þrælahald",
+    "\"nútíma þrælahald\"",
+    "mansal"
+  ],
+  "journalismSignals": [
+    "fréttir",
+    "skýrsla",
+    "rannsókn"
+  ],
+  "justiceSignals": [
+    "réttarhöld",
+    "dómstóll",
+    "lögregla",
+    "handtekinn"
+  ],
+  "mediaSignals": [
+    "heimildarmynd",
+    "netflix",
+    "þáttaröð"
+  ],
+  "religiousGroupTerms": [
+    "trúarhópur",
+    "trúarhópar",
+    "trúarsamfélag"
+  ],
+  "victimSignals": [
+    "lífstjónar",
+    "fórnarlömb",
+    "misnotkun",
+    "nýting"
+  ],
   "strictCultTermExtensions": [
     "þvingandi stjórn",
     "heilaþvottur",
@@ -113,16 +103,11 @@
     "nútíma þrælahald",
     "mansal"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [],
-  "religiousGroupTerms": [
-    "trúarhópur",
-    "trúarhópar",
-    "trúarsamfélag"
-  ],
   "coerciveHarmTerms": [
     "þrælahald",
     "nútíma þrælahald",
     "mansal"
-  ]
+  ],
+  "groupStopwords": []
 }

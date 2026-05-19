@@ -1,105 +1,95 @@
 {
   "language": "lt",
-  "queryTemplates": [
-    "({{ltTerms}} OR {{ltReligiousGroupTerms}} OR {{ltHarmSignals}}) {{ltEuropeCountryOr}}",
-    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltJournalismSignals}}",
-    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltJusticeSignals}}",
-    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltVictimSignals}}",
-    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltMediaSignals}}"
+  "cultTerms": [
+    "sekta",
+    "kultas",
+    "sect",
+    "cult",
+    "cults",
+    "\"religinė grupė\"",
+    "\"religinės grupės\"",
+    "\"religinė bendruomenė\""
   ],
-  "_docs": "Language-specific Google News query groups for \"lt\" (cult-related + Europe country OR list).",
-  "groups": {
-    "ltTerms": [
-      "sekta",
-      "kultas",
-      "sect",
-      "cult",
-      "cults",
-      "\"religinė grupė\"",
-      "\"religinės grupės\"",
-      "\"religinė bendruomenė\""
-    ],
-    "ltHarmSignals": [
-      "prievartinė kontrolė",
-      "smegenų plovimas",
-      "dvasinis smurtas",
-      "religinis smurtas",
-      "vergija",
-      "\"šiuolaikinė vergija\"",
-      "\"prekyba žmonėmis\""
-    ],
-    "ltJournalismSignals": [
-      "naujienos",
-      "reportažas",
-      "tyrimas"
-    ],
-    "ltJusticeSignals": [
-      "teismas",
-      "byla",
-      "policija",
-      "sulaikytas"
-    ],
-    "ltVictimSignals": [
-      "išgyvenusieji",
-      "aukos",
-      "smurtas",
-      "išnaudojimas"
-    ],
-    "ltMediaSignals": [
-      "dokumentinis",
-      "netflix",
-      "serialas"
-    ],
-    "ltEuropeCountryOr": [
-      "Europa",
-      "Europe",
-      "Jungtinė Karalystė",
-      "UK",
-      "Prancūzija",
-      "Vokietija",
-      "Ispanija",
-      "Italija",
-      "Nyderlandai",
-      "Airija",
-      "Lenkija",
-      "Rumunija",
-      "Portugalija",
-      "Graikija",
-      "Belgija",
-      "Švedija",
-      "Norvegija",
-      "Danija",
-      "Austrija",
-      "Suomija",
-      "Šveicarija",
-      "Čekija",
-      "Kroatija",
-      "Serbija",
-      "Slovėnija",
-      "Bosnija",
-      "Juodkalnija",
-      "\"Šiaurės Makedonija\"",
-      "\"North Macedonia\"",
-      "Kosovas",
-      "Albanija",
-      "Estija",
-      "Latvija",
-      "Lietuva",
-      "Malta",
-      "Liuksemburgas",
-      "Monakas",
-      "\"San Marinas\"",
-      "Lichtenšteinas",
-      "Andora",
-      "Vatikanas",
-      "Kipras"
-    ],
-    "ltReligiousGroupTerms": [
-      "\"religinė grupė\"",
-      "\"religinės grupės\"",
-      "\"religinė bendruomenė\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europa",
+    "Europe",
+    "Jungtinė Karalystė",
+    "UK",
+    "Prancūzija",
+    "Vokietija",
+    "Ispanija",
+    "Italija",
+    "Nyderlandai",
+    "Airija",
+    "Lenkija",
+    "Rumunija",
+    "Portugalija",
+    "Graikija",
+    "Belgija",
+    "Švedija",
+    "Norvegija",
+    "Danija",
+    "Austrija",
+    "Suomija",
+    "Šveicarija",
+    "Čekija",
+    "Kroatija",
+    "Serbija",
+    "Slovėnija",
+    "Bosnija",
+    "Juodkalnija",
+    "\"Šiaurės Makedonija\"",
+    "\"North Macedonia\"",
+    "Kosovas",
+    "Albanija",
+    "Estija",
+    "Latvija",
+    "Lietuva",
+    "Malta",
+    "Liuksemburgas",
+    "Monakas",
+    "\"San Marinas\"",
+    "Lichtenšteinas",
+    "Andora",
+    "Vatikanas",
+    "Kipras"
+  ],
+  "harmSignals": [
+    "prievartinė kontrolė",
+    "smegenų plovimas",
+    "dvasinis smurtas",
+    "religinis smurtas",
+    "vergija",
+    "\"šiuolaikinė vergija\"",
+    "\"prekyba žmonėmis\""
+  ],
+  "journalismSignals": [
+    "naujienos",
+    "reportažas",
+    "tyrimas"
+  ],
+  "justiceSignals": [
+    "teismas",
+    "byla",
+    "policija",
+    "sulaikytas"
+  ],
+  "mediaSignals": [
+    "dokumentinis",
+    "netflix",
+    "serialas"
+  ],
+  "religiousGroupTerms": [
+    "\"religinė grupė\"",
+    "\"religinės grupės\"",
+    "\"religinė bendruomenė\""
+  ],
+  "victimSignals": [
+    "išgyvenusieji",
+    "aukos",
+    "smurtas",
+    "išnaudojimas"
+  ],
   "strictCultTermExtensions": [
     "prievartinė kontrolė",
     "smegenų plovimas",
@@ -113,20 +103,15 @@
     "šiuolaikinė vergija",
     "prekyba žmonėmis"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekta",
     "sektos",
     "kultas"
   ],
-  "religiousGroupTerms": [
-    "religinė grupė",
-    "religinės grupės",
-    "religinė bendruomenė"
-  ],
   "coerciveHarmTerms": [
     "vergija",
     "šiuolaikinė vergija",
     "prekyba žmonėmis"
-  ]
+  ],
+  "groupStopwords": []
 }

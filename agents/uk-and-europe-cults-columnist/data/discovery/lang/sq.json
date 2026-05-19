@@ -1,105 +1,95 @@
 {
   "language": "sq",
-  "queryTemplates": [
-    "({{sqTerms}} OR {{sqReligiousGroupTerms}} OR {{sqHarmSignals}}) {{sqEuropeCountryOr}}",
-    "({{sqTerms}} OR {{sqReligiousGroupTerms}}) {{sqJournalismSignals}}",
-    "({{sqTerms}} OR {{sqReligiousGroupTerms}}) {{sqJusticeSignals}}",
-    "({{sqTerms}} OR {{sqReligiousGroupTerms}}) {{sqVictimSignals}}",
-    "({{sqTerms}} OR {{sqReligiousGroupTerms}}) {{sqMediaSignals}}"
+  "cultTerms": [
+    "sektë",
+    "kult",
+    "sect",
+    "cult",
+    "cults",
+    "\"grup fetar\"",
+    "\"grupe fetare\"",
+    "\"komunitet fetar\""
   ],
-  "_docs": "Language-specific Google News query groups for \"sq\" (cult-related + Europe country OR list).",
-  "groups": {
-    "sqTerms": [
-      "sektë",
-      "kult",
-      "sect",
-      "cult",
-      "cults",
-      "\"grup fetar\"",
-      "\"grupe fetare\"",
-      "\"komunitet fetar\""
-    ],
-    "sqHarmSignals": [
-      "kontroll detyrues",
-      "larje e trurit",
-      "abuzim shpirtëror",
-      "abuzim fetar",
-      "skllavëri",
-      "\"skllavëri moderne\"",
-      "\"trafikim njerëzor\""
-    ],
-    "sqJournalismSignals": [
-      "lajme",
-      "raport",
-      "hetim"
-    ],
-    "sqJusticeSignals": [
-      "gjykim",
-      "gjykatë",
-      "polici",
-      "i arrestuar"
-    ],
-    "sqVictimSignals": [
-      "mbijetues",
-      "viktima",
-      "abuzim",
-      "shfrytëzim"
-    ],
-    "sqMediaSignals": [
-      "dokumentar",
-      "netflix",
-      "seri"
-    ],
-    "sqEuropeCountryOr": [
-      "Evropa",
-      "Europe",
-      "Mbretëria e Bashkuar",
-      "UK",
-      "Franca",
-      "Gjermania",
-      "Spanja",
-      "Italia",
-      "Holanda",
-      "Irlanda",
-      "Polonia",
-      "Rumania",
-      "Portugalia",
-      "Greqia",
-      "Belgjika",
-      "Suedia",
-      "Norvegjia",
-      "Danimarka",
-      "Austria",
-      "Finlanda",
-      "Zvicra",
-      "Çekia",
-      "Kroacia",
-      "Serbia",
-      "Sllovenia",
-      "Bosnja",
-      "Mali i Zi",
-      "\"Maqedonia e Veriut\"",
-      "\"North Macedonia\"",
-      "Kosova",
-      "Shqipëria",
-      "Estonia",
-      "Letonia",
-      "Lituania",
-      "Malta",
-      "Luksemburgu",
-      "Monako",
-      "\"San Marino\"",
-      "Lihtenshtajni",
-      "Andorra",
-      "Vatikani",
-      "Qipro"
-    ],
-    "sqReligiousGroupTerms": [
-      "\"grup fetar\"",
-      "\"grupe fetare\"",
-      "\"komunitet fetar\""
-    ]
-  },
+  "europeCountryOr": [
+    "Evropa",
+    "Europe",
+    "Mbretëria e Bashkuar",
+    "UK",
+    "Franca",
+    "Gjermania",
+    "Spanja",
+    "Italia",
+    "Holanda",
+    "Irlanda",
+    "Polonia",
+    "Rumania",
+    "Portugalia",
+    "Greqia",
+    "Belgjika",
+    "Suedia",
+    "Norvegjia",
+    "Danimarka",
+    "Austria",
+    "Finlanda",
+    "Zvicra",
+    "Çekia",
+    "Kroacia",
+    "Serbia",
+    "Sllovenia",
+    "Bosnja",
+    "Mali i Zi",
+    "\"Maqedonia e Veriut\"",
+    "\"North Macedonia\"",
+    "Kosova",
+    "Shqipëria",
+    "Estonia",
+    "Letonia",
+    "Lituania",
+    "Malta",
+    "Luksemburgu",
+    "Monako",
+    "\"San Marino\"",
+    "Lihtenshtajni",
+    "Andorra",
+    "Vatikani",
+    "Qipro"
+  ],
+  "harmSignals": [
+    "kontroll detyrues",
+    "larje e trurit",
+    "abuzim shpirtëror",
+    "abuzim fetar",
+    "skllavëri",
+    "\"skllavëri moderne\"",
+    "\"trafikim njerëzor\""
+  ],
+  "journalismSignals": [
+    "lajme",
+    "raport",
+    "hetim"
+  ],
+  "justiceSignals": [
+    "gjykim",
+    "gjykatë",
+    "polici",
+    "i arrestuar"
+  ],
+  "mediaSignals": [
+    "dokumentar",
+    "netflix",
+    "seri"
+  ],
+  "religiousGroupTerms": [
+    "\"grup fetar\"",
+    "\"grupe fetare\"",
+    "\"komunitet fetar\""
+  ],
+  "victimSignals": [
+    "mbijetues",
+    "viktima",
+    "abuzim",
+    "shfrytëzim"
+  ],
   "strictCultTermExtensions": [
     "kontrolli detyrues",
     "larja e trurit",
@@ -113,20 +103,15 @@
     "skllavëri moderne",
     "trafikim njerëzor"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekt",
     "sekte",
     "kult"
   ],
-  "religiousGroupTerms": [
-    "grup fetar",
-    "grupe fetare",
-    "komunitet fetar"
-  ],
   "coerciveHarmTerms": [
     "skllavëri",
     "skllavëri moderne",
     "trafikim njerëzor"
-  ]
+  ],
+  "groupStopwords": []
 }

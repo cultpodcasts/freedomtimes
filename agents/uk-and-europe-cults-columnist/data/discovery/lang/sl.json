@@ -1,105 +1,98 @@
 {
   "language": "sl",
-  "queryTemplates": [
-    "({{slTerms}} OR {{slReligiousGroupTerms}} OR {{slHarmSignals}}) {{slEuropeCountryOr}}",
-    "({{slTerms}} OR {{slReligiousGroupTerms}}) {{slJournalismSignals}}",
-    "({{slTerms}} OR {{slReligiousGroupTerms}}) {{slJusticeSignals}}",
-    "({{slTerms}} OR {{slReligiousGroupTerms}}) {{slVictimSignals}}",
-    "({{slTerms}} OR {{slReligiousGroupTerms}}) {{slMediaSignals}}"
+  "cultTerms": [
+    "sekta",
+    "kult",
+    "sect",
+    "cult",
+    "cults",
+    "\"verska skupina\"",
+    "\"verske skupine\"",
+    "\"verska skupnost\""
   ],
-  "_docs": "Language-specific Google News query groups for \"sl\" (cult-related + Europe country OR list).",
-  "groups": {
-    "slTerms": [
-      "sekta",
-      "kult",
-      "sect",
-      "cult",
-      "cults",
-      "\"verska skupina\"",
-      "\"verske skupine\"",
-      "\"verska skupnost\""
-    ],
-    "slHarmSignals": [
-      "prisilni nadzor",
-      "pranje možganov",
-      "duhovno zlorabljanje",
-      "versko zlorabljanje",
-      "suženjstvo",
-      "\"moderno suženjstvo\"",
-      "\"trgovina z ljudmi\""
-    ],
-    "slJournalismSignals": [
-      "novice",
-      "poročilo",
-      "preiskava"
-    ],
-    "slJusticeSignals": [
-      "sojenje",
-      "sodišče",
-      "policija",
-      "prijet"
-    ],
-    "slVictimSignals": [
-      "preživeli",
-      "žrtve",
-      "zloraba",
-      "izkoriščanje"
-    ],
-    "slMediaSignals": [
-      "dokumentarni film",
-      "netflix",
-      "serija"
-    ],
-    "slEuropeCountryOr": [
-      "Evropa",
-      "Europe",
-      "Združeno kraljestvo",
-      "UK",
-      "Francija",
-      "Nemčija",
-      "Španija",
-      "Italija",
-      "Nizozemska",
-      "Irska",
-      "Poljska",
-      "Romunija",
-      "Portugalska",
-      "Grčija",
-      "Belgija",
-      "Švedska",
-      "Norveška",
-      "Danska",
-      "Avstrija",
-      "Finska",
-      "Švica",
-      "Češka",
-      "Hrvaška",
-      "Srbija",
-      "Slovenija",
-      "Bosna",
-      "Črna gora",
-      "\"Severna Makedonija\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albanija",
-      "Estonija",
-      "Latvija",
-      "Litva",
-      "Malta",
-      "Luksemburg",
-      "Monako",
-      "\"San Marino\"",
-      "Lihtenštajn",
-      "Andora",
-      "Vatikan",
-      "Ciper"
-    ],
-    "slReligiousGroupTerms": [
-      "\"verska skupina\"",
-      "\"verske skupine\"",
-      "\"verska skupnost\""
-    ]
-  },
+  "europeCountryOr": [
+    "Evropa",
+    "Europe",
+    "Združeno kraljestvo",
+    "UK",
+    "Francija",
+    "Nemčija",
+    "Španija",
+    "Italija",
+    "Nizozemska",
+    "Irska",
+    "Poljska",
+    "Romunija",
+    "Portugalska",
+    "Grčija",
+    "Belgija",
+    "Švedska",
+    "Norveška",
+    "Danska",
+    "Avstrija",
+    "Finska",
+    "Švica",
+    "Češka",
+    "Hrvaška",
+    "Srbija",
+    "Slovenija",
+    "Bosna",
+    "Črna gora",
+    "\"Severna Makedonija\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albanija",
+    "Estonija",
+    "Latvija",
+    "Litva",
+    "Malta",
+    "Luksemburg",
+    "Monako",
+    "\"San Marino\"",
+    "Lihtenštajn",
+    "Andora",
+    "Vatikan",
+    "Ciper"
+  ],
+  "harmSignals": [
+    "prisilni nadzor",
+    "pranje možganov",
+    "duhovno zlorabljanje",
+    "versko zlorabljanje",
+    "suženjstvo",
+    "\"moderno suženjstvo\"",
+    "\"trgovina z ljudmi\""
+  ],
+  "journalismSignals": [
+    "novice",
+    "poročilo",
+    "preiskava"
+  ],
+  "justiceSignals": [
+    "sojenje",
+    "sodišče",
+    "policija",
+    "prijet"
+  ],
+  "mediaSignals": [
+    "dokumentarni film",
+    "netflix",
+    "serija"
+  ],
+  "religiousGroupTerms": [
+    "\"verska skupina\"",
+    "\"verske skupine\"",
+    "\"verska skupnost\""
+  ],
+  "victimSignals": [
+    "preživeli",
+    "žrtve",
+    "zloraba",
+    "izkoriščanje"
+  ],
+  "ambiguousCultTerms": [
+    "lahko"
+  ],
   "strictCultTermExtensions": [
     "vsiljena kontrola",
     "pranje možganov",
@@ -113,23 +106,15 @@
     "moderno suženjstvo",
     "trgovina z ljudmi"
   ],
-  "groupStopwords": [],
-  "ambiguousCultTerms": [
-    "lahko"
-  ],
   "genericCultTerms": [
     "sekta",
     "sekte",
     "kult"
   ],
-  "religiousGroupTerms": [
-    "verska skupina",
-    "verske skupine",
-    "verska skupnost"
-  ],
   "coerciveHarmTerms": [
     "suženjstvo",
     "moderno suženjstvo",
     "trgovina z ljudmi"
-  ]
+  ],
+  "groupStopwords": []
 }

@@ -1,105 +1,95 @@
 {
   "language": "et",
-  "queryTemplates": [
-    "({{etTerms}} OR {{etReligiousGroupTerms}} OR {{etHarmSignals}}) {{etEuropeCountryOr}}",
-    "({{etTerms}} OR {{etReligiousGroupTerms}}) {{etJournalismSignals}}",
-    "({{etTerms}} OR {{etReligiousGroupTerms}}) {{etJusticeSignals}}",
-    "({{etTerms}} OR {{etReligiousGroupTerms}}) {{etVictimSignals}}",
-    "({{etTerms}} OR {{etReligiousGroupTerms}}) {{etMediaSignals}}"
+  "cultTerms": [
+    "sekt",
+    "kult",
+    "sect",
+    "cult",
+    "cults",
+    "\"usurühmitus\"",
+    "\"religioosne rühmitus\"",
+    "\"usuline kogukond\""
   ],
-  "_docs": "Language-specific Google News query groups for \"et\" (cult-related + Europe country OR list).",
-  "groups": {
-    "etTerms": [
-      "sekt",
-      "kult",
-      "sect",
-      "cult",
-      "cults",
-      "\"usurühmitus\"",
-      "\"religioosne rühmitus\"",
-      "\"usuline kogukond\""
-    ],
-    "etHarmSignals": [
-      "sunnevaldne kontroll",
-      "ajupesu",
-      "vaimne väärkohtlemine",
-      "usuline väärkohtlemine",
-      "orjus",
-      "\"kaasaegne orjus\"",
-      "inimkaubandus"
-    ],
-    "etJournalismSignals": [
-      "uudised",
-      "reportaaž",
-      "uurimine"
-    ],
-    "etJusticeSignals": [
-      "kohtuprotsess",
-      "kohus",
-      "politsei",
-      "kinni peetud"
-    ],
-    "etVictimSignals": [
-      "ellujääjad",
-      "ohvrid",
-      "väärkohtlemine",
-      "ärakasutamine"
-    ],
-    "etMediaSignals": [
-      "dokumentaalfilm",
-      "netflix",
-      "sari"
-    ],
-    "etEuropeCountryOr": [
-      "Euroopa",
-      "Europe",
-      "Ühendkuningriik",
-      "UK",
-      "Prantsusmaa",
-      "Saksamaa",
-      "Hispaania",
-      "Itaalia",
-      "Holland",
-      "Iirimaa",
-      "Poola",
-      "Rumeenia",
-      "Portugal",
-      "Kreeka",
-      "Belgia",
-      "Rootsi",
-      "Norra",
-      "Taani",
-      "Austria",
-      "Soome",
-      "Šveits",
-      "Tšehhi",
-      "Horvaatia",
-      "Serbia",
-      "Sloveenia",
-      "Bosnia",
-      "Montenegro",
-      "\"Põhja-Makedoonia\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albaania",
-      "Eesti",
-      "Läti",
-      "Leedu",
-      "Malta",
-      "Luksemburg",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatikan",
-      "Küpros"
-    ],
-    "etReligiousGroupTerms": [
-      "usurühmitus",
-      "\"religioosne rühmitus\"",
-      "\"usuline kogukond\""
-    ]
-  },
+  "europeCountryOr": [
+    "Euroopa",
+    "Europe",
+    "Ühendkuningriik",
+    "UK",
+    "Prantsusmaa",
+    "Saksamaa",
+    "Hispaania",
+    "Itaalia",
+    "Holland",
+    "Iirimaa",
+    "Poola",
+    "Rumeenia",
+    "Portugal",
+    "Kreeka",
+    "Belgia",
+    "Rootsi",
+    "Norra",
+    "Taani",
+    "Austria",
+    "Soome",
+    "Šveits",
+    "Tšehhi",
+    "Horvaatia",
+    "Serbia",
+    "Sloveenia",
+    "Bosnia",
+    "Montenegro",
+    "\"Põhja-Makedoonia\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albaania",
+    "Eesti",
+    "Läti",
+    "Leedu",
+    "Malta",
+    "Luksemburg",
+    "Monaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vatikan",
+    "Küpros"
+  ],
+  "harmSignals": [
+    "sunnevaldne kontroll",
+    "ajupesu",
+    "vaimne väärkohtlemine",
+    "usuline väärkohtlemine",
+    "orjus",
+    "\"kaasaegne orjus\"",
+    "inimkaubandus"
+  ],
+  "journalismSignals": [
+    "uudised",
+    "reportaaž",
+    "uurimine"
+  ],
+  "justiceSignals": [
+    "kohtuprotsess",
+    "kohus",
+    "politsei",
+    "kinni peetud"
+  ],
+  "mediaSignals": [
+    "dokumentaalfilm",
+    "netflix",
+    "sari"
+  ],
+  "religiousGroupTerms": [
+    "usurühmitus",
+    "\"religioosne rühmitus\"",
+    "\"usuline kogukond\""
+  ],
+  "victimSignals": [
+    "ellujääjad",
+    "ohvrid",
+    "väärkohtlemine",
+    "ärakasutamine"
+  ],
   "strictCultTermExtensions": [
     "sunnitud kontroll",
     "ajupesu",
@@ -113,20 +103,15 @@
     "kaasaegne orjus",
     "inimkaubandus"
   ],
-  "groupStopwords": [],
   "genericCultTerms": [
     "sekt",
     "sektid",
     "kultus"
   ],
-  "religiousGroupTerms": [
-    "usurühmitus",
-    "religioosne rühmitus",
-    "usuline kogukond"
-  ],
   "coerciveHarmTerms": [
     "orjus",
     "kaasaegne orjus",
     "inimkaubandus"
-  ]
+  ],
+  "groupStopwords": []
 }

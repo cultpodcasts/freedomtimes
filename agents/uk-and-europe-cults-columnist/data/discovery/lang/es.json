@@ -1,116 +1,105 @@
 {
   "language": "es",
-  "queryTemplates": [
-    "({{esTerms}} OR {{esReligiousGroupTerms}} OR {{esHarmSignals}}) {{esEuropeCountryOr}}",
-    "({{esTerms}} OR {{esReligiousGroupTerms}}) {{esSpainGeo}}",
-    "({{esTerms}} OR {{esReligiousGroupTerms}}) {{esJournalismSignals}}",
-    "({{esTerms}} OR {{esReligiousGroupTerms}}) {{esJusticeSignals}}",
-    "({{esTerms}} OR {{esReligiousGroupTerms}}) {{esVictimSignals}}",
-    "({{esTerms}} OR {{esReligiousGroupTerms}}) {{esMediaSignals}}"
+  "cultTerms": [
+    "secta",
+    "sectas",
+    "sectario",
+    "cult",
+    "cults",
+    "\"abuso espiritual\"",
+    "\"control coercitivo\"",
+    "\"grupo religioso\"",
+    "\"grupos religiosos\"",
+    "\"comunidad religiosa\""
   ],
-  "_docs": "Language-specific Google News query groups for \"es\" (cult-related + Europe country OR list).",
-  "groups": {
-    "esTerms": [
-      "secta",
-      "sectas",
-      "sectario",
-      "cult",
-      "cults",
-      "\"abuso espiritual\"",
-      "\"control coercitivo\"",
-      "\"grupo religioso\"",
-      "\"grupos religiosos\"",
-      "\"comunidad religiosa\""
-    ],
-    "esHarmSignals": [
-      "\"control coercitivo\"",
-      "\"lavado de cerebro\"",
-      "\"abuso espiritual\"",
-      "\"abuso religioso\"",
-      "\"grupo de alto control\"",
-      "esclavitud",
-      "\"esclavitud moderna\"",
-      "\"trata de personas\""
-    ],
-    "esJournalismSignals": [
-      "noticias",
-      "reportaje",
-      "investigación"
-    ],
-    "esJusticeSignals": [
-      "juicio",
-      "tribunal",
-      "policía",
-      "detenido"
-    ],
-    "esVictimSignals": [
-      "supervivientes",
-      "víctimas",
-      "abuso",
-      "explotación"
-    ],
-    "esMediaSignals": [
-      "documental",
-      "netflix",
-      "serie"
-    ],
-    "esSpainGeo": [
-      "España"
-    ],
-    "esEuropeCountryOr": [
-      "Europa",
-      "Europe",
-      "Reino Unido",
-      "UK",
-      "Gran Bretaña",
-      "Francia",
-      "Alemania",
-      "España",
-      "Italia",
-      "Países Bajos",
-      "Holanda",
-      "Irlanda",
-      "Polonia",
-      "Rumanía",
-      "Portugal",
-      "Grecia",
-      "Bélgica",
-      "Suecia",
-      "Noruega",
-      "Dinamarca",
-      "Austria",
-      "Finlandia",
-      "Suiza",
-      "República Checa",
-      "Chequia",
-      "Croacia",
-      "Serbia",
-      "Eslovenia",
-      "Bosnia",
-      "Montenegro",
-      "\"Macedonia del Norte\"",
-      "\"North Macedonia\"",
-      "Kosovo",
-      "Albania",
-      "Estonia",
-      "Letonia",
-      "Lituania",
-      "Malta",
-      "Luxemburgo",
-      "Mónaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vaticano",
-      "Chipre",
-      "Cyprus"
-    ],
-    "esReligiousGroupTerms": [
-      "\"grupo religioso\"",
-      "\"grupos religiosos\"",
-      "\"comunidad religiosa\""
-    ]
-  },
+  "europeCountryOr": [
+    "Europa",
+    "Europe",
+    "Reino Unido",
+    "UK",
+    "Gran Bretaña",
+    "Francia",
+    "Alemania",
+    "España",
+    "Italia",
+    "Países Bajos",
+    "Holanda",
+    "Irlanda",
+    "Polonia",
+    "Rumanía",
+    "Portugal",
+    "Grecia",
+    "Bélgica",
+    "Suecia",
+    "Noruega",
+    "Dinamarca",
+    "Austria",
+    "Finlandia",
+    "Suiza",
+    "República Checa",
+    "Chequia",
+    "Croacia",
+    "Serbia",
+    "Eslovenia",
+    "Bosnia",
+    "Montenegro",
+    "\"Macedonia del Norte\"",
+    "\"North Macedonia\"",
+    "Kosovo",
+    "Albania",
+    "Estonia",
+    "Letonia",
+    "Lituania",
+    "Malta",
+    "Luxemburgo",
+    "Mónaco",
+    "\"San Marino\"",
+    "Liechtenstein",
+    "Andorra",
+    "Vaticano",
+    "Chipre",
+    "Cyprus"
+  ],
+  "focusGeo": [
+    "España"
+  ],
+  "harmSignals": [
+    "\"control coercitivo\"",
+    "\"lavado de cerebro\"",
+    "\"abuso espiritual\"",
+    "\"abuso religioso\"",
+    "\"grupo de alto control\"",
+    "esclavitud",
+    "\"esclavitud moderna\"",
+    "\"trata de personas\""
+  ],
+  "journalismSignals": [
+    "noticias",
+    "reportaje",
+    "investigación"
+  ],
+  "justiceSignals": [
+    "juicio",
+    "tribunal",
+    "policía",
+    "detenido"
+  ],
+  "mediaSignals": [
+    "documental",
+    "netflix",
+    "serie"
+  ],
+  "religiousGroupTerms": [
+    "\"grupo religioso\"",
+    "\"grupos religiosos\"",
+    "\"comunidad religiosa\""
+  ],
+  "victimSignals": [
+    "supervivientes",
+    "víctimas",
+    "abuso",
+    "explotación"
+  ],
   "strictCultTermExtensions": [
     "control coercitivo",
     "lavado de cerebro",
@@ -120,6 +109,15 @@
     "grupo de alto control",
     "grupo de altas exigencias",
     "grupo de alta exigencia",
+    "esclavitud",
+    "esclavitud moderna",
+    "trata de personas"
+  ],
+  "genericCultTerms": [
+    "secta",
+    "sectas"
+  ],
+  "coerciveHarmTerms": [
     "esclavitud",
     "esclavitud moderna",
     "trata de personas"
@@ -162,19 +160,5 @@
     "noticia",
     "reporte",
     "artículo"
-  ],
-  "genericCultTerms": [
-    "secta",
-    "sectas"
-  ],
-  "religiousGroupTerms": [
-    "grupo religioso",
-    "grupos religiosos",
-    "comunidad religiosa"
-  ],
-  "coerciveHarmTerms": [
-    "esclavitud",
-    "esclavitud moderna",
-    "trata de personas"
   ]
 }

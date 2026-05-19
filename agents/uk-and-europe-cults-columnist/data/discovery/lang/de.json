@@ -1,148 +1,95 @@
 {
-  "_docs": "Language-specific Google News query groups for \"de\" (cult-related + Europe country OR list).",
   "language": "de",
-  "groups": {
-    "deAtChTerms": [
-      "sekte",
-      "sekten",
-      "sect",
-      "cult",
-      "cults",
-      "guru",
-      "\"geistlicher missbrauch\"",
-      "\"psychische manipulation\"",
-      "\"religiöse gruppe\"",
-      "\"religiöse gruppen\"",
-      "\"religiöse gemeinschaft\""
-    ],
-    "deHarmSignals": [
-      "Zwangskontrolle",
-      "Gehirnwäsche",
-      "\"psychische Manipulation\"",
-      "\"geistlicher Missbrauch\"",
-      "Sklaverei",
-      "\"moderne Sklaverei\"",
-      "Menschenhandel"
-    ],
-    "deJournalismSignals": [
-      "Nachrichten",
-      "Bericht",
-      "Recherche",
-      "Enthüllung"
-    ],
-    "deJusticeSignals": [
-      "Prozess",
-      "Gericht",
-      "Polizei",
-      "verhaftet"
-    ],
-    "deVictimSignals": [
-      "Überlebende",
-      "Opfer",
-      "Missbrauch",
-      "Ausbeutung"
-    ],
-    "deMediaSignals": [
-      "Dokumentation",
-      "Dokumentarfilm",
-      "Netflix",
-      "Serie"
-    ],
-    "deDachCountryOr": [
-      "Deutschland",
-      "Österreich",
-      "Schweiz",
-      "Liechtenstein"
-    ],
-    "deEuropeCountryOr": [
-      "Europa",
-      "Deutschland",
-      "Österreich",
-      "Schweiz",
-      "Liechtenstein",
-      "Frankreich",
-      "Spanien",
-      "Italien",
-      "Niederlande",
-      "Irland",
-      "Belgien",
-      "Schweden",
-      "Norwegen",
-      "Dänemark",
-      "Finnland",
-      "Tschechien",
-      "\"Tschechische Republik\"",
-      "Kroatien",
-      "Serbien",
-      "Slowenien",
-      "Bosnien",
-      "Montenegro",
-      "\"Nordmazedonien\"",
-      "Kosovo",
-      "Albanien",
-      "Malta",
-      "Luxemburg",
-      "Monaco",
-      "\"San Marino\"",
-      "Andorra",
-      "Vatikan"
-    ],
-    "deEuropeWestOr": [
-      "Europa",
-      "UK",
-      "\"Vereinigtes Königreich\"",
-      "Großbritannien",
-      "England",
-      "Frankreich",
-      "Deutschland",
-      "Spanien",
-      "Italien",
-      "Niederlande",
-      "Irland",
-      "Belgien",
-      "Schweiz",
-      "Österreich",
-      "Luxemburg"
-    ],
-    "deEuropeNorthEastOr": [
-      "Polen",
-      "Rumänien",
-      "Portugal",
-      "Griechenland",
-      "Schweden",
-      "Norwegen",
-      "Dänemark",
-      "Finnland",
-      "Tschechien",
-      "\"Tschechische Republik\"",
-      "Ungarn",
-      "Slowakei",
-      "Estland",
-      "Lettland",
-      "Litauen"
-    ],
-    "deEuropeSouthEastOr": [
-      "Kroatien",
-      "Serbien",
-      "Slowenien",
-      "Bosnien",
-      "Montenegro",
-      "\"Nordmazedonien\"",
-      "Kosovo",
-      "Albanien",
-      "Malta",
-      "Monaco",
-      "\"San Marino\"",
-      "Liechtenstein",
-      "Andorra",
-      "Vatikan"
-    ],
-    "deReligiousGroupTerms": [
-      "\"religiöse gruppe\"",
-      "\"religiöse gruppen\"",
-      "\"religiöse gemeinschaft\""
-    ]
-  },
+  "cultTerms": [
+    "sekte",
+    "sekten",
+    "sect",
+    "cult",
+    "cults",
+    "guru",
+    "\"geistlicher missbrauch\"",
+    "\"psychische manipulation\"",
+    "\"religiöse gruppe\"",
+    "\"religiöse gruppen\"",
+    "\"religiöse gemeinschaft\""
+  ],
+  "religiousGroupTerms": [
+    "\"religiöse gruppe\"",
+    "\"religiöse gruppen\"",
+    "\"religiöse gemeinschaft\""
+  ],
+  "harmSignals": [
+    "Zwangskontrolle",
+    "Gehirnwäsche",
+    "\"psychische Manipulation\"",
+    "\"geistlicher Missbrauch\"",
+    "Sklaverei",
+    "\"moderne Sklaverei\"",
+    "Menschenhandel"
+  ],
+  "journalismSignals": [
+    "Nachrichten",
+    "Bericht",
+    "Recherche",
+    "Enthüllung"
+  ],
+  "justiceSignals": [
+    "Prozess",
+    "Gericht",
+    "Polizei",
+    "verhaftet"
+  ],
+  "victimSignals": [
+    "Überlebende",
+    "Opfer",
+    "Missbrauch",
+    "Ausbeutung"
+  ],
+  "mediaSignals": [
+    "Dokumentation",
+    "Dokumentarfilm",
+    "Netflix",
+    "Serie"
+  ],
+  "europeCountryOr": [
+    "Europa",
+    "Deutschland",
+    "Österreich",
+    "Schweiz",
+    "Liechtenstein",
+    "Frankreich",
+    "Spanien",
+    "Italien",
+    "Niederlande",
+    "Irland",
+    "Belgien",
+    "Schweden",
+    "Norwegen",
+    "Dänemark",
+    "Finnland",
+    "Tschechien",
+    "\"Tschechische Republik\"",
+    "Kroatien",
+    "Serbien",
+    "Slowenien",
+    "Bosnien",
+    "Montenegro",
+    "\"Nordmazedonien\"",
+    "Kosovo",
+    "Albanien",
+    "Malta",
+    "Luxemburg",
+    "Monaco",
+    "\"San Marino\"",
+    "Andorra",
+    "Vatikan"
+  ],
+  "focusGeo": [
+    "Deutschland",
+    "Österreich",
+    "Schweiz",
+    "Liechtenstein"
+  ],
   "strictCultTermExtensions": [
     "zwanghafte Kontrolle",
     "Gehirnwäsche",
@@ -153,6 +100,17 @@
     "hoch kontrollierende Gruppe",
     "hochanfordernde Gruppe",
     "hoch anfordernde Gruppe",
+    "Sklaverei",
+    "moderne Sklaverei",
+    "Menschenhandel"
+  ],
+  "genericCultTerms": [
+    "kult",
+    "kulte",
+    "sekte",
+    "sekten"
+  ],
+  "coerciveHarmTerms": [
     "Sklaverei",
     "moderne Sklaverei",
     "Menschenhandel"
@@ -198,34 +156,5 @@
     "bericht",
     "meldung",
     "nachricht"
-  ],
-  "queryTemplates": [
-    "{{deAtChTerms}} {{deEuropeWestOr}}",
-    "{{deAtChTerms}} {{deEuropeNorthEastOr}}",
-    "{{deAtChTerms}} {{deEuropeSouthEastOr}}",
-    "{{deHarmSignals}} {{deEuropeWestOr}}",
-    "{{deHarmSignals}} {{deEuropeNorthEastOr}}",
-    "{{deAtChTerms}}",
-    "({{deAtChTerms}} OR {{deReligiousGroupTerms}}) {{deDachCountryOr}}",
-    "({{deAtChTerms}} OR {{deReligiousGroupTerms}}) {{deJournalismSignals}}",
-    "({{deAtChTerms}} OR {{deReligiousGroupTerms}}) {{deJusticeSignals}}",
-    "({{deAtChTerms}} OR {{deReligiousGroupTerms}}) {{deVictimSignals}}",
-    "({{deAtChTerms}} OR {{deReligiousGroupTerms}}) {{deMediaSignals}}"
-  ],
-  "genericCultTerms": [
-    "kult",
-    "kulte",
-    "sekte",
-    "sekten"
-  ],
-  "religiousGroupTerms": [
-    "religiöse gruppe",
-    "religiöse gruppen",
-    "religiöse gemeinschaft"
-  ],
-  "coerciveHarmTerms": [
-    "Sklaverei",
-    "moderne Sklaverei",
-    "Menschenhandel"
   ]
 }
