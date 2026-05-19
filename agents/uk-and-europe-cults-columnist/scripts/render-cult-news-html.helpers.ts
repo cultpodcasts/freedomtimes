@@ -44,6 +44,7 @@ function resolvePathFromEnv(varName: string, fallbackRelativePath: string): URL 
 
 export const LOG_PATH = resolvePathFromEnv('CULT_NEWS_LOG_PATH', '../last-run.log');
 export const DRAFTS_PATH = resolvePathFromEnv('CULT_NEWS_DRAFTS_PATH', '../reports/last-run-drafts.json');
+export const DRAFTS_ARCHIVE_PATH = resolvePathFromEnv('CULT_NEWS_DRAFTS_ARCHIVE_PATH', '../reports/drafts-archive.json');
 export const OUTPUT_PATH = resolvePathFromEnv('CULT_NEWS_OUTPUT_PATH', '../reports/cult-news-latest.html');
 
 function decodeLogText(value: string): string {

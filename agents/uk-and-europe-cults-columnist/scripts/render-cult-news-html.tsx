@@ -13,6 +13,7 @@ import { getCultTermsForLanguage } from '../src/cultTerms.js';
 import { hasFigurativeCultUsage } from '../src/pipeline.js';
 import {
   Fragment,
+  DRAFTS_ARCHIVE_PATH,
   DRAFTS_PATH,
   LOG_PATH,
   OUTPUT_PATH,
@@ -41,34 +42,51 @@ type StoryGroup = {
 
 type DraftStory = ReturnType<typeof extractDraftsFromLog>[number];
 
-function loadDraftsFromJson(): DraftStory[] | undefined {
-  if (!existsSync(DRAFTS_PATH)) {
-    return undefined;
-  }
+type RawDraftShape = {
+  title?: unknown;
+  source?: { url?: unknown; host?: unknown; publishedAt?: unknown };
+};
 
-  const parsed = JSON.parse(readFileSync(DRAFTS_PATH, 'utf-8')) as {
-    drafts?: Array<{
-      title?: unknown;
-      source?: {
-        url?: unknown;
-        host?: unknown;
-        publishedAt?: unknown;
-      };
-    }>;
+function mapRawDraft(draft: RawDraftShape): DraftStory | null {
+  const title = typeof draft.title === 'string' ? draft.title : '';
+  const url = typeof draft.source?.url === 'string' ? draft.source.url : '';
+  if (!title || !url) return null;
+  return {
+    title,
+    url,
+    host: typeof draft.source?.host === 'string' ? draft.source.host : undefined,
+    publishedAt: typeof draft.source?.publishedAt === 'string' ? draft.source.publishedAt : undefined,
   };
+}
 
-  if (!Array.isArray(parsed.drafts)) {
+function loadDraftsFromArchive(): DraftStory[] | undefined {
+  if (!existsSync(DRAFTS_ARCHIVE_PATH)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(DRAFTS_ARCHIVE_PATH, 'utf-8')) as {
+      entries?: Array<{ draft?: RawDraftShape }>;
+    };
+    if (!Array.isArray(parsed.entries)) return undefined;
+    return parsed.entries
+      .map((e) => (e.draft ? mapRawDraft(e.draft) : null))
+      .filter((d): d is DraftStory => d !== null);
+  } catch {
     return undefined;
   }
+}
 
-  return parsed.drafts
-    .map((draft) => ({
-      title: typeof draft.title === 'string' ? draft.title : '',
-      url: typeof draft.source?.url === 'string' ? draft.source.url : '',
-      host: typeof draft.source?.host === 'string' ? draft.source.host : undefined,
-      publishedAt: typeof draft.source?.publishedAt === 'string' ? draft.source.publishedAt : undefined,
-    }))
-    .filter((draft) => draft.title && draft.url);
+function loadDraftsFromJson(): DraftStory[] | undefined {
+  if (!existsSync(DRAFTS_PATH)) return undefined;
+  try {
+    const parsed = JSON.parse(readFileSync(DRAFTS_PATH, 'utf-8')) as {
+      drafts?: Array<RawDraftShape>;
+    };
+    if (!Array.isArray(parsed.drafts)) return undefined;
+    return parsed.drafts
+      .map(mapRawDraft)
+      .filter((d): d is DraftStory => d !== null);
+  } catch {
+    return undefined;
+  }
 }
 
 const RENDER_MAX_AGE_HOURS = (() => {
@@ -962,13 +980,15 @@ function classifyStories(stories: EnrichedStory[]): StoryGroup[] {
 
 async function main(): Promise<void> {
   const logText = readFileSync(LOG_PATH, 'utf-8');
-  const structuredDrafts = loadDraftsFromJson();
+  const archiveDrafts = loadDraftsFromArchive();
+  const structuredDrafts = archiveDrafts ?? loadDraftsFromJson();
   const rawDrafts = structuredDrafts ?? extractDraftsFromLog(logText);
   if (rawDrafts.length === 0) {
     throw new Error(
-      `No draft stories found. Run npm run dev first and confirm ${DRAFTS_PATH.pathname} exists with count > 0.`,
+      `No draft stories found. Run npm run dev first and confirm ${DRAFTS_ARCHIVE_PATH.pathname} or ${DRAFTS_PATH.pathname} exists with count > 0.`,
     );
   }
+  console.log(`[render] loaded ${rawDrafts.length} drafts from ${archiveDrafts ? 'archive' : structuredDrafts ? 'last-run-drafts' : 'log'}`);
   const summary = extractRunSummary(logText);
 
   // Canonicalize known mirror URLs so dedupe collapses wrapped-source duplicates.

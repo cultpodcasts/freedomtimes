@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
 import { PRIORITY_WATCHLIST_HOSTS } from './discoveryConfig.js';
 import { type DiscoveredStory, discoverCandidateStories } from './discoverStories.js';
@@ -388,6 +388,70 @@ async function main(): Promise<void> {
   console.log('[agent] drafts written', {
     path: 'reports/last-run-drafts.json',
     count: runDrafts.length,
+  });
+
+  const ARCHIVE_PATH = 'reports/drafts-archive.json';
+  const ARCHIVE_MAX_AGE_DAYS = Math.max(
+    1,
+    Number.parseInt(process.env.DRAFTS_ARCHIVE_MAX_AGE_DAYS ?? '14', 10) || 14,
+  );
+  const archiveCutoffMs = ARCHIVE_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+
+  type ArchiveEntry = { firstSeenAt: string; draft: DraftPayload };
+  const archive = new Map<string, ArchiveEntry>();
+
+  if (existsSync(ARCHIVE_PATH)) {
+    try {
+      const existing = JSON.parse(readFileSync(ARCHIVE_PATH, 'utf-8')) as {
+        entries?: Array<{ url: string; firstSeenAt: string; draft: DraftPayload }>;
+      };
+      for (const entry of existing.entries ?? []) {
+        if (typeof entry.url === 'string' && entry.draft && entry.firstSeenAt) {
+          const age = now - new Date(entry.firstSeenAt).getTime();
+          if (age <= archiveCutoffMs) {
+            archive.set(entry.url, { firstSeenAt: entry.firstSeenAt, draft: entry.draft });
+          }
+        }
+      }
+    } catch {
+      console.warn('[agent] drafts-archive.json could not be parsed; starting fresh');
+    }
+  }
+
+  for (const draft of runDrafts) {
+    const url = draft.source?.url;
+    if (typeof url === 'string' && url) {
+      if (!archive.has(url)) {
+        archive.set(url, { firstSeenAt: new Date().toISOString(), draft });
+      }
+    }
+  }
+
+  const archiveEntries = Array.from(archive.entries()).map(([url, { firstSeenAt, draft }]) => ({
+    url,
+    firstSeenAt,
+    draft,
+  }));
+  writeFileSync(
+    ARCHIVE_PATH,
+    `${JSON.stringify(
+      {
+        updatedAt: new Date().toISOString(),
+        maxAgeDays: ARCHIVE_MAX_AGE_DAYS,
+        count: archiveEntries.length,
+        entries: archiveEntries,
+      },
+      null,
+      2,
+    )}\n`,
+    'utf-8',
+  );
+  console.log('[agent] drafts archive updated', {
+    path: ARCHIVE_PATH,
+    total: archiveEntries.length,
+    newThisRun: runDrafts.length,
+    maxAgeDays: ARCHIVE_MAX_AGE_DAYS,
   });
 
   if (pipelineRejections.length > 0) {

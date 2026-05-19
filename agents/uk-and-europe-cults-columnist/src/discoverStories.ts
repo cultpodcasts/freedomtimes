@@ -763,12 +763,8 @@ function buildWatchlistQuerySuffixForSite(site: string): { kind: 'bundle'; suffi
     const bundle = bundles[explicitLang];
     if (bundle) {
       const cult = groups[bundle.cultGroup];
-      const countries = resolveWatchlistCountryTerms(bundle.countryGroup, groups);
-      if (cult?.length && countries?.length) {
-        return {
-          kind: 'bundle',
-          suffix: `${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`,
-        };
+      if (cult?.length) {
+        return { kind: 'bundle', suffix: formatWatchlistOrGroup(cult) };
       }
     }
   }
@@ -778,12 +774,8 @@ function buildWatchlistQuerySuffixForSite(site: string): { kind: 'bundle'; suffi
     const bundle = bundles[lang];
     if (bundle) {
       const cult = groups[bundle.cultGroup];
-      const countries = resolveWatchlistCountryTerms(bundle.countryGroup, groups);
-      if (cult?.length && countries?.length) {
-        return {
-          kind: 'bundle',
-          suffix: `${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`,
-        };
+      if (cult?.length) {
+        return { kind: 'bundle', suffix: formatWatchlistOrGroup(cult) };
       }
     }
   }
@@ -791,14 +783,8 @@ function buildWatchlistQuerySuffixForSite(site: string): { kind: 'bundle'; suffi
   const enBundle = bundles['en'];
   if (enBundle) {
     const cult = groups[enBundle.cultGroup];
-    const countries =
-      resolveWatchlistCountryTerms('europeCountryOrMultilingual', groups) ??
-      resolveWatchlistCountryTerms(enBundle.countryGroup, groups);
-    if (cult?.length && countries?.length) {
-      return {
-        kind: 'bundle',
-        suffix: `${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`,
-      };
+    if (cult?.length) {
+      return { kind: 'bundle', suffix: formatWatchlistOrGroup(cult) };
     }
   }
 
@@ -813,11 +799,10 @@ function buildEnglishWatchlistFallbackSuffix(): string | null {
     return null;
   }
   const cult = groups[enBundle.cultGroup];
-  const countries = resolveWatchlistCountryTerms(enBundle.countryGroup, groups);
-  if (!cult?.length || !countries?.length) {
+  if (!cult?.length) {
     return null;
   }
-  return `${formatWatchlistOrGroup(cult)} ${formatWatchlistOrGroup(countries)}`;
+  return formatWatchlistOrGroup(cult);
 }
 
 /**
