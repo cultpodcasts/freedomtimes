@@ -6,12 +6,18 @@
  *   npx tsx scripts/probe-locale-queries.mts --locale=de
  *   npx tsx scripts/probe-locale-queries.mts --locale=de --watchlist-only
  *   npx tsx scripts/probe-locale-queries.mts --locale=de --generic-only
+ *
+ * To route through Tor daemon (SOCKS5 on 127.0.0.1:9050):
+ *   SOCKS_PROXY=socks5://127.0.0.1:9050 npx tsx --env-file=.env scripts/probe-locale-queries.mts --locale=de
  */
+
+import { createSocksFetchFn } from './socks-fetch.mjs';
 
 const args = process.argv.slice(2);
 const localeArg = args.find((a: string) => a.startsWith('--locale='))?.split('=')[1]?.trim();
 const watchlistOnly = args.includes('--watchlist-only');
 const genericOnly = args.includes('--generic-only');
+const printUrls = args.includes('--print-urls');
 
 if (!localeArg) {
   console.error('Usage: npx tsx scripts/probe-locale-queries.mts --locale=<code>  (e.g. de, fr, it)');
@@ -63,7 +69,23 @@ const watchlistSpecs = watchlistOnly || (!genericOnly)
 const queriesToRun = [...watchlistSpecs, ...genericSpecs];
 console.log(`[probe] running ${queriesToRun.length} queries (${watchlistSpecs.length} watchlist + ${genericSpecs.length} generic pinned to locale)\n`);
 
-const stories = await discoverFromGoogleNewsQueries(queriesToRun, 'probe');
+if (printUrls) {
+  for (const spec of queriesToRun) {
+    const localeIds: string[] = (spec as { googleNewsLocaleIds?: string[] }).googleNewsLocaleIds
+      ?? matchedLocaleIds;
+    for (const localeId of localeIds) {
+      const [geo, hl] = localeId.split('-');
+      const q = encodeURIComponent(spec.query);
+      console.log(`https://news.google.com/rss/search?q=${q}&hl=${hl}&gl=${geo}&ceid=${localeId}`);
+    }
+  }
+  process.exit(0);
+}
+
+const socksFetchFn = createSocksFetchFn();
+if (socksFetchFn) console.log(`[probe] SOCKS5 proxy active: ${process.env.SOCKS_PROXY}\n`);
+
+const stories = await discoverFromGoogleNewsQueries(queriesToRun, 'probe', socksFetchFn);
 const filtered = stories;
 
 if (filtered.length === 0) {

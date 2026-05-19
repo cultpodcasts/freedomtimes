@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { detect as detectClusterTitleLanguage, detect as detectGoogleNewsItemLanguage } from 'tinyld';
 import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.js';
-import { fetchJsonWithCache, fetchTextWithCache } from './httpCache.js';
+import { fetchJsonWithCache, fetchTextWithCache, type FetchFn } from './httpCache.js';
 import {
   FOCUS_SIGNAL_TERMS,
   GOOGLE_NEWS_GENERIC_QUERIES,
@@ -2689,6 +2689,7 @@ function buildExpansionQueries(scored: DiscoveredStory[]): GoogleNewsQueryRunSpe
 export async function discoverFromGoogleNewsQueries(
   queries: readonly string[] | readonly GoogleNewsQueryRunSpec[],
   sourcePrefix: string,
+  fetchFn?: FetchFn,
 ): Promise<DiscoveredStory[]> {
   const localesFull = loadEuropeGoogleNewsLocales();
   const specs = normalizeGoogleNewsRunSpecs(queries);
@@ -2788,7 +2789,7 @@ export async function discoverFromGoogleNewsQueries(
             Accept: 'application/rss+xml, application/xml, text/xml',
           },
           signal: AbortSignal.timeout(GOOGLE_NEWS_RSS_TIMEOUT_MS),
-        });
+        }, fetchFn);
 
         fetchOk = response.ok;
         httpStatus = response.status;

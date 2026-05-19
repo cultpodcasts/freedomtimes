@@ -16,6 +16,9 @@ import {
 import { buildCacheKey, normalizeHeaders } from './http-cache/key.js';
 import type { CachedEntry, CachedFetchResult } from './http-cache/types.js';
 
+/** Portable fetch abstraction — defaults to global `fetch`. Inject a proxy-backed impl locally; CF Workers provide their own. */
+export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;
+
 const HTTP_CACHE_DIR = new URL('../.cache/http-cache/', import.meta.url);
 const LEGACY_HTTP_CACHE_PATH = new URL('../.cache/http-cache.json', import.meta.url);
 const inFlight = new Map<string, Promise<CachedFetchResult>>();
@@ -96,6 +99,7 @@ async function fetchTextThroughNetwork(
   url: string,
   init: RequestInit | undefined,
   requestHeaders: Headers,
+  fetchFn: FetchFn = fetch,
 ): Promise<{ response: Response; text: string; attempts: number; durationMs: number }> {
   const outerStarted = Date.now();
   const maxAttempts = HTTP_FETCH_MAX_ATTEMPTS;
@@ -106,7 +110,7 @@ async function fetchTextThroughNetwork(
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     attempts = attempt;
     try {
-      const response = await fetch(url, {
+      const response = await fetchFn(url, {
         ...init,
         headers: requestHeaders,
         signal: init?.signal ?? AbortSignal.timeout(HTTP_FETCH_TIMEOUT_MS),
@@ -308,11 +312,11 @@ function migrateLegacyCacheIfNeeded(): void {
   }
 }
 
-export async function fetchTextWithCache(url: string, init?: RequestInit): Promise<CachedFetchResult> {
+export async function fetchTextWithCache(url: string, init?: RequestInit, fetchFn?: FetchFn): Promise<CachedFetchResult> {
   const requestHeaders = mergeRequestHeaders(init?.headers);
 
   if (!HTTP_CACHE_ENABLED) {
-    const { response, text, attempts, durationMs } = await fetchTextThroughNetwork(url, init, requestHeaders);
+    const { response, text, attempts, durationMs } = await fetchTextThroughNetwork(url, init, requestHeaders, fetchFn);
     return {
       ok: response.ok,
       status: response.status,
@@ -354,10 +358,11 @@ export async function fetchTextWithCache(url: string, init?: RequestInit): Promi
       url,
       init,
       requestHeaders,
+      fetchFn,
     );
     const responseHeaders = normalizeHeaders(response.headers);
 
-    if (shouldCacheStatus(response.status)) {
+    if (shouldCacheStatus(response.status) && body.length > 0) {
       writeEntry(cacheKey, {
         fetchedAt: new Date().toISOString(),
         status: response.status,
@@ -388,8 +393,8 @@ export async function fetchTextWithCache(url: string, init?: RequestInit): Promi
   }
 }
 
-export async function fetchJsonWithCache<T>(url: string, init?: RequestInit): Promise<CachedFetchResult & { json?: T }> {
-  const result = await fetchTextWithCache(url, init);
+export async function fetchJsonWithCache<T>(url: string, init?: RequestInit, fetchFn?: FetchFn): Promise<CachedFetchResult & { json?: T }> {
+  const result = await fetchTextWithCache(url, init, fetchFn);
   if (!result.ok) {
     return result;
   }
