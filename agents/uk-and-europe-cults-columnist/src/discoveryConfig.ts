@@ -451,11 +451,18 @@ function resolveOrGroups(
   entry: { or: string[]; and?: string },
   locale: LocaleLangFile,
 ): string[] {
+  const seen = new Set<string>();
   const terms: string[] = [];
   for (const key of entry.or) {
     const vals = locale[key as keyof LocaleLangFile];
     if (Array.isArray(vals)) {
-      terms.push(...(vals as string[]));
+      for (const v of vals as string[]) {
+        const lower = v.toLowerCase();
+        if (!seen.has(lower)) {
+          seen.add(lower);
+          terms.push(v);
+        }
+      }
     }
   }
   return terms;

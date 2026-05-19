@@ -184,6 +184,30 @@ const GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK = readPositiveIntCapOrUnlimited(
 
 const GOOGLE_NEWS_RESOLVE_USE_PLAYWRIGHT =
   (process.env.GOOGLE_NEWS_RESOLVE_USE_PLAYWRIGHT ?? 'false').toLowerCase() === 'true';
+
+const SOCKS_PROXY_URL = process.env.SOCKS_PROXY ?? undefined;
+
+/**
+ * Lazily-built SOCKS5 proxy FetchFn for Google News RSS requests.
+ * Only constructed when SOCKS_PROXY env var is set. Safe to be undefined (falls back to global fetch).
+ */
+async function buildSocksProxyFetchFn(): Promise<FetchFn | undefined> {
+  if (!SOCKS_PROXY_URL) return undefined;
+  try {
+    const [{ SocksProxyAgent }, { default: nodeFetch }] = await Promise.all([
+      import('socks-proxy-agent'),
+      import('node-fetch'),
+    ]);
+    const agent = new SocksProxyAgent(SOCKS_PROXY_URL);
+    const proxyFetch = (url: string, init?: RequestInit): Promise<Response> =>
+      nodeFetch(url, { ...(init as object), agent } as Parameters<typeof nodeFetch>[1]) as unknown as Promise<Response>;
+    // Patch globalThis.fetch so third-party libs (e.g. google-news-url-decoder) also route through Tor.
+    (globalThis as unknown as Record<string, unknown>).fetch = proxyFetch;
+    return proxyFetch;
+  } catch {
+    return undefined;
+  }
+}
 /** Max Playwright navigations per discovery run (`0` = unlimited when Playwright resolve is on). */
 const GOOGLE_NEWS_PLAYWRIGHT_MAX_RESOLVES = readPositiveIntCapOrUnlimited(
   process.env.GOOGLE_NEWS_PLAYWRIGHT_MAX_RESOLVES,
@@ -1940,7 +1964,7 @@ async function discoverFromNewsData(): Promise<DiscoveredStory[]> {
 }
 
 let googleNewsPlaywrightBrowser: import('playwright').Browser | undefined;
-let googleNewsPlaywrightMutex: Promise<unknown> = Promise.resolve();
+let googleNewsPlaywrightLaunchMutex: Promise<unknown> = Promise.resolve();
 
 async function disposeGoogleNewsPlaywrightBrowser(): Promise<void> {
   if (googleNewsPlaywrightBrowser) {
@@ -1963,9 +1987,20 @@ async function tryResolveGoogleNewsUrlWithPlaywright(gnUrl: string): Promise<str
   try {
     const { chromium } = await import('playwright');
     if (!googleNewsPlaywrightBrowser) {
-      googleNewsPlaywrightBrowser = await chromium.launch({ headless: true });
+      await new Promise<void>((resolve) => {
+        googleNewsPlaywrightLaunchMutex = googleNewsPlaywrightLaunchMutex.then(async () => {
+          if (!googleNewsPlaywrightBrowser) {
+            const socksProxy = process.env.SOCKS_PROXY;
+            googleNewsPlaywrightBrowser = await chromium.launch({
+              headless: true,
+              ...(socksProxy ? { proxy: { server: socksProxy } } : {}),
+            });
+          }
+          resolve();
+        });
+      });
     }
-    const page = await googleNewsPlaywrightBrowser.newPage();
+    const page = await googleNewsPlaywrightBrowser!.newPage();
     await page.goto(gnUrl, { waitUntil: 'domcontentloaded', timeout: 35_000 });
     const finalUrl = page.url();
     await page.close();
@@ -1980,12 +2015,7 @@ async function tryResolveGoogleNewsUrlWithPlaywright(gnUrl: string): Promise<str
 }
 
 function enqueuePlaywrightResolveGnUrl(gnUrl: string): Promise<string | undefined> {
-  const done = googleNewsPlaywrightMutex.then(() => tryResolveGoogleNewsUrlWithPlaywright(gnUrl));
-  googleNewsPlaywrightMutex = done.then(
-    () => undefined,
-    () => undefined,
-  );
-  return done;
+  return tryResolveGoogleNewsUrlWithPlaywright(gnUrl);
 }
 
 async function resolveGoogleNewsLink(url: string): Promise<string> {
@@ -2345,7 +2375,8 @@ export async function discoverFromGoogleNews(options?: {
     watchlistQueriesFull: watchlistQueries,
     mainPassSpecs,
   });
-  const stories = await discoverFromGoogleNewsQueries(mainPassSpecs, 'google-news');
+  const googleNewsFetchFn = await buildSocksProxyFetchFn();
+  const stories = await discoverFromGoogleNewsQueries(mainPassSpecs, 'google-news', googleNewsFetchFn);
   if (flushWrapped) {
     flushGoogleNewsWrappedLinksReport();
   }

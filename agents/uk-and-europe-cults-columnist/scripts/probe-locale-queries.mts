@@ -11,7 +11,10 @@
  *   SOCKS_PROXY=socks5://127.0.0.1:9050 npx tsx --env-file=.env scripts/probe-locale-queries.mts --locale=de
  */
 
-import { createSocksFetchFn } from './socks-fetch.mjs';
+import { createSocksFetchFn, installGlobalSocksFetch } from './socks-fetch.mjs';
+
+// Patch globalThis.fetch early so ALL fetch calls (including google-news-url-decoder) go through Tor.
+installGlobalSocksFetch();
 
 const args = process.argv.slice(2);
 const localeArg = args.find((a: string) => a.startsWith('--locale='))?.split('=')[1]?.trim();
