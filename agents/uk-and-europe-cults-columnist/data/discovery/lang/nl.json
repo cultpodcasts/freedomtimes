@@ -1,6 +1,14 @@
 {
-  "_docs": "Language-specific Google News query groups for \"nl\" (cult-related + Europe country OR list).",
   "language": "nl",
+  "queryTemplates": [
+    "({{nlTerms}} OR {{nlReligiousGroupTerms}} OR {{nlHarmSignals}}) {{nlEuropeCountryOr}}",
+    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlNetherlandsGeo}}",
+    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlJournalismSignals}}",
+    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlJusticeSignals}}",
+    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlVictimSignals}}",
+    "({{nlTerms}} OR {{nlReligiousGroupTerms}}) {{nlMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"nl\" (cult-related + Europe country OR list).",
   "groups": {
     "nlTerms": [
       "sekte",

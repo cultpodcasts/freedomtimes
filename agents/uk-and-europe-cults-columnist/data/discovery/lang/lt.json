@@ -1,6 +1,13 @@
 {
-  "_docs": "Language-specific Google News query groups for \"lt\" (cult-related + Europe country OR list).",
   "language": "lt",
+  "queryTemplates": [
+    "({{ltTerms}} OR {{ltReligiousGroupTerms}} OR {{ltHarmSignals}}) {{ltEuropeCountryOr}}",
+    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltJournalismSignals}}",
+    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltJusticeSignals}}",
+    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltVictimSignals}}",
+    "({{ltTerms}} OR {{ltReligiousGroupTerms}}) {{ltMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"lt\" (cult-related + Europe country OR list).",
   "groups": {
     "ltTerms": [
       "sekta",

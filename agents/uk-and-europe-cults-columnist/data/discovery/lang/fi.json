@@ -1,6 +1,14 @@
 {
-  "_docs": "Language-specific Google News query groups for \"fi\" (cult-related + Europe country OR list).",
   "language": "fi",
+  "queryTemplates": [
+    "({{fiTerms}} OR {{fiReligiousGroupTerms}} OR {{fiHarmSignals}}) {{fiEuropeCountryOr}}",
+    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiFinlandGeo}}",
+    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiJournalismSignals}}",
+    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiJusticeSignals}}",
+    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiVictimSignals}}",
+    "({{fiTerms}} OR {{fiReligiousGroupTerms}}) {{fiMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"fi\" (cult-related + Europe country OR list).",
   "groups": {
     "fiTerms": [
       "lahko",

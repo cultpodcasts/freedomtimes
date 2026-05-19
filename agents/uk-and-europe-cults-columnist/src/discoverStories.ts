@@ -809,7 +809,7 @@ function buildEnglishWatchlistFallbackSuffix(): string | null {
  * One Google News `q=` per bundle (cult + country OR-groups), with publishers OR-merged and chunked for URL size.
  * Unmapped sites share one English `en` bundle-shaped suffix (no per-country `cult "…"` grid).
  */
-function buildWatchlistQueries(): string[] {
+export function buildWatchlistQueries(): string[] {
   const bundleSuffixToSites = new Map<string, string[]>();
   const fallbackSuffix = buildEnglishWatchlistFallbackSuffix();
 
@@ -2380,6 +2380,12 @@ function recordGoogleNewsQueryPlanFromConfig(params: {
   writeFileSync(new URL('google-news-query-plan-latest.json', reportsDir), json, 'utf-8');
 }
 
+/** Build the generic query specs for a run (with rotation applied). Exported for tooling. */
+export function buildGenericQuerySpecsForRun(runSeed?: number): GoogleNewsQueryRunSpec[] {
+  const seed = runSeed ?? Number.parseInt(new Date().toISOString().slice(0, 10).replace(/-/g, ''), 10);
+  return rotateSlice(GOOGLE_NEWS_GENERIC_QUERY_SPECS, GOOGLE_NEWS_GENERIC_QUERY_LIMIT, seed).map((spec) => ({ ...spec }));
+}
+
 /** Google News RSS discovery only (watchlist + generic queries), for tooling / smoke tests. */
 export async function discoverFromGoogleNews(options?: {
   /** When false, caller owns `flushGoogleNewsWrappedLinksReport()` (e.g. full `discoverCandidateStories`). Default true. */
@@ -2742,7 +2748,7 @@ function buildExpansionQueries(scored: DiscoveredStory[]): GoogleNewsQueryRunSpe
   return mergeClusterExpansionQuerySpecs(queries);
 }
 
-async function discoverFromGoogleNewsQueries(
+export async function discoverFromGoogleNewsQueries(
   queries: readonly string[] | readonly GoogleNewsQueryRunSpec[],
   sourcePrefix: string,
 ): Promise<DiscoveredStory[]> {

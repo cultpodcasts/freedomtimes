@@ -1,6 +1,16 @@
 {
-  "_docs": "Language-specific Google News query groups for \"en\" (cult-related + Europe country OR list). Locale-pinned templates use {{enHarmSignals}}, {{enJournalismSignals}}, {{enJusticeSignals}}, {{enVictimSignals}}, {{enMediaSignals}}. Top-level genericCultTerms: weak cult/sect stems for URL and precision filters; strictCultTermExtensions: harm/control phrases for precise cult-topic matching; groupStopwords: editorial tokens merged into cluster phrase extraction (same directory for all locales).",
   "language": "en",
+  "queryTemplates": [
+    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enEuropeCountryOr}}",
+    "({{cultCore}} OR {{enReligiousGroupTerms}} OR {{enHarmSignals}}) {{enEuropeCountryOr}}",
+    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{ukGeo}}",
+    "({{enHarmSignals}} AND ({{cultCore}} OR {{enReligiousGroupTerms}})) {{ukGeoTight}}",
+    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enJournalismSignals}}",
+    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enJusticeSignals}}",
+    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enVictimSignals}}",
+    "({{cultCore}} OR {{enReligiousGroupTerms}}) {{enMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"en\" (cult-related + Europe country OR list). Locale-pinned templates use {{enHarmSignals}}, {{enJournalismSignals}}, {{enJusticeSignals}}, {{enVictimSignals}}, {{enMediaSignals}}. Top-level genericCultTerms: weak cult/sect stems for URL and precision filters; strictCultTermExtensions: harm/control phrases for precise cult-topic matching; groupStopwords: editorial tokens merged into cluster phrase extraction (same directory for all locales).",
   "groups": {
     "enHarmSignals": [
       "\"coercive control\"",

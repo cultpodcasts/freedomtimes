@@ -1,6 +1,13 @@
 {
-  "_docs": "Language-specific Google News query groups for \"no\" (cult-related + Europe country OR list).",
   "language": "no",
+  "queryTemplates": [
+    "({{noTerms}} OR {{noReligiousGroupTerms}} OR {{noHarmSignals}}) {{noEuropeCountryOr}}",
+    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noJournalismSignals}}",
+    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noJusticeSignals}}",
+    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noVictimSignals}}",
+    "({{noTerms}} OR {{noReligiousGroupTerms}}) {{noMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"no\" (cult-related + Europe country OR list).",
   "groups": {
     "noTerms": [
       "sekt",

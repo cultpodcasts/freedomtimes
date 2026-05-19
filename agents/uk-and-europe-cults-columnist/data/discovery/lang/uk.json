@@ -1,6 +1,13 @@
 {
-  "_docs": "Language-specific Google News query groups for \"uk\" (cult-related + Europe country OR list).",
   "language": "uk",
+  "queryTemplates": [
+    "({{ukTerms}} OR {{ukReligiousGroupTerms}} OR {{ukHarmSignals}}) {{ukEuropeCountryOr}}",
+    "({{ukTerms}} OR {{ukReligiousGroupTerms}}) {{ukJournalismSignals}}",
+    "({{ukTerms}} OR {{ukReligiousGroupTerms}}) {{ukJusticeSignals}}",
+    "({{ukTerms}} OR {{ukReligiousGroupTerms}}) {{ukVictimSignals}}",
+    "({{ukTerms}} OR {{ukReligiousGroupTerms}}) {{ukMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"uk\" (cult-related + Europe country OR list).",
   "groups": {
     "ukTerms": [
       "культ",

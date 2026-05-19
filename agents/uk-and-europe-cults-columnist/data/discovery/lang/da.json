@@ -1,6 +1,13 @@
 {
-  "_docs": "Language-specific Google News query groups for \"da\" (cult-related + Europe country OR list).",
   "language": "da",
+  "queryTemplates": [
+    "({{daTerms}} OR {{daReligiousGroupTerms}} OR {{daHarmSignals}}) {{daEuropeCountryOr}}",
+    "({{daTerms}} OR {{daReligiousGroupTerms}}) {{daJournalismSignals}}",
+    "({{daTerms}} OR {{daReligiousGroupTerms}}) {{daJusticeSignals}}",
+    "({{daTerms}} OR {{daReligiousGroupTerms}}) {{daVictimSignals}}",
+    "({{daTerms}} OR {{daReligiousGroupTerms}}) {{daMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"da\" (cult-related + Europe country OR list).",
   "groups": {
     "daTerms": [
       "sekt",

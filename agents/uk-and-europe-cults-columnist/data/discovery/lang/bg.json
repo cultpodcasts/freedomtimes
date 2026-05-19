@@ -1,6 +1,13 @@
 {
-  "_docs": "Language-specific Google News query groups for \"bg\" (cult-related + Europe country OR list).",
   "language": "bg",
+  "queryTemplates": [
+    "({{bgTerms}} OR {{bgReligiousGroupTerms}} OR {{bgHarmSignals}}) {{bgEuropeCountryOr}}",
+    "({{bgTerms}} OR {{bgReligiousGroupTerms}}) {{bgJournalismSignals}}",
+    "({{bgTerms}} OR {{bgReligiousGroupTerms}}) {{bgJusticeSignals}}",
+    "({{bgTerms}} OR {{bgReligiousGroupTerms}}) {{bgVictimSignals}}",
+    "({{bgTerms}} OR {{bgReligiousGroupTerms}}) {{bgMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"bg\" (cult-related + Europe country OR list).",
   "groups": {
     "bgTerms": [
       "култ",

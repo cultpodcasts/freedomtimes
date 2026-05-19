@@ -19,6 +19,12 @@ type GoogleNewsQueryDefinitions = {
   templateLocaleHlPrefixes?: unknown;
 };
 
+/**
+ * A query template contributed by a locale group file.
+ * `hlPin`: hl subtag(s) to pin to — defaults to the file's `language` field.
+ */
+type LocaleQueryTemplate = { template: string; hlPin: string[] };
+
 export type GoogleNewsTemplateQuerySpec = {
   query: string;
   googleNewsLocaleIds?: string[];
@@ -240,10 +246,10 @@ function loadRegionalPublisherSites(): string[] {
 function loadMergedGoogleNewsQueryGroups(
   parsed: DiscoveryConfig,
   packageRootUrl: URL,
-): Record<string, string[]> {
+): { groups: Record<string, string[]>; localeTemplates: LocaleQueryTemplate[] } {
   const definitions = parsed.googleNewsQueryDefinitions;
   if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions)) {
-    return {};
+    return { groups: {}, localeTemplates: [] };
   }
 
   const def = definitions as GoogleNewsQueryDefinitions & {
@@ -252,6 +258,7 @@ function loadMergedGoogleNewsQueryGroups(
   };
 
   const merged: Record<string, string[]> = {};
+  const localeTemplates: LocaleQueryTemplate[] = [];
 
   if (def.groups && typeof def.groups === 'object' && !Array.isArray(def.groups)) {
     const inline = expectStringRecordOfArrays(def.groups, 'googleNewsQueryDefinitions.groups');
@@ -261,7 +268,7 @@ function loadMergedGoogleNewsQueryGroups(
   }
 
   if (!Array.isArray(def.groupFiles)) {
-    return merged;
+    return { groups: merged, localeTemplates };
   }
 
   for (const rel of def.groupFiles) {
@@ -277,7 +284,7 @@ function loadMergedGoogleNewsQueryGroups(
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to read discovery group file '${rel}': ${message}`);
     }
-    const fileParsed = JSON.parse(raw) as { groups?: unknown };
+    const fileParsed = JSON.parse(raw) as { groups?: unknown; language?: unknown; queryTemplates?: unknown };
     if (!fileParsed.groups || typeof fileParsed.groups !== 'object' || Array.isArray(fileParsed.groups)) {
       throw new Error(`Discovery group file '${rel}' must contain a "groups" object`);
     }
@@ -290,9 +297,37 @@ function loadMergedGoogleNewsQueryGroups(
       }
       merged[k] = v;
     }
+
+    // Collect locale-pinned query templates declared in this file.
+    if (Array.isArray(fileParsed.queryTemplates) && fileParsed.queryTemplates.length > 0) {
+      const fileHl = typeof fileParsed.language === 'string' ? fileParsed.language.trim() : '';
+      for (const entry of fileParsed.queryTemplates) {
+        if (typeof entry === 'string') {
+          if (entry.trim() && fileHl) {
+            localeTemplates.push({ template: entry.trim(), hlPin: [fileHl] });
+          }
+        } else if (
+          entry &&
+          typeof entry === 'object' &&
+          typeof (entry as { template?: unknown }).template === 'string'
+        ) {
+          const e = entry as { template: string; hlPin?: unknown };
+          const pin = Array.isArray(e.hlPin)
+            ? (e.hlPin as unknown[]).filter((x): x is string => typeof x === 'string')
+            : typeof e.hlPin === 'string'
+              ? [e.hlPin]
+              : fileHl
+                ? [fileHl]
+                : [];
+          if (e.template.trim() && pin.length > 0) {
+            localeTemplates.push({ template: e.template.trim(), hlPin: pin });
+          }
+        }
+      }
+    }
   }
 
-  return merged;
+  return { groups: merged, localeTemplates };
 }
 
 function loadDiscoveryConfig(): {
@@ -310,7 +345,7 @@ function loadDiscoveryConfig(): {
   const configUrl = new URL('../discovery-config.json', import.meta.url);
   const raw = readFileSync(configUrl, 'utf-8');
   const parsed = JSON.parse(raw) as DiscoveryConfig;
-  const mergedQueryGroups = loadMergedGoogleNewsQueryGroups(parsed, packageRootUrl);
+  const { groups: mergedQueryGroups, localeTemplates } = loadMergedGoogleNewsQueryGroups(parsed, packageRootUrl);
   const fallbackGoogleQueries = parsed.googleNewsGenericQueries
     ? expectStringArray(parsed.googleNewsGenericQueries, 'googleNewsGenericQueries')
     : undefined;
@@ -322,6 +357,33 @@ function loadDiscoveryConfig(): {
       : { groups: mergedQueryGroups };
 
   const localeRows = loadGoogleNewsEuropeLocaleRows();
+
+  // Inject locale queryTemplates from lang files as synthetic template+prefix pairs.
+  if (localeTemplates.length > 0) {
+    const syn = syntheticDefinitions as {
+      templates?: unknown;
+      templateLocaleHlPrefixes?: unknown;
+    };
+    const existingTemplates: string[] = Array.isArray(syn.templates) ? (syn.templates as string[]) : [];
+    const rawPrefixes: unknown[] = Array.isArray(syn.templateLocaleHlPrefixes)
+      ? (syn.templateLocaleHlPrefixes as unknown[])
+      : [];
+    // Align to templates length — pad with null (all locales) or truncate as needed.
+    const existingPrefixes: unknown[] = rawPrefixes.length === existingTemplates.length
+      ? rawPrefixes
+      : rawPrefixes.length < existingTemplates.length
+        ? [...rawPrefixes, ...Array.from({ length: existingTemplates.length - rawPrefixes.length }, () => null)]
+        : rawPrefixes.slice(0, existingTemplates.length);
+    syn.templates = [
+      ...existingTemplates,
+      ...localeTemplates.map((lt) => lt.template),
+    ];
+    syn.templateLocaleHlPrefixes = [
+      ...existingPrefixes,
+      ...localeTemplates.map((lt) => (lt.hlPin.length === 1 ? lt.hlPin[0] : lt.hlPin)),
+    ];
+  }
+
   const googleNewsGenericQuerySpecs = buildGoogleNewsTemplateQuerySpecs(
     syntheticDefinitions,
     fallbackGoogleQueries,

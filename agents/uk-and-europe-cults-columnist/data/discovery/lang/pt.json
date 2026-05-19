@@ -1,6 +1,14 @@
 {
-  "_docs": "Language-specific Google News query groups for \"pt\" (cult-related + Europe country OR list).",
   "language": "pt",
+  "queryTemplates": [
+    "({{ptTerms}} OR {{ptReligiousGroupTerms}} OR {{ptHarmSignals}}) {{ptEuropeCountryOr}}",
+    "({{ptTerms}} OR {{ptReligiousGroupTerms}}) {{ptPortugalGeo}}",
+    "({{ptTerms}} OR {{ptReligiousGroupTerms}}) {{ptJournalismSignals}}",
+    "({{ptTerms}} OR {{ptReligiousGroupTerms}}) {{ptJusticeSignals}}",
+    "({{ptTerms}} OR {{ptReligiousGroupTerms}}) {{ptVictimSignals}}",
+    "({{ptTerms}} OR {{ptReligiousGroupTerms}}) {{ptMediaSignals}}"
+  ],
+  "_docs": "Language-specific Google News query groups for \"pt\" (cult-related + Europe country OR list).",
   "groups": {
     "ptTerms": [
       "seita",
