@@ -427,10 +427,6 @@ export type LocaleLangFile = {
    * `or` groups are OR'd into a prefix; `and` is AND'd after the prefix.
    */
   queryStrategy?: Array<{ or: string[]; and?: string }>;
-  /** Legacy: arbitrary named groups — kept for backward compat with groupFiles. */
-  groups?: Record<string, string[]>;
-  /** Legacy: explicit template strings — kept for backward compat. */
-  queryTemplates?: string[];
 };
 
 /**
