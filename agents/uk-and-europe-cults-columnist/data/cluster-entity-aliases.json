@@ -1,0 +1,43 @@
+[
+  {
+    "canonical": "plymouth_brethren",
+    "aliases": [
+      { "text": "plymouth brethren" },
+      { "text": "exclusive brethren" },
+      { "text": "frères de plymouth", "lang": "fr" },
+      { "text": "freres de plymouth", "lang": "fr" },
+      { "text": "fratelli di plymouth", "lang": "it" }
+    ]
+  },
+  {
+    "canonical": "jehovahs_witnesses",
+    "aliases": [
+      { "text": "jehovah's witnesses" },
+      { "text": "jehovahs witnesses" },
+      { "text": "témoins de jéhovah", "lang": "fr" },
+      { "text": "temoins de jehovah", "lang": "fr" },
+      { "text": "testimoni di geova", "lang": "it" },
+      { "text": "zeugen jehovas", "lang": "de" },
+      { "text": "testigos de jehová", "lang": "es" }
+    ]
+  },
+  {
+    "canonical": "scientology",
+    "aliases": [
+      { "text": "scientology" },
+      { "text": "scientologie", "lang": "fr" },
+      { "text": "scientologe", "lang": "de" },
+      { "text": "scientologi" }
+    ]
+  },
+  {
+    "canonical": "children_of_god",
+    "aliases": [
+      { "text": "children of god" },
+      { "text": "the family international" },
+      { "text": "family international" },
+      { "text": "enfants de dieu", "lang": "fr" },
+      { "text": "figli di dio", "lang": "it" }
+    ]
+  }
+]

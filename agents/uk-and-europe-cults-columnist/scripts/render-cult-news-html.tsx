@@ -979,9 +979,14 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Ma
     for (let j = i + 1; j < features.length; j += 1) {
       const similarity = cosineSimilarity(features[i], features[j], idf);
       const sharedRareAnchorTerms = countSharedRareAnchorTerms(features[i], features[j], idf);
+
+      if (sharedRareAnchorTerms < 1) {
+        continue;
+      }
+
       const shouldLink =
         similarity >= strictThreshold ||
-        (similarity >= relaxedThreshold && sharedRareAnchorTerms >= 1) ||
+        (similarity >= relaxedThreshold) ||
         (similarity >= anchorMinSimilarity && sharedRareAnchorTerms >= 2);
 
       if (!shouldLink) {
@@ -1139,21 +1144,8 @@ function classifyStories(stories: EnrichedStory[], wrongClusterUrls?: Set<string
     .map((idx) => stories[idx])
     .filter((story): story is EnrichedStory => Boolean(story));
 
-  if (detachedStories.length >= 2) {
-    const reclusters = detectStoryClusters(detachedStories);
-    for (const group of reclusters) {
-      const groupedStories = Array.from(group.storyIndexes)
-        .map((idx) => detachedStories[idx])
-        .filter((story): story is EnrichedStory => Boolean(story));
-      if (groupedStories.length < 2) continue;
-      result.push({ label: group.label, type: 'detected', stories: groupedStories });
-      for (const s of groupedStories) { wrongClusterIndexes.delete(stories.indexOf(s)); }
-    }
-  }
-
   const ungrouped = stories.filter((_, idx) => !groupedIndexes.has(idx) && !wrongClusterIndexes.has(idx));
-  const stillDetached = detachedStories.filter((s) => !result.some((g) => g.stories.includes(s)));
-  const independentStories = [...ungrouped, ...stillDetached];
+  const independentStories = [...ungrouped, ...detachedStories];
 
   if (independentStories.length > 0) {
     result.push({ label: 'Independent Journalism', type: 'independent', stories: independentStories });
