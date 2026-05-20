@@ -13,49 +13,73 @@ function loadStringArrayFromJson(path: string): string[] {
   return parsed;
 }
 
-function loadStringArraysByLanguage(path: string): Record<string, string[]> {
-  const fileUrl = new URL(path, import.meta.url);
-  const raw = readFileSync(fileUrl, 'utf-8');
-  const parsed = JSON.parse(raw) as unknown;
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`Expected a JSON object in ${path}`);
-  }
-
-  const result: Record<string, string[]> = {};
-  for (const [lang, terms] of Object.entries(parsed as Record<string, unknown>)) {
-    if (!Array.isArray(terms) || !terms.every((t) => typeof t === 'string')) {
-      throw new Error(`Expected a string array for language "${lang}" in ${path}`);
-    }
-    result[lang] = terms as string[];
-  }
-  return result;
-}
-
-function loadRegexPatternsByLanguage(path: string): Record<string, RegExp[]> {
-  const fileUrl = new URL(path, import.meta.url);
-  const raw = readFileSync(fileUrl, 'utf-8');
-  const parsed = JSON.parse(raw) as unknown;
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`Expected a JSON object in ${path}`);
-  }
-
-  const result: Record<string, RegExp[]> = {};
-  for (const [lang, patterns] of Object.entries(parsed as Record<string, unknown>)) {
-    if (!Array.isArray(patterns) || !patterns.every((p) => typeof p === 'string')) {
-      throw new Error(`Expected a string array for language "${lang}" in ${path}`);
-    }
-    result[lang] = (patterns as string[]).map((p) => new RegExp(p, 'iu'));
-  }
-  return result;
-}
 
 export const EXCLUDED_SOURCE_HOSTS = loadStringArrayFromJson('../data/excluded-source-hosts.json');
 
-export const FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE = loadStringArraysByLanguage('../data/figurative-cult-context-terms.json');
-export const FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE = loadStringArraysByLanguage('../data/figurative-cult-commercial-context-terms.json');
-export const FIGURATIVE_CULT_PHRASES_BY_LANGUAGE = loadStringArraysByLanguage('../data/figurative-cult-phrases.json');
+function loadFigurativeTermFieldFromDiscoveryLangFiles(
+  field: 'figurativeCultPhrases' | 'figurativeCultContextTerms' | 'figurativeCultCommercialContextTerms',
+): Record<string, string[]> {
+  const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
+  const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));
+  const result: Record<string, string[]> = {};
+
+  for (const name of names) {
+    const fileUrl = new URL(name, langDirUrl);
+    const raw = readFileSync(fileUrl, 'utf-8');
+    const parsed = JSON.parse(raw) as { language?: unknown } & Record<string, unknown>;
+    const fromFileName = name.replace(/\.json$/i, '').toLowerCase();
+    const lang =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().toLowerCase()
+        : fromFileName;
+
+    const terms = parsed[field];
+    if (terms === undefined) {
+      result[lang] = [];
+      continue;
+    }
+    if (!Array.isArray(terms) || !terms.every((t) => typeof t === 'string')) {
+      throw new Error(`data/discovery/lang/${name}: ${field} must be a string array when present`);
+    }
+    result[lang] = terms as string[];
+  }
+
+  return result;
+}
+
+function loadFigurativeRegexFieldFromDiscoveryLangFiles(): Record<string, RegExp[]> {
+  const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
+  const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));
+  const result: Record<string, RegExp[]> = {};
+
+  for (const name of names) {
+    const fileUrl = new URL(name, langDirUrl);
+    const raw = readFileSync(fileUrl, 'utf-8');
+    const parsed = JSON.parse(raw) as { language?: unknown; figurativeCultRegexPatterns?: unknown };
+    const fromFileName = name.replace(/\.json$/i, '').toLowerCase();
+    const lang =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().toLowerCase()
+        : fromFileName;
+
+    const patterns = parsed.figurativeCultRegexPatterns;
+    if (patterns === undefined) {
+      result[lang] = [];
+      continue;
+    }
+    if (!Array.isArray(patterns) || !patterns.every((p) => typeof p === 'string')) {
+      throw new Error(`data/discovery/lang/${name}: figurativeCultRegexPatterns must be a string array when present`);
+    }
+    result[lang] = (patterns as string[]).map((p) => new RegExp(p, 'iu'));
+  }
+
+  return result;
+}
+
+
+export const FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE = loadFigurativeTermFieldFromDiscoveryLangFiles('figurativeCultContextTerms');
+export const FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE = loadFigurativeTermFieldFromDiscoveryLangFiles('figurativeCultCommercialContextTerms');
+export const FIGURATIVE_CULT_PHRASES_BY_LANGUAGE = loadFigurativeTermFieldFromDiscoveryLangFiles('figurativeCultPhrases');
 function loadGenericCultTermsFromDiscoveryLangFiles(): Record<string, string[]> {
   const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
   const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));
@@ -206,5 +230,5 @@ export function getCoerciveHarmTermsForLanguage(language: string | undefined): s
 /** Flat deduplicated set of all generic cult/sect words across all languages — used for URL pattern matching. */
 export const ALL_GENERIC_CULT_TERMS = Array.from(new Set(Object.values(GENERIC_CULT_TERMS_BY_LANGUAGE).flat()));
 
-/** Explicit regex patterns per language from JSON (e.g. blanket German Kult- prefix). */
-export const FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE = loadRegexPatternsByLanguage('../data/figurative-cult-patterns-by-language.json');
+/** Explicit regex patterns per language — from lang files (figurativeCultRegexPatterns field). */
+export const FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE = loadFigurativeRegexFieldFromDiscoveryLangFiles();

@@ -2,7 +2,6 @@
   "language": "it",
   "cultTerms": [
     "setta",
-    "sette",
     "sect",
     "cult",
     "cults",
@@ -122,9 +121,7 @@
     "abuso",
     "sfruttamento"
   ],
-  "ambiguousCultTerms": [
-    "sette"
-  ],
+  "ambiguousCultTerms": [],
   "strictCultTermExtensions": [
     "controllo coercitivo",
     "lavaggio del cervello",
@@ -139,8 +136,7 @@
     "tratta di esseri umani"
   ],
   "genericCultTerms": [
-    "setta",
-    "sette"
+    "setta"
   ],
   "coerciveHarmTerms": [
     "schiavitù",

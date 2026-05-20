@@ -333,7 +333,7 @@ function getFigurativeCultExclusionReason(story: EnrichedStory, language: string
     return undefined;
   }
 
-  if (!hasFigurativeCultUsage(haystack, language)) {
+  if (!hasFigurativeCultUsage(haystack, language) ) {
     return undefined;
   }
 

@@ -88,6 +88,7 @@ function getAmbiguousCultTermsForLanguage(language: string | undefined): Set<str
   const englishTerms = AMBIGUOUS_CULT_TERMS_BY_LANGUAGE.en ?? [];
   return new Set([...localTerms, ...englishTerms]);
 }
+
 const genericCultUrlPattern = ALL_GENERIC_CULT_TERMS.map((term) => escapeRegExp(term)).join('|');
 const GENERIC_CULT_URL_SIGNAL_PATTERN = new RegExp(`/(${genericCultUrlPattern})([/-]|$)`, 'i');
 function getGenericCultTermsForLanguage(language?: string): string[] {
@@ -205,9 +206,20 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
     (match) => Boolean(match) && !ambiguousCultTerms.has(match ?? ''),
   );
   const hasOnlyAmbiguousSpecific = (titleSpecificSignal || bodySpecificSignal) && !hasNonAmbiguousSpecific;
-  const hasLegalCultEquivalentSignal =
-    includesAnyPhrase(`${titleLower} ${bodyLeadLower}`, getReligiousGroupTermsForLanguage(language)) &&
-    includesAnyPhrase(`${titleLower} ${bodyLeadLower}`, getCoerciveHarmTermsForLanguage(language));
+  const hasLegalCultEquivalentSignal = (() => {
+    const combined = `${titleLower} ${bodyLeadLower}`;
+    const religiousTerms = getReligiousGroupTermsForLanguage(language);
+    const coerciveTerms = getCoerciveHarmTermsForLanguage(language);
+    const religiousMatch = religiousTerms.find((t) => containsPhrase(combined, t));
+    const coerciveMatch = coerciveTerms.find((t) => containsPhrase(combined, t));
+    if (!religiousMatch || !coerciveMatch) return false;
+    // Require the two signals to appear within 600 characters of each other
+    // to avoid DV/safeguarding stories that incidentally mention both terms.
+    const PROXIMITY = 600;
+    const rIdx = combined.indexOf(religiousMatch);
+    const cIdx = combined.indexOf(coerciveMatch);
+    return Math.abs(rIdx - cIdx) <= PROXIMITY;
+  })();
 
   if (hasLegalCultEquivalentSignal) {
     return true;
