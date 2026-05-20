@@ -657,10 +657,20 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
       <div id="fb-toast">Copied to clipboard — paste into data/feedback/false-positives.json</div>
       <script dangerouslySetInnerHTML={{ __html: `
 var FB_KEY = 'cult-news-feedback';
+var FB_GENERATED_AT = '${generatedAt}';
 
 function _fbLoad() {
   var stored = {};
   try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
+  var generatedMs = new Date(FB_GENERATED_AT).getTime();
+  var stale = Object.keys(stored).filter(function(url) {
+    var flaggedMs = stored[url] && stored[url].flaggedAt ? new Date(stored[url].flaggedAt).getTime() : 0;
+    return flaggedMs < generatedMs;
+  });
+  if (stale.length > 0) {
+    stale.forEach(function(url) { delete stored[url]; });
+    localStorage.setItem(FB_KEY, JSON.stringify(stored));
+  }
   document.querySelectorAll('.card[data-url]').forEach(function(card) {
     var url = card.getAttribute('data-url');
     var entry = stored[url];
@@ -733,6 +743,38 @@ type StoryFeatures = {
   anchorTerms: Set<string>;
   termCounts: Map<string, number>;
 };
+
+type EntityAliasEntry = { text: string; lang?: string };
+type EntityAlias = { canonical: string; aliases: EntityAliasEntry[] };
+
+const CLUSTER_ENTITY_ALIASES: EntityAlias[] = (() => {
+  try {
+    const p = new URL('../data/cluster-entity-aliases.json', import.meta.url);
+    return JSON.parse(readFileSync(p, 'utf-8')) as EntityAlias[];
+  } catch {
+    return [];
+  }
+})();
+
+function injectEntityAliases(
+  text: string,
+  storyLanguage: string,
+  termCounts: Map<string, number>,
+  anchorTerms: Set<string>,
+  weight: number,
+): void {
+  const lower = text.toLowerCase();
+  for (const { canonical, aliases } of CLUSTER_ENTITY_ALIASES) {
+    for (const alias of aliases) {
+      if (alias.lang && alias.lang !== storyLanguage) continue;
+      if (lower.includes(alias.text)) {
+        termCounts.set(canonical, (termCounts.get(canonical) ?? 0) + weight);
+        anchorTerms.add(canonical);
+        break;
+      }
+    }
+  }
+}
 
 const CLUSTER_LABEL_EXCLUDED_TERMS = new Set([
   'cult', 'cults', 'sect', 'sects', 'news', 'review', 'drama', 'thriller',
@@ -857,10 +899,12 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
       ...properNounBigrams,
     ]);
 
+    const fullText = `${story.title} ${story.description ?? ''} ${story.articleText ?? ''}`;
+    injectEntityAliases(fullText, language, termCounts, anchorTerms, 6);
+
     return { index, language, anchorTerms, termCounts };
   });
 }
-
 function buildIdf(features: StoryFeatures[]): Map<string, number> {
   const df = new Map<string, number>();
   for (const feature of features) {
@@ -1056,13 +1100,23 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
   return groups;
 }
 
-function classifyStories(stories: EnrichedStory[]): StoryGroup[] {
+function classifyStories(stories: EnrichedStory[], wrongClusterUrls?: Set<string>): StoryGroup[] {
+  const wrongClusterIndexes = new Set<number>();
+  if (wrongClusterUrls && wrongClusterUrls.size > 0) {
+    stories.forEach((story, idx) => {
+      if (wrongClusterUrls.has(createDedupeKey(story.url))) {
+        wrongClusterIndexes.add(idx);
+      }
+    });
+  }
+
   const detectedGroups = detectStoryClusters(stories);
   const groupedIndexes = new Set<number>();
   const result: StoryGroup[] = [];
 
   for (const group of detectedGroups) {
-    const groupedStories = Array.from(group.storyIndexes)
+    const filteredIndexes = Array.from(group.storyIndexes).filter((idx) => !wrongClusterIndexes.has(idx));
+    const groupedStories = filteredIndexes
       .map((idx) => stories[idx])
       .filter((story): story is EnrichedStory => Boolean(story));
 
@@ -1076,14 +1130,33 @@ function classifyStories(stories: EnrichedStory[]): StoryGroup[] {
       stories: groupedStories,
     });
 
-    for (const idx of group.storyIndexes) {
+    for (const idx of filteredIndexes) {
       groupedIndexes.add(idx);
     }
   }
 
-  const ungrouped = stories.filter((_, idx) => !groupedIndexes.has(idx));
-  if (ungrouped.length > 0) {
-    result.push({ label: 'Independent Journalism', type: 'independent', stories: ungrouped });
+  const detachedStories = Array.from(wrongClusterIndexes)
+    .map((idx) => stories[idx])
+    .filter((story): story is EnrichedStory => Boolean(story));
+
+  if (detachedStories.length >= 2) {
+    const reclusters = detectStoryClusters(detachedStories);
+    for (const group of reclusters) {
+      const groupedStories = Array.from(group.storyIndexes)
+        .map((idx) => detachedStories[idx])
+        .filter((story): story is EnrichedStory => Boolean(story));
+      if (groupedStories.length < 2) continue;
+      result.push({ label: group.label, type: 'detected', stories: groupedStories });
+      for (const s of groupedStories) { wrongClusterIndexes.delete(stories.indexOf(s)); }
+    }
+  }
+
+  const ungrouped = stories.filter((_, idx) => !groupedIndexes.has(idx) && !wrongClusterIndexes.has(idx));
+  const stillDetached = detachedStories.filter((s) => !result.some((g) => g.stories.includes(s)));
+  const independentStories = [...ungrouped, ...stillDetached];
+
+  if (independentStories.length > 0) {
+    result.push({ label: 'Independent Journalism', type: 'independent', stories: independentStories });
   }
 
   return result;
@@ -1122,17 +1195,21 @@ async function main(): Promise<void> {
 
   const excluded: Array<{ url: string; reason: string }> = [];
 
-  const feedbackBlocklist = (() => {
+  const { feedbackBlocklist, wrongClusterSet } = (() => {
     const feedbackPath = new URL('../data/feedback/false-positives.json', import.meta.url);
     try {
       const parsed = JSON.parse(readFileSync(feedbackPath, 'utf-8')) as { entries?: Array<{ url?: string; reason?: string }> };
-      return new Set(
-        (parsed.entries ?? [])
-          .filter((e) => e.reason === 'false-positive' && typeof e.url === 'string')
-          .map((e) => createDedupeKey(e.url!))
-      );
+      const entries = parsed.entries ?? [];
+      return {
+        feedbackBlocklist: new Set(
+          entries.filter((e) => e.reason === 'false-positive' && typeof e.url === 'string').map((e) => createDedupeKey(e.url!))
+        ),
+        wrongClusterSet: new Set(
+          entries.filter((e) => e.reason === 'wrong-cluster' && typeof e.url === 'string').map((e) => createDedupeKey(e.url!))
+        ),
+      };
     } catch {
-      return new Set<string>();
+      return { feedbackBlocklist: new Set<string>(), wrongClusterSet: new Set<string>() };
     }
   })();
 
@@ -1208,7 +1285,7 @@ async function main(): Promise<void> {
 
   const stories = dedupeResult.kept;
 
-  const groups = classifyStories(stories);
+  const groups = classifyStories(stories, wrongClusterSet);
 
   const html = renderDocument(buildPage(groups, stories.length, new Date().toISOString()));
   mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
