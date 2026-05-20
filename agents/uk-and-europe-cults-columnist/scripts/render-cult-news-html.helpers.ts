@@ -338,7 +338,15 @@ function renderNode(node: Child): string {
   }
 
   const attrs: string[] = [];
+  let rawInnerHtml: string | undefined;
+
   for (const [rawKey, value] of Object.entries(node.props)) {
+    if (rawKey === 'dangerouslySetInnerHTML') {
+      const dih = value as { __html?: string } | null;
+      rawInnerHtml = dih?.__html ?? '';
+      continue;
+    }
+
     if (value === null || value === undefined || value === false) {
       continue;
     }
@@ -355,6 +363,10 @@ function renderNode(node: Child): string {
   const attrText = attrs.length ? ` ${attrs.join(' ')}` : '';
   if (VOID_TAGS.has(node.tag)) {
     return `<${node.tag}${attrText}>`;
+  }
+
+  if (rawInnerHtml !== undefined) {
+    return `<${node.tag}${attrText}>${rawInnerHtml}</${node.tag}>`;
   }
 
   const childText = node.children.map((child) => renderNode(child)).join('');

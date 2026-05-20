@@ -360,8 +360,10 @@ function renderCard(story: EnrichedStory, language?: string) {
   const hostname = story.host || new URL(story.url).hostname.replace(/^www\./, '');
   const logo = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`;
   const isNonEnglish = language && language !== 'en';
+  const escapedUrl = story.url.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const escapedTitle = story.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   return (
-    <article className="card">
+    <article className="card" data-url={story.url}>
       {story.image ? (
         <img src={story.image} alt={story.title} className="story-image" loading="lazy" />
       ) : (
@@ -381,9 +383,23 @@ function renderCard(story: EnrichedStory, language?: string) {
           </a>
         </h2>
         <p {...(isNonEnglish ? { lang: language } : {})}>{story.description || 'No abstract available.'}</p>
-        <a className="read" href={story.url} target="_blank" rel="noopener noreferrer">
-          Read full story
-        </a>
+        <div className="feedback-row">
+          <a className="read" href={story.url} target="_blank" rel="noopener noreferrer">Read full story</a>
+          <button
+            className="fb-btn"
+            data-fb-url={escapedUrl}
+            data-fb-title={escapedTitle}
+            data-fb-reason="false-positive"
+            onclick="window._fbClick(this)"
+          >🚫 False positive</button>
+          <button
+            className="fb-btn"
+            data-fb-url={escapedUrl}
+            data-fb-title={escapedTitle}
+            data-fb-reason="wrong-cluster"
+            onclick="window._fbClick(this)"
+          >⚠️ Wrong cluster</button>
+        </div>
       </div>
     </article>
   );
@@ -560,6 +576,38 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
             font-weight: 600;
             text-decoration: none;
           }
+          .feedback-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+          }
+          .fb-btn {
+            font-size: 0.72rem;
+            font-family: system-ui, sans-serif;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 5px;
+            border: 1px solid var(--line);
+            background: #f4f2ea;
+            color: #5c5548;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+          }
+          .fb-btn:hover { background: #e8e0d0; }
+          .fb-btn.copied { background: #d4edda; color: #1a5c38; border-color: #a3d3b0; }
+          .card.flagged-fp { opacity: 0.45; border-color: #e57373; }
+          .card.flagged-wc { opacity: 0.55; border-color: #f9a825; }
+          #fb-toast {
+            position: fixed; bottom: 22px; right: 22px;
+            background: #222; color: #fff;
+            font-family: system-ui, sans-serif; font-size: 0.82rem;
+            padding: 8px 16px; border-radius: 8px;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 9999;
+          }
+          #fb-toast.show { opacity: 1; }
         `}</style>
       </head>
       <body>
@@ -567,6 +615,8 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
           <header>
             <h1>Cult News Digest</h1>
             <p>Generated from latest agent run. {totalCount} shortlisted stories. Generated at {generatedAt}.</p>
+            <button id="export-fb-btn" onclick="window._fbExport()" style="font-family:system-ui,sans-serif;font-size:0.8rem;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid #ded6c4;background:#f4f2ea;color:#5c5548;cursor:pointer;margin-bottom:8px;">📋 Export all feedback to clipboard</button>
+            <span id="export-fb-status" style="font-family:system-ui,sans-serif;font-size:0.8rem;color:#1a5c38;margin-left:8px;display:none;">✓ Copied! Paste into data/feedback/false-positives.json → entries array</span>
           </header>
           {hasStories ? (
             groups.map((group) => (
@@ -604,6 +654,67 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
             </div>
           )}
         </main>
+      <div id="fb-toast">Copied to clipboard — paste into data/feedback/false-positives.json</div>
+      <script dangerouslySetInnerHTML={{ __html: `
+var FB_KEY = 'cult-news-feedback';
+
+function _fbLoad() {
+  var stored = {};
+  try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
+  document.querySelectorAll('.card[data-url]').forEach(function(card) {
+    var url = card.getAttribute('data-url');
+    var entry = stored[url];
+    if (!entry) return;
+    card.classList.add(entry.reason === 'false-positive' ? 'flagged-fp' : 'flagged-wc');
+    card.querySelectorAll('.fb-btn').forEach(function(btn) {
+      if (btn.getAttribute('data-fb-reason') === entry.reason) {
+        btn.classList.add('copied');
+        btn.textContent = entry.reason === 'false-positive' ? '🚫 Flagged' : '⚠️ Flagged';
+      }
+    });
+  });
+}
+
+window._fbClick = function(btn) {
+  var url = btn.getAttribute('data-fb-url');
+  var title = btn.getAttribute('data-fb-title');
+  var reason = btn.getAttribute('data-fb-reason');
+  var entry = {url: url, title: title, reason: reason, flaggedAt: new Date().toISOString()};
+  var stored = {};
+  try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
+  stored[url] = entry;
+  localStorage.setItem(FB_KEY, JSON.stringify(stored));
+  navigator.clipboard.writeText(JSON.stringify(entry, null, 2)).then(function() {
+    btn.classList.add('copied');
+    btn.textContent = reason === 'false-positive' ? '🚫 Flagged' : '⚠️ Flagged';
+    var card = btn.closest('.card');
+    if (card) {
+      card.classList.remove('flagged-fp', 'flagged-wc');
+      card.classList.add(reason === 'false-positive' ? 'flagged-fp' : 'flagged-wc');
+    }
+    var toast = document.getElementById('fb-toast');
+    toast.classList.add('show');
+    setTimeout(function() { toast.classList.remove('show'); }, 2800);
+  });
+};
+
+window._fbExport = function() {
+  var stored = {};
+  try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
+  var entries = Object.values(stored);
+  if (entries.length === 0) {
+    alert('No feedback flagged yet.');
+    return;
+  }
+  navigator.clipboard.writeText(JSON.stringify(entries, null, 2)).then(function() {
+    var status = document.getElementById('export-fb-status');
+    status.style.display = 'inline';
+    setTimeout(function() { status.style.display = 'none'; }, 4000);
+  });
+};
+
+document.addEventListener('DOMContentLoaded', _fbLoad);
+` }} />
       </body>
     </html>
   );
@@ -1010,7 +1121,28 @@ async function main(): Promise<void> {
   });
 
   const excluded: Array<{ url: string; reason: string }> = [];
-  const eligibleDrafts = canonicalDrafts;
+
+  const feedbackBlocklist = (() => {
+    const feedbackPath = new URL('../data/feedback/false-positives.json', import.meta.url);
+    try {
+      const parsed = JSON.parse(readFileSync(feedbackPath, 'utf-8')) as { entries?: Array<{ url?: string; reason?: string }> };
+      return new Set(
+        (parsed.entries ?? [])
+          .filter((e) => e.reason === 'false-positive' && typeof e.url === 'string')
+          .map((e) => createDedupeKey(e.url!))
+      );
+    } catch {
+      return new Set<string>();
+    }
+  })();
+
+  const eligibleDrafts = feedbackBlocklist.size > 0
+    ? canonicalDrafts.filter((draft) => {
+        if (!feedbackBlocklist.has(createDedupeKey(draft.url))) return true;
+        excluded.push({ url: draft.url, reason: 'Marked as false positive in feedback file.' });
+        return false;
+      })
+    : canonicalDrafts;
 
   const nonCultnewsSlugs = new Set<string>(
     eligibleDrafts
