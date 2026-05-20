@@ -405,9 +405,20 @@ export type LocaleLangFile = {
   language: string;
   /** Primary cult/sect terms for this locale. */
   cultTerms?: string[];
+  /** Weak/generic cult tokens — match broadly but require corroboration. */
+  genericCultTerms?: string[];
+  /**
+   * Terms that are ambiguous (e.g. homographs with common words).
+   * Matched results are rejected unless corroborated by a non-ambiguous signal.
+   */
+  ambiguousCultTerms?: string[];
+  /** Strict cult-topic extensions — coercion/harm phrases that confirm a cult context. */
+  strictCultTermExtensions?: string[];
   /** Religious group descriptor phrases. */
   religiousGroupTerms?: string[];
-  /** Harm/coercion signal terms. */
+  /** Coercive harm terms — used alongside religiousGroupTerms for legal-equivalent signal. */
+  coerciveHarmTerms?: string[];
+  /** Harm/coercion signal terms (used in query building). */
   harmSignals?: string[];
   /** Journalism signal terms (news, report, investigation…). */
   journalismSignals?: string[];
@@ -421,12 +432,41 @@ export type LocaleLangFile = {
   europeCountryOr?: string[];
   /** Tight local geo (e.g. France+Belgium for fr, DACH for de, UK regions for en). */
   focusGeo?: string[];
+  /** Stopwords for clustering/grouping — common words to ignore when comparing story titles. */
+  groupStopwords?: string[];
+  /**
+   * Locale-specific Google News query templates.
+   * Each entry is either a plain string (auto-pinned to this file's `language` as hl)
+   * or an object { template, hlPin? } for explicit locale overrides.
+   */
+  queryTemplates?: Array<string | { template: string; hlPin?: string }>;
   /**
    * Override the default query strategy. Each entry produces one or more specs
    * (auto-split if too long). Keys reference the well-known field names above.
    * `or` groups are OR'd into a prefix; `and` is AND'd after the prefix.
    */
   queryStrategy?: Array<{ or: string[]; and?: string }>;
+  /**
+   * Exact figurative phrases that indicate non-sect usage of a cult term
+   * (e.g. "cult classic", "cult following", "kult-lokal").
+   * Used by the figurative-usage filter to reject false positives.
+   */
+  figurativeCultPhrases?: string[];
+  /**
+   * Context terms used in proximity regex patterns to detect figurative cult usage
+   * (e.g. "film", "sport", "kit", "beauty"). Matched within ~24 chars of the cult word.
+   */
+  figurativeCultContextTerms?: string[];
+  /**
+   * Commercial context terms that indicate figurative cult usage in a product/retail context
+   * (e.g. "brand", "buy", "sale", "skincare"). Requires ≥2 matches in title+lead.
+   */
+  figurativeCultCommercialContextTerms?: string[];
+  /**
+   * Raw regex pattern strings (compiled with /iu flags) for explicit figurative-usage detection.
+   * Use for blanket prefix patterns (e.g. "\\bkult-\\w{2,}" for German).
+   */
+  figurativeCultRegexPatterns?: string[];
 };
 
 /**
