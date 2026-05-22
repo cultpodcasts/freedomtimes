@@ -43,7 +43,13 @@
     ]
   },
   {
-    "canonical": "lev tahor",
-    "aliases": []
+    "canonical": "konstantin rudnev",
+    "aliases": [
+      { "text": "константин руднев", "lang": "ru" },
+      { "text": "konstantin rudniewem", "lang": "pl" },
+      { "text": "konstantina rudniewa", "lang": "pl" },
+      { "text": "konstantinem rudniewem", "lang": "pl" },
+      { "text": "konstantín rudnev", "lang": "es" }
+    ]
   }
 ]
