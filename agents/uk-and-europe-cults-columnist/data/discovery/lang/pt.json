@@ -119,5 +119,11 @@
     "escravidão moderna",
     "tráfico de pessoas"
   ],
-  "groupStopwords": []
+  "groupStopwords": [],
+  "newsCoveragePrepositions": [
+    "sobre",
+    "de",
+    "da",
+    "do"
+  ]
 }

@@ -376,5 +376,9 @@
     "read",
     "full",
     "article"
+  ],
+  "newsCoveragePrepositions": [
+    "about",
+    "on"
   ]
 }

@@ -1,6 +1,42 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { normalizeCultLanguageCode } from './cultTerms.js';
 
+interface EntityAlias {
+  canonical: string;
+  aliases: Array<{ text: string; lang?: string }>;
+}
+
+function loadClusterEntityAliases(): EntityAlias[] {
+  const fileUrl = new URL('../data/cluster-entity-aliases.json', import.meta.url);
+  const raw = readFileSync(fileUrl, 'utf-8');
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error('cluster-entity-aliases.json must be an array');
+  }
+  return parsed as EntityAlias[];
+}
+
+const CLUSTER_ENTITY_ALIASES = loadClusterEntityAliases();
+
+function getReligiousEntityTermsForLanguage(language: string | undefined): string[] {
+  const code = normalizeCultLanguageCode(language);
+  const terms: string[] = [];
+  
+  for (const { canonical, aliases } of CLUSTER_ENTITY_ALIASES) {
+    // Add canonical (English) term
+    terms.push(canonical);
+    
+    // Add language-specific aliases
+    for (const alias of aliases) {
+      if (!alias.lang || alias.lang === code) {
+        terms.push(alias.text);
+      }
+    }
+  }
+  
+  return Array.from(new Set(terms));
+}
+
 function loadStringArrayFromJson(path: string): string[] {
   const fileUrl = new URL(path, import.meta.url);
   const raw = readFileSync(fileUrl, 'utf-8');
@@ -215,9 +251,13 @@ export function getStrictCultTermExtensionsForLanguage(language: string | undefi
 
 export function getReligiousGroupTermsForLanguage(language: string | undefined): string[] {
   const code = normalizeCultLanguageCode(language);
+  // Use cluster-entity-aliases.json as the source for religious entity terms
+  // This includes canonical (English) terms and language-specific aliases
+  const entityAliasTerms = getReligiousEntityTermsForLanguage(code);
+  // Fall back to lang file religiousGroupTerms for any additional terms
   const localTerms = RELIGIOUS_GROUP_TERMS_BY_LANGUAGE[code] ?? [];
   const englishTerms = RELIGIOUS_GROUP_TERMS_BY_LANGUAGE.en ?? [];
-  return Array.from(new Set([...localTerms, ...englishTerms]));
+  return Array.from(new Set([...entityAliasTerms, ...localTerms, ...englishTerms]));
 }
 
 export function getCoerciveHarmTermsForLanguage(language: string | undefined): string[] {

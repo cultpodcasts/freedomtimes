@@ -183,5 +183,9 @@
   "figurativeCultCommercialContextTerms": [],
   "figurativeCultRegexPatterns": [
     "\\bkult-\\w{2,}"
+  ],
+  "newsCoveragePrepositions": [
+    "von",
+    "zur"
   ]
 }

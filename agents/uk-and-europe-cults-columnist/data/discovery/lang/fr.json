@@ -187,5 +187,9 @@
     "article",
     "rapport",
     "actualité"
+  ],
+  "newsCoveragePrepositions": [
+    "sur",
+    "de"
   ]
 }
