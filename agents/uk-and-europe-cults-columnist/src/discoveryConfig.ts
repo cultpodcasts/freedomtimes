@@ -467,6 +467,12 @@ export type LocaleLangFile = {
    * Use for blanket prefix patterns (e.g. "\\bkult-\\w{2,}" for German).
    */
   figurativeCultRegexPatterns?: string[];
+  /**
+   * Prepositions that indicate news coverage about a cult (e.g., "about the cult", "sobre a seita").
+   * When a preposition from this list precedes a cult term, the story is NOT considered figurative.
+   * Used to distinguish legitimate news coverage from entertainment/lifestyle figurative usage.
+   */
+  newsCoveragePrepositions?: string[];
 };
 
 /**

@@ -116,6 +116,37 @@ function loadFigurativeRegexFieldFromDiscoveryLangFiles(): Record<string, RegExp
 export const FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE = loadFigurativeTermFieldFromDiscoveryLangFiles('figurativeCultContextTerms');
 export const FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE = loadFigurativeTermFieldFromDiscoveryLangFiles('figurativeCultCommercialContextTerms');
 export const FIGURATIVE_CULT_PHRASES_BY_LANGUAGE = loadFigurativeTermFieldFromDiscoveryLangFiles('figurativeCultPhrases');
+
+function loadNewsCoveragePrepositionsFromDiscoveryLangFiles(): Record<string, string[]> {
+  const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
+  const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));
+  const result: Record<string, string[]> = {};
+
+  for (const name of names) {
+    const fileUrl = new URL(name, langDirUrl);
+    const raw = readFileSync(fileUrl, 'utf-8');
+    const parsed = JSON.parse(raw) as { language?: unknown; newsCoveragePrepositions?: unknown };
+    const fromFileName = name.replace(/\.json$/i, '').toLowerCase();
+    const lang =
+      typeof parsed.language === 'string' && parsed.language.trim()
+        ? parsed.language.trim().toLowerCase()
+        : fromFileName;
+
+    const prepositions = parsed.newsCoveragePrepositions;
+    if (prepositions === undefined) {
+      result[lang] = [];
+      continue;
+    }
+    if (!Array.isArray(prepositions) || !prepositions.every((p) => typeof p === 'string')) {
+      throw new Error(`data/discovery/lang/${name}: newsCoveragePrepositions must be a string array when present`);
+    }
+    result[lang] = prepositions as string[];
+  }
+
+  return result;
+}
+
+export const NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE = loadNewsCoveragePrepositionsFromDiscoveryLangFiles();
 function loadGenericCultTermsFromDiscoveryLangFiles(): Record<string, string[]> {
   const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
   const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));
