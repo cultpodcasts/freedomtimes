@@ -14,12 +14,14 @@ export type StoryMeta = {
   image?: string;
   publishedAt?: string;
   articleText?: string;
+  htmlLang?: string;
 };
 
 export type EnrichedStory = DraftStory & {
   description: string;
   image?: string;
   articleText: string;
+  htmlLang?: string;
 };
 
 export type RunSummary = Record<string, number>;
@@ -248,6 +250,8 @@ export async function fetchStoryMeta(url: string): Promise<StoryMeta> {
 
     const html = await response.text();
 
+    const htmlLang = html.match(/<html[^>]+lang=["']([^"']+)["'][^>]*>/i)?.[1]?.trim() ?? undefined;
+
     const title =
       getMetaContent(html, 'og:title', 'property') ??
       getMetaContent(html, 'twitter:title', 'name') ??
@@ -278,6 +282,7 @@ export async function fetchStoryMeta(url: string): Promise<StoryMeta> {
       image,
       publishedAt,
       articleText: extractArticleText(html),
+      htmlLang,
     };
   } catch {
     return {};

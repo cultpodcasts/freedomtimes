@@ -215,6 +215,7 @@ const HOST_TOKEN_EXCLUSIONS = new Set(['www', 'com', 'co', 'uk', 'ie', 'org', 'n
 function tokenizeSimilarityText(value: string): string[] {
   return value
     .toLowerCase()
+    .replace(/[""''«»„“‹›]/g, ' ') // Normalize quotes to spaces
     .split(/[^\p{L}\p{N}]+/u)
     .map((token) => token.replace(/s$/u, ''))
     .filter((token) => token.length >= 4);
@@ -619,7 +620,7 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
             <span id="export-fb-status" style="font-family:system-ui,sans-serif;font-size:0.8rem;color:#1a5c38;margin-left:8px;display:none;">✓ Copied! Paste into data/feedback/false-positives.json → entries array</span>
           </header>
           {hasStories ? (
-            groups.map((group) => (
+            groups.map((group) =>
               group.type === 'independent' ? (
                 <div className="story-group">
                   <p className="latest-heading">Latest Stories</p>
@@ -639,7 +640,7 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
                   </div>
                 </div>
               )
-            ))
+            )
           ) : (
             <div className="story-group">
               <div className="grid">
@@ -741,6 +742,7 @@ type StoryFeatures = {
   index: number;
   language: string;
   anchorTerms: Set<string>;
+  quotedPhraseTerms: Set<string>;
   termCounts: Map<string, number>;
 };
 
@@ -765,6 +767,13 @@ function injectEntityAliases(
 ): void {
   const lower = text.toLowerCase();
   for (const { canonical, aliases } of CLUSTER_ENTITY_ALIASES) {
+    // Check canonical first
+    if (lower.includes(canonical.toLowerCase())) {
+      termCounts.set(canonical, (termCounts.get(canonical) ?? 0) + weight);
+      anchorTerms.add(canonical);
+      continue;
+    }
+    // Then check language-specific aliases
     for (const alias of aliases) {
       if (alias.lang && alias.lang !== storyLanguage) continue;
       if (lower.includes(alias.text)) {
@@ -820,6 +829,56 @@ function buildStopwordSet(language: string): Set<string> {
 }
 
 function detectStoryLanguage(story: EnrichedStory): string {
+  // Prefer HTML lang attribute first
+  if (story.htmlLang) {
+    const baseLang = story.htmlLang.split('-')[0];
+    if (baseLang && baseLang !== 'en') {
+      return baseLang;
+    }
+  }
+
+  // Infer from URL TLD
+  const hostname = getHostname(story.url);
+  if (hostname) {
+    const tld = hostname.split('.').pop()?.toLowerCase();
+    const tldToLang: Record<string, string> = {
+      de: 'de',
+      at: 'de',
+      ch: 'de',
+      fr: 'fr',
+      it: 'it',
+      es: 'es',
+      pt: 'pt',
+      pl: 'pl',
+      nl: 'nl',
+      be: 'nl',
+      se: 'sv',
+      no: 'no',
+      dk: 'da',
+      fi: 'fi',
+      gr: 'el',
+      hu: 'hu',
+      ro: 'ro',
+      bg: 'bg',
+      cs: 'cs',
+      sk: 'sk',
+      hr: 'hr',
+      si: 'sl',
+      rs: 'sr',
+      ba: 'bs',
+      mk: 'mk',
+      al: 'sq',
+      ee: 'et',
+      lv: 'lv',
+      lt: 'lt',
+      uk: 'uk',
+    };
+    if (tld && tldToLang[tld]) {
+      return tldToLang[tld];
+    }
+  }
+
+  // Fallback to tinyld detection
   const sample = `${story.title} ${story.description ?? ''}`.slice(0, 1000);
   const detected = detectLanguage(sample);
   return detected || 'en';
@@ -859,6 +918,57 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
   return result;
 }
 
+/**
+ * Extracts quoted phrases from text, removes cult names, and returns remaining terms
+ * as proper nouns with non-plural variations. Only processes quoted phrases that
+ * contain cult names.
+ */
+function extractQuotedPhraseTerms(text: string, language: string): Set<string> {
+  const result = new Set<string>();
+  // Match quoted phrases (both curly quotes and straight quotes)
+  const quotePatterns = [
+    /["“]([^"”]+)["”]/g,
+    /['']([^']+)[']/g,
+  ];
+
+  // Get all cult name aliases for this language
+  const cultNames = new Set<string>();
+  for (const { canonical, aliases } of CLUSTER_ENTITY_ALIASES) {
+    cultNames.add(canonical);
+    for (const alias of aliases) {
+      if (!alias.lang || alias.lang === language) {
+        cultNames.add(alias.text.toLowerCase());
+      }
+    }
+  }
+
+  for (const pattern of quotePatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const phrase = match[1]!.toLowerCase();
+      const phraseTokens = phrase.split(/\s+/).filter(t => t.length >= 3);
+
+      // Only process if the quoted phrase contains a cult name
+      const hasCultName = phraseTokens.some(t => cultNames.has(t));
+      if (!hasCultName) continue;
+
+      // Remove cult names from the phrase
+      const remainingTokens = phraseTokens.filter(t => !cultNames.has(t));
+
+      // Add remaining tokens and their non-plural variations
+      for (const token of remainingTokens) {
+        result.add(token);
+        // Remove trailing 's' for non-plural variation (if not ending in 'ss')
+        if (token.length > 5 && token.endsWith('s') && !token.endsWith('ss')) {
+          result.add(token.slice(0, -1));
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
   return stories.map((story, index) => {
     const language = detectStoryLanguage(story);
@@ -892,17 +1002,27 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
       }),
     ];
 
+    // Extract quoted phrase terms (e.g., "Scientology speedrunnings" -> "speedrunnings", "speedrunning")
+    // Only apply to title to avoid processing too many quotes from article text
+    const titleQuotedTerms = extractQuotedPhraseTerms(story.title, language);
+
     const anchorTerms = new Set<string>([
       ...titleProperNouns,
       ...descProperNouns,
       ...articleProperNouns,
       ...properNounBigrams,
+      ...titleQuotedTerms,
     ]);
 
     const fullText = `${story.title} ${story.description ?? ''} ${story.articleText ?? ''}`;
     injectEntityAliases(fullText, language, termCounts, anchorTerms, 6);
 
-    return { index, language, anchorTerms, termCounts };
+    // Give quoted phrase terms very high weight to make them dominant clustering signal
+    for (const term of titleQuotedTerms) {
+      termCounts.set(term, (termCounts.get(term) ?? 0) + 10);
+    }
+
+    return { index, language, anchorTerms, quotedPhraseTerms: titleQuotedTerms, termCounts };
   });
 }
 function buildIdf(features: StoryFeatures[]): Map<string, number> {
@@ -952,15 +1072,20 @@ function cosineSimilarity(a: StoryFeatures, b: StoryFeatures, idf: Map<string, n
 }
 
 function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map<string, number>): number {
+  const entityAliasCanonicals = new Set(CLUSTER_ENTITY_ALIASES.map((e) => e.canonical));
   let shared = 0;
   for (const term of a.anchorTerms) {
     if (!b.anchorTerms.has(term)) {
       continue;
     }
-    if ((idf.get(term) ?? 0) < 1.8) {
+    if (term.length < 4) {
       continue;
     }
-    if (term.length < 4) {
+    if (entityAliasCanonicals.has(term)) {
+      shared += 1;
+      continue;
+    }
+    if ((idf.get(term) ?? 0) < 1.8) {
       continue;
     }
     shared += 1;
@@ -973,21 +1098,57 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Ma
   const edges = new Map<number, Set<number>>();
   const strictThreshold = 0.42;
   const relaxedThreshold = 0.18;
-  const anchorMinSimilarity = 0.10;
+  const anchorMinSimilarity = 0.20;
+  const entityAliasCanonicals = new Set(CLUSTER_ENTITY_ALIASES.map((e) => e.canonical));
 
   for (let i = 0; i < features.length; i += 1) {
     for (let j = i + 1; j < features.length; j += 1) {
       const similarity = cosineSimilarity(features[i], features[j], idf);
       const sharedRareAnchorTerms = countSharedRareAnchorTerms(features[i], features[j], idf);
 
-      if (sharedRareAnchorTerms < 1) {
-        continue;
+      const sameLanguage = features[i].language === features[j].language;
+      // Check if stories share the same entity alias (not just any entity alias)
+      const entityAliasesI = [...features[i].anchorTerms].filter(t => entityAliasCanonicals.has(t));
+      const entityAliasesJ = [...features[j].anchorTerms].filter(t => entityAliasCanonicals.has(t));
+      const hasEntityAliasMatch = entityAliasesI.some(t => entityAliasesJ.includes(t));
+
+      // Count non-entity-alias shared terms
+      let nonAliasShared = 0;
+      for (const term of features[i].anchorTerms) {
+        if (features[j].anchorTerms.has(term) && !entityAliasCanonicals.has(term) && term.length >= 4) {
+          nonAliasShared += 1;
+        }
       }
+
+      // When stories match on entity alias, allow linking with 0 non-alias shared terms
+      // if similarity is high enough (use relaxed threshold)
+      const requiredShared = hasEntityAliasMatch ? 0 : 1;
+
+      // Cross-language stories need higher similarity threshold
+      const adjustedRelaxedThreshold = sameLanguage ? relaxedThreshold : 0.30;
+      // For entity alias matches, use lower relaxed threshold (0.15) to allow clustering with few shared terms
+      // For non-entity-alias matches, require higher similarity to prevent false positive clusters
+      const finalRelaxedThreshold = hasEntityAliasMatch ? 0.15 : 0.30;
+      // For entity alias matches, use very low anchor similarity threshold (0.10)
+      const adjustedAnchorMinSimilarity = hasEntityAliasMatch ? 0.10 : (sameLanguage ? anchorMinSimilarity : 0.25);
+
+      // If stories share entity alias and one has quoted phrase terms that the other doesn't,
+      // prevent them from clustering (quoted terms define sub-topics)
+      const hasQuotedTermsI = features[i].quotedPhraseTerms.size > 0;
+      const hasQuotedTermsJ = features[j].quotedPhraseTerms.size > 0;
+      const hasMismatchedQuotedTerms = hasEntityAliasMatch &&
+                                     ((hasQuotedTermsI && !hasQuotedTermsJ) ||
+                                      (!hasQuotedTermsI && hasQuotedTermsJ));
 
       const shouldLink =
         similarity >= strictThreshold ||
-        (similarity >= relaxedThreshold) ||
-        (similarity >= anchorMinSimilarity && sharedRareAnchorTerms >= 2);
+        (sharedRareAnchorTerms >= requiredShared && similarity >= finalRelaxedThreshold) ||
+        (sharedRareAnchorTerms >= 2 && similarity >= adjustedAnchorMinSimilarity);
+
+      // Block linking if stories have mismatched quoted phrase terms
+      if (hasMismatchedQuotedTerms) {
+        continue;
+      }
 
       if (!shouldLink) {
         continue;
@@ -1006,7 +1167,7 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Ma
 }
 
 const MAX_CLUSTER_SIZE = 12;
-const MIN_CLUSTER_COHERENCE = 0.20;
+const MIN_CLUSTER_COHERENCE = 0.10;
 
 function isClusterCoherent(component: number[], features: StoryFeatures[], idf: Map<string, number>): boolean {
   if (component.length <= 2) return true;
@@ -1207,7 +1368,8 @@ async function main(): Promise<void> {
 
   const eligibleDrafts = feedbackBlocklist.size > 0
     ? canonicalDrafts.filter((draft) => {
-        if (!feedbackBlocklist.has(createDedupeKey(draft.url))) return true;
+        const dedupeKey = createDedupeKey(draft.url);
+        if (!feedbackBlocklist.has(dedupeKey)) return true;
         excluded.push({ url: draft.url, reason: 'Marked as false positive in feedback file.' });
         return false;
       })
@@ -1245,6 +1407,7 @@ async function main(): Promise<void> {
       image: meta.image,
       publishedAt: meta.publishedAt || draft.publishedAt,
       articleText: meta.articleText?.trim() || '',
+      htmlLang: meta.htmlLang,
     });
   }
 
