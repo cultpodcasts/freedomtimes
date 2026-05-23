@@ -11,12 +11,14 @@ import {
 import {
   ALL_GENERIC_CULT_TERMS,
   AMBIGUOUS_CULT_TERMS_BY_LANGUAGE,
+  CULT_TERMS_BY_LANGUAGE,
   EXCLUDED_SOURCE_HOSTS,
   FIGURATIVE_CULT_COMMERCIAL_CONTEXT_TERMS_BY_LANGUAGE,
   FIGURATIVE_CULT_CONTEXT_TERMS_BY_LANGUAGE,
   FIGURATIVE_CULT_PHRASES_BY_LANGUAGE,
   FIGURATIVE_CULT_REGEX_PATTERNS_BY_LANGUAGE,
   GENERIC_CULT_TERMS_BY_LANGUAGE,
+  NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE,
   getCoerciveHarmTermsForLanguage,
   getReligiousGroupTermsForLanguage,
   getStrictCultTermExtensionsForLanguage,
@@ -152,6 +154,29 @@ function detectLanguageFromHtml(html: string): string | undefined {
 
 export function hasFigurativeCultUsage(text: string, language?: string): boolean {
   const normalized = normalizeMatchingText(text);
+  
+  // Check for news coverage patterns: preposition + cult term
+  // e.g., "about the cult", "sobre a seita", "film about cult", "filme sobre seita"
+  // Use language-specific prepositions and cult terms from lang files
+  const langCode = language?.toLowerCase();
+  const prepositions = langCode ? (NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE[langCode] ?? []) : [];
+  const englishPrepositions = NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE.en ?? [];
+  const allPrepositions = Array.from(new Set([...englishPrepositions, ...prepositions]));
+  
+  const cultTerms = langCode ? (CULT_TERMS_BY_LANGUAGE[langCode] ?? []) : [];
+  const englishCultTerms = CULT_TERMS_BY_LANGUAGE.en ?? [];
+  const allCultTerms = Array.from(new Set([...englishCultTerms, ...cultTerms]));
+  
+  if (allPrepositions.length > 0 && allCultTerms.length > 0) {
+    const prepositionPattern = new RegExp(
+      `\\b(${allPrepositions.join('|')})[^.]{0,30}(${allCultTerms.join('|')})`,
+      'iu'
+    );
+    if (prepositionPattern.test(normalized)) {
+      return false;
+    }
+  }
+  
   if (FIGURATIVE_CULT_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return true;
   }

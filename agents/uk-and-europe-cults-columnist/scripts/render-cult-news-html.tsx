@@ -327,14 +327,16 @@ function getFigurativeCultExclusionReason(story: EnrichedStory, language: string
 
   const religiousGroupTerms = getReligiousGroupTermsForLanguage(language);
   const coerciveHarmTerms = getCoerciveHarmTermsForLanguage(language);
-  if (
+  const hasReligiousOrCoercive = 
     religiousGroupTerms.some((term) => haystack.includes(term.toLowerCase())) ||
-    coerciveHarmTerms.some((term) => haystack.includes(term.toLowerCase()))
-  ) {
+    coerciveHarmTerms.some((term) => haystack.includes(term.toLowerCase()));
+  
+  if (hasReligiousOrCoercive) {
     return undefined;
   }
 
-  if (!hasFigurativeCultUsage(haystack, language) ) {
+  const isFigurative = hasFigurativeCultUsage(haystack, language);
+  if (!isFigurative) {
     return undefined;
   }
 
@@ -1002,8 +1004,6 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
       }),
     ];
 
-    // Extract quoted phrase terms (e.g., "Scientology speedrunnings" -> "speedrunnings", "speedrunning")
-    // Only apply to title to avoid processing too many quotes from article text
     const titleQuotedTerms = extractQuotedPhraseTerms(story.title, language);
 
     const anchorTerms = new Set<string>([
@@ -1094,7 +1094,7 @@ function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map
   return shared;
 }
 
-function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Map<number, Set<number>> {
+function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, stories: EnrichedStory[]): Map<number, Set<number>> {
   const edges = new Map<number, Set<number>>();
   const strictThreshold = 0.42;
   const relaxedThreshold = 0.18;
@@ -1129,16 +1129,28 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Ma
       // For entity alias matches, use lower relaxed threshold (0.15) to allow clustering with few shared terms
       // For non-entity-alias matches, require higher similarity to prevent false positive clusters
       const finalRelaxedThreshold = hasEntityAliasMatch ? 0.15 : 0.30;
-      // For entity alias matches, use very low anchor similarity threshold (0.10)
-      const adjustedAnchorMinSimilarity = hasEntityAliasMatch ? 0.10 : (sameLanguage ? anchorMinSimilarity : 0.25);
+      // For entity alias matches, use very low anchor similarity threshold (0.05)
+      const adjustedAnchorMinSimilarity = hasEntityAliasMatch ? 0.05 : (sameLanguage ? anchorMinSimilarity : 0.25);
 
-      // If stories share entity alias and one has quoted phrase terms that the other doesn't,
+      // If stories share entity alias and have different quoted phrase terms,
       // prevent them from clustering (quoted terms define sub-topics)
       const hasQuotedTermsI = features[i].quotedPhraseTerms.size > 0;
       const hasQuotedTermsJ = features[j].quotedPhraseTerms.size > 0;
       const hasMismatchedQuotedTerms = hasEntityAliasMatch &&
                                      ((hasQuotedTermsI && !hasQuotedTermsJ) ||
-                                      (!hasQuotedTermsI && hasQuotedTermsJ));
+                                      (!hasQuotedTermsI && hasQuotedTermsJ) ||
+                                      (hasQuotedTermsI && hasQuotedTermsJ &&
+                                       ![...features[i].quotedPhraseTerms].some(t => features[j].quotedPhraseTerms.has(t))));
+
+      // For Plymouth Brethren, also check for sub-topic keywords in title
+      // Only block if stories have mutually exclusive sub-topic keywords (e.g., one has "unchosen", other has "pets")
+      const hasUnchosenI = stories[i].title.toLowerCase().includes('unchosen');
+      const hasUnchosenJ = stories[j].title.toLowerCase().includes('unchosen');
+      const hasPetsI = stories[i].title.toLowerCase().includes('pets') || stories[i].title.toLowerCase().includes('animaux');
+      const hasPetsJ = stories[j].title.toLowerCase().includes('pets') || stories[j].title.toLowerCase().includes('animaux');
+      const bothPlymouthBrethren = (entityAliasesI.includes('plymouth brethren') || entityAliasesJ.includes('plymouth brethren'));
+      const hasSubTopicMismatch = bothPlymouthBrethren &&
+                                  ((hasUnchosenI && hasPetsJ) || (hasPetsI && hasUnchosenJ));
 
       const shouldLink =
         similarity >= strictThreshold ||
@@ -1147,6 +1159,11 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>): Ma
 
       // Block linking if stories have mismatched quoted phrase terms
       if (hasMismatchedQuotedTerms) {
+        continue;
+      }
+
+      // Block linking if Plymouth Brethren stories have sub-topic mismatch
+      if (hasSubTopicMismatch) {
         continue;
       }
 
@@ -1224,7 +1241,7 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
 function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
   const features = buildStoryFeatures(stories);
   const idf = buildIdf(features);
-  const edges = buildAdjacency(features, idf);
+  const edges = buildAdjacency(features, idf, stories);
   const visited = new Set<number>();
   const groups: DetectedGroup[] = [];
 
@@ -1383,7 +1400,6 @@ async function main(): Promise<void> {
   );
 
   const drafts = eligibleDrafts.filter((draft) => {
-
     const draftHost = getHostname(draft.url);
     const draftSlug = getSlug(draft.url);
     if (draftHost === 'cultnews.net' && draftSlug && nonCultnewsSlugs.has(draftSlug)) {

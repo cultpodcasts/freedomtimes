@@ -43,6 +43,12 @@
     ]
   },
   {
+    "canonical": "lev tahor",
+    "aliases": [
+      { "text": "lev taghor" }
+    ]
+  },
+  {
     "canonical": "konstantin rudnev",
     "aliases": [
       { "text": "константин руднев", "lang": "ru" },
