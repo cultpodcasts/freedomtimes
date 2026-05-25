@@ -1,28 +1,41 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { normalizeCultLanguageCode } from './cultTerms.js';
 
-interface EntityAlias {
+/**
+ * Interface for subject-aliases.json
+ * Maps canonical subject names to their aliases in different languages
+ */
+export interface SubjectAlias {
+  /** Canonical (English) name of the subject */
   canonical: string;
-  aliases: Array<{ text: string; lang?: string }>;
+  /** Array of aliases, optionally with language codes */
+  aliases: SubjectAliasEntry[];
 }
 
-function loadClusterEntityAliases(): EntityAlias[] {
-  const fileUrl = new URL('../data/cluster-entity-aliases.json', import.meta.url);
+export interface SubjectAliasEntry {
+  /** The alias text */
+  text: string;
+  /** Optional ISO 639-1 language code (e.g., 'fr', 'de', 'it') */
+  lang?: string;
+}
+
+function loadSubjectAliases(): SubjectAlias[] {
+  const fileUrl = new URL('../data/subject-aliases.json', import.meta.url);
   const raw = readFileSync(fileUrl, 'utf-8');
   const parsed = JSON.parse(raw) as unknown;
   if (!Array.isArray(parsed)) {
-    throw new Error('cluster-entity-aliases.json must be an array');
+    throw new Error('subject-aliases.json must be an array');
   }
-  return parsed as EntityAlias[];
+  return parsed as SubjectAlias[];
 }
 
-const CLUSTER_ENTITY_ALIASES = loadClusterEntityAliases();
+const SUBJECT_ALIASES = loadSubjectAliases();
 
 function getReligiousEntityTermsForLanguage(language: string | undefined): string[] {
   const code = normalizeCultLanguageCode(language);
   const terms: string[] = [];
   
-  for (const { canonical, aliases } of CLUSTER_ENTITY_ALIASES) {
+  for (const { canonical, aliases } of SUBJECT_ALIASES) {
     // Add canonical (English) term
     terms.push(canonical);
     

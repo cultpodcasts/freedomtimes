@@ -758,13 +758,12 @@ type StoryFeatures = {
   termCounts: Map<string, number>;
 };
 
-type EntityAliasEntry = { text: string; lang?: string };
-type EntityAlias = { canonical: string; aliases: EntityAliasEntry[] };
+import type { SubjectAlias } from '../src/pipelineTerms.js';
 
-const CLUSTER_ENTITY_ALIASES: EntityAlias[] = (() => {
+const SUBJECT_ALIASES: SubjectAlias[] = (() => {
   try {
-    const p = new URL('../data/cluster-entity-aliases.json', import.meta.url);
-    return JSON.parse(readFileSync(p, 'utf-8')) as EntityAlias[];
+    const p = new URL('../data/subject-aliases.json', import.meta.url);
+    return JSON.parse(readFileSync(p, 'utf-8')) as SubjectAlias[];
   } catch {
     return [];
   }
@@ -778,7 +777,7 @@ function injectEntityAliases(
   weight: number,
 ): void {
   const lower = text.toLowerCase();
-  for (const { canonical, aliases } of CLUSTER_ENTITY_ALIASES) {
+  for (const { canonical, aliases } of SUBJECT_ALIASES) {
     // Check canonical first
     if (lower.includes(canonical.toLowerCase())) {
       termCounts.set(canonical, (termCounts.get(canonical) ?? 0) + weight);
@@ -1001,7 +1000,7 @@ function extractQuotedPhraseTerms(text: string, language: string): Set<string> {
 
   // Get all cult name aliases for this language
   const cultNames = new Set<string>();
-  for (const { canonical, aliases } of CLUSTER_ENTITY_ALIASES) {
+  for (const { canonical, aliases } of SUBJECT_ALIASES) {
     cultNames.add(canonical);
     for (const alias of aliases) {
       if (!alias.lang || alias.lang === language) {
@@ -1138,7 +1137,7 @@ function cosineSimilarity(a: StoryFeatures, b: StoryFeatures, idf: Map<string, n
 }
 
 function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map<string, number>): number {
-  const entityAliasCanonicals = new Set(CLUSTER_ENTITY_ALIASES.map((e) => e.canonical));
+  const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
   let shared = 0;
   for (const term of a.anchorTerms) {
     if (!b.anchorTerms.has(term)) {
@@ -1165,7 +1164,7 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
   const strictThreshold = 0.42;
   const relaxedThreshold = 0.18;
   const anchorMinSimilarity = 0.20;
-  const entityAliasCanonicals = new Set(CLUSTER_ENTITY_ALIASES.map((e) => e.canonical));
+  const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
 
   for (let i = 0; i < features.length; i += 1) {
     for (let j = i + 1; j < features.length; j += 1) {
