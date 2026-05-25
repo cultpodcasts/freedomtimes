@@ -119,6 +119,29 @@
     "escravidão moderna",
     "tráfico de pessoas"
   ],
+  "figurativeCultPhrases": [
+    "filme cult",
+    "filmes cult",
+    "série cult",
+    "séries cult",
+    "banda cult",
+    "bandas cult",
+    "foto cult"
+  ],
+  "figurativeCultContextTerms": [
+    "filme",
+    "filmes",
+    "série",
+    "séries",
+    "banda",
+    "bandas",
+    "foto",
+    "fotografia",
+    "herói",
+    "heróis",
+    "lenda",
+    "legendas"
+  ],
   "groupStopwords": [],
   "newsCoveragePrepositions": [
     "sobre",

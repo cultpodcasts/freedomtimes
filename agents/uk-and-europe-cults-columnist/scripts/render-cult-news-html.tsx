@@ -323,9 +323,10 @@ function getFigurativeCultExclusionReason(story: EnrichedStory, language: string
   // Check for cult terms with word boundaries to avoid matching inside words like "cultural"
   const hasCultTerm = cultTerms.some((term) => {
     const t = term.toLowerCase();
-    // For short terms like "cult", require word boundaries
+    // For short terms like "cult", require word boundaries AND not followed by letters
+    // This prevents matching when text is split across lines (e.g., "cult\nura" in "cultura")
     if (t.length <= 5) {
-      const regex = new RegExp(`\\b${t}\\b`, 'i');
+      const regex = new RegExp(`\\b${t}\\b(?![a-z])`, 'i');
       return regex.test(haystack);
     }
     return haystack.includes(t);

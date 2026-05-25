@@ -155,7 +155,9 @@
     "programmi cult",
     "vetture cult",
     "«cult»",
-    "cultura automobilistica"
+    "cultura automobilistica",
+    "scuola di cult",
+    "diavolo veste prada"
   ],
   "figurativeCultContextTerms": [
     "film",
@@ -166,7 +168,11 @@
     "trash",
     "icona",
     "libro",
-    "diventato"
+    "diventato",
+    "scuola",
+    "diavolo",
+    "prada",
+    "moda"
   ],
   "groupStopwords": [
     "anche",
