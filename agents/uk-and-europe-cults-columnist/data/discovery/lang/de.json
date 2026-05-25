@@ -178,7 +178,10 @@
     "figur",
     "veranstaltung",
     "ort",
-    "treffpunkt"
+    "treffpunkt",
+    "klischee",
+    "legende",
+    "zweirad"
   ],
   "figurativeCultCommercialContextTerms": [],
   "figurativeCultRegexPatterns": [

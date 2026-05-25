@@ -320,7 +320,17 @@ function dedupeStories(stories: EnrichedStory[]): { kept: EnrichedStory[]; exclu
 function getFigurativeCultExclusionReason(story: EnrichedStory, language: string): string | undefined {
   const haystack = `${story.title} ${story.description} ${story.articleText}`.toLowerCase();
   const cultTerms = getCultTermsForLanguage(language);
-  const hasCultTerm = cultTerms.some((term) => haystack.includes(term.toLowerCase()));
+  // Check for cult terms with word boundaries to avoid matching inside words like "cultural"
+  const hasCultTerm = cultTerms.some((term) => {
+    const t = term.toLowerCase();
+    // For short terms like "cult", require word boundaries
+    if (t.length <= 5) {
+      const regex = new RegExp(`\\b${t}\\b`, 'i');
+      return regex.test(haystack);
+    }
+    return haystack.includes(t);
+  });
+  
   if (!hasCultTerm) {
     return undefined;
   }
@@ -1221,8 +1231,8 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         similarity >= strictThreshold ||
         (sharedRareAnchorTerms >= requiredShared && similarity >= finalRelaxedThreshold) ||
         (sharedRareAnchorTerms >= 2 && similarity >= adjustedAnchorMinSimilarity) ||
-        (!sameLanguage && sharedRareAnchorTerms >= 1 && similarity >= 0.05) || // Cross-language: 1 shared term with moderate similarity
-        (hasSharedQuotedTerm && similarity >= 0.03); // Cluster stories sharing quoted terms with minimal similarity
+        (!sameLanguage && sharedRareAnchorTerms >= 2 && similarity >= 0.15) || // Cross-language: 2 shared terms, higher similarity
+        (hasSharedQuotedTerm && similarity >= 0.12); // Quoted terms need meaningful similarity
 
       // Block linking if stories have mismatched quoted phrase terms
       if (hasMismatchedQuotedTerms) {

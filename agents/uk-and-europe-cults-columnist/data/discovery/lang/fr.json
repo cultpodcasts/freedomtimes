@@ -148,6 +148,27 @@
     "esclavage moderne",
     "traite des êtres humains"
   ],
+  "figurativeCultPhrases": [
+    "film culte",
+    "série culte",
+    "série cultes",
+    "émission culte",
+    "émissions cultes",
+    "culte du",
+    "culte de",
+    "culte britannique",
+    "culte américain"
+  ],
+  "figurativeCultContextTerms": [
+    "film",
+    "films",
+    "série",
+    "séries",
+    "émission",
+    "émissions",
+    "britannique",
+    "américain"
+  ],
   "groupStopwords": [
     "alors",
     "aussi",

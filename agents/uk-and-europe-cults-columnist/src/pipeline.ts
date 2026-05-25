@@ -34,7 +34,8 @@ type RunPipelineOptions = {
 };
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // First escape hyphens, then other special regex characters
+  return value.replace(/[-]/g, '\\$&').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Shared (English) figurative patterns — applied to all articles regardless of language.
@@ -44,8 +45,11 @@ const figurativeContextPattern = enContextTerms.map((term) => escapeRegExp(term)
 const figurativePhrasePattern = enPhrases.map((phrase) => escapeRegExp(phrase)).join('|');
 
 const FIGURATIVE_CULT_PATTERNS = [
-  new RegExp(`cult[^\\p{L}\\p{N}]{0,24}(${figurativeContextPattern})`, 'iu'),
+  // Match cult followed by context term within 24 chars (allows words between)
+  new RegExp(`cult.{0,24}?(${figurativeContextPattern})`, 'iu'),
   new RegExp(`\\b(${figurativePhrasePattern})\\b`, 'iu'),
+  // Bidirectional: context term before cult within 24 chars
+  new RegExp(`(${figurativeContextPattern}).{0,24}?cult`, 'iu'),
 ];
 
 // Per-language cult prefix word used when building figurative context-term patterns.
@@ -71,7 +75,10 @@ const FIGURATIVE_CULT_PATTERNS_BY_LANGUAGE: Record<string, RegExp[]> = (() => {
     if (contextTerms.length > 0) {
       const prefix = escapeRegExp(FIGURATIVE_CONTEXT_PREFIX_BY_LANGUAGE[lang] ?? 'cult');
       const ctx = contextTerms.map(escapeRegExp).join('|');
-      patterns.push(new RegExp(`${prefix}[^\\p{L}\\p{N}]{0,24}(${ctx})`, 'iu'));
+      // Match cult followed by context term within 24 chars (allows words between)
+      patterns.push(new RegExp(`${prefix}.{0,24}?(${ctx})`, 'iu'));
+      // Bidirectional: context term before cult within 24 chars
+      patterns.push(new RegExp(`(${ctx}).{0,24}?${prefix}`, 'iu'));
     }
     if (phrases.length > 0) {
       const phr = phrases.map(escapeRegExp).join('|');

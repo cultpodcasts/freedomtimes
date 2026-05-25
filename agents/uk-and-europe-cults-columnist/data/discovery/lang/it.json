@@ -143,6 +143,31 @@
     "schiavitù moderna",
     "tratta di esseri umani"
   ],
+  "figurativeCultPhrases": [
+    "fuori dal cult",
+    "destinato a diventare cult",
+    "meme cult",
+    "foto cult",
+    "diventato un cult",
+    "libro cult",
+    "serie cult",
+    "cult come",
+    "programmi cult",
+    "vetture cult",
+    "«cult»",
+    "cultura automobilistica"
+  ],
+  "figurativeCultContextTerms": [
+    "film",
+    "serie",
+    "meme",
+    "foto",
+    "cinema",
+    "trash",
+    "icona",
+    "libro",
+    "diventato"
+  ],
   "groupStopwords": [
     "anche",
     "avere",
