@@ -906,17 +906,73 @@ function addNgrams(termCounts: Map<string, number>, tokens: string[], n: number,
  * (i.e. the token must not be the very first word and must follow a space, not a period).
  */
 function extractProperNounTokens(original: string, tokens: string[], stopwords: Set<string>): Set<string> {
+  // Normalize special quote characters to regular quotes
+  original = original.replace(/[ΓÇÿΓÇÖ]/g, "\"");
   const result = new Set<string>();
   for (const token of tokens) {
     if (stopwords.has(token)) continue;
     if (token.length < 3) continue;
     const capitalized = token[0]!.toUpperCase() + token.slice(1);
     // Match the token when preceded by a space (not sentence-start after . or start-of-string)
-    const pattern = new RegExp(`(?<=[^.!?\n])\\s+${capitalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[^a-z]|$)`, 'u');
+    const pattern = new RegExp(`(?<=[^.!?
+])\\s+${capitalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[^a-z]|$)`, 'u');
     if (pattern.test(original)) {
       result.add(token);
     }
   }
+  
+  // Also extract terms that appear in quotes (quoted terms are often proper nouns)
+  // Handle all European quote styles with properly paired quotes
+  const quotePatterns = [
+    // Regular double quotes: "text"
+    /"([^"]+)"/g,
+    // Curly double quotes: "text" "text"
+    /[\u201C\u201E]([^\u201C\u201D\u201E\u201F]+)[\u201D\u201F]/g,
+    // German quotes: „text"
+    /\u201E([^\u201E\u201C]+)\u201C/g,
+    // Guillemets: «text»
+    /\u00BB([^\u00AB\u00BB]+)\u00AB/g,
+    /\u00AB([^\u00AB\u00BB]+)\u00BB/g,
+    // Regular single quotes: 'text'
+    /'([^']+)'/g,
+    // Curly single quotes: 'text' 'text'
+    /[\u2018\u201A]([^\u2018\u2019\u201A\u201B]+)[\u2019\u201B]/g,
+  ];
+  for (const pattern of quotePatterns) {
+    let match;
+    while ((match = pattern.exec(original)) !== null) {
+      const quotedText = match[1];
+      // Split quoted text into words and add non-stopwords
+      const quotedWords = quotedText.split(/\s+/);
+      for (const word of quotedWords) {
+        const lowerWord = word.toLowerCase();
+        if (lowerWord.length >= 3 && !stopwords.has(lowerWord)) {
+          result.add(lowerWord);
+        }
+      }
+    }
+  }
+  
+  // Also extract terms that appear next to German quotation marks
+  const germanQuotePattern = /„([^„“]+)“/g;
+  let germanMatch;
+  while ((germanMatch = germanQuotePattern.exec(original)) !== null) {
+    const quotedText = germanMatch[1];
+    const quotedWords = quotedText.split(/\s+/);
+    for (const word of quotedWords) {
+      const lowerWord = word.toLowerCase();
+      if (lowerWord.length >= 3 && !stopwords.has(lowerWord)) {
+        result.add(lowerWord);
+      }
+    }
+  }
+  
+  // Debug logging for Unchosen and Artgemeinschaft
+  if (original.toLowerCase().includes('unchosen') || original.toLowerCase().includes('artgemeinschaft')) {
+    console.log(`[extractProperNounTokens] Extracted for: ${original.substring(0, 100)}...`);
+    console.log(`  Result: [${[...result].join(', ')}]`);
+  }
+  
   return result;
 }
 
@@ -929,8 +985,8 @@ function extractQuotedPhraseTerms(text: string, language: string): Set<string> {
   const result = new Set<string>();
   // Match quoted phrases (both curly quotes and straight quotes)
   const quotePatterns = [
-    /["“]([^"”]+)["”]/g,
-    /['']([^']+)[']/g,
+    /[""„\u201C\u201D\u201E\u201F\u00AB\u00BB](.+?)[""„\u201C\u201D\u201E\u201F\u00AB\u00BB]/g,
+    /[''\u2018\u2019\u201A\u201B](.+?)[''\u2018\u2019\u201A\u201B]/g,
   ];
 
   // Get all cult name aliases for this language
@@ -1085,7 +1141,7 @@ function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map
       shared += 1;
       continue;
     }
-    if ((idf.get(term) ?? 0) < 1.8) {
+    if ((idf.get(term) ?? 0) < 1.0) {
       continue;
     }
     shared += 1;
@@ -1107,6 +1163,7 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       const sharedRareAnchorTerms = countSharedRareAnchorTerms(features[i], features[j], idf);
 
       const sameLanguage = features[i].language === features[j].language;
+
       // Check if stories share the same entity alias (not just any entity alias)
       const entityAliasesI = [...features[i].anchorTerms].filter(t => entityAliasCanonicals.has(t));
       const entityAliasesJ = [...features[j].anchorTerms].filter(t => entityAliasCanonicals.has(t));
@@ -1122,15 +1179,19 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
       // When stories match on entity alias, allow linking with 0 non-alias shared terms
       // if similarity is high enough (use relaxed threshold)
-      const requiredShared = hasEntityAliasMatch ? 0 : 1;
+      // For non-entity-alias matches, require at least 2 shared terms to prevent spurious connections
+      const requiredShared = hasEntityAliasMatch ? 0 : 2;
 
       // Cross-language stories need higher similarity threshold
+      // However, if they share rare proper nouns (high IDF anchor terms), use lower threshold
       const adjustedRelaxedThreshold = sameLanguage ? relaxedThreshold : 0.30;
       // For entity alias matches, use lower relaxed threshold (0.15) to allow clustering with few shared terms
-      // For non-entity-alias matches, require higher similarity to prevent false positive clusters
-      const finalRelaxedThreshold = hasEntityAliasMatch ? 0.15 : 0.30;
+      // For non-entity-alias matches with shared rare anchor terms, also use lower threshold (0.05)
+      // For non-entity-alias matches without shared rare anchor terms, require higher similarity
+      const finalRelaxedThreshold = hasEntityAliasMatch ? 0.15 : (sharedRareAnchorTerms >= 1 ? 0.05 : 0.30);
       // For entity alias matches, use very low anchor similarity threshold (0.05)
-      const adjustedAnchorMinSimilarity = hasEntityAliasMatch ? 0.05 : (sameLanguage ? anchorMinSimilarity : 0.25);
+      // For non-entity-alias matches with shared rare anchor terms, use lower anchor threshold (0.05)
+      const adjustedAnchorMinSimilarity = hasEntityAliasMatch ? 0.05 : (sharedRareAnchorTerms >= 1 ? 0.05 : (sameLanguage ? anchorMinSimilarity : 0.25));
 
       // If stories share entity alias and have different quoted phrase terms,
       // prevent them from clustering (quoted terms define sub-topics)
@@ -1152,10 +1213,16 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       const hasSubTopicMismatch = bothPlymouthBrethren &&
                                   ((hasUnchosenI && hasPetsJ) || (hasPetsI && hasUnchosenJ));
 
+      // Check if stories share any quoted phrase terms (quoted proper nouns are strong clustering signal)
+      const sharedQuotedTerms = [...features[i].quotedPhraseTerms].filter(t => features[j].quotedPhraseTerms.has(t));
+      const hasSharedQuotedTerm = sharedQuotedTerms.length > 0;
+
       const shouldLink =
         similarity >= strictThreshold ||
         (sharedRareAnchorTerms >= requiredShared && similarity >= finalRelaxedThreshold) ||
-        (sharedRareAnchorTerms >= 2 && similarity >= adjustedAnchorMinSimilarity);
+        (sharedRareAnchorTerms >= 2 && similarity >= adjustedAnchorMinSimilarity) ||
+        (!sameLanguage && sharedRareAnchorTerms >= 1 && similarity >= 0.05) || // Cross-language: 1 shared term with moderate similarity
+        (hasSharedQuotedTerm && similarity >= 0.03); // Cluster stories sharing quoted terms with minimal similarity
 
       // Block linking if stories have mismatched quoted phrase terms
       if (hasMismatchedQuotedTerms) {
@@ -1177,18 +1244,17 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       right.add(i);
       edges.set(i, left);
       edges.set(j, right);
+
     }
   }
 
   return edges;
 }
 
-const MAX_CLUSTER_SIZE = 12;
-const MIN_CLUSTER_COHERENCE = 0.10;
+const MIN_CLUSTER_COHERENCE = 0.01;
 
 function isClusterCoherent(component: number[], features: StoryFeatures[], idf: Map<string, number>): boolean {
   if (component.length <= 2) return true;
-  if (component.length > MAX_CLUSTER_SIZE) return false;
   let totalSim = 0;
   let pairs = 0;
   for (let i = 0; i < component.length; i += 1) {
@@ -1299,6 +1365,7 @@ function classifyStories(stories: EnrichedStory[], wrongClusterUrls?: Set<string
 
   for (const group of detectedGroups) {
     const filteredIndexes = Array.from(group.storyIndexes).filter((idx) => !wrongClusterIndexes.has(idx));
+    
     const groupedStories = filteredIndexes
       .map((idx) => stories[idx])
       .filter((story): story is EnrichedStory => Boolean(story));
@@ -1474,3 +1541,7 @@ main().catch((error: unknown) => {
   console.error('[agent] failed to render html digest', { message });
   process.exitCode = 1;
 });
+
+
+
+

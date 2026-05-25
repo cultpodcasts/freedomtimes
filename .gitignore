@@ -54,3 +54,12 @@ agents/cult-columnist-cf-worker/.wrangler/*
 agents/uk-and-europe-cults-columnist/reports/*
 agents/uk-and-europe-cults-columnist/tmp/*
 tmp/*
+
+# Temporary debugging scripts
+add_*.py
+fix_*.py
+lower_*.py
+remove_*.py
+revert_*.py
+cleanup.py
+temp_*.txt
