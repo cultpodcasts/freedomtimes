@@ -63,3 +63,4 @@ remove_*.py
 revert_*.py
 cleanup.py
 temp_*.txt
+agents/uk-and-europe-cults-columnist/feedback/*
