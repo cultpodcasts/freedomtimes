@@ -165,7 +165,19 @@
     "kult-objekt",
     "kult-ort",
     "kult-treffpunkt",
-    "kult-veranstaltung"
+    "kult-veranstaltung",
+    "kultfilm",
+    "kult-film",
+    "kultserie",
+    "kult-serie",
+    "kultschauspieler",
+    "kult-schauspieler",
+    "kultstar",
+    "kult-star",
+    "kultstatus",
+    "kult-status",
+    "kult und ein klischee",
+    "kult und klischee"
   ],
   "figurativeCultContextTerms": [
     "lokal",
@@ -181,7 +193,17 @@
     "treffpunkt",
     "klischee",
     "legende",
-    "zweirad"
+    "zweirad",
+    "film",
+    "serie",
+    "schauspieler",
+    "star",
+    "musik",
+    "band",
+    "album",
+    "metal",
+    "kino",
+    "tv"
   ],
   "figurativeCultCommercialContextTerms": [],
   "figurativeCultRegexPatterns": [

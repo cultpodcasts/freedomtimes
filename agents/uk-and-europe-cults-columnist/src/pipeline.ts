@@ -215,7 +215,17 @@ function hasCommercialFigurativeCultUsage(title: string, text: string, language?
   return leadMatches >= 2;
 }
 
-function isCultTopicPrecise(title: string, text: string, url: string, language?: string): boolean {
+type CultClassificationResult = {
+  isCultRelated: boolean;
+  audit: CultClassificationAudit;
+};
+
+export function isCultTopicPreciseWithAudit(
+  title: string,
+  text: string,
+  url: string,
+  language?: string,
+): CultClassificationResult {
   const titleLower = normalizeMatchingText(title.toLowerCase());
   const bodyLeadLower = normalizeMatchingText(text.slice(0, 2800).toLowerCase());
   const urlLower = url.toLowerCase();
@@ -238,6 +248,25 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
     (match) => Boolean(match) && !ambiguousCultTerms.has(match ?? ''),
   );
   const hasOnlyAmbiguousSpecific = (titleSpecificSignal || bodySpecificSignal) && !hasNonAmbiguousSpecific;
+
+  // Build audit trail
+  const matchedTerms: string[] = [];
+  const matchLocations: string[] = [];
+  const matchContexts: string[] = [];
+
+  if (titleSpecificMatch) {
+    matchedTerms.push(titleSpecificMatch);
+    matchLocations.push('title');
+    const idx = titleLower.indexOf(titleSpecificMatch.toLowerCase());
+    matchContexts.push(titleLower.substring(Math.max(0, idx - 30), idx + titleSpecificMatch.length + 30));
+  }
+  if (bodySpecificMatch) {
+    matchedTerms.push(bodySpecificMatch);
+    matchLocations.push('body');
+    const idx = bodyLeadLower.indexOf(bodySpecificMatch.toLowerCase());
+    matchContexts.push(bodyLeadLower.substring(Math.max(0, idx - 30), idx + bodySpecificMatch.length + 30));
+  }
+
   const hasLegalCultEquivalentSignal = (() => {
     const combined = `${titleLower} ${bodyLeadLower}`;
     const religiousTerms = getReligiousGroupTermsForLanguage(language);
@@ -253,27 +282,133 @@ function isCultTopicPrecise(title: string, text: string, url: string, language?:
     return Math.abs(rIdx - cIdx) <= PROXIMITY;
   })();
 
+  // Track filter results
+  const filtersChecked: string[] = [];
+  const filterResults: Record<string, { passed: boolean; reason?: string }> = {};
+
+  filtersChecked.push('legalCultEquivalent');
+  filterResults['legalCultEquivalent'] = {
+    passed: hasLegalCultEquivalentSignal,
+    reason: hasLegalCultEquivalentSignal ? 'Religious + coercive terms within 600 chars' : 'No legal cult equivalent detected',
+  };
+
   if (hasLegalCultEquivalentSignal) {
-    return true;
+    return {
+      isCultRelated: true,
+      audit: {
+        matchedTerms,
+        matchLocations,
+        matchContexts,
+        classificationSource: 'isCultTopicPrecise-legalEquivalent',
+        filtersChecked,
+        filterResults,
+        classifiedAt: new Date().toISOString(),
+      },
+    };
   }
 
+  filtersChecked.push('nonAmbiguousSpecific');
+  filterResults['nonAmbiguousSpecific'] = {
+    passed: hasNonAmbiguousSpecific,
+    reason: hasNonAmbiguousSpecific ? `Matched: ${matchedTerms.join(', ')}` : 'No non-ambiguous specific terms',
+  };
+
+  filtersChecked.push('urlSignal');
+  filterResults['urlSignal'] = {
+    passed: urlSignal,
+    reason: urlSignal ? 'URL contains cult signal pattern' : 'No URL cult signal',
+  };
+
   if (hasOnlyAmbiguousSpecific && !titleGenericSignal && !bodyGenericSignal && !urlSignal) {
-    return false;
+    return {
+      isCultRelated: false,
+      audit: {
+        matchedTerms,
+        matchLocations,
+        matchContexts,
+        classificationSource: 'isCultTopicPrecise-rejected-ambiguousOnly',
+        filtersChecked,
+        filterResults,
+        classifiedAt: new Date().toISOString(),
+      },
+    };
   }
 
   if (hasNonAmbiguousSpecific || urlSignal) {
-    return true;
+    return {
+      isCultRelated: true,
+      audit: {
+        matchedTerms,
+        matchLocations,
+        matchContexts,
+        classificationSource: 'isCultTopicPrecise-specificOrUrl',
+        filtersChecked,
+        filterResults,
+        classifiedAt: new Date().toISOString(),
+      },
+    };
   }
 
   if (!titleGenericSignal && !bodyGenericSignal) {
-    return false;
+    return {
+      isCultRelated: false,
+      audit: {
+        matchedTerms,
+        matchLocations,
+        matchContexts,
+        classificationSource: 'isCultTopicPrecise-rejected-noGenericSignal',
+        filtersChecked,
+        filterResults,
+        classifiedAt: new Date().toISOString(),
+      },
+    };
   }
 
-  if (!hasNonAmbiguousSpecific && hasCommercialFigurativeCultUsage(titleLower, bodyLeadLower, language)) {
-    return false;
+  filtersChecked.push('commercialFigurative');
+  const commercialFigurative = hasCommercialFigurativeCultUsage(titleLower, bodyLeadLower, language);
+  filterResults['commercialFigurative'] = {
+    passed: !commercialFigurative,
+    reason: commercialFigurative ? 'Commercial/figurative cult usage detected' : 'No commercial figurative usage',
+  };
+
+  if (!hasNonAmbiguousSpecific && commercialFigurative) {
+    return {
+      isCultRelated: false,
+      audit: {
+        matchedTerms,
+        matchLocations,
+        matchContexts,
+        classificationSource: 'isCultTopicPrecise-rejected-commercialFigurative',
+        filtersChecked,
+        filterResults,
+        classifiedAt: new Date().toISOString(),
+      },
+    };
   }
 
-  return !hasFigurativeCultUsage(`${titleLower} ${bodyLeadLower}`, language);
+  filtersChecked.push('figurativeUsage');
+  const figurativeUsage = hasFigurativeCultUsage(`${titleLower} ${bodyLeadLower}`, language);
+  filterResults['figurativeUsage'] = {
+    passed: !figurativeUsage,
+    reason: figurativeUsage ? 'Figurative cult usage in entertainment context' : 'No figurative usage detected',
+  };
+
+  return {
+    isCultRelated: !figurativeUsage,
+    audit: {
+      matchedTerms,
+      matchLocations,
+      matchContexts,
+      classificationSource: figurativeUsage ? 'isCultTopicPrecise-rejected-figurative' : 'isCultTopicPrecise-passed',
+      filtersChecked,
+      filterResults,
+      classifiedAt: new Date().toISOString(),
+    },
+  };
+}
+
+function isCultTopicPrecise(title: string, text: string, url: string, language?: string): boolean {
+  return isCultTopicPreciseWithAudit(title, text, url, language).isCultRelated;
 }
 
 function normalizeHost(host: string): string {
@@ -637,7 +772,15 @@ function previewPlainText(text: string, maxLen: number): string {
     .trim();
 }
 
-function createDraft(title: string, text: string, sourceLine: string, region: 'UK' | 'Europe', confidence: number, source: PipelineResult['source']): DraftPayload {
+function createDraft(
+  title: string,
+  text: string,
+  sourceLine: string,
+  region: 'UK' | 'Europe',
+  confidence: number,
+  source: PipelineResult['source'],
+  audit?: DraftPayload['classificationAudit']
+): DraftPayload {
   const trimmed = text.slice(0, 1400);
 
   return {
@@ -649,6 +792,7 @@ function createDraft(title: string, text: string, sourceLine: string, region: 'U
     confidence,
     reviewNotes: 'Auto-generated draft. Editorial review is required before publication.',
     source,
+    classificationAudit: audit,
   };
 }
 
@@ -782,7 +926,9 @@ export async function runPipeline(
 
   const textPreview = previewPlainText(text, 420);
 
-  if (!isCultTopicPrecise(title, text, effectiveUrl, language)) {
+  // Get cult classification with audit trail
+  const cultClassification = isCultTopicPreciseWithAudit(title, text, effectiveUrl, language);
+  if (!cultClassification.isCultRelated) {
     return {
       status: 'rejected',
       source,
@@ -816,7 +962,7 @@ export async function runPipeline(
   }
 
   const sourceLine = `${source.publisher} (${source.url})`;
-  const draft = createDraft(title, text, sourceLine, relevance.region, relevance.confidence, source);
+  const draft = createDraft(title, text, sourceLine, relevance.region, relevance.confidence, source, cultClassification.audit);
 
   return {
     status: 'drafted',

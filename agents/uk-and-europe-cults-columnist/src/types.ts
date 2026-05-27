@@ -21,6 +21,23 @@ export type RelevanceResult = {
   reasons: string[];
 };
 
+export type CultClassificationAudit = {
+  /** Terms that matched to trigger cult classification */
+  matchedTerms: string[];
+  /** Where the matches were found: 'title' | 'description' | 'body' | 'dek' */
+  matchLocations: string[];
+  /** Context snippets around each match for verification */
+  matchContexts: string[];
+  /** Which pipeline stage performed the classification */
+  classificationSource: string;
+  /** Which filters were checked during classification */
+  filtersChecked: string[];
+  /** Results of each filter check */
+  filterResults: Record<string, { passed: boolean; reason?: string }>;
+  /** Timestamp of classification */
+  classifiedAt: string;
+};
+
 export type DraftPayload = {
   title: string;
   dek: string;
@@ -30,6 +47,8 @@ export type DraftPayload = {
   confidence: number;
   reviewNotes: string;
   source: SourceMetadata;
+  /** Audit trail explaining why this story was classified as cult-related */
+  classificationAudit?: CultClassificationAudit;
 };
 
 export type PipelineResult =

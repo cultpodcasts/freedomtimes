@@ -4,8 +4,10 @@ import { PRIORITY_WATCHLIST_HOSTS } from './discoveryConfig.js';
 import { type DiscoveredStory, discoverCandidateStories } from './discoverStories.js';
 import { createDraftViaMcp } from './mcpClient.js';
 import { ARCHIVE_FALLBACK_HOSTS } from './http-cache/config.js';
-import { runPipeline } from './pipeline.js';
+import { runPipeline, isCultTopicPreciseWithAudit } from './pipeline.js';
 import type { DraftPayload } from './types.js';
+
+export { isCultTopicPreciseWithAudit };
 
 function getArg(name: string): string | undefined {
   const prefix = `--${name}=`;

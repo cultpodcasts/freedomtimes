@@ -150,14 +150,19 @@
   ],
   "figurativeCultPhrases": [
     "film culte",
+    "films culte",
     "série culte",
     "série cultes",
+    "séries culte",
     "émission culte",
     "émissions cultes",
     "culte du",
     "culte de",
     "culte britannique",
-    "culte américain"
+    "culte américain",
+    "culte français",
+    "phénomène culte",
+    "statut culte"
   ],
   "figurativeCultContextTerms": [
     "film",
@@ -167,7 +172,18 @@
     "émission",
     "émissions",
     "britannique",
-    "américain"
+    "américain",
+    "français",
+    "cinéma",
+    "réalisateur",
+    "acteur",
+    "actrice",
+    "chanteur",
+    "album",
+    "musique",
+    "spectacle",
+    "héros",
+    "légende"
   ],
   "groupStopwords": [
     "alors",

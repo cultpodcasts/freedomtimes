@@ -6,6 +6,7 @@ export type DraftStory = {
   url: string;
   host?: string;
   publishedAt?: string;
+  classificationAudit?: CultClassificationAudit;
 };
 
 export type StoryMeta = {
@@ -17,11 +18,22 @@ export type StoryMeta = {
   htmlLang?: string;
 };
 
+export type CultClassificationAudit = {
+  matchedTerms: string[];
+  matchLocations: string[];
+  matchContexts: string[];
+  classificationSource: string;
+  filtersChecked: string[];
+  filterResults: Record<string, { passed: boolean; reason?: string }>;
+  classifiedAt: string;
+};
+
 export type EnrichedStory = DraftStory & {
   description: string;
   image?: string;
   articleText: string;
   htmlLang?: string;
+  classificationAudit?: CultClassificationAudit;
 };
 
 export type RunSummary = Record<string, number>;

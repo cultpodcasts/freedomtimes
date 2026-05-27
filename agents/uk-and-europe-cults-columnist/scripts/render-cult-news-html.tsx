@@ -40,11 +40,28 @@ type StoryGroup = {
   stories: EnrichedStory[];
 };
 
-type DraftStory = ReturnType<typeof extractDraftsFromLog>[number];
+type DraftStory = {
+  title: string;
+  url: string;
+  host?: string;
+  publishedAt?: string;
+  classificationAudit?: CultClassificationAudit;
+};
+
+type CultClassificationAudit = {
+  matchedTerms: string[];
+  matchLocations: string[];
+  matchContexts: string[];
+  classificationSource: string;
+  filtersChecked: string[];
+  filterResults: Record<string, { passed: boolean; reason?: string }>;
+  classifiedAt: string;
+};
 
 type RawDraftShape = {
   title?: unknown;
   source?: { url?: unknown; host?: unknown; publishedAt?: unknown };
+  classificationAudit?: CultClassificationAudit;
 };
 
 function mapRawDraft(draft: RawDraftShape): DraftStory | null {
@@ -56,19 +73,26 @@ function mapRawDraft(draft: RawDraftShape): DraftStory | null {
     url,
     host: typeof draft.source?.host === 'string' ? draft.source.host : undefined,
     publishedAt: typeof draft.source?.publishedAt === 'string' ? draft.source.publishedAt : undefined,
+    classificationAudit: draft.classificationAudit,
   };
 }
 
 function loadDraftsFromArchive(): DraftStory[] | undefined {
   if (!existsSync(DRAFTS_ARCHIVE_PATH)) return undefined;
   try {
-    const parsed = JSON.parse(readFileSync(DRAFTS_ARCHIVE_PATH, 'utf-8')) as {
-      entries?: Array<{ draft?: RawDraftShape }>;
-    };
-    if (!Array.isArray(parsed.entries)) return undefined;
-    return parsed.entries
+    const parsed = JSON.parse(readFileSync(DRAFTS_ARCHIVE_PATH, 'utf-8')) as
+      | Array<{ draft?: RawDraftShape }>
+      | { entries?: Array<{ draft?: RawDraftShape }> };
+    // Handle both direct array and { entries: array } formats
+    const entries = Array.isArray(parsed) ? parsed : parsed.entries;
+    if (!Array.isArray(entries)) return undefined;
+    const drafts = entries
       .map((e) => (e.draft ? mapRawDraft(e.draft) : null))
       .filter((d): d is DraftStory => d !== null);
+    // Debug: count how many drafts have classificationAudit
+    const withAudit = drafts.filter(d => d.classificationAudit).length;
+    console.log(`[DEBUG] loadDraftsFromArchive: ${drafts.length} drafts, ${withAudit} with classificationAudit`);
+    return drafts;
   } catch {
     return undefined;
   }
@@ -374,10 +398,15 @@ function renderCard(story: EnrichedStory, language?: string) {
   const hostname = story.host || new URL(story.url).hostname.replace(/^www\./, '');
   const logo = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`;
   const isNonEnglish = language && language !== 'en';
-  const escapedUrl = story.url.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  const escapedTitle = story.title.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const escapedUrl = story.url;
+  const escapedTitle = story.title;
+  // Serialize classification audit for data attribute
+  const hasAudit = !!story.classificationAudit;
+  const auditData = hasAudit
+    ? JSON.stringify(story.classificationAudit)
+    : '';
   return (
-    <article className="card" data-url={story.url}>
+    <article className="card" data-url={story.url} data-classification-audit={auditData}>
       {story.image ? (
         <img src={story.image} alt={story.title} className="story-image" loading="lazy" />
       ) : (
@@ -703,7 +732,19 @@ window._fbClick = function(btn) {
   var url = btn.getAttribute('data-fb-url');
   var title = btn.getAttribute('data-fb-title');
   var reason = btn.getAttribute('data-fb-reason');
-  var entry = {url: url, title: title, reason: reason, flaggedAt: new Date().toISOString()};
+  var card = btn.closest('.card');
+  var auditJson = card ? card.getAttribute('data-classification-audit') : null;
+  var classificationAudit = null;
+  if (auditJson) {
+    try { classificationAudit = JSON.parse(auditJson); } catch(e) {}
+  }
+  var entry = {
+    url: url,
+    title: title,
+    reason: reason,
+    flaggedAt: new Date().toISOString(),
+    inclusionAudit: classificationAudit
+  };
   var stored = {};
   try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
   stored[url] = entry;
@@ -711,7 +752,6 @@ window._fbClick = function(btn) {
   navigator.clipboard.writeText(JSON.stringify(entry, null, 2)).then(function() {
     btn.classList.add('copied');
     btn.textContent = reason === 'false-positive' ? '🚫 Flagged' : '⚠️ Flagged';
-    var card = btn.closest('.card');
     if (card) {
       card.classList.remove('flagged-fp', 'flagged-wc');
       card.classList.add(reason === 'false-positive' ? 'flagged-fp' : 'flagged-wc');
@@ -1493,7 +1533,7 @@ async function main(): Promise<void> {
   const fetchedStories: EnrichedStory[] = [];
   for (const draft of drafts) {
     const meta = await fetchStoryMeta(draft.url);
-    fetchedStories.push({
+    const enrichedStory: EnrichedStory = {
       ...draft,
       title: meta.title?.trim() || draft.title,
       description: meta.description?.trim() || '',
@@ -1501,7 +1541,12 @@ async function main(): Promise<void> {
       publishedAt: meta.publishedAt || draft.publishedAt,
       articleText: meta.articleText?.trim() || '',
       htmlLang: meta.htmlLang,
-    });
+      classificationAudit: draft.classificationAudit, // Explicitly preserve audit data
+    };
+    if (draft.url.includes('aston-villa')) {
+      console.log(`[DEBUG] After enrichment: classificationAudit=${JSON.stringify(enrichedStory.classificationAudit)?.slice(0, 50)}`);
+    }
+    fetchedStories.push(enrichedStory);
   }
 
   const freshnessFilteredStories = fetchedStories.filter((story) => {

@@ -126,7 +126,12 @@
     "séries cult",
     "banda cult",
     "bandas cult",
-    "foto cult"
+    "foto cult",
+    "programa cult",
+    "festival cult",
+    "evento cult",
+    "livro cult",
+    "álbum cult"
   ],
   "figurativeCultContextTerms": [
     "filme",
@@ -140,7 +145,16 @@
     "herói",
     "heróis",
     "lenda",
-    "legendas"
+    "legendas",
+    "programa",
+    "festival",
+    "evento",
+    "livro",
+    "música",
+    "concerto",
+    "teatro",
+    "cinema",
+    "álbum"
   ],
   "groupStopwords": [],
   "newsCoveragePrepositions": [
