@@ -118,5 +118,31 @@
     "трговина људима",
     "ropstvo"
   ],
+  "figurativeCultPhrases": [
+    "kult morače",
+    "kult legende",
+    "kult heroj",
+    "kult film",
+    "kult serija",
+    "kult muzika",
+    "kult album"
+  ],
+  "figurativeCultContextTerms": [
+    "film",
+    "serija",
+    "muzika",
+    "album",
+    "koncert",
+    "sport",
+    "sportovi",
+    "rukomet",
+    "fudbal",
+    "košarka",
+    "heroj",
+    "legenda",
+    "klasičan",
+    "pratioci",
+    "navijači"
+  ],
   "groupStopwords": []
 }

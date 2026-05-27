@@ -129,5 +129,37 @@
     "sclavie modernă",
     "trafic de persoane"
   ],
+  "figurativeCultPhrases": [
+    "film cult",
+    "filme cult",
+    "serial cult",
+    "seriale cult",
+    "program cult",
+    "festival cult",
+    "eveniment cult",
+    "carte cult",
+    "album cult",
+    "bandă cult"
+  ],
+  "figurativeCultContextTerms": [
+    "film",
+    "filme",
+    "serial",
+    "seriale",
+    "program",
+    "festival",
+    "eveniment",
+    "carte",
+    "muzică",
+    "concert",
+    "teatru",
+    "cinema",
+    "album",
+    "bandă",
+    "erou",
+    "eroi",
+    "legendă",
+    "legende"
+  ],
   "groupStopwords": []
 }

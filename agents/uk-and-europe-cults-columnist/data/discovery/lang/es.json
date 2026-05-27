@@ -122,6 +122,37 @@
     "esclavitud moderna",
     "trata de personas"
   ],
+  "figurativeCultPhrases": [
+    "película cult",
+    "películas cult",
+    "serie cult",
+    "series cult",
+    "programa cult",
+    "festival cult",
+    "evento cult",
+    "libro cult",
+    "álbum cult",
+    "banda cult"
+  ],
+  "figurativeCultContextTerms": [
+    "película",
+    "películas",
+    "serie",
+    "series",
+    "programa",
+    "festival",
+    "evento",
+    "libro",
+    "música",
+    "concierto",
+    "teatro",
+    "cine",
+    "álbum",
+    "banda",
+    "heroe",
+    "heroes",
+    "leyenda"
+  ],
   "groupStopwords": [
     "además",
     "algo",

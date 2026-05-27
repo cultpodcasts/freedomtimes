@@ -113,5 +113,31 @@
     "moderno ropstvo",
     "trgovina ljudima"
   ],
+  "figurativeCultPhrases": [
+    "kult morače",
+    "kult legende",
+    "kult heroj",
+    "kult film",
+    "kult serija",
+    "kult glazba",
+    "kult album"
+  ],
+  "figurativeCultContextTerms": [
+    "film",
+    "serija",
+    "glazba",
+    "album",
+    "koncert",
+    "sport",
+    "sportovi",
+    "rukomet",
+    "nogomet",
+    "košarka",
+    "heroj",
+    "legenda",
+    "klasičan",
+    "pratioci",
+    "navijači"
+  ],
   "groupStopwords": []
 }
