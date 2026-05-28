@@ -27,6 +27,106 @@ import { fetchTextWithCache } from './httpCache.js';
 import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.js';
 import type { DraftPayload, PipelineResult } from './types.js';
 
+// Load subject aliases for proper noun matching
+const SUBJECT_ALIASES_PATH = new URL('../data/subject-aliases.json', import.meta.url);
+const SUBJECT_ALIASES: Array<{ canonical: string; aliases: Array<{ text: string; lang?: string }> }> = JSON.parse(
+  readFileSync(SUBJECT_ALIASES_PATH, 'utf-8'),
+);
+
+// Build a set of all alias terms for matching
+const ALIAS_TERMS = new Set<string>();
+for (const entry of SUBJECT_ALIASES) {
+  ALIAS_TERMS.add(entry.canonical);
+  for (const alias of entry.aliases) {
+    ALIAS_TERMS.add(alias.text);
+  }
+}
+
+/**
+ * Simple tokenization for proper noun extraction
+ */
+function tokenizeForProperNouns(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+}
+
+/**
+ * Extract proper nouns from text using capitalization and quoted phrases
+ */
+function extractProperNouns(text: string): Set<string> {
+  const result = new Set<string>();
+  const tokens = tokenizeForProperNouns(text);
+  
+  // Extract capitalized words (not at sentence start)
+  for (const token of tokens) {
+    const capitalized = token[0]!.toUpperCase() + token.slice(1);
+    const pattern = new RegExp(`(?<=[^.!?
+])\\s+${capitalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[^a-z]|$)`, 'u');
+    if (pattern.test(text)) {
+      result.add(token);
+    }
+  }
+  
+  // Extract quoted terms (often proper nouns) - preserve full phrase including stop words
+  const quotePatterns = [
+    /"([^"]+)"/g,
+    /[\u201C\u201E]([^\u201C\u201D\u201E\u201F]+)[\u201D\u201F]/g,
+    /\u201E([^\u201E\u201C]+)\u201C/g,
+    /\u00BB([^\u00AB\u00BB]+)\u00AB/g,
+    /\u00AB([^\u00AB\u00BB]+)\u00BB/g,
+    /'([^']+)'/g,
+    /[\u2018\u201A]([^\u2018\u2019\u201A\u201B]+)[\u2019\u201B]/g,
+  ];
+  
+  for (const pattern of quotePatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
+      const quotedText = match[1];
+      if (!quotedText) continue;
+      // Add the full quoted phrase as a single proper noun (preserves stop words like "of")
+      const lowerQuoted = quotedText.toLowerCase().trim();
+      if (lowerQuoted.length >= 3) {
+        result.add(lowerQuoted);
+      }
+      // Also add individual words for matching flexibility
+      const quotedWords = quotedText.split(/\s+/);
+      for (const word of quotedWords) {
+        const lowerWord = word.toLowerCase();
+        if (lowerWord.length >= 3) {
+          result.add(lowerWord);
+        }
+      }
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Match proper nouns against subject aliases
+ */
+function matchProperNounsToAliases(properNouns: Set<string>): string[] {
+  const matched: string[] = [];
+  for (const noun of properNouns) {
+    for (const entry of SUBJECT_ALIASES) {
+      if (noun === entry.canonical) {
+        matched.push(entry.canonical);
+        break;
+      }
+      for (const alias of entry.aliases) {
+        if (noun === alias.text) {
+          matched.push(entry.canonical);
+          break;
+        }
+      }
+    }
+  }
+  return matched;
+}
+
 type UrlResolver = (html: string, pageUrl: string) => string | undefined;
 type ResolverKey = 'republishedSourceLink';
 type RunPipelineOptions = {
@@ -230,6 +330,11 @@ export function isCultTopicPreciseWithAudit(
   const bodyLeadLower = normalizeMatchingText(text.slice(0, 2800).toLowerCase());
   const urlLower = url.toLowerCase();
 
+  // Extract proper nouns from title and body
+  const fullText = `${title} ${text.slice(0, 2800)}`;
+  const properNouns = extractProperNouns(fullText);
+  const matchedAliases = matchProperNounsToAliases(properNouns);
+
   const strictExtensions = getStrictCultTermExtensionsForLanguage(language);
   const languageCultTerms = Array.from(new Set([...getCultTermsForLanguage(language), ...strictExtensions]));
   const languageSpecificTerms = languageCultTerms.filter((term) => !ALL_GENERIC_CULT_TERMS.includes(term));
@@ -302,6 +407,8 @@ export function isCultTopicPreciseWithAudit(
         classificationSource: 'isCultTopicPrecise-legalEquivalent',
         filtersChecked,
         filterResults,
+        properNouns: [...properNouns],
+        matchedAliases,
         classifiedAt: new Date().toISOString(),
       },
     };
@@ -329,6 +436,39 @@ export function isCultTopicPreciseWithAudit(
         classificationSource: 'isCultTopicPrecise-rejected-ambiguousOnly',
         filtersChecked,
         filterResults,
+        properNouns: [...properNouns],
+        matchedAliases,
+        classifiedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  // If coercive control is the only specific term and no other cult signals exist,
+  // reject as likely domestic abuse/legislation context rather than cult context
+  const isCoerciveControlOnly = (() => {
+    if (matchedTerms.length !== 1) return false;
+    const term = matchedTerms[0]?.toLowerCase();
+    if (term !== 'coercive control') return false;
+    // Check for other cult signals that would indicate actual cult context
+    const combined = `${titleLower} ${bodyLeadLower}`;
+    const religiousTerms = getReligiousGroupTermsForLanguage(language);
+    const hasReligiousSignal = religiousTerms.some((t) => containsPhrase(combined, t));
+    const hasGenericSignal = titleGenericSignal || bodyGenericSignal;
+    return !hasReligiousSignal && !hasGenericSignal;
+  })();
+
+  if (isCoerciveControlOnly) {
+    return {
+      isCultRelated: false,
+      audit: {
+        matchedTerms,
+        matchLocations,
+        matchContexts,
+        classificationSource: 'isCultTopicPrecise-rejected-coerciveControlOnly',
+        filtersChecked,
+        filterResults,
+        properNouns: [...properNouns],
+        matchedAliases,
         classifiedAt: new Date().toISOString(),
       },
     };
@@ -344,6 +484,8 @@ export function isCultTopicPreciseWithAudit(
         classificationSource: 'isCultTopicPrecise-specificOrUrl',
         filtersChecked,
         filterResults,
+        properNouns: [...properNouns],
+        matchedAliases,
         classifiedAt: new Date().toISOString(),
       },
     };
@@ -359,6 +501,8 @@ export function isCultTopicPreciseWithAudit(
         classificationSource: 'isCultTopicPrecise-rejected-noGenericSignal',
         filtersChecked,
         filterResults,
+        properNouns: [...properNouns],
+        matchedAliases,
         classifiedAt: new Date().toISOString(),
       },
     };
@@ -381,6 +525,8 @@ export function isCultTopicPreciseWithAudit(
         classificationSource: 'isCultTopicPrecise-rejected-commercialFigurative',
         filtersChecked,
         filterResults,
+        properNouns: [...properNouns],
+        matchedAliases,
         classifiedAt: new Date().toISOString(),
       },
     };
@@ -402,6 +548,8 @@ export function isCultTopicPreciseWithAudit(
       classificationSource: figurativeUsage ? 'isCultTopicPrecise-rejected-figurative' : 'isCultTopicPrecise-passed',
       filtersChecked,
       filterResults,
+      properNouns: [...properNouns],
+      matchedAliases,
       classifiedAt: new Date().toISOString(),
     },
   };

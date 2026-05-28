@@ -34,6 +34,10 @@ export type CultClassificationAudit = {
   filtersChecked: string[];
   /** Results of each filter check */
   filterResults: Record<string, { passed: boolean; reason?: string }>;
+  /** Proper nouns extracted from the article */
+  properNouns: string[];
+  /** Proper nouns that match subject aliases */
+  matchedAliases: string[];
   /** Timestamp of classification */
   classifiedAt: string;
 };

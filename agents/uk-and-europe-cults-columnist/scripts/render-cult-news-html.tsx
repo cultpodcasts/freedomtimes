@@ -89,9 +89,6 @@ function loadDraftsFromArchive(): DraftStory[] | undefined {
     const drafts = entries
       .map((e) => (e.draft ? mapRawDraft(e.draft) : null))
       .filter((d): d is DraftStory => d !== null);
-    // Debug: count how many drafts have classificationAudit
-    const withAudit = drafts.filter(d => d.classificationAudit).length;
-    console.log(`[DEBUG] loadDraftsFromArchive: ${drafts.length} drafts, ${withAudit} with classificationAudit`);
     return drafts;
   } catch {
     return undefined;
@@ -386,6 +383,7 @@ function summarizeExclusions(excluded: Array<{ url: string; reason: string }>): 
   const counts = new Map<string, number>();
   for (const item of excluded) {
     counts.set(item.reason, (counts.get(item.reason) ?? 0) + 1);
+
   }
 
   console.log(`[agent] excluded ${excluded.length} stories from digest`);
@@ -405,8 +403,10 @@ function renderCard(story: EnrichedStory, language?: string) {
   const auditData = hasAudit
     ? JSON.stringify(story.classificationAudit)
     : '';
+  // Serialize article text for training data
+  const articleTextData = story.articleText || '';
   return (
-    <article className="card" data-url={story.url} data-classification-audit={auditData}>
+    <article className="card" data-url={story.url} data-classification-audit={auditData} data-article-text={articleTextData}>
       {story.image ? (
         <img src={story.image} alt={story.title} className="story-image" loading="lazy" />
       ) : (
@@ -639,6 +639,9 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
           }
           .fb-btn:hover { background: #e8e0d0; }
           .fb-btn.copied { background: #d4edda; color: #1a5c38; border-color: #a3d3b0; }
+          .fb-btn[data-fb-reason="wrong-cluster"] { display: none; }
+          .fb-btn[data-fb-reason="false-positive"] { display: none; }
+          body.review-phase .fb-btn[data-fb-reason="false-positive"] { display: inline-block; }
           .card.flagged-fp { opacity: 0.45; border-color: #e57373; }
           .card.flagged-wc { opacity: 0.55; border-color: #f9a825; }
           #fb-toast {
@@ -697,38 +700,102 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
             </div>
           )}
         </main>
-      <div id="fb-toast">Copied to clipboard — paste into data/feedback/false-positives.json</div>
+      <div id="fb-toast">Feedback saved</div>
+      <div id="report-status" style="position: fixed; top: 10px; right: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: 0.85rem; z-index: 1000;">
+        <span id="status-text">Loading...</span>
+        <button id="init-report-btn" style="margin-left: 10px; padding: 4px 8px; cursor: pointer;">Init Report</button>
+        <button id="close-report-btn" style="margin-left: 5px; padding: 4px 8px; cursor: pointer; display: none;">Close Report</button>
+        <button id="finalize-report-btn" style="margin-left: 5px; padding: 4px 8px; cursor: pointer; display: none;">Finalize</button>
+      </div>
       <script dangerouslySetInnerHTML={{ __html: `
-var FB_KEY = 'cult-news-feedback';
 var FB_GENERATED_AT = '${generatedAt}';
+var API_BASE = window.location.origin;
+var currentReport = null;
 
 function _fbLoad() {
-  var stored = {};
-  try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
-  var generatedMs = new Date(FB_GENERATED_AT).getTime();
-  var stale = Object.keys(stored).filter(function(url) {
-    var flaggedMs = stored[url] && stored[url].flaggedAt ? new Date(stored[url].flaggedAt).getTime() : 0;
-    return flaggedMs < generatedMs;
-  });
-  if (stale.length > 0) {
-    stale.forEach(function(url) { delete stored[url]; });
-    localStorage.setItem(FB_KEY, JSON.stringify(stored));
+  _checkReportStatus();
+  _loadFeedback();
+  _updateButtonVisibility();
+}
+
+async function _checkReportStatus() {
+  try {
+    const res = await fetch(API_BASE + '/api/report/status');
+    const data = await res.json();
+    currentReport = data;
+    _updateStatusUI(data);
+  } catch(e) {
+    console.error('Failed to check report status:', e);
+    document.getElementById('status-text').textContent = 'Error checking status';
   }
-  document.querySelectorAll('.card[data-url]').forEach(function(card) {
-    var url = card.getAttribute('data-url');
-    var entry = stored[url];
-    if (!entry) return;
-    card.classList.add(entry.reason === 'false-positive' ? 'flagged-fp' : 'flagged-wc');
-    card.querySelectorAll('.fb-btn').forEach(function(btn) {
-      if (btn.getAttribute('data-fb-reason') === entry.reason) {
-        btn.classList.add('copied');
-        btn.textContent = entry.reason === 'false-positive' ? '🚫 Flagged' : '⚠️ Flagged';
-      }
+}
+
+function _updateStatusUI(data) {
+  const statusText = document.getElementById('status-text');
+  const initBtn = document.getElementById('init-report-btn');
+  const closeBtn = document.getElementById('close-report-btn');
+  const finalizeBtn = document.getElementById('finalize-report-btn');
+
+  document.body.classList.remove('review-phase', 'verification-phase');
+
+  if (data.status === 'none') {
+    statusText.textContent = 'No active report';
+    initBtn.style.display = 'inline';
+    closeBtn.style.display = 'none';
+    finalizeBtn.style.display = 'none';
+  } else if (data.status === 'review') {
+    statusText.textContent = 'Review phase (' + data.entryCount + ' flagged)';
+    initBtn.style.display = 'none';
+    closeBtn.style.display = 'inline';
+    finalizeBtn.style.display = 'none';
+    document.body.classList.add('review-phase');
+  } else if (data.status === 'verification') {
+    statusText.textContent = 'Clusters updated — ' + (data.entryCount || 0) + ' false-positives excluded. Finalize or start new review.';
+    initBtn.style.display = 'inline';
+    closeBtn.style.display = 'none';
+    finalizeBtn.style.display = 'inline';
+    document.body.classList.add('verification-phase');
+  }
+  _updateButtonVisibility();
+}
+
+async function _loadFeedback() {
+  try {
+    const res = await fetch(API_BASE + '/api/feedback');
+    const data = await res.json();
+    data.entries.forEach(function(entry) {
+      var card = document.querySelector('.card[data-url="' + entry.url + '"]');
+      if (!card) return;
+      card.classList.add(entry.reason === 'false-positive' ? 'flagged-fp' : 'flagged-wc');
+      card.querySelectorAll('.fb-btn').forEach(function(btn) {
+        if (btn.getAttribute('data-fb-reason') === entry.reason) {
+          btn.classList.add('copied');
+          btn.textContent = entry.reason === 'false-positive' ? '🚫 Flagged' : '⚠️ Flagged';
+        }
+      });
     });
+  } catch(e) {
+    console.error('Failed to load feedback:', e);
+  }
+}
+
+function _updateButtonVisibility() {
+  var wrongClusterBtns = document.querySelectorAll('.fb-btn[data-fb-reason="wrong-cluster"]');
+  wrongClusterBtns.forEach(function(btn) {
+    if (currentReport && currentReport.status === 'verification') {
+      btn.style.display = 'inline-block';
+    } else {
+      btn.style.display = 'none';
+    }
   });
 }
 
-window._fbClick = function(btn) {
+window._fbClick = async function(btn) {
+  if (!currentReport || currentReport.status !== 'review') {
+    alert('Please initialize a report first');
+    return;
+  }
+
   var url = btn.getAttribute('data-fb-url');
   var title = btn.getAttribute('data-fb-title');
   var reason = btn.getAttribute('data-fb-reason');
@@ -738,44 +805,110 @@ window._fbClick = function(btn) {
   if (auditJson) {
     try { classificationAudit = JSON.parse(auditJson); } catch(e) {}
   }
-  var entry = {
-    url: url,
-    title: title,
-    reason: reason,
-    flaggedAt: new Date().toISOString(),
-    inclusionAudit: classificationAudit
-  };
-  var stored = {};
-  try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
-  stored[url] = entry;
-  localStorage.setItem(FB_KEY, JSON.stringify(stored));
-  navigator.clipboard.writeText(JSON.stringify(entry, null, 2)).then(function() {
-    btn.classList.add('copied');
-    btn.textContent = reason === 'false-positive' ? '🚫 Flagged' : '⚠️ Flagged';
-    if (card) {
-      card.classList.remove('flagged-fp', 'flagged-wc');
-      card.classList.add(reason === 'false-positive' ? 'flagged-fp' : 'flagged-wc');
-    }
-    var toast = document.getElementById('fb-toast');
-    toast.classList.add('show');
-    setTimeout(function() { toast.classList.remove('show'); }, 2800);
-  });
-};
+  var articleText = card ? card.getAttribute('data-article-text') : null;
 
-window._fbExport = function() {
-  var stored = {};
-  try { stored = JSON.parse(localStorage.getItem(FB_KEY) || '{}'); } catch(e) {}
-  var entries = Object.values(stored);
-  if (entries.length === 0) {
-    alert('No feedback flagged yet.');
+  // Check if already marked - if so, unmark instead
+  var isMarked = card && (card.classList.contains('flagged-fp') || card.classList.contains('flagged-wc'));
+  if (isMarked) {
+    try {
+      const res = await fetch(API_BASE + '/api/feedback/unmark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url })
+      });
+      const data = await res.json();
+      if (data.success) {
+        btn.classList.remove('copied');
+        btn.textContent = reason === 'false-positive' ? '🚫 False positive' : '⚠️ Wrong cluster';
+        if (card) {
+          card.classList.remove('flagged-fp', 'flagged-wc');
+        }
+        _checkReportStatus();
+      }
+    } catch(e) {
+      console.error('Failed to unmark:', e);
+      alert('Failed to unmark');
+    }
     return;
   }
-  navigator.clipboard.writeText(JSON.stringify(entries, null, 2)).then(function() {
-    var status = document.getElementById('export-fb-status');
-    status.style.display = 'inline';
-    setTimeout(function() { status.style.display = 'none'; }, 4000);
-  });
+
+  // Mark as false-positive
+  try {
+    const res = await fetch(API_BASE + '/api/feedback/false-positive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: url,
+        title: title,
+        articleText: articleText,
+        classificationAudit: classificationAudit
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      btn.classList.add('copied');
+      btn.textContent = '� Flagged';
+      if (card) {
+        card.classList.remove('flagged-fp', 'flagged-wc');
+        card.classList.add('flagged-fp');
+      }
+      var toast = document.getElementById('fb-toast');
+      toast.classList.add('show');
+      setTimeout(function() { toast.classList.remove('show'); }, 2000);
+      _checkReportStatus();
+    }
+  } catch(e) {
+    console.error('Failed to save feedback:', e);
+    alert('Failed to save feedback');
+  }
 };
+
+document.getElementById('init-report-btn').addEventListener('click', async function() {
+  try {
+    const res = await fetch(API_BASE + '/api/report/init', { method: 'POST' });
+    const data = await res.json();
+    if (data.reportId) {
+      _checkReportStatus();
+    }
+  } catch(e) {
+    console.error('Failed to init report:', e);
+    alert('Failed to initialize report');
+  }
+});
+
+document.getElementById('close-report-btn').addEventListener('click', async function() {
+  if (!confirm('Close the false-positive review? The page will reload with updated clusters.')) return;
+  const btn = this;
+  btn.disabled = true;
+  btn.textContent = 'Re-clustering…';
+  try {
+    const res = await fetch(API_BASE + '/api/report/close', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      window.location.reload();
+    }
+  } catch(e) {
+    console.error('Failed to close report:', e);
+    alert('Failed to close report');
+    btn.disabled = false;
+    btn.textContent = 'Close Report';
+  }
+});
+
+document.getElementById('finalize-report-btn').addEventListener('click', async function() {
+  if (!confirm('Finalize report? This will archive feedback and export to training data.')) return;
+  try {
+    const res = await fetch(API_BASE + '/api/report/finalize', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      alert('Report finalized: ' + data.archivedReportId);
+      _checkReportStatus();
+    }
+  } catch(e) {
+    console.error('Failed to finalize report:', e);
+    alert('Failed to finalize report');
+  }
+});
 
 document.addEventListener('DOMContentLoaded', _fbLoad);
 ` }} />
@@ -837,11 +970,6 @@ function injectEntityAliases(
   }
 }
 
-const CLUSTER_LABEL_EXCLUDED_TERMS = new Set([
-  'cult', 'cults', 'sect', 'sects', 'news', 'review', 'drama', 'thriller',
-  'story', 'stories', 'series', 'episode', 'episodes',
-]);
-
 const GROUP_STOPWORDS_BY_LANGUAGE: StopwordsByLanguage = (() => {
   const byLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
   return Object.fromEntries(
@@ -850,12 +978,29 @@ const GROUP_STOPWORDS_BY_LANGUAGE: StopwordsByLanguage = (() => {
 })();
 
 function tokenize(value: string, stopwords: Set<string>): string[] {
-  function normalizeToken(token: string): string {
-    // Collapse common possessive/plural headline variants: "unchosens" -> "unchosen".
-    if (token.length > 5 && token.endsWith('s') && !token.endsWith('ss')) {
-      return token.slice(0, -1);
+  function stemOnce(token: string): string {
+    // Strip plural/possessive: "speedrunnings" -> "speedrunning", "unchosens" -> "unchosen"
+    if (token.length > 5 && token.endsWith('s') && !token.endsWith('ss')) return token.slice(0, -1);
+    // Strip gerund -ing, then collapse doubled terminal consonant: "speedrunning" -> "speedrunn" -> "speedrun"
+    if (token.length > 6 && token.endsWith('ing') && !token.endsWith('ring') && !token.endsWith('king')) {
+      const stem = token.slice(0, -3);
+      // Collapse doubled terminal consonant (running->run,anning->ann->an handled next iter)
+      if (stem.length >= 2 && stem[stem.length - 1] === stem[stem.length - 2]) {
+        return stem.slice(0, -1);
+      }
+      return stem;
     }
     return token;
+  }
+  function normalizeToken(token: string): string {
+    // Apply stemming iteratively until stable (handles speedrunnings->speedrunning->speedrun)
+    let t = token;
+    for (let i = 0; i < 3; i += 1) {
+      const next = stemOnce(t);
+      if (next === t || next.length < 3) break;
+      t = next;
+    }
+    return t;
   }
 
   return value
@@ -973,6 +1118,7 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
   
   // Also extract terms that appear in quotes (quoted terms are often proper nouns)
   // Handle all European quote styles with properly paired quotes
+  // Preserve full quoted phrases including stop words (e.g., "Game of Thrones")
   const quotePatterns = [
     // Regular double quotes: "text"
     /"([^"]+)"/g,
@@ -992,7 +1138,12 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
     let match;
     while ((match = pattern.exec(original)) !== null) {
       const quotedText = match[1];
-      // Split quoted text into words and add non-stopwords
+      // Add the full quoted phrase as a single term (preserves stop words like "of")
+      const lowerQuoted = quotedText.toLowerCase().trim();
+      if (lowerQuoted.length >= 3) {
+        result.add(lowerQuoted);
+      }
+      // Also add individual non-stopword words for matching flexibility
       const quotedWords = quotedText.split(/\s+/);
       for (const word of quotedWords) {
         const lowerWord = word.toLowerCase();
@@ -1008,6 +1159,12 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
   let germanMatch;
   while ((germanMatch = germanQuotePattern.exec(original)) !== null) {
     const quotedText = germanMatch[1];
+    // Add the full quoted phrase as a single term (preserves stop words like "of")
+    const lowerQuoted = quotedText.toLowerCase().trim();
+    if (lowerQuoted.length >= 3) {
+      result.add(lowerQuoted);
+    }
+    // Also add individual non-stopword words for matching flexibility
     const quotedWords = quotedText.split(/\s+/);
     for (const word of quotedWords) {
       const lowerWord = word.toLowerCase();
@@ -1015,12 +1172,6 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
         result.add(lowerWord);
       }
     }
-  }
-  
-  // Debug logging for Unchosen and Artgemeinschaft
-  if (original.toLowerCase().includes('unchosen') || original.toLowerCase().includes('artgemeinschaft')) {
-    console.log(`[extractProperNounTokens] Extracted for: ${original.substring(0, 100)}...`);
-    console.log(`  Result: [${[...result].join(', ')}]`);
   }
   
   return result;
@@ -1100,11 +1251,33 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
     const titleProperNouns = extractProperNounTokens(story.title, titleTokens, stopwords);
     const descProperNouns = extractProperNounTokens(story.description ?? '', descriptionTokens, stopwords);
     const articleProperNouns = extractProperNounTokens(story.articleText ?? '', articleTokens, stopwords);
+    
+    // Extract proper nouns from URL slug (entity names often in path even when omitted from title)
+    const urlPath = new URL(story.url).pathname;
+    const urlSlugText = urlPath.replace(/-/g, ' ').replace(/\//g, ' ');
+    const urlSlugTokens = tokenize(urlSlugText, stopwords);
+    // URL slug tokens are already clean - add them directly as anchor terms
+    const urlProperNouns = new Set(urlSlugTokens);
+    
     const properNounBigrams = [
       ...Array.from(titleProperNouns).flatMap((t, _, arr) => {
         const idx = titleTokens.indexOf(t);
         if (idx < titleTokens.length - 1 && titleProperNouns.has(titleTokens[idx + 1]!)) {
           return [`${t} ${titleTokens[idx + 1]}`];
+        }
+        return [];
+      }),
+      ...Array.from(descProperNouns).flatMap((t, _, arr) => {
+        const idx = descriptionTokens.indexOf(t);
+        if (idx < descriptionTokens.length - 1 && descProperNouns.has(descriptionTokens[idx + 1]!)) {
+          return [`${t} ${descriptionTokens[idx + 1]}`];
+        }
+        return [];
+      }),
+      ...Array.from(urlProperNouns).flatMap((t, _, arr) => {
+        const idx = urlSlugTokens.indexOf(t);
+        if (idx < urlSlugTokens.length - 1 && urlProperNouns.has(urlSlugTokens[idx + 1]!)) {
+          return [`${t} ${urlSlugTokens[idx + 1]}`];
         }
         return [];
       }),
@@ -1116,6 +1289,7 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
       ...titleProperNouns,
       ...descProperNouns,
       ...articleProperNouns,
+      ...urlProperNouns,
       ...properNounBigrams,
       ...titleQuotedTerms,
     ]);
@@ -1131,6 +1305,11 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
     return { index, language, anchorTerms, quotedPhraseTerms: titleQuotedTerms, termCounts };
   });
 }
+// Terms appearing in more than this fraction of documents are corpus-ubiquitous
+// ("cult", "sect", "abuse", etc. in any language) and must not drive similarity.
+// This is language-agnostic and scales automatically to any corpus size.
+const IDF_MAX_DF_RATIO = 0.40;
+
 function buildIdf(features: StoryFeatures[]): Map<string, number> {
   const df = new Map<string, number>();
   for (const feature of features) {
@@ -1142,6 +1321,12 @@ function buildIdf(features: StoryFeatures[]): Map<string, number> {
   const idf = new Map<string, number>();
   const total = features.length;
   for (const [term, frequency] of df.entries()) {
+    // Zero out terms that appear in more than IDF_MAX_DF_RATIO of documents.
+    // This kills corpus-ubiquitous words in any language without a hand-curated list.
+    if (frequency / total > IDF_MAX_DF_RATIO) {
+      idf.set(term, 0);
+      continue;
+    }
     idf.set(term, Math.log((total + 1) / (frequency + 1)) + 1);
   }
 
@@ -1229,8 +1414,8 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
       // When stories match on entity alias, allow linking with 0 non-alias shared terms
       // if similarity is high enough (use relaxed threshold)
-      // For non-entity-alias matches, require at least 2 shared terms to prevent spurious connections
-      const requiredShared = hasEntityAliasMatch ? 0 : 2;
+      // For non-entity-alias matches, require at least 3 shared rare anchor terms to prevent spurious connections
+      const requiredShared = hasEntityAliasMatch ? 0 : 3;
 
       // Cross-language stories need higher similarity threshold
       // However, if they share rare proper nouns (high IDF anchor terms), use lower threshold
@@ -1238,7 +1423,7 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       // For entity alias matches, use lower relaxed threshold (0.15) to allow clustering with few shared terms
       // For non-entity-alias matches with shared rare anchor terms, also use lower threshold (0.05)
       // For non-entity-alias matches without shared rare anchor terms, require higher similarity
-      const finalRelaxedThreshold = hasEntityAliasMatch ? 0.15 : (sharedRareAnchorTerms >= 1 ? 0.05 : 0.30);
+      const finalRelaxedThreshold = hasEntityAliasMatch ? 0.15 : (sharedRareAnchorTerms >= 3 ? 0.10 : 0.50);
       // For entity alias matches, use very low anchor similarity threshold (0.05)
       // For non-entity-alias matches with shared rare anchor terms, use lower anchor threshold (0.05)
       const adjustedAnchorMinSimilarity = hasEntityAliasMatch ? 0.05 : (sharedRareAnchorTerms >= 1 ? 0.05 : (sameLanguage ? anchorMinSimilarity : 0.25));
@@ -1267,12 +1452,62 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       const sharedQuotedTerms = [...features[i].quotedPhraseTerms].filter(t => features[j].quotedPhraseTerms.has(t));
       const hasSharedQuotedTerm = sharedQuotedTerms.length > 0;
 
+      // PRIMARY CLUSTERING SIGNAL: Shared proper noun bigrams (e.g., "hannah murray", "game of thrones")
+      // If stories share 2+ proper noun bigrams, link them regardless of language or similarity
+      const sharedProperNounBigrams = [...features[i].anchorTerms].filter(t => 
+        t.includes(' ') && t.length >= 8 && features[j].anchorTerms.has(t)
+      );
+      
+      if (sharedProperNounBigrams.length >= 2) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      // SECONDARY: Shared proper noun unigrams (e.g., "hannah", "murray", "game", "thrones")
+      // If stories share 3+ proper noun unigrams, link them with lower similarity threshold
+      const sharedProperNounUnigrams = [...features[i].anchorTerms].filter(t => 
+        !t.includes(' ') && t.length >= 4 && features[j].anchorTerms.has(t) && !entityAliasCanonicals.has(t)
+      );
+      if (sharedProperNounUnigrams.length >= 3 && similarity >= 0.10) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      // FALLBACK: Use existing similarity-based rules for stories without strong proper noun overlap
+      // BUT: If one story has quoted phrase bigrams and the other doesn't share them, don't link via fallback
+      // This prevents stories with strong proper noun identity (from quotes) from being pulled into generic clusters
+      const iQuotedBigrams = [...features[i].quotedPhraseTerms].filter(t => t.includes(' ') && t.length >= 8);
+      const jQuotedBigrams = [...features[j].quotedPhraseTerms].filter(t => t.includes(' ') && t.length >= 8);
+      const sharedQuotedBigrams = iQuotedBigrams.filter(t => features[j].quotedPhraseTerms.has(t));
+      
+      // If one has 1+ quoted bigrams and they don't share ANY quoted bigrams, block fallback
+      if ((iQuotedBigrams.length >= 1 || jQuotedBigrams.length >= 1) && sharedQuotedBigrams.length === 0) {
+        continue;
+      }
+
       const shouldLink =
         similarity >= strictThreshold ||
         (sharedRareAnchorTerms >= requiredShared && similarity >= finalRelaxedThreshold) ||
         (sharedRareAnchorTerms >= 2 && similarity >= adjustedAnchorMinSimilarity) ||
-        (!sameLanguage && sharedRareAnchorTerms >= 2 && similarity >= 0.15) || // Cross-language: 2 shared terms, higher similarity
+        (!sameLanguage && sharedRareAnchorTerms >= 2 && similarity >= 0.15) || // Cross-language: 2+ shared terms, higher similarity
         (hasSharedQuotedTerm && similarity >= 0.12); // Quoted terms need meaningful similarity
+
+      // Block linking if one story carries an entity alias the other doesn't share.
+      // This prevents alias-bearing stories from being pulled into generic clusters.
+      const eitherHasAlias = entityAliasesI.length > 0 || entityAliasesJ.length > 0;
+      if (eitherHasAlias && !hasEntityAliasMatch) {
+        continue;
+      }
 
       // Block linking if stories have mismatched quoted phrase terms
       if (hasMismatchedQuotedTerms) {
@@ -1328,7 +1563,6 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
     for (const [term, score] of feature.termCounts.entries()) {
       if (term.length < 4) continue;
       if (/^\d+$/u.test(term)) continue;
-      if (CLUSTER_LABEL_EXCLUDED_TERMS.has(term)) continue;
 
       const weighted = score * (idf.get(term) ?? 1);
       scoreByTerm.set(term, (scoreByTerm.get(term) ?? 0) + weighted);
@@ -1346,7 +1580,36 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
     .sort((a, b) => b[1] - a[1])
     .map(([term]) => term);
 
-  const top = candidates.slice(0, 2);
+  // Prioritize proper noun bigrams from anchorTerms (preserve stop words like "of" in "Game of Thrones")
+  const bigramCandidates: string[] = [];
+  for (const idx of storyIndexes) {
+    const feature = features[idx];
+    if (!feature) continue;
+    for (const term of feature.anchorTerms) {
+      if (term.includes(' ') && term.length >= 8) {
+        const seenCount = storyIndexes.filter(i => features[i]?.anchorTerms.has(term)).length;
+        if (seenCount >= minimumCoverage && !bigramCandidates.includes(term)) {
+          bigramCandidates.push(term);
+        }
+      }
+    }
+  }
+
+  // Sort bigram candidates: prefer shorter bigrams, but prioritize those with higher coverage
+  // Also prefer bigrams that preserve stop words (like "game of thrones" over "game throne")
+  bigramCandidates.sort((a, b) => {
+    const aCoverage = storyIndexes.filter(i => features[i]?.anchorTerms.has(a)).length;
+    const bCoverage = storyIndexes.filter(i => features[i]?.anchorTerms.has(b)).length;
+    // First sort by coverage (higher is better)
+    if (aCoverage !== bCoverage) {
+      return bCoverage - aCoverage;
+    }
+    // Then prefer bigrams with stop words (longer is better for preserving "of")
+    return b.split(/\s+/).length - a.split(/\s+/).length;
+  });
+
+  // Use bigram terms if available, otherwise fall back to regular candidates
+  const top = bigramCandidates.length > 0 ? bigramCandidates.slice(0, 2) : candidates.slice(0, 2);
   if (top.length === 0) {
     return 'Detected Cluster';
   }
@@ -1358,37 +1621,98 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
   const features = buildStoryFeatures(stories);
   const idf = buildIdf(features);
   const edges = buildAdjacency(features, idf, stories);
-  const visited = new Set<number>();
   const groups: DetectedGroup[] = [];
+  const assigned = new Set<number>();
 
+  // Complete-linkage: a candidate can only join a cluster if it links to ALL
+  // current members, not just one. This prevents transitive-bridge merges.
   for (let i = 0; i < features.length; i += 1) {
-    if (visited.has(i)) continue;
+    if (assigned.has(i)) continue;
 
-    const queue: number[] = [i];
-    const component: number[] = [];
-    visited.add(i);
+    const neighbors = edges.get(i) ?? new Set<number>();
+    if (neighbors.size === 0) continue;
 
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (current === undefined) continue;
-      component.push(current);
+    // Seed cluster with i and its direct neighbours
+    let component: number[] = [i, ...neighbors];
 
-      const neighbors = edges.get(current) ?? new Set<number>();
-      for (const next of neighbors) {
-        if (visited.has(next)) continue;
-        visited.add(next);
-        queue.push(next);
+    // Check if component has multiple languages and shares proper noun bigrams
+    const componentLanguages = new Set(component.map(idx => features[idx].language));
+    const isCrossLanguage = componentLanguages.size > 1;
+    
+    // Check if component has significant proper noun bigram overlap (strong cross-language signal)
+    // Instead of requiring ALL stories to share bigrams, check if enough pairs share bigrams
+    let bigramEdgeCount = 0;
+    for (let a = 0; a < component.length; a++) {
+      for (let b = a + 1; b < component.length; b++) {
+        const idxA = component[a];
+        const idxB = component[b];
+        const shared = [...features[idxA].anchorTerms].filter(t => 
+          t.includes(' ') && t.length >= 8 && features[idxB].anchorTerms.has(t)
+        );
+        if (shared.length >= 2) {
+          bigramEdgeCount++;
+        }
       }
     }
+    const totalPairs = (component.length * (component.length - 1)) / 2;
+    const bigramEdgeRatio = totalPairs > 0 ? bigramEdgeCount / totalPairs : 0;
+    const hasSignificantBigramOverlap = bigramEdgeRatio >= 0.3; // At least 30% of pairs share 2+ bigrams
 
-    if (component.length < 2) {
-      continue;
+
+    // Iteratively prune members that don't link to required percentage of others.
+    // Pure complete-linkage (100%) is too strict for cross-language clusters;
+    // majority-linkage prevents transitive bridges while still allowing near-cliques.
+    // Cross-language clusters with shared proper noun bigrams use lower threshold (60%).
+    const majorityThreshold = (isCrossLanguage && hasSignificantBigramOverlap) ? 0.6 : 0.8;
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const next: number[] = [];
+      for (const a of component) {
+        const aEdges = edges.get(a) ?? new Set<number>();
+        const others = component.filter((b) => b !== a);
+        const linkedCount = others.filter((b) => aEdges.has(b)).length;
+        const linkRatio = others.length === 0 ? 1 : linkedCount / others.length;
+        
+        // Additional check: if story shares proper noun bigrams with enough others, keep it even if linkRatio is lower
+        const bigramSharedCount = others.filter((b) => {
+          const shared = [...features[a].anchorTerms].filter(t => 
+            t.includes(' ') && t.length >= 8 && features[b].anchorTerms.has(t)
+          );
+          return shared.length >= 2;
+        }).length;
+        const bigramRatio = others.length === 0 ? 1 : bigramSharedCount / others.length;
+        
+        // If story has exclusive bigrams not shared with others, require higher threshold
+        const aBigrams = [...features[a].anchorTerms].filter(t => t.includes(' ') && t.length >= 8);
+        const hasExclusiveBigrams = aBigrams.some(t => !others.every(b => features[b].anchorTerms.has(t)));
+        
+        // If story has exclusive bigrams, require it to share bigrams with 60%+ of others AND have linkRatio >= 60%
+        if (hasExclusiveBigrams) {
+          if (bigramRatio < 0.6 || linkRatio < 0.6) {
+            changed = true;
+            continue;
+          }
+        }
+        
+        // If story shares bigrams with 50%+ of others, use lower threshold (50%)
+        const effectiveThreshold = (bigramRatio >= 0.5 && !hasExclusiveBigrams) ? 0.5 : majorityThreshold;
+        
+        if (linkRatio >= effectiveThreshold) {
+          next.push(a);
+        } else {
+          changed = true;
+        }
+      }
+      component = next;
     }
 
-    if (!isClusterCoherent(component, features, idf)) {
-      continue;
-    }
+    if (component.length < 2) continue;
+    if (component.some((idx) => assigned.has(idx))) continue;
 
+    if (!isClusterCoherent(component, features, idf)) continue;
+
+    for (const idx of component) assigned.add(idx);
     groups.push({
       label: selectGroupLabel(features, component, idf),
       storyIndexes: new Set(component),
@@ -1543,9 +1867,6 @@ async function main(): Promise<void> {
       htmlLang: meta.htmlLang,
       classificationAudit: draft.classificationAudit, // Explicitly preserve audit data
     };
-    if (draft.url.includes('aston-villa')) {
-      console.log(`[DEBUG] After enrichment: classificationAudit=${JSON.stringify(enrichedStory.classificationAudit)?.slice(0, 50)}`);
-    }
     fetchedStories.push(enrichedStory);
   }
 
@@ -1579,6 +1900,11 @@ async function main(): Promise<void> {
   const stories = dedupeResult.kept;
 
   const groups = classifyStories(stories, wrongClusterSet);
+
+  for (const g of groups) {
+    console.log(`[cluster] "${g.label}" (${g.type}) — ${g.stories.length} stories`);
+    for (const s of g.stories) console.log(`  - ${s.title.slice(0, 90)}`);
+  }
 
   const html = renderDocument(buildPage(groups, stories.length, new Date().toISOString()));
   mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
