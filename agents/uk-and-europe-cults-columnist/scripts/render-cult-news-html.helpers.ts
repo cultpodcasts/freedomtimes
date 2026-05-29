@@ -275,6 +275,28 @@ function metaFromHtml(html: string): Omit<StoryMeta, 'contentMirrorUrl' | 'archi
   };
 }
 
+async function fetchBestArchiveHtml(
+  canonicalUrl: string,
+): Promise<{ html: string; finalUrl: string } | undefined> {
+  const mirrorUrls = [
+    `https://archive.ph/newest/${canonicalUrl}`,
+    `https://archive.is/newest/${canonicalUrl}`,
+  ];
+  let best: { html: string; finalUrl: string; textLength: number } | undefined;
+
+  for (const mirrorUrl of mirrorUrls) {
+    const fetched = await fetchHtmlFromUrl(mirrorUrl);
+    if (!fetched.ok) continue;
+    const textLength = (metaFromHtml(fetched.html).articleText ?? '').length;
+    if (textLength < 200) continue;
+    if (!best || textLength > best.textLength) {
+      best = { html: fetched.html, finalUrl: fetched.finalUrl, textLength };
+    }
+  }
+
+  return best ? { html: best.html, finalUrl: best.finalUrl } : undefined;
+}
+
 export async function fetchStoryMeta(url: string, options?: { contentMirrorUrl?: string }): Promise<StoryMeta> {
   const canonicalUrl = getCanonicalArticleUrl(url);
   const host = hostFromUrl(canonicalUrl);
@@ -287,16 +309,15 @@ export async function fetchStoryMeta(url: string, options?: { contentMirrorUrl?:
     let html = direct.html;
     let contentMirrorUrl = options?.contentMirrorUrl;
 
-    if (
-      shouldTryArchiveForHost(host) &&
-      (!direct.ok || looksLikePartialPaywall(metaFromHtml(html).articleText ?? ''))
-    ) {
-      const archiveFetch = await fetchHtmlFromUrl(`https://archive.ph/newest/${canonicalUrl}`);
-      if (archiveFetch.ok) {
+    const directMeta = metaFromHtml(html);
+    const directText = directMeta.articleText ?? '';
+    const paywalled = !direct.ok || looksLikePartialPaywall(directText);
+
+    if (paywalled || (shouldTryArchiveForHost(host) && !direct.ok)) {
+      const archiveFetch = await fetchBestArchiveHtml(canonicalUrl);
+      if (archiveFetch) {
         const archiveMeta = metaFromHtml(archiveFetch.html);
-        const directMeta = metaFromHtml(html);
         const archiveText = archiveMeta.articleText ?? '';
-        const directText = directMeta.articleText ?? '';
         if (!direct.ok || archiveText.length > directText.length + 400) {
           html = archiveFetch.html;
           contentMirrorUrl = archiveFetch.finalUrl;

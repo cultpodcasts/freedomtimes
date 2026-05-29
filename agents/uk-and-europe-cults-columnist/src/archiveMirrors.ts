@@ -110,7 +110,9 @@ export function looksLikePartialPaywall(text: string): boolean {
     /\babonn[eé]s?\b/.test(sample) ||
     /\bsubscribers?\s+only\b/.test(sample) ||
     /\bsubscribe\s+to\s+(read|continue|unlock)\b/.test(sample) ||
-    /\bregister\s+to\s+continue\b/.test(sample);
+    /\bregister\s+to\s+continue\b/.test(sample) ||
+    /\bsubscription\s+required\b/.test(sample) ||
+    /\bto\s+continue\s+reading\b/.test(sample);
   const thinBody = text.length < 1800;
   return paywallMarkers && thinBody;
 }

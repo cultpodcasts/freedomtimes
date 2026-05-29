@@ -2069,9 +2069,31 @@ function isPositiveLabelTerm(
   const words = term.split(/\s+/).filter((word) => word.length > 0);
   if (words.length === 0 || words.some((word) => stopwords.has(word))) return false;
   if (term.includes(' ')) {
-    return isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS);
+    if (!isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
+    return words.some((word) => word.length >= 6 || entityAliasCanonicals.has(word));
   }
   return isClusterSignalUnigram(term, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals) && term.length >= 5;
+}
+
+function subjectAliasCoverageInStories(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const idx of storyIndexes) {
+    const story = stories[idx];
+    if (!story) continue;
+    const text = `${story.title} ${story.description ?? ''} ${story.articleText ?? ''}`.toLowerCase();
+    for (const { canonical, aliases } of SUBJECT_ALIASES) {
+      const mentioned =
+        text.includes(canonical) ||
+        aliases.some((alias) => text.includes(alias.text.toLowerCase()));
+      if (mentioned) {
+        counts.set(canonical, (counts.get(canonical) ?? 0) + 1);
+      }
+    }
+  }
+  return counts;
 }
 
 function pickSharedTitleSubtopicQualifier(
@@ -2089,10 +2111,21 @@ function pickSharedTitleSubtopicQualifier(
     if (!story || !feature) continue;
     const stopwords = buildStopwordSet(feature.language);
     const titleLower = story.title.toLowerCase();
+    const seenInStory = new Set<string>();
+
+    for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
+      if (term === entityCanonical || entityAliasCanonicals.has(term)) continue;
+      if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      seenInStory.add(term);
+    }
     for (const term of feature.anchorTerms) {
       if (term === entityCanonical || entityAliasCanonicals.has(term)) continue;
       if (!titleLower.includes(term)) continue;
       if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      seenInStory.add(term);
+    }
+
+    for (const term of seenInStory) {
       counts.set(term, (counts.get(term) ?? 0) + 1);
     }
   }
@@ -2100,6 +2133,47 @@ function pickSharedTitleSubtopicQualifier(
     .filter(([, count]) => count >= minimumCoverage)
     .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
   return best?.[0];
+}
+
+function pickSharedArticleProperNounLabel(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+  features: StoryFeatures[],
+  idf: Map<string, number>,
+  minimumCoverage: number,
+  entityAliasCanonicals: Set<string>,
+): string | undefined {
+  const counts = new Map<string, number>();
+  for (const idx of storyIndexes) {
+    const story = stories[idx];
+    const feature = features[idx];
+    if (!story?.articleText?.trim()) continue;
+    const language = feature?.language ?? 'en';
+    const stopwords = buildStopwordSet(language);
+    const snippet = story.articleText.slice(0, 4000);
+    const tokens = tokenize(snippet, stopwords);
+    const proper = extractProperNounTokens(snippet, tokens, stopwords, language);
+    const seenInStory = new Set<string>();
+
+    for (const term of proper) {
+      if (entityAliasCanonicals.has(term)) continue;
+      if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      seenInStory.add(term);
+    }
+
+    for (const term of seenInStory) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count >= minimumCoverage)
+    .sort(
+      (a, b) =>
+        b[1] - a[1] ||
+        (idf.get(b[0]) ?? 0) - (idf.get(a[0]) ?? 0) ||
+        b[0].length - a[0].length,
+    )[0]?.[0];
 }
 
 function pickBestSharedTitleProperNoun(
@@ -2176,15 +2250,7 @@ function selectGroupLabel(
 ): string {
   const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
   const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.5));
-  const aliasCoverage = new Map<string, number>();
-  for (const idx of storyIndexes) {
-    const feature = features[idx];
-    if (!feature) continue;
-    for (const term of feature.anchorTerms) {
-      if (!entityAliasCanonicals.has(term)) continue;
-      aliasCoverage.set(term, (aliasCoverage.get(term) ?? 0) + 1);
-    }
-  }
+  const aliasCoverage = subjectAliasCoverageInStories(storyIndexes, stories);
   const dominantAlias = [...aliasCoverage.entries()]
     .filter(([, count]) => count >= minimumCoverage)
     .sort((a, b) => b[1] - a[1])[0];
@@ -2214,6 +2280,18 @@ function selectGroupLabel(
   );
   if (properNounLabel) {
     return toTitleCase(properNounLabel);
+  }
+
+  const articleProperNounLabel = pickSharedArticleProperNounLabel(
+    storyIndexes,
+    stories,
+    features,
+    idf,
+    minimumCoverage,
+    entityAliasCanonicals,
+  );
+  if (articleProperNounLabel) {
+    return toTitleCase(articleProperNounLabel);
   }
 
   const bigramLabel = pickSharedTitleBigramLabel(
