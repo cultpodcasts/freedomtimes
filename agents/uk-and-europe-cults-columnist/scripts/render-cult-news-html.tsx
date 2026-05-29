@@ -1334,6 +1334,54 @@ function extractQuotedTerms(text: string): Set<string> {
   return result;
 }
 
+/** Capitalized words in a headline (including the first word and quoted titles) — TV/film names. */
+function extractTitleHeadProperNouns(title: string, stopwords: Set<string>): Set<string> {
+  const result = new Set<string>();
+  const pattern = /\b[\p{Lu}][\p{Ll}]+(?:[''][\p{Ll}]+)?\b/gu;
+  for (const match of title.matchAll(pattern)) {
+    const lower = match[0].toLowerCase();
+    if (lower.length >= 4 && !stopwords.has(lower)) {
+      result.add(lower);
+    }
+  }
+
+  for (const quotedText of extractQuotedSpans(title)) {
+    const trimmed = quotedText.trim();
+    if (!trimmed) continue;
+    if (!trimmed.includes(' ')) {
+      const lower = trimmed.toLowerCase();
+      if (lower.length >= 4 && !stopwords.has(lower)) {
+        result.add(lower);
+      }
+      continue;
+    }
+    for (const word of trimmed.split(/\s+/)) {
+      const lower = word.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').toLowerCase();
+      if (lower.length >= 4 && !stopwords.has(lower)) {
+        result.add(lower);
+      }
+    }
+  }
+
+  return result;
+}
+
+function titleHeadClusterTerms(story: EnrichedStory, language: string): Set<string> {
+  const stopwords = buildStopwordSet(language);
+  const terms = new Set<string>();
+  for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
+    if (term.length >= 7 && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+      terms.add(term);
+    }
+  }
+  for (const term of extractQuotedTerms(story.title)) {
+    if (term.length >= 7 && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+      terms.add(term);
+    }
+  }
+  return terms;
+}
+
 function extractProperNounTokens(original: string, tokens: string[], stopwords: Set<string>, language: string = 'en'): Set<string> {
   // Normalize special quote characters to regular quotes
   original = original.replace(/[ΓÇÿΓÇÖ]/g, "\"");
@@ -1473,7 +1521,6 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
 
     const titleProperNouns = extractProperNounTokens(story.title, titleTokens, stopwords, language);
     const descProperNouns = extractProperNounTokens(story.description ?? '', descriptionTokens, stopwords, language);
-    const articleProperNouns = extractProperNounTokens(story.articleText ?? '', articleTokens, stopwords, language);
     
     // Extract proper nouns from URL slug (entity names often in path even when omitted from title)
     const urlPath = new URL(story.url).pathname;
@@ -1511,14 +1558,27 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
     const anchorTerms = new Set<string>([
       ...titleProperNouns,
       ...descProperNouns,
-      ...articleProperNouns,
       ...urlProperNouns,
       ...properNounBigrams,
       ...titleQuotedTerms,
     ]);
 
-    const fullText = `${story.title} ${story.description ?? ''} ${story.articleText ?? ''}`;
-    injectEntityAliases(fullText, language, termCounts, anchorTerms, 6);
+    for (let i = 0; i < titleTokens.length - 1; i += 1) {
+      const bigram = `${titleTokens[i]} ${titleTokens[i + 1]}`;
+      if (bigram.length >= 8 && isClusterSignalBigram(bigram, GENERIC_CULT_CLUSTER_TERMS)) {
+        anchorTerms.add(bigram);
+      }
+    }
+
+    for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
+      anchorTerms.add(term);
+    }
+
+    const headlineText = `${story.title} ${story.description ?? ''}`;
+    injectEntityAliases(headlineText, language, termCounts, anchorTerms, 6);
+    if (story.articleText) {
+      injectEntityAliases(story.articleText, language, termCounts, new Set(), 0.4);
+    }
 
     // Give quoted phrase terms very high weight to make them dominant clustering signal
     for (const term of titleQuotedTerms) {
@@ -1618,12 +1678,27 @@ function subjectAliasesInAnchorTerms(anchorTerms: Set<string>): string[] {
 }
 
 /**
- * Block clustering when stories refer to different named groups from subject-aliases.json,
- * or when only one story names a tracked group and the other does not.
+ * Block clustering when stories name different tracked groups in their headlines.
+ * Body-only alias mentions (e.g. Plymouth Brethren discussed inside an Unchosen review) are ignored.
  */
-function hasSubjectAliasClusterConflict(aliasesA: string[], aliasesB: string[]): boolean {
-  const setA = new Set(aliasesA);
-  const setB = new Set(aliasesB);
+function subjectAliasesGroundedInTitle(story: EnrichedStory, aliases: string[]): string[] {
+  const titleLower = story.title.toLowerCase();
+  return aliases.filter((canonical) => {
+    if (titleLower.includes(canonical)) return true;
+    const entry = SUBJECT_ALIASES.find((e) => e.canonical === canonical);
+    if (!entry) return false;
+    return entry.aliases.some((alias) => titleLower.includes(alias.text));
+  });
+}
+
+function hasSubjectAliasClusterConflict(
+  aliasesA: string[],
+  aliasesB: string[],
+  storyA: EnrichedStory,
+  storyB: EnrichedStory,
+): boolean {
+  const setA = new Set(subjectAliasesGroundedInTitle(storyA, aliasesA));
+  const setB = new Set(subjectAliasesGroundedInTitle(storyB, aliasesB));
   if (setA.size === 0 && setB.size === 0) {
     return false;
   }
@@ -1636,6 +1711,33 @@ function hasSubjectAliasClusterConflict(aliasesA: string[], aliasesB: string[]):
     }
   }
   return true;
+}
+
+function sharedTitleIdentityTerms(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  featI: StoryFeatures,
+  featJ: StoryFeatures,
+  entityAliasCanonicals: Set<string>,
+): string[] {
+  const iTitleQuoted = extractQuotedTerms(storyI.title);
+  const jTitleQuoted = extractQuotedTerms(storyJ.title);
+  const quoted = [...iTitleQuoted].filter(
+    (t) =>
+      t.length >= 7 &&
+      jTitleQuoted.has(t) &&
+      !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
+  );
+  const headI = extractTitleHeadProperNouns(storyI.title, buildStopwordSet(featI.language));
+  const headJ = extractTitleHeadProperNouns(storyJ.title, buildStopwordSet(featJ.language));
+  const heads = [...headI].filter(
+    (t) =>
+      t.length >= 7 &&
+      headJ.has(t) &&
+      !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS) &&
+      !entityAliasCanonicals.has(t),
+  );
+  return [...quoted, ...heads];
 }
 
 function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, stories: EnrichedStory[]): Map<number, Set<number>> {
@@ -1664,13 +1766,10 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       const entityAliasesJ = subjectAliasesInAnchorTerms(featJ.anchorTerms);
       const hasEntityAliasMatch = entityAliasesI.some((t) => entityAliasesJ.includes(t));
 
-      // Apply before primary signals (bigrams / generic "secte" unigrams bypassed the old fallback-only check).
-      if (hasSubjectAliasClusterConflict(entityAliasesI, entityAliasesJ)) {
-        continue;
-      }
-
-      const sharedEntityAliases = entityAliasesI.filter((a) => entityAliasesJ.includes(a));
-      if (sharedEntityAliases.length > 0) {
+      // Shared capitalized / quoted title token (Unchosen, Artgemeinschaft, …) — always link first.
+      if (
+        sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, entityAliasCanonicals).length >= 1
+      ) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
         left.add(j);
@@ -1678,6 +1777,57 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         edges.set(i, left);
         edges.set(j, right);
         continue;
+      }
+
+      if (hasSubjectAliasClusterConflict(entityAliasesI, entityAliasesJ, storyI, storyJ)) {
+        continue;
+      }
+
+      const sharedEntityAliases = entityAliasesI.filter((a) => entityAliasesJ.includes(a));
+      if (sharedEntityAliases.length > 0) {
+        const sharedSubtopic = [...featI.anchorTerms].filter((t) => {
+          if (!featJ.anchorTerms.has(t)) return false;
+          if (entityAliasCanonicals.has(t)) return false;
+          if (isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS)) return false;
+          if (t.includes(' ')) {
+            return (
+              isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS) &&
+              storyI.title.toLowerCase().includes(t) &&
+              storyJ.title.toLowerCase().includes(t)
+            );
+          }
+          return isClusterSignalUnigram(t, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals) && t.length >= 5;
+        });
+
+        const iTitleQuoted = extractQuotedTerms(storyI.title);
+        const jTitleQuoted = extractQuotedTerms(storyJ.title);
+        const sharedTitleQuoted = [...iTitleQuoted].filter(
+          (t) =>
+            t.length >= 7 &&
+            jTitleQuoted.has(t) &&
+            !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
+        );
+
+        const headI = extractTitleHeadProperNouns(storyI.title, buildStopwordSet(featI.language));
+        const headJ = extractTitleHeadProperNouns(storyJ.title, buildStopwordSet(featJ.language));
+        const sharedTitleHead = [...headI].filter(
+          (t) =>
+            t.length >= 7 &&
+            headJ.has(t) &&
+            !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS) &&
+            !entityAliasCanonicals.has(t),
+        );
+
+        if (sharedSubtopic.length >= 1 || sharedTitleQuoted.length >= 1 || sharedTitleHead.length >= 1) {
+          const left = edges.get(i) ?? new Set<number>();
+          const right = edges.get(j) ?? new Set<number>();
+          left.add(j);
+          right.add(i);
+          edges.set(i, left);
+          edges.set(j, right);
+          continue;
+        }
+        // Same entity without a shared subtopic in headlines — do not merge.
       }
 
       // Count non-entity-alias shared terms
@@ -1749,12 +1899,53 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       const jTitleQuoted = extractQuotedTerms(storyJ.title);
       const sharedTitleQuoted = [...iTitleQuoted].filter(
         (t) =>
-          t.length >= 8 &&
+          t.length >= 7 &&
           jTitleQuoted.has(t) &&
           !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
       );
       
       if (sharedTitleQuoted.length >= 1) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      // PRIMARY CLUSTERING SIGNAL 3: Shared title bigram (e.g. "cull pets", "speedrun scientology")
+      const sharedTitleBigrams = [...featI.anchorTerms].filter(
+        (t) =>
+          t.includes(' ') &&
+          featJ.anchorTerms.has(t) &&
+          isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS) &&
+          storyI.title.toLowerCase().includes(t) &&
+          storyJ.title.toLowerCase().includes(t),
+      );
+
+      if (sharedTitleBigrams.length >= 1) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      // PRIMARY CLUSTERING SIGNAL 4: Shared capitalized title head (e.g. Unchosen without quotes)
+      const headI = extractTitleHeadProperNouns(storyI.title, buildStopwordSet(featI.language));
+      const headJ = extractTitleHeadProperNouns(storyJ.title, buildStopwordSet(featJ.language));
+      const sharedTitleHead = [...headI].filter(
+        (t) =>
+          t.length >= 7 &&
+          headJ.has(t) &&
+          !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS) &&
+          !entityAliasCanonicals.has(t),
+      );
+
+      if (sharedTitleHead.length >= 1) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
         left.add(j);
@@ -1867,10 +2058,121 @@ function isClusterCoherent(component: number[], features: StoryFeatures[], idf: 
   return pairs === 0 || totalSim / pairs >= threshold;
 }
 
+function isPositiveLabelTerm(
+  term: string,
+  stopwords: Set<string>,
+  entityAliasCanonicals: Set<string>,
+): boolean {
+  if (!term || stopwords.has(term)) return false;
+  if (entityAliasCanonicals.has(term)) return true;
+  if (isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
+  const words = term.split(/\s+/).filter((word) => word.length > 0);
+  if (words.length === 0 || words.some((word) => stopwords.has(word))) return false;
+  if (term.includes(' ')) {
+    return isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS);
+  }
+  return isClusterSignalUnigram(term, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals) && term.length >= 5;
+}
+
+function pickSharedTitleSubtopicQualifier(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+  features: StoryFeatures[],
+  entityAliasCanonicals: Set<string>,
+  entityCanonical: string,
+  minimumCoverage: number,
+): string | undefined {
+  const counts = new Map<string, number>();
+  for (const idx of storyIndexes) {
+    const story = stories[idx];
+    const feature = features[idx];
+    if (!story || !feature) continue;
+    const stopwords = buildStopwordSet(feature.language);
+    const titleLower = story.title.toLowerCase();
+    for (const term of feature.anchorTerms) {
+      if (term === entityCanonical || entityAliasCanonicals.has(term)) continue;
+      if (!titleLower.includes(term)) continue;
+      if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+  const best = [...counts.entries()]
+    .filter(([, count]) => count >= minimumCoverage)
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0];
+  return best?.[0];
+}
+
+function pickBestSharedTitleProperNoun(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+  features: StoryFeatures[],
+  idf: Map<string, number>,
+  minimumCoverage: number,
+  entityAliasCanonicals: Set<string>,
+): string | undefined {
+  const counts = new Map<string, number>();
+  for (const idx of storyIndexes) {
+    const story = stories[idx];
+    const feature = features[idx];
+    if (!story || !feature) continue;
+    const stopwords = buildStopwordSet(feature.language);
+    const seenInStory = new Set<string>();
+
+    for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
+      if (term.length < 7 || !isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      seenInStory.add(term);
+    }
+    for (const term of extractQuotedTerms(story.title)) {
+      if (term.length < 7 || !isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      seenInStory.add(term);
+    }
+
+    for (const term of seenInStory) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count >= minimumCoverage)
+    .sort(
+      (a, b) =>
+        b[1] - a[1] ||
+        (idf.get(b[0]) ?? 0) - (idf.get(a[0]) ?? 0) ||
+        b[0].length - a[0].length,
+    )[0]?.[0];
+}
+
+function pickSharedTitleBigramLabel(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+  features: StoryFeatures[],
+  minimumCoverage: number,
+  entityAliasCanonicals: Set<string>,
+): string | undefined {
+  const counts = new Map<string, number>();
+  for (const idx of storyIndexes) {
+    const story = stories[idx];
+    const feature = features[idx];
+    if (!story || !feature) continue;
+    const stopwords = buildStopwordSet(feature.language);
+    const titleLower = story.title.toLowerCase();
+    for (const term of feature.anchorTerms) {
+      if (!term.includes(' ') || term.length < 8) continue;
+      if (!titleLower.includes(term)) continue;
+      if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= minimumCoverage)
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0]?.[0];
+}
+
 function selectGroupLabel(
   features: StoryFeatures[],
   storyIndexes: number[],
   idf: Map<string, number>,
+  stories: EnrichedStory[],
 ): string {
   const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
   const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.5));
@@ -1886,115 +2188,46 @@ function selectGroupLabel(
   const dominantAlias = [...aliasCoverage.entries()]
     .filter(([, count]) => count >= minimumCoverage)
     .sort((a, b) => b[1] - a[1])[0];
+
   if (dominantAlias) {
+    const qualifier = pickSharedTitleSubtopicQualifier(
+      storyIndexes,
+      stories,
+      features,
+      entityAliasCanonicals,
+      dominantAlias[0],
+      minimumCoverage,
+    );
+    if (qualifier) {
+      return `${toTitleCase(dominantAlias[0])} ${toTitleCase(qualifier)}`;
+    }
     return toTitleCase(dominantAlias[0]);
   }
 
-  const scoreByTerm = new Map<string, number>();
-  const seenByTerm = new Map<string, number>();
-
-  for (const idx of storyIndexes) {
-    const feature = features[idx];
-    if (!feature) continue;
-
-    const seenInStory = new Set<string>();
-    for (const [term, score] of feature.termCounts.entries()) {
-      if (term.length < 4) continue;
-      if (/^\d+$/u.test(term)) continue;
-
-      const weighted = score * (idf.get(term) ?? 1);
-      scoreByTerm.set(term, (scoreByTerm.get(term) ?? 0) + weighted);
-      seenInStory.add(term);
-    }
-
-    for (const term of seenInStory) {
-      seenByTerm.set(term, (seenByTerm.get(term) ?? 0) + 1);
-    }
+  const properNounLabel = pickBestSharedTitleProperNoun(
+    storyIndexes,
+    stories,
+    features,
+    idf,
+    minimumCoverage,
+    entityAliasCanonicals,
+  );
+  if (properNounLabel) {
+    return toTitleCase(properNounLabel);
   }
 
-  const candidates = Array.from(scoreByTerm.entries())
-    .filter(
-      ([term]) =>
-        (seenByTerm.get(term) ?? 0) >= minimumCoverage &&
-        !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS),
-    )
-    .sort((a, b) => b[1] - a[1])
-    .map(([term]) => term);
-
-  // Prioritize proper noun bigrams from anchorTerms (preserve stop words like "of" in "Game of Thrones")
-  const bigramCandidates: string[] = [];
-  for (const idx of storyIndexes) {
-    const feature = features[idx];
-    if (!feature) continue;
-    for (const term of feature.anchorTerms) {
-      if (isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) {
-        // Normalize spacing to prevent duplicates (e.g., "lev tahor" vs "lev  tahor")
-        const normalizedTerm = term.replace(/\s+/g, ' ').trim();
-        const seenCount = storyIndexes.filter(i => {
-          const feature = features[i];
-          if (!feature) return false;
-          // Check if this story has the term (with any spacing)
-          return [...feature.anchorTerms].some(t => t.replace(/\s+/g, ' ').trim() === normalizedTerm);
-        }).length;
-        if (seenCount >= minimumCoverage && !bigramCandidates.includes(normalizedTerm)) {
-          bigramCandidates.push(normalizedTerm);
-        }
-      }
-    }
+  const bigramLabel = pickSharedTitleBigramLabel(
+    storyIndexes,
+    stories,
+    features,
+    minimumCoverage,
+    entityAliasCanonicals,
+  );
+  if (bigramLabel) {
+    return toTitleCase(bigramLabel);
   }
 
-  // Sort bigram candidates: prefer shorter bigrams, but prioritize those with higher coverage
-  // Also prefer bigrams that preserve stop words (like "game of thrones" over "game throne")
-  bigramCandidates.sort((a, b) => {
-    const aCoverage = storyIndexes.filter(i => {
-      const feature = features[i];
-      if (!feature) return false;
-      return [...feature.anchorTerms].some(t => t.replace(/\s+/g, ' ').trim() === a);
-    }).length;
-    const bCoverage = storyIndexes.filter(i => {
-      const feature = features[i];
-      if (!feature) return false;
-      return [...feature.anchorTerms].some(t => t.replace(/\s+/g, ' ').trim() === b);
-    }).length;
-    // First sort by coverage (higher is better)
-    if (aCoverage !== bCoverage) {
-      return bCoverage - aCoverage;
-    }
-    // Then prefer bigrams with stop words (longer is better for preserving "of")
-    return b.split(/\s+/).length - a.split(/\s+/).length;
-  });
-
-  // Use bigram terms if available, otherwise fall back to regular candidates
-  const top = bigramCandidates.length > 0 ? bigramCandidates.slice(0, 2) : candidates.slice(0, 2);
-  if (top.length === 0) {
-    return 'Detected Cluster';
-  }
-
-  // Deduplicate to prevent doubling (e.g., "Lev Tahor Lev Tahor")
-  // Use case-insensitive deduplication since terms might have different casing
-  const seen = new Set<string>();
-  const uniqueTop: string[] = [];
-  for (const term of top) {
-    const lower = term.toLowerCase();
-    if (!seen.has(lower)) {
-      seen.add(lower);
-      uniqueTop.push(term);
-    }
-  }
-  
-  // Remove overlapping phrases (e.g., "Ahmadi Religion of Peace and Light" and "Religion of Peace and Light")
-  // Keep only the longest phrase when one is a substring of another
-  const filteredTop = uniqueTop.filter((term, idx) => {
-    const lowerTerm = term.toLowerCase();
-    return !uniqueTop.some((other, otherIdx) => {
-      if (idx === otherIdx) return false;
-      const lowerOther = other.toLowerCase();
-      // If this term is a substring of another term, remove it (keep the longer one)
-      return lowerOther.includes(lowerTerm) && lowerOther.length > lowerTerm.length;
-    });
-  });
-  
-  return toTitleCase(filteredTop.join(' '));
+  return 'Detected Cluster';
 }
 
 function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
@@ -2071,7 +2304,7 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         const quotedTermsB = extractQuotedTerms(storyB.title);
         const sharedQuoted = [...quotedTermsA].filter(
           (t) =>
-            t.length >= 8 &&
+            t.length >= 7 &&
             quotedTermsB.has(t) &&
             !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
         );
@@ -2081,13 +2314,38 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
       }
     }
     const quotedTermEdgeRatio = totalPairs > 0 ? quotedTermEdgeCount / totalPairs : 0;
-    const hasSignificantQuotedTermOverlap = quotedTermEdgeRatio >= 0.3; // At least 30% of pairs share quoted terms
+    const hasSignificantQuotedTermOverlap = quotedTermEdgeRatio >= 0.3;
+
+    let titleHeadEdgeCount = 0;
+    for (let a = 0; a < component.length; a++) {
+      for (let b = a + 1; b < component.length; b++) {
+        const idxA = component[a];
+        const idxB = component[b];
+        if (idxA === undefined || idxB === undefined) continue;
+        const storyA = stories[idxA];
+        const storyB = stories[idxB];
+        const featA = features[idxA];
+        const featB = features[idxB];
+        if (!storyA || !storyB || !featA || !featB) continue;
+        if (
+          sharedTitleIdentityTerms(storyA, storyB, featA, featB, entityAliasCanonicals).length >= 1
+        ) {
+          titleHeadEdgeCount++;
+        }
+      }
+    }
+    const titleHeadEdgeRatio = totalPairs > 0 ? titleHeadEdgeCount / totalPairs : 0;
+    const hasSignificantTitleHeadOverlap = titleHeadEdgeRatio >= 0.3;
 
     // Iteratively prune members that don't link to required percentage of others.
     // Pure complete-linkage (100%) is too strict for cross-language clusters;
     // majority-linkage prevents transitive bridges while still allowing near-cliques.
-    // Cross-language clusters with shared proper noun bigrams OR quoted terms use lower threshold (60%).
-    const majorityThreshold = (isCrossLanguage && (hasSignificantBigramOverlap || hasSignificantQuotedTermOverlap)) ? 0.6 : 0.8;
+    // Cross-language clusters with shared proper noun bigrams OR quoted/title-head terms use lower threshold (60%).
+    const majorityThreshold =
+      isCrossLanguage &&
+      (hasSignificantBigramOverlap || hasSignificantQuotedTermOverlap || hasSignificantTitleHeadOverlap)
+        ? 0.6
+        : 0.8;
     let changed = true;
     let iterationCount = 0;
     
@@ -2132,13 +2390,25 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
           const bTitleQuoted = extractQuotedTerms(storyB.title);
           const shared = [...aTitleQuoted].filter(
             (t) =>
-              t.length >= 8 &&
+              t.length >= 7 &&
               bTitleQuoted.has(t) &&
               !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
           );
           return shared.length >= 1;
         }).length;
         const titleQuotedRatio = others.length === 0 ? 1 : titleQuotedSharedCount / others.length;
+
+        const aTitleHead = titleHeadClusterTerms(storyA, featA.language);
+        const titleHeadSharedCount = others.filter((b) => {
+          const storyB = stories[b];
+          const featB = features[b];
+          if (!storyB || !featB) {
+            return false;
+          }
+          const bTitleHead = titleHeadClusterTerms(storyB, featB.language);
+          return [...aTitleHead].some((t) => bTitleHead.has(t));
+        }).length;
+        const titleHeadRatio = others.length === 0 ? 1 : titleHeadSharedCount / others.length;
         
         // If story has exclusive bigrams not shared with others, require higher threshold
         // BUT skip this check if component has significant quoted term overlap (stronger signal for single-word proper nouns)
@@ -2154,7 +2424,7 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         
         // If story has exclusive bigrams, require it to share bigrams with 60%+ of others AND have linkRatio >= 60%
         // Skip this check if component has significant quoted term overlap (e.g., for "Artgemeinschaft")
-        if (hasExclusiveBigrams && !hasSignificantQuotedTermOverlap) {
+        if (hasExclusiveBigrams && !hasSignificantQuotedTermOverlap && !hasSignificantTitleHeadOverlap) {
           if (bigramRatio < 0.6 || linkRatio < 0.6) {
             changed = true;
             continue;
@@ -2164,6 +2434,16 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         // If story shares quoted title terms with 50%+ of others, use lower threshold (40%)
         // This keeps quoted-term-based clusters together even if they don't have high linkage
         if (titleQuotedRatio >= 0.5) {
+          if (linkRatio >= 0.4) {
+            next.push(a);
+          } else {
+            changed = true;
+          }
+          continue;
+        }
+
+        // Capitalized / quoted title proper nouns (e.g. Unchosen across FR/NL/EN reviews)
+        if (titleHeadRatio >= 0.5) {
           if (linkRatio >= 0.4) {
             next.push(a);
           } else {
@@ -2191,7 +2471,7 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
 
     for (const idx of component) assigned.add(idx);
     groups.push({
-      label: selectGroupLabel(features, component, idf),
+      label: selectGroupLabel(features, component, idf, stories),
       storyIndexes: new Set(component),
     });
   }
