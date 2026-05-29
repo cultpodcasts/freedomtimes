@@ -188,7 +188,7 @@ async function main(): Promise<void> {
 
   const recovered: RecoveredRow[] = [];
   const unrecovered: Array<FailedUrlRow & { attempts: Array<{ strategy: string; status: number; finalUrl: string; error?: string }> }> = [];
-  const strategyCounts: Record<string, number> = { direct: 0, archive: 0, browser: 0, jina: 0 };
+  const strategyCounts = { direct: 0, archive: 0, browser: 0, jina: 0 };
 
   try {
     let processed = 0;

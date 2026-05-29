@@ -219,7 +219,12 @@ export function extractRunSummary(logText: string): RunSummary | undefined {
       continue;
     }
 
-    summary[parts[1]] = Number(parts[2]);
+    const key = parts[1];
+    if (!key) {
+      continue;
+    }
+
+    summary[key] = Number(parts[2]);
   }
 
   return summary;

@@ -29,7 +29,7 @@ import { fetchTextWithCache } from './httpCache.ts';
 import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.ts';
 import { clusterStopwordsForLanguage } from './clusterStopwords.ts';
 import { extractQuotedSpans } from './quotePatterns.ts';
-import type { DraftPayload, PipelineResult } from './types.ts';
+import type { CultClassificationAudit, DraftPayload, PipelineResult } from './types.ts';
 
 // Load subject aliases for proper noun matching
 const SUBJECT_ALIASES_PATH = new URL('../data/subject-aliases.json', import.meta.url);

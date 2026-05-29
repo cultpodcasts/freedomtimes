@@ -185,7 +185,12 @@ function canonicalizeStoryUrl(rawUrl: string): string {
       return parsed.toString();
     }
 
-    const embeddedHost = segments[embeddedHostIndex].toLowerCase();
+    const embeddedHostSegment = segments[embeddedHostIndex];
+    if (!embeddedHostSegment) {
+      return parsed.toString();
+    }
+
+    const embeddedHost = embeddedHostSegment.toLowerCase();
     const embeddedPath = segments.slice(embeddedHostIndex + 1).join('/');
     const canonical = new URL(`https://${embeddedHost}/${embeddedPath}`);
     if (parsed.search) {
@@ -1491,13 +1496,21 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
   for (let i = 0; i < features.length; i += 1) {
     for (let j = i + 1; j < features.length; j += 1) {
-      const similarity = cosineSimilarity(features[i], features[j], idf);
-      const sharedRareAnchorTerms = countSharedRareAnchorTerms(features[i], features[j], idf);
+      const featI = features[i];
+      const featJ = features[j];
+      const storyI = stories[i];
+      const storyJ = stories[j];
+      if (!featI || !featJ || !storyI || !storyJ) {
+        continue;
+      }
 
-      const sameLanguage = features[i].language === features[j].language;
+      const similarity = cosineSimilarity(featI, featJ, idf);
+      const sharedRareAnchorTerms = countSharedRareAnchorTerms(featI, featJ, idf);
 
-      const entityAliasesI = subjectAliasesInAnchorTerms(features[i].anchorTerms);
-      const entityAliasesJ = subjectAliasesInAnchorTerms(features[j].anchorTerms);
+      const sameLanguage = featI.language === featJ.language;
+
+      const entityAliasesI = subjectAliasesInAnchorTerms(featI.anchorTerms);
+      const entityAliasesJ = subjectAliasesInAnchorTerms(featJ.anchorTerms);
       const hasEntityAliasMatch = entityAliasesI.some((t) => entityAliasesJ.includes(t));
 
       // Apply before primary signals (bigrams / generic "secte" unigrams bypassed the old fallback-only check).
@@ -1518,9 +1531,9 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
       // Count non-entity-alias shared terms
       let nonAliasShared = 0;
-      for (const term of features[i].anchorTerms) {
+      for (const term of featI.anchorTerms) {
         if (
-          features[j].anchorTerms.has(term) &&
+          featJ.anchorTerms.has(term) &&
           !entityAliasCanonicals.has(term) &&
           term.length >= 4 &&
           !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)
@@ -1547,23 +1560,23 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
       // If stories share entity alias and have different quoted phrase terms,
       // prevent them from clustering (quoted terms define sub-topics)
-      const hasQuotedTermsI = features[i].quotedPhraseTerms.size > 0;
-      const hasQuotedTermsJ = features[j].quotedPhraseTerms.size > 0;
+      const hasQuotedTermsI = featI.quotedPhraseTerms.size > 0;
+      const hasQuotedTermsJ = featJ.quotedPhraseTerms.size > 0;
       const hasMismatchedQuotedTerms = hasEntityAliasMatch &&
                                      ((hasQuotedTermsI && !hasQuotedTermsJ) ||
                                       (!hasQuotedTermsI && hasQuotedTermsJ) ||
                                       (hasQuotedTermsI && hasQuotedTermsJ &&
-                                       ![...features[i].quotedPhraseTerms].some(t => features[j].quotedPhraseTerms.has(t))));
+                                       ![...featI.quotedPhraseTerms].some(t => featJ.quotedPhraseTerms.has(t))));
 
       // Check if stories share any quoted phrase terms (quoted proper nouns are strong clustering signal)
-      const sharedQuotedTerms = [...features[i].quotedPhraseTerms].filter(t => features[j].quotedPhraseTerms.has(t));
+      const sharedQuotedTerms = [...featI.quotedPhraseTerms].filter(t => featJ.quotedPhraseTerms.has(t));
       const hasSharedQuotedTerm = sharedQuotedTerms.length > 0;
 
       // PRIMARY CLUSTERING SIGNAL: Shared proper noun bigrams (e.g., "hannah murray", "game of thrones")
       // If stories share 2+ proper noun bigrams, link them regardless of language or similarity
-      const sharedProperNounBigrams = [...features[i].anchorTerms].filter(
+      const sharedProperNounBigrams = [...featI.anchorTerms].filter(
         (t) =>
-          features[j].anchorTerms.has(t) &&
+          featJ.anchorTerms.has(t) &&
           isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
       );
       
@@ -1581,8 +1594,8 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       // If stories share a proper noun that appears in quotes in both titles, link them regardless of language
       // This handles single-word proper nouns like "Artgemeinschaft" that are quoted in titles
       // Extract quoted terms from both titles and check for overlap
-      const iTitleQuoted = extractQuotedTerms(stories[i].title);
-      const jTitleQuoted = extractQuotedTerms(stories[j].title);
+      const iTitleQuoted = extractQuotedTerms(storyI.title);
+      const jTitleQuoted = extractQuotedTerms(storyJ.title);
       const sharedTitleQuoted = [...iTitleQuoted].filter(
         (t) =>
           t.length >= 8 &&
@@ -1602,14 +1615,14 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
       // SECONDARY: Shared proper noun unigrams (e.g., "hannah", "murray", "game", "thrones")
       // If stories share 3+ proper noun unigrams, link them with lower similarity threshold
-      const sharedProperNounUnigrams = [...features[i].anchorTerms].filter(
+      const sharedProperNounUnigrams = [...featI.anchorTerms].filter(
         (t) =>
-          features[j].anchorTerms.has(t) &&
+          featJ.anchorTerms.has(t) &&
           isClusterSignalUnigram(t, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals),
       );
-      const sharedSignalBigrams = [...features[i].anchorTerms].filter(
+      const sharedSignalBigrams = [...featI.anchorTerms].filter(
         (t) =>
-          features[j].anchorTerms.has(t) &&
+          featJ.anchorTerms.has(t) &&
           isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
       );
       // Unigrams alone often reflect publisher chrome (same site template), not the same story.
@@ -1630,9 +1643,9 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       // FALLBACK: Use existing similarity-based rules for stories without strong proper noun overlap
       // BUT: If one story has quoted phrase bigrams and the other doesn't share them, don't link via fallback
       // This prevents stories with strong proper noun identity (from quotes) from being pulled into generic clusters
-      const iQuotedBigrams = [...features[i].quotedPhraseTerms].filter(t => t.includes(' ') && t.length >= 8);
-      const jQuotedBigrams = [...features[j].quotedPhraseTerms].filter(t => t.includes(' ') && t.length >= 8);
-      const sharedQuotedBigrams = iQuotedBigrams.filter(t => features[j].quotedPhraseTerms.has(t));
+      const iQuotedBigrams = [...featI.quotedPhraseTerms].filter(t => t.includes(' ') && t.length >= 8);
+      const jQuotedBigrams = [...featJ.quotedPhraseTerms].filter(t => t.includes(' ') && t.length >= 8);
+      const sharedQuotedBigrams = iQuotedBigrams.filter(t => featJ.quotedPhraseTerms.has(t));
       
       // If one has 1+ quoted bigrams and they don't share ANY quoted bigrams, block fallback
       if ((iQuotedBigrams.length >= 1 || jQuotedBigrams.length >= 1) && sharedQuotedBigrams.length === 0) {
@@ -1689,7 +1702,14 @@ function isClusterCoherent(component: number[], features: StoryFeatures[], idf: 
   let pairs = 0;
   for (let i = 0; i < component.length; i += 1) {
     for (let j = i + 1; j < component.length; j += 1) {
-      totalSim += cosineSimilarity(features[component[i]!], features[component[j]!], idf);
+      const idxI = component[i];
+      const idxJ = component[j];
+      const featI = idxI !== undefined ? features[idxI] : undefined;
+      const featJ = idxJ !== undefined ? features[idxJ] : undefined;
+      if (!featI || !featJ) {
+        continue;
+      }
+      totalSim += cosineSimilarity(featI, featJ, idf);
       pairs += 1;
     }
   }
@@ -1846,7 +1866,12 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
     let component: number[] = [i, ...neighbors];
 
     // Check if component has multiple languages and shares proper noun bigrams
-    const componentLanguages = new Set(component.map(idx => features[idx].language));
+    const componentLanguages = new Set(
+      component.flatMap((idx) => {
+        const feat = features[idx];
+        return feat ? [feat.language] : [];
+      }),
+    );
     const isCrossLanguage = componentLanguages.size > 1;
     
     // Check if component has significant proper noun bigram overlap (strong cross-language signal)
@@ -1856,8 +1881,16 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
       for (let b = a + 1; b < component.length; b++) {
         const idxA = component[a];
         const idxB = component[b];
-        const shared = [...features[idxA].anchorTerms].filter(
-          (t) => features[idxB].anchorTerms.has(t) && isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
+        if (idxA === undefined || idxB === undefined) {
+          continue;
+        }
+        const featA = features[idxA];
+        const featB = features[idxB];
+        if (!featA || !featB) {
+          continue;
+        }
+        const shared = [...featA.anchorTerms].filter(
+          (t) => featB.anchorTerms.has(t) && isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
         );
         if (shared.length >= 2) {
           bigramEdgeCount++;
@@ -1875,8 +1908,16 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
       for (let b = a + 1; b < component.length; b++) {
         const idxA = component[a];
         const idxB = component[b];
-        const quotedTermsA = extractQuotedTerms(stories[idxA].title);
-        const quotedTermsB = extractQuotedTerms(stories[idxB].title);
+        if (idxA === undefined || idxB === undefined) {
+          continue;
+        }
+        const storyA = stories[idxA];
+        const storyB = stories[idxB];
+        if (!storyA || !storyB) {
+          continue;
+        }
+        const quotedTermsA = extractQuotedTerms(storyA.title);
+        const quotedTermsB = extractQuotedTerms(storyB.title);
         const sharedQuoted = [...quotedTermsA].filter(
           (t) =>
             t.length >= 8 &&
@@ -1905,6 +1946,13 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
       const next: number[] = [];
       
       for (const a of component) {
+        const featA = features[a];
+        const storyA = stories[a];
+        if (!featA || !storyA) {
+          changed = true;
+          continue;
+        }
+
         const aEdges = edges.get(a) ?? new Set<number>();
         const others = component.filter((b) => b !== a);
         const linkedCount = others.filter((b) => aEdges.has(b)).length;
@@ -1912,17 +1960,25 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         
         // Additional check: if story shares proper noun bigrams with enough others, keep it even if linkRatio is lower
         const bigramSharedCount = others.filter((b) => {
-          const shared = [...features[a].anchorTerms].filter(
-            (t) => features[b].anchorTerms.has(t) && isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
+          const featB = features[b];
+          if (!featB) {
+            return false;
+          }
+          const shared = [...featA.anchorTerms].filter(
+            (t) => featB.anchorTerms.has(t) && isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
           );
           return shared.length >= 2;
         }).length;
         const bigramRatio = others.length === 0 ? 1 : bigramSharedCount / others.length;
         
         // Additional check: if story shares quoted title terms with enough others, keep it even if linkRatio is lower
-        const aTitleQuoted = extractQuotedTerms(stories[a].title);
+        const aTitleQuoted = extractQuotedTerms(storyA.title);
         const titleQuotedSharedCount = others.filter((b) => {
-          const bTitleQuoted = extractQuotedTerms(stories[b].title);
+          const storyB = stories[b];
+          if (!storyB) {
+            return false;
+          }
+          const bTitleQuoted = extractQuotedTerms(storyB.title);
           const shared = [...aTitleQuoted].filter(
             (t) =>
               t.length >= 8 &&
@@ -1935,10 +1991,15 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         
         // If story has exclusive bigrams not shared with others, require higher threshold
         // BUT skip this check if component has significant quoted term overlap (stronger signal for single-word proper nouns)
-        const aBigrams = [...features[a].anchorTerms].filter((t) =>
+        const aBigrams = [...featA.anchorTerms].filter((t) =>
           isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
         );
-        const hasExclusiveBigrams = aBigrams.some(t => !others.every(b => features[b].anchorTerms.has(t)));
+        const hasExclusiveBigrams = aBigrams.some((t) =>
+          !others.every((b) => {
+            const featB = features[b];
+            return featB?.anchorTerms.has(t) ?? false;
+          }),
+        );
         
         // If story has exclusive bigrams, require it to share bigrams with 60%+ of others AND have linkRatio >= 60%
         // Skip this check if component has significant quoted term overlap (e.g., for "Artgemeinschaft")
