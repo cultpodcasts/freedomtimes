@@ -24,8 +24,8 @@ import {
   getStrictCultTermExtensionsForLanguage,
 } from './pipelineTerms.ts';
 import { extractPageMetadataFromHtml, htmlToPlainArticleText } from './articleContent.ts';
-import { getCanonicalArticleUrl, isArchiveMirrorHost, looksLikePartialPaywall } from './archiveMirrors.ts';
-import { fetchTextWithCache } from './httpCache.ts';
+import { getCanonicalArticleUrl, isArchiveMirrorHost, looksLikeBlockedFetchPage, looksLikePartialPaywall } from './archiveMirrors.ts';
+import { fetchTextResilient } from './resilientFetch.ts';
 import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.ts';
 import { clusterStopwordsForLanguage } from './clusterStopwords.ts';
 import { extractQuotedSpans } from './quotePatterns.ts';
@@ -851,6 +851,28 @@ function createDraft(
   };
 }
 
+async function fetchBestArchiveResponse(
+  url: string,
+): Promise<Awaited<ReturnType<typeof fetchTextResilient>> | undefined> {
+  const mirrorUrls = [
+    `https://archive.ph/newest/${url}`,
+    `https://archive.is/newest/${url}`,
+  ];
+  let best: Awaited<ReturnType<typeof fetchTextResilient>> | undefined;
+
+  for (const mirrorUrl of mirrorUrls) {
+    const archiveResponse = await fetchTextResilient(mirrorUrl);
+    if (!archiveResponse.ok) continue;
+    const archivePlain = htmlToPlainArticleText(archiveResponse.text, 2500);
+    if (!archivePlain.trim() || looksLikeBlockedFetchPage(archivePlain)) continue;
+    if (!best || archivePlain.length > htmlToPlainArticleText(best.text, 2500).length) {
+      best = archiveResponse;
+    }
+  }
+
+  return best;
+}
+
 export async function runPipeline(
   url: string,
   allowedHosts: Set<string>,
@@ -881,7 +903,7 @@ export async function runPipeline(
 
   let effectiveUrl = url;
   let contentMirrorUrl: string | undefined;
-  let response = await fetchTextWithCache(effectiveUrl);
+  let response = await fetchTextResilient(effectiveUrl);
 
   if (!response.ok) {
     try {
@@ -894,9 +916,8 @@ export async function runPipeline(
       // an archival mirror gives us a second retrieval path without changing
       // source reliability policy.
       if (shouldTryArchive || BROWSER_RENDER_FALLBACK_STATUS_CODES.has(response.status)) {
-        const archiveUrl = `https://archive.ph/newest/${effectiveUrl}`;
-        const archiveResponse = await fetchTextWithCache(archiveUrl);
-        if (archiveResponse.ok) {
+        const archiveResponse = await fetchBestArchiveResponse(effectiveUrl);
+        if (archiveResponse?.ok) {
           response = archiveResponse;
           contentMirrorUrl = archiveResponse.url;
         }
@@ -938,8 +959,8 @@ export async function runPipeline(
         (h) => originalHost === h || originalHost.endsWith(`.${h}`),
       );
       if (shouldTryArchive && looksLikePartialPaywall(htmlToPlainArticleText(html, 2500))) {
-        const archiveResponse = await fetchTextWithCache(`https://archive.ph/newest/${url}`);
-        if (archiveResponse.ok) {
+        const archiveResponse = await fetchBestArchiveResponse(url);
+        if (archiveResponse?.ok) {
           const archivePlain = htmlToPlainArticleText(archiveResponse.text, 2500);
           const directPlain = htmlToPlainArticleText(html, 2500);
           if (archivePlain.length > directPlain.length + 400) {
@@ -962,7 +983,7 @@ export async function runPipeline(
     const resolvedUrl = resolver?.(html, effectiveUrl);
     if (resolvedUrl && resolvedUrl !== effectiveUrl) {
       try {
-        const resolvedResponse = await fetchTextWithCache(resolvedUrl);
+        const resolvedResponse = await fetchTextResilient(resolvedUrl);
 
         if (resolvedResponse.ok) {
           effectiveUrl = resolvedUrl;

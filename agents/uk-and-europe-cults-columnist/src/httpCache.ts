@@ -312,7 +312,12 @@ function migrateLegacyCacheIfNeeded(): void {
   }
 }
 
-export async function fetchTextWithCache(url: string, init?: RequestInit, fetchFn?: FetchFn): Promise<CachedFetchResult> {
+export async function fetchTextWithCache(
+  url: string,
+  init?: RequestInit,
+  fetchFn?: FetchFn,
+  options?: { cacheKeySuffix?: string },
+): Promise<CachedFetchResult> {
   const requestHeaders = mergeRequestHeaders(init?.headers);
 
   if (!HTTP_CACHE_ENABLED) {
@@ -331,7 +336,7 @@ export async function fetchTextWithCache(url: string, init?: RequestInit, fetchF
 
   migrateLegacyCacheIfNeeded();
 
-  const cacheKey = buildCacheKey(url);
+  const cacheKey = buildCacheKey(url, options?.cacheKeySuffix);
   const cached = readEntry(cacheKey);
 
   if (cached && isFresh(cached)) {

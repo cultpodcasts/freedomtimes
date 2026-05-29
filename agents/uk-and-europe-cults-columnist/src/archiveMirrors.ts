@@ -116,3 +116,28 @@ export function looksLikePartialPaywall(text: string): boolean {
   const thinBody = text.length < 1800;
   return paywallMarkers && thinBody;
 }
+
+export function looksLikeBlockedFetchPage(text: string): boolean {
+  const sample = text.slice(0, 2000).toLowerCase();
+  if (sample.length < 80) return false;
+  return (
+    /\byou have been blocked\b/.test(sample) ||
+    /\battention required!\b/.test(sample) ||
+    (/\bcloudflare\b/.test(sample) &&
+      (/\bsecurity service\b/.test(sample) || /\bunable to access\b/.test(sample))) ||
+    /\btoo many requests\b/.test(sample) ||
+    /\brate limit(ed)?\b/.test(sample)
+  );
+}
+
+export function needsArchiveMirrorFallback(
+  fetchOk: boolean,
+  status: number,
+  articleText: string,
+  blockedStatusCodes: ReadonlySet<number>,
+): boolean {
+  if (!fetchOk) return true;
+  if (blockedStatusCodes.has(status)) return true;
+  if (looksLikeBlockedFetchPage(articleText)) return true;
+  return looksLikePartialPaywall(articleText);
+}

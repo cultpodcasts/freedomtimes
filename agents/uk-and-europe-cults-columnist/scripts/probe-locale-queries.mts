@@ -14,7 +14,7 @@
 import { createSocksFetchFn, installGlobalSocksFetch } from './socks-fetch.mjs';
 
 // Patch globalThis.fetch early so ALL fetch calls (including google-news-url-decoder) go through Tor.
-installGlobalSocksFetch();
+await installGlobalSocksFetch();
 
 const args = process.argv.slice(2);
 const localeArg = args.find((a: string) => a.startsWith('--locale='))?.split('=')[1]?.trim();
@@ -85,7 +85,7 @@ if (printUrls) {
   process.exit(0);
 }
 
-const socksFetchFn = createSocksFetchFn();
+const socksFetchFn = await createSocksFetchFn();
 if (socksFetchFn) console.log(`[probe] SOCKS5 proxy active: ${process.env.SOCKS_PROXY}\n`);
 
 const stories = await discoverFromGoogleNewsQueries(queriesToRun, 'probe', socksFetchFn);

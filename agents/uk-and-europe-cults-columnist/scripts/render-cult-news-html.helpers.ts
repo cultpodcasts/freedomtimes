@@ -3,10 +3,12 @@ import { extractPageMetadataFromHtml, htmlToPlainArticleText } from '../src/arti
 import {
   buildArchiveMirrorLinks,
   getCanonicalArticleUrl,
-  looksLikePartialPaywall,
+  looksLikeBlockedFetchPage,
+  needsArchiveMirrorFallback,
   type ArchiveMirrorLink,
 } from '../src/archiveMirrors.ts';
-import { ARCHIVE_FALLBACK_HOSTS } from '../src/http-cache/config.ts';
+import { ARCHIVE_FALLBACK_HOSTS, BROWSER_RENDER_FALLBACK_STATUS_CODES, HTTP_USER_AGENT } from '../src/http-cache/config.ts';
+import { fetchTextResilient } from '../src/resilientFetch.ts';
 import type { StorySourceCitation } from '../src/sourceCitation.ts';
 import { pathToFileURL } from 'node:url';
 
@@ -243,24 +245,25 @@ function shouldTryArchiveForHost(host: string | undefined): boolean {
   return Array.from(ARCHIVE_FALLBACK_HOSTS).some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
-async function fetchHtmlFromUrl(fetchUrl: string): Promise<{ ok: boolean; html: string; finalUrl: string }> {
-  const response = await fetch(fetchUrl, {
+async function fetchHtmlFromUrl(fetchUrl: string): Promise<{ ok: boolean; html: string; finalUrl: string; status: number }> {
+  const response = await fetchTextResilient(fetchUrl, {
     headers: {
-      'User-Agent': 'FreedomTimes-Local-Agent/0.1',
+      'User-Agent': HTTP_USER_AGENT,
       Accept: 'text/html,application/xhtml+xml',
     },
-    redirect: 'follow',
   });
 
-  if (!response.ok) {
-    return { ok: false, html: '', finalUrl: fetchUrl };
-  }
-
   return {
-    ok: true,
-    html: await response.text(),
+    ok: response.ok,
+    html: response.text,
     finalUrl: response.url,
+    status: response.status,
   };
+}
+
+function isUsableArticleText(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed.length >= 200 && !looksLikeBlockedFetchPage(trimmed);
 }
 
 function metaFromHtml(html: string): Omit<StoryMeta, 'contentMirrorUrl' | 'archiveMirrorLinks'> {
@@ -287,8 +290,9 @@ async function fetchBestArchiveHtml(
   for (const mirrorUrl of mirrorUrls) {
     const fetched = await fetchHtmlFromUrl(mirrorUrl);
     if (!fetched.ok) continue;
-    const textLength = (metaFromHtml(fetched.html).articleText ?? '').length;
-    if (textLength < 200) continue;
+    const text = metaFromHtml(fetched.html).articleText ?? '';
+    if (!isUsableArticleText(text)) continue;
+    const textLength = text.length;
     if (!best || textLength > best.textLength) {
       best = { html: fetched.html, finalUrl: fetched.finalUrl, textLength };
     }
@@ -305,20 +309,45 @@ export async function fetchStoryMeta(url: string, options?: { contentMirrorUrl?:
     buildArchiveMirrorLinks(canonicalUrl, { knownSnapshotUrls: knownSnapshots });
 
   try {
+    if (options?.contentMirrorUrl) {
+      const mirrorFetch = await fetchHtmlFromUrl(options.contentMirrorUrl);
+      const mirrorText = metaFromHtml(mirrorFetch.html).articleText ?? '';
+      if (mirrorFetch.ok && isUsableArticleText(mirrorText)) {
+        const meta = metaFromHtml(mirrorFetch.html);
+        return {
+          ...meta,
+          contentMirrorUrl: mirrorFetch.finalUrl,
+          archiveMirrorLinks: buildArchiveMirrorLinks(canonicalUrl, {
+            knownSnapshotUrls: [mirrorFetch.finalUrl],
+          }),
+        };
+      }
+    }
+
     const direct = await fetchHtmlFromUrl(canonicalUrl);
     let html = direct.html;
     let contentMirrorUrl = options?.contentMirrorUrl;
 
     const directMeta = metaFromHtml(html);
     const directText = directMeta.articleText ?? '';
-    const paywalled = !direct.ok || looksLikePartialPaywall(directText);
+    const needsArchive =
+      needsArchiveMirrorFallback(
+        direct.ok,
+        direct.status,
+        directText,
+        BROWSER_RENDER_FALLBACK_STATUS_CODES,
+      ) || (shouldTryArchiveForHost(host) && !direct.ok);
 
-    if (paywalled || (shouldTryArchiveForHost(host) && !direct.ok)) {
+    if (needsArchive) {
       const archiveFetch = await fetchBestArchiveHtml(canonicalUrl);
       if (archiveFetch) {
         const archiveMeta = metaFromHtml(archiveFetch.html);
         const archiveText = archiveMeta.articleText ?? '';
-        if (!direct.ok || archiveText.length > directText.length + 400) {
+        if (
+          !direct.ok ||
+          !isUsableArticleText(directText) ||
+          archiveText.length > directText.length + 400
+        ) {
           html = archiveFetch.html;
           contentMirrorUrl = archiveFetch.finalUrl;
           knownSnapshots.length = 0;

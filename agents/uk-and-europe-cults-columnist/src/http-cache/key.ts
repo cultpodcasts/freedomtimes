@@ -6,10 +6,11 @@ export function normalizeHeaders(headers: Headers): Record<string, string> {
   return normalized;
 }
 
-export function buildCacheKey(url: string): string {
+export function buildCacheKey(url: string, suffix?: string): string {
   try {
-    return new URL(url).toString();
+    const base = new URL(url).toString();
+    return suffix ? `${base}#${suffix}` : base;
   } catch {
-    return url;
+    return suffix ? `${url}#${suffix}` : url;
   }
 }

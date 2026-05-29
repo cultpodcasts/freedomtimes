@@ -1,5 +1,5 @@
 import { installGlobalSocksFetch } from './socks-fetch.mjs';
-installGlobalSocksFetch();
+await installGlobalSocksFetch();
 
 import nodeFetch from 'node-fetch';
 import { SocksProxyAgent } from 'socks-proxy-agent';

@@ -196,20 +196,8 @@ const SOCKS_PROXY_URL = process.env.SOCKS_PROXY ?? undefined;
  */
 async function buildSocksProxyFetchFn(): Promise<FetchFn | undefined> {
   if (!SOCKS_PROXY_URL) return undefined;
-  try {
-    const [{ SocksProxyAgent }, { default: nodeFetch }] = await Promise.all([
-      import('socks-proxy-agent'),
-      import('node-fetch'),
-    ]);
-    const agent = new SocksProxyAgent(SOCKS_PROXY_URL);
-    const proxyFetch = (url: string, init?: RequestInit): Promise<Response> =>
-      nodeFetch(url, { ...(init as object), agent } as Parameters<typeof nodeFetch>[1]) as unknown as Promise<Response>;
-    // Patch globalThis.fetch so third-party libs (e.g. google-news-url-decoder) also route through Tor.
-    (globalThis as unknown as Record<string, unknown>).fetch = proxyFetch;
-    return proxyFetch;
-  } catch {
-    return undefined;
-  }
+  const { getSocksFetchFn } = await import('./socksFetch.ts');
+  return getSocksFetchFn({ patchGlobalFetch: true });
 }
 /** Max Playwright navigations per discovery run (`0` = unlimited when Playwright resolve is on). */
 const GOOGLE_NEWS_PLAYWRIGHT_MAX_RESOLVES = readPositiveIntCapOrUnlimited(
