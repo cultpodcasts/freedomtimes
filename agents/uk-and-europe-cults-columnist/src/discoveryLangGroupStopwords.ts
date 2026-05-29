@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 
-/** Editorial cluster phrase stopwords from `data/discovery/lang/<code>.json` → `groupStopwords`. */
+/** Editorial cluster phrase stopwords from `data/discovery/lang/<code>.json` → `groupStopwords` (LocaleLangFile). */
 export function loadGroupStopwordsByLanguageFromDiscoveryLangFiles(): Record<string, string[]> {
   const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
   const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));

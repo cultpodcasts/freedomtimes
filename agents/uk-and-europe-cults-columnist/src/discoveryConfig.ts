@@ -432,7 +432,11 @@ export type LocaleLangFile = {
   europeCountryOr?: string[];
   /** Tight local geo (e.g. France+Belgium for fr, DACH for de, UK regions for en). */
   focusGeo?: string[];
-  /** Stopwords for clustering/grouping — common words to ignore when comparing story titles. */
+  /**
+   * Per-locale cluster stopwords: grammar, news chrome, publisher UI.
+   * Merged at load time with language-agnostic `base` from `data/cluster-token-stopwords.json`.
+   * Used for phrase extraction, anchor tokenization, and cluster edge filtering.
+   */
   groupStopwords?: string[];
   /**
    * Locale-specific Google News query templates.

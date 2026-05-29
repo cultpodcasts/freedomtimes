@@ -58,7 +58,12 @@ Common words ignored when extracting cluster phrases and anchor terms (grammar, 
 
 **Purpose:** Single per-locale stopword list for clustering and phrase extraction. Language-agnostic terms shared by all locales live in `data/cluster-token-stopwords.json` → `base` and are merged at load time.
 
-**Edit here** — not in TypeScript. Do not duplicate lists in `cluster-token-stopwords.json` locale keys (removed).
+**Examples:**
+- English: grammar (`with`, `from`), news chrome (`report`, `breaking`), UI (`bookmark`, `comments`)
+- French: `commentaires`, `abonnés`, plus function words
+- German: `merkliste`, `registrieren`, plus function words
+
+Language-agnostic tokens (cult/news vocabulary, cookies, subscribe, etc.) belong in `data/cluster-token-stopwords.json` → `base`, not duplicated here.
 
 ### 6. `figurativeCultPhrases` (array of strings)
 **MOST IMPORTANT FOR FALSE POSITIVES**
@@ -91,11 +96,6 @@ Explicit regex patterns for complex figurative detection cases.
 
 **Examples:**
 - German: `["kult.{0,20}klischee", "kult.{0,20}legende"]`
-
-### 9. `stopwords` (array of strings)
-Common words to exclude from feature extraction.
-
-**Purpose:** Prevents common words from being used as clustering features.
 
 ## Subject Aliases File
 
