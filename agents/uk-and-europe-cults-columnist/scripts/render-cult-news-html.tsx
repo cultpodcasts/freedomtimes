@@ -143,6 +143,12 @@ const RENDER_MAX_AGE_HOURS = (() => {
   return parsed;
 })();
 
+if (RENDER_MAX_AGE_HOURS !== undefined) {
+  console.log(`[render] freshness window: ${RENDER_MAX_AGE_HOURS} hours (CULT_NEWS_RENDER_MAX_AGE_HOURS / DISCOVERY_MAX_AGE_HOURS)`);
+} else {
+  console.log('[render] freshness window: disabled (no age filter — all dated stories kept)');
+}
+
 function normalizeHost(host: string): string {
   return host.replace(/^www\./i, '').toLowerCase();
 }

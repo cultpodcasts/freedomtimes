@@ -251,12 +251,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
 
-    // Re-render HTML so clustering excludes the false-positives
+    // Re-render HTML so clustering excludes the false-positives.
+    // Inherit CULT_NEWS_RENDER_MAX_AGE_HOURS from the server process (set it when
+    // starting feedback:server, or in .env). Never force a narrower window here.
+    const renderMaxAge = process.env.CULT_NEWS_RENDER_MAX_AGE_HOURS?.trim() || '(unset)';
+    console.log('[feedback-server] re-rendering digest; CULT_NEWS_RENDER_MAX_AGE_HOURS =', renderMaxAge);
     try {
-      execSync('npx tsx scripts/render-cult-news-html.tsx', {
+      execSync('npx tsx --env-file=.env scripts/render-cult-news-html.tsx', {
         cwd: join(__dirname, '..'),
-        env: { ...process.env, CULT_NEWS_RENDER_MAX_AGE_HOURS: '168' },
-        stdio: 'pipe',
+        env: process.env,
+        stdio: 'inherit',
       });
     } catch (err) {
       console.error('[feedback-server] render failed:', err);

@@ -52,32 +52,37 @@ DISCOVERY_MAX_AGE_HOURS=168
 
 ## Set the timeframe (important)
 
-Use the **same** window for discovery and render so stories match the period you are writing about:
+Use the **same** window for discovery and render when writing about a single week. When reviewing over several days, set a **wider render window** so Close Report does not drop older drafts:
 
 | Variable | Role |
 |----------|------|
 | `DISCOVERY_MAX_AGE_HOURS` | How far back discovery searches (required for `npm run dev`) |
-| `CULT_NEWS_RENDER_MAX_AGE_HOURS` | Drops stories older than this at render time (defaults to `DISCOVERY_MAX_AGE_HOURS` if unset) |
+| `CULT_NEWS_RENDER_MAX_AGE_HOURS` | Drops stories older than this at render time (defaults to `DISCOVERY_MAX_AGE_HOURS` if unset). **Close Report re-render uses this** — use `504` (21 days) for multi-day review. |
 
-**Weekly example (7 days):**
+**Weekly example (7 days, same-day render):**
 
 ```powershell
 $env:DISCOVERY_MAX_AGE_HOURS = '168'
 $env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '168'
 ```
 
+**Multi-day review (recommended when clusters span 2+ weeks of publication dates):**
+
+```powershell
+$env:DISCOVERY_MAX_AGE_HOURS = '168'
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '504'
+npm run render:html
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '504'   # same value before starting server
+npm run feedback:server
+```
+
+Put `CULT_NEWS_RENDER_MAX_AGE_HOURS=504` in `.env` so `npm run render:html` and the feedback server share the same window.
+
 **Custom window (e.g. 10 days):**
 
 ```powershell
 $env:DISCOVERY_MAX_AGE_HOURS = '240'
 $env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '240'
-```
-
-`npm run render:html` bakes `CULT_NEWS_RENDER_MAX_AGE_HOURS=168` into the script on Windows; override when you need a different window:
-
-```powershell
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '240'
-npx tsx scripts/render-cult-news-html.tsx
 ```
 
 ---
@@ -174,7 +179,7 @@ The server serves `reports/cult-news-latest.html` and exposes the feedback API. 
 2. For each **non-cult** card, click **False positive**. Entries are stored in the active report (with URL, title, article text, classification audit when available).
 3. When finished, click **Close Report**.
    - Merges false positives into `data/feedback/false-positives.json`
-   - Re-runs `render-cult-news-html.tsx` (server uses `CULT_NEWS_RENDER_MAX_AGE_HOURS=168` unless you set it in the environment before starting the server)
+   - Re-runs `render-cult-news-html.tsx` using the feedback server’s environment (`CULT_NEWS_RENDER_MAX_AGE_HOURS` — set before starting the server, e.g. `504`)
    - Reloads the page with **updated clusters** (false positives excluded)
 
 ### 5. Review: clusters (verification phase)
