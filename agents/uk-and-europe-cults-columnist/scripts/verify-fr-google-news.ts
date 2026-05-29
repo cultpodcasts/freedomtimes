@@ -3,7 +3,7 @@
  * Run with DISCOVERY_MAX_AGE_HOURS and GOOGLE_NEWS_LOCALE_IDS set, e.g.:
  *   $env:DISCOVERY_MAX_AGE_HOURS='168'; $env:GOOGLE_NEWS_LOCALE_IDS='FR-fr'; npx tsx scripts/verify-fr-google-news.ts
  */
-import { discoverFromGoogleNews } from '../src/discoverStories.js';
+import { discoverFromGoogleNews } from '../src/discoverStories.ts';
 
 const franceinfoPattern = /franceinfo/i;
 const mayorSectePattern = /maire|c[oô]tes-d.armor|secte/i;

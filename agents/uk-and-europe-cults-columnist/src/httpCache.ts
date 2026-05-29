@@ -12,9 +12,9 @@ import {
   HTTP_FETCH_RETRYABLE_STATUS_CODES,
   HTTP_FETCH_TIMEOUT_MS,
   HTTP_USER_AGENT,
-} from './http-cache/config.js';
-import { buildCacheKey, normalizeHeaders } from './http-cache/key.js';
-import type { CachedEntry, CachedFetchResult } from './http-cache/types.js';
+} from './http-cache/config.ts';
+import { buildCacheKey, normalizeHeaders } from './http-cache/key.ts';
+import type { CachedEntry, CachedFetchResult } from './http-cache/types.ts';
 
 /** Portable fetch abstraction — defaults to global `fetch`. Inject a proxy-backed impl locally; CF Workers provide their own. */
 export type FetchFn = (url: string, init?: RequestInit) => Promise<Response>;

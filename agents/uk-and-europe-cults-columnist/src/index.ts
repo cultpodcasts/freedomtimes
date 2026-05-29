@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { loadConfig } from './config.js';
-import { PRIORITY_WATCHLIST_HOSTS } from './discoveryConfig.js';
-import { type DiscoveredStory, discoverCandidateStories } from './discoverStories.js';
-import { createDraftViaMcp } from './mcpClient.js';
-import { ARCHIVE_FALLBACK_HOSTS } from './http-cache/config.js';
-import { runPipeline, isCultTopicPreciseWithAudit } from './pipeline.js';
-import type { DraftPayload } from './types.js';
+import { loadConfig } from './config.ts';
+import { PRIORITY_WATCHLIST_HOSTS } from './discoveryConfig.ts';
+import { type DiscoveredStory, discoverCandidateStories } from './discoverStories.ts';
+import { createDraftViaMcp } from './mcpClient.ts';
+import { ARCHIVE_FALLBACK_HOSTS } from './http-cache/config.ts';
+import { runPipeline, isCultTopicPreciseWithAudit } from './pipeline.ts';
+import type { DraftPayload } from './types.ts';
 
 export { isCultTopicPreciseWithAudit };
 

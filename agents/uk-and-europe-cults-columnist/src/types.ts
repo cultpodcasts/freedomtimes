@@ -12,6 +12,8 @@ export type SourceMetadata = {
   publishedAt?: string;
   reliabilityScore: number;
   reliabilityReasons: string[];
+  /** Archive mirror URL used to retrieve article text when the publisher URL is paywalled. */
+  contentMirrorUrl?: string;
 };
 
 export type RelevanceResult = {

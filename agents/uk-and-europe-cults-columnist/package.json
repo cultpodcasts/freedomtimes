@@ -8,13 +8,15 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node --enable-source-maps dist/index.js",
+    "start": "tsx --env-file=.env src/index.ts",
     "dev": "cmd /c \"set DISCOVERY_MAX_AGE_HOURS=168&& set GOOGLE_NEWS_WATCHLIST_SITE_OR_CHUNK=1&& .\\node_modules\\.bin\\tsx.cmd --env-file=.env src/index.ts\"",
     "pipeline:only": "cmd /c \"set SKIP_DISCOVERY=true&& set DISCOVERY_MAX_AGE_HOURS=168&& .\\node_modules\\.bin\\tsx.cmd src/index.ts\"",
     "render:html": "cmd /c \"set CULT_NEWS_RENDER_MAX_AGE_HOURS=168&& tsx scripts/render-cult-news-html.tsx\"",
     "render:cult-news": "cmd /c \"set CULT_NEWS_RENDER_MAX_AGE_HOURS=168&& tsx scripts/render-cult-news-html.tsx\"",
+    "feedback:server": "tsx scripts/feedback-server.mts",
+    "backup:before-run": "tsx scripts/backup-before-run.ts",
     "recover:failed-urls": "tsx scripts/recover-failed-urls.ts",
     "probe:locale": "tsx --env-file=.env scripts/probe-locale-queries.mts",
     "probe:publisher-langs": "tsx scripts/probe-publisher-homepage-langs.ts",

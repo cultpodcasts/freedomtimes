@@ -86,7 +86,7 @@ export const HTTP_USER_AGENT = process.env.HTTP_USER_AGENT?.trim() || DEFAULT_HT
 
 // Comma-separated list of hosts to retry via archive.ph when a direct fetch returns a non-2xx response.
 export const ARCHIVE_FALLBACK_HOSTS: Set<string> = new Set(
-  (process.env.ARCHIVE_FALLBACK_HOSTS ?? 'scotsman.com,telegraaf.nl')
+  (process.env.ARCHIVE_FALLBACK_HOSTS ?? 'scotsman.com,telegraaf.nl,midilibre.fr')
     .split(',')
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean),

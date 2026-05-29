@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { normalizeCultLanguageCode } from './cultTerms.js';
+import { normalizeCultLanguageCode } from './cultTerms.ts';
 
 /**
  * Interface for subject-aliases.json

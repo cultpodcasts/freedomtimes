@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { AgentEnv } from './types.js';
+import { AgentEnv } from './types.ts';
 
 type AgentConfig = {
   env: AgentEnv;

@@ -3,7 +3,7 @@
  * Add classification audit to the Aston Villa story
  */
 import { readFile, writeFile } from 'fs/promises';
-import { isCultTopicPreciseWithAudit } from '../src/pipeline.js';
+import { isCultTopicPreciseWithAudit } from '../src/pipeline.ts';
 
 interface DraftArchiveEntry {
   url: string;

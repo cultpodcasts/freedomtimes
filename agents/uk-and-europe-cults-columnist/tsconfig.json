@@ -1,15 +1,24 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "strict": true,
     "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"]
+    "types": ["node"],
+    "jsx": "react",
+    "jsxFactory": "h",
+    "jsxFragmentFactory": "Fragment"
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "scripts/**/*.ts",
+    "scripts/**/*.tsx",
+    "scripts/**/*.mts"
+  ]
 }

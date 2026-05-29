@@ -61,6 +61,10 @@ Each generated draft should include:
 - End-to-end pipeline and draft payload generation in `src/pipeline.ts`.
 - MCP boundary stub in `src/mcpClient.ts` (dry-run mode only for now).
 
+## Weekly operator runbook
+
+For discovery → HTML digest → browser review (port 3000) → writing a summary article, see **[docs/WEEKLY_RUN.md](docs/WEEKLY_RUN.md)**.
+
 ## Quick Start
 1. From this folder, install dependencies:
 	- `npm install`

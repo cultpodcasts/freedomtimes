@@ -1,4 +1,4 @@
-import type { DraftPayload } from './types.js';
+import type { DraftPayload } from './types.ts';
 
 export async function createDraftViaMcp(draft: DraftPayload): Promise<{ draftId: string }> {
   void draft;

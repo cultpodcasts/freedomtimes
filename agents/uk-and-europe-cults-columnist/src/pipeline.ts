@@ -1,13 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { detect as detectLanguageText } from 'tinyld';
-import { evaluateRelevance } from './relevance.js';
-import { evaluateSourceReliability } from './sourceReliability.js';
-import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.js';
-import { fetchTextWithBrowserRender } from './browserFetch.js';
+import { evaluateRelevance } from './relevance.ts';
+import { evaluateSourceReliability } from './sourceReliability.ts';
+import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.ts';
+import { fetchTextWithBrowserRender } from './browserFetch.ts';
 import {
   BROWSER_RENDER_FALLBACK_ENABLED,
   BROWSER_RENDER_FALLBACK_STATUS_CODES,
-} from './http-cache/config.js';
+} from './http-cache/config.ts';
 import {
   ALL_GENERIC_CULT_TERMS,
   AMBIGUOUS_CULT_TERMS_BY_LANGUAGE,
@@ -22,12 +22,14 @@ import {
   getCoerciveHarmTermsForLanguage,
   getReligiousGroupTermsForLanguage,
   getStrictCultTermExtensionsForLanguage,
-} from './pipelineTerms.js';
-import { fetchTextWithCache } from './httpCache.js';
-import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.js';
-import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.js';
-import { extractQuotedSpans } from './quotePatterns.js';
-import type { DraftPayload, PipelineResult } from './types.js';
+} from './pipelineTerms.ts';
+import { extractPageMetadataFromHtml, htmlToPlainArticleText } from './articleContent.ts';
+import { getCanonicalArticleUrl, isArchiveMirrorHost, looksLikePartialPaywall } from './archiveMirrors.ts';
+import { fetchTextWithCache } from './httpCache.ts';
+import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.ts';
+import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.ts';
+import { extractQuotedSpans } from './quotePatterns.ts';
+import type { DraftPayload, PipelineResult } from './types.ts';
 
 // Load subject aliases for proper noun matching
 const SUBJECT_ALIASES_PATH = new URL('../data/subject-aliases.json', import.meta.url);
@@ -821,131 +823,6 @@ function getResolverForUrl(url: string): UrlResolver | undefined {
   return undefined;
 }
 
-function removeNonArticleBlocks(html: string): string {
-  return html
-    .replace(/<aside[\s\S]*?<\/aside>/gi, ' ')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
-    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
-    .replace(
-      /<div[^>]+class=["'][^"']*(article-readmore|read-more|readmore|related|recommended|most-read|popular)[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
-      ' ',
-    )
-    .replace(
-      /<section[^>]+class=["'][^"']*(related|recommended|most-read|popular)[^"']*["'][^>]*>[\s\S]*?<\/section>/gi,
-      ' ',
-    );
-}
-
-function stripHtml(html: string): string {
-  return removeNonArticleBlocks(html)
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function normalizePublishedAt(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-
-  return new Date(parsed).toISOString();
-}
-
-function findDatePublishedInJsonValue(value: unknown): string | undefined {
-  if (!value || typeof value !== 'object') {
-    return undefined;
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const nested = findDatePublishedInJsonValue(item);
-      if (nested) {
-        return nested;
-      }
-    }
-    return undefined;
-  }
-
-  const record = value as Record<string, unknown>;
-  const direct =
-    normalizePublishedAt(typeof record.datePublished === 'string' ? record.datePublished : undefined) ??
-    normalizePublishedAt(typeof record.dateCreated === 'string' ? record.dateCreated : undefined) ??
-    normalizePublishedAt(typeof record.dateModified === 'string' ? record.dateModified : undefined);
-
-  if (direct) {
-    return direct;
-  }
-
-  for (const nested of Object.values(record)) {
-    const nestedDate = findDatePublishedInJsonValue(nested);
-    if (nestedDate) {
-      return nestedDate;
-    }
-  }
-
-  return undefined;
-}
-
-function detectPublishedAtFromJsonLd(html: string): string | undefined {
-  const scriptRegex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  let match: RegExpExecArray | null = scriptRegex.exec(html);
-
-  while (match) {
-    const rawJson = match[1]?.trim();
-    if (rawJson) {
-      try {
-        const parsed = JSON.parse(rawJson) as unknown;
-        const detected = findDatePublishedInJsonValue(parsed);
-        if (detected) {
-          return detected;
-        }
-      } catch {
-        // Ignore malformed JSON-LD blocks.
-      }
-    }
-
-    match = scriptRegex.exec(html);
-  }
-
-  return undefined;
-}
-
-function detectPublishedAt(html: string): string | undefined {
-  const patterns = [
-    /<meta[^>]+property=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+name=["']article:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+property=["']og:published_time["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+name=["']pubdate["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+name=["']publishdate["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+itemprop=["']datePublished["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<meta[^>]+property=["']article:published["'][^>]+content=["']([^"']+)["'][^>]*>/i,
-    /<time[^>]+datetime=["']([^"']+)["'][^>]*>/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    const normalized = normalizePublishedAt(match?.[1]);
-    if (normalized) {
-      return normalized;
-    }
-  }
-
-  return detectPublishedAtFromJsonLd(html);
-}
-
-function detectTitle(html: string, fallback: string): string {
-  const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-  return titleMatch?.[1]?.trim() || fallback;
-}
-
 function previewPlainText(text: string, maxLen: number): string {
   return text
     .slice(0, maxLen)
@@ -1006,6 +883,7 @@ export async function runPipeline(
   }
 
   let effectiveUrl = url;
+  let contentMirrorUrl: string | undefined;
   let response = await fetchTextWithCache(effectiveUrl);
 
   if (!response.ok) {
@@ -1023,6 +901,7 @@ export async function runPipeline(
         const archiveResponse = await fetchTextWithCache(archiveUrl);
         if (archiveResponse.ok) {
           response = archiveResponse;
+          contentMirrorUrl = archiveResponse.url;
         }
       }
     } catch {
@@ -1054,7 +933,32 @@ export async function runPipeline(
   }
 
   let html = response.text;
+
+  if (!contentMirrorUrl) {
+    try {
+      const originalHost = normalizeHost(new URL(url).hostname);
+      const shouldTryArchive = Array.from(archiveFallbackHosts).some(
+        (h) => originalHost === h || originalHost.endsWith(`.${h}`),
+      );
+      if (shouldTryArchive && looksLikePartialPaywall(htmlToPlainArticleText(html, 2500))) {
+        const archiveResponse = await fetchTextWithCache(`https://archive.ph/newest/${url}`);
+        if (archiveResponse.ok) {
+          const archivePlain = htmlToPlainArticleText(archiveResponse.text, 2500);
+          const directPlain = htmlToPlainArticleText(html, 2500);
+          if (archivePlain.length > directPlain.length + 400) {
+            response = archiveResponse;
+            contentMirrorUrl = archiveResponse.url;
+            html = archiveResponse.text;
+          }
+        }
+      }
+    } catch {
+      // Keep direct fetch when archive retry fails.
+    }
+  }
+
   effectiveUrl = response.url;
+  const canonicalUrl = getCanonicalArticleUrl(url);
 
   if (options.requiresUrlResolution || Boolean(getResolverForUrl(effectiveUrl))) {
     const resolver = getResolverForUrl(effectiveUrl);
@@ -1074,16 +978,22 @@ export async function runPipeline(
     }
   }
 
-  const publishedAt = detectPublishedAt(html);
-  const source = evaluateSourceReliability(effectiveUrl, allowedHosts, publishedAt);
+  const pageMeta = extractPageMetadataFromHtml(html);
+  const publishedAt = pageMeta.publishedAt;
+  const reliabilityUrl = isArchiveMirrorHost(new URL(effectiveUrl).hostname) ? canonicalUrl : effectiveUrl;
+  const source = {
+    ...evaluateSourceReliability(reliabilityUrl, allowedHosts, publishedAt),
+    url: getCanonicalArticleUrl(reliabilityUrl),
+    ...(contentMirrorUrl ? { contentMirrorUrl } : {}),
+  };
   const missingAllowlistOnly =
     source.reliabilityReasons.includes('Source host is not on reliability allowlist') &&
     !source.reliabilityReasons.includes('Non-HTTPS source URL') &&
     !source.reliabilityReasons.includes('No publication date detected');
 
   if (source.reliabilityScore < 70 && !missingAllowlistOnly) {
-    const title = detectTitle(html, 'Untitled source story');
-    const textPreview = previewPlainText(stripHtml(html), 420);
+    const title = pageMeta.title ?? 'Untitled source story';
+    const textPreview = htmlToPlainArticleText(html, 420);
     return {
       status: 'rejected',
       source,
@@ -1100,15 +1010,15 @@ export async function runPipeline(
   }
 
   const language = detectLanguageFromHtml(html);
-  const title = detectTitle(html, 'Untitled source story');
-  const text = stripHtml(html);
+  const title = pageMeta.title ?? 'Untitled source story';
+  const text = htmlToPlainArticleText(html, 15000);
   const relevance = evaluateRelevance(`${title} ${text}`, language);
   const leadRegionSignal = hasConfiguredRegionalSignalInText(`${title} ${text.slice(0, 2800)}`);
 
   const textPreview = previewPlainText(text, 420);
 
   // Get cult classification with audit trail
-  const cultClassification = isCultTopicPreciseWithAudit(title, text, effectiveUrl, language);
+  const cultClassification = isCultTopicPreciseWithAudit(title, text, source.url, language);
   if (!cultClassification.isCultRelated) {
     return {
       status: 'rejected',

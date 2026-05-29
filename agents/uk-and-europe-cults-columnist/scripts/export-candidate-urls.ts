@@ -5,8 +5,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../src/config.js';
-import { discoverCandidateStories } from '../src/discoverStories.js';
+import { loadConfig } from '../src/config.ts';
+import { discoverCandidateStories } from '../src/discoverStories.ts';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const outDir = join(root, '..', 'reports');

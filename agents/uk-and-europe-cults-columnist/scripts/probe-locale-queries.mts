@@ -55,7 +55,7 @@ const {
   buildWatchlistQueries,
   discoverFromGoogleNewsQueries,
   resetGoogleNewsDiscoveryReporting,
-} = await import('../src/discoverStories.js');
+} = await import('../src/discoverStories.ts');
 
 resetGoogleNewsDiscoveryReporting();
 

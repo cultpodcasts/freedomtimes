@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { detect as detectClusterTitleLanguage, detect as detectGoogleNewsItemLanguage } from 'tinyld';
-import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.js';
-import { fetchJsonWithCache, fetchTextWithCache, type FetchFn } from './httpCache.js';
+import { ALL_CULT_TERMS, getCultTermsForLanguage } from './cultTerms.ts';
+import { fetchJsonWithCache, fetchTextWithCache, type FetchFn } from './httpCache.ts';
 import {
   FOCUS_SIGNAL_TERMS,
   GOOGLE_NEWS_GENERIC_QUERIES,
@@ -14,12 +14,12 @@ import {
   NEWSDATA_QUERIES,
   PRIORITY_WATCHLIST_HOSTS,
   REGION_TERMS,
-} from './discoveryConfig.js';
-import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.js';
+} from './discoveryConfig.ts';
+import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.ts';
 import {
   getCoerciveHarmTermsForLanguage,
   getReligiousGroupTermsForLanguage,
-} from './pipelineTerms.js';
+} from './pipelineTerms.ts';
 
 type GoogleNewsUrlDecoder = {
   decode: (url: string) => Promise<{ status?: boolean; decoded_url?: string; message?: string }>;

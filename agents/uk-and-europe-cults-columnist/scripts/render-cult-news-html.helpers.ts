@@ -1,4 +1,13 @@
 /// <reference types="node" />
+import { extractPageMetadataFromHtml, htmlToPlainArticleText } from '../src/articleContent.ts';
+import {
+  buildArchiveMirrorLinks,
+  getCanonicalArticleUrl,
+  looksLikePartialPaywall,
+  type ArchiveMirrorLink,
+} from '../src/archiveMirrors.ts';
+import { ARCHIVE_FALLBACK_HOSTS } from '../src/http-cache/config.ts';
+import type { StorySourceCitation } from '../src/sourceCitation.ts';
 import { pathToFileURL } from 'node:url';
 
 export type DraftStory = {
@@ -6,6 +15,7 @@ export type DraftStory = {
   url: string;
   host?: string;
   publishedAt?: string;
+  contentMirrorUrl?: string;
   classificationAudit?: CultClassificationAudit;
 };
 
@@ -16,6 +26,8 @@ export type StoryMeta = {
   publishedAt?: string;
   articleText?: string;
   htmlLang?: string;
+  contentMirrorUrl?: string;
+  archiveMirrorLinks?: ArchiveMirrorLink[];
 };
 
 export type CultClassificationAudit = {
@@ -33,6 +45,8 @@ export type EnrichedStory = DraftStory & {
   image?: string;
   articleText: string;
   htmlLang?: string;
+  archiveMirrorLinks?: ArchiveMirrorLink[];
+  sourceCitation?: StorySourceCitation;
   classificationAudit?: CultClassificationAudit;
 };
 
@@ -60,6 +74,10 @@ export const LOG_PATH = resolvePathFromEnv('CULT_NEWS_LOG_PATH', '../last-run.lo
 export const DRAFTS_PATH = resolvePathFromEnv('CULT_NEWS_DRAFTS_PATH', '../reports/last-run-drafts.json');
 export const DRAFTS_ARCHIVE_PATH = resolvePathFromEnv('CULT_NEWS_DRAFTS_ARCHIVE_PATH', '../reports/drafts-archive.json');
 export const OUTPUT_PATH = resolvePathFromEnv('CULT_NEWS_OUTPUT_PATH', '../reports/cult-news-latest.html');
+export const SOURCES_OUTPUT_PATH = resolvePathFromEnv(
+  'CULT_NEWS_SOURCES_PATH',
+  '../reports/cult-news-sources.json',
+);
 
 function decodeLogText(value: string): string {
   return value
@@ -97,45 +115,6 @@ function decodeHtmlEntities(value: string): string {
     .replace(/&ldquo;/gi, '\u201c')
     .replace(/&rdquo;/gi, '\u201d')
     .replace(/&hellip;/gi, '\u2026');
-}
-
-function getMetaContent(html: string, key: string, type: 'property' | 'name'): string | undefined {
-  const attr = type === 'property' ? 'property' : 'name';
-  const pattern = new RegExp(`<meta[^>]+${attr}=["']${key}["'][^>]+content=["']([^"']+)["'][^>]*>`, 'i');
-  const match = html.match(pattern);
-  return match?.[1]?.trim();
-}
-
-function normalizeIso(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
-    return undefined;
-  }
-
-  return new Date(parsed).toISOString();
-}
-
-function extractArticleText(html: string): string {
-  const articleLikeHtml =
-    html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i)?.[1] ??
-    html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i)?.[1] ??
-    html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ??
-    html;
-
-  return decodeHtmlEntities(
-    articleLikeHtml
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ')
-      .replace(/<(nav|footer|aside|form|svg)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
-  ).slice(0, 6000);
 }
 
 export function extractDraftsFromLog(logText: string): DraftStory[] {
@@ -246,58 +225,94 @@ export function extractRunSummary(logText: string): RunSummary | undefined {
   return summary;
 }
 
-export async function fetchStoryMeta(url: string): Promise<StoryMeta> {
+function hostFromUrl(rawUrl: string): string | undefined {
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'FreedomTimes-Local-Agent/0.1',
-        Accept: 'text/html,application/xhtml+xml',
-      },
-      redirect: 'follow',
-    });
+    return new URL(rawUrl).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
 
-    if (!response.ok) {
-      return {};
+function shouldTryArchiveForHost(host: string | undefined): boolean {
+  if (!host) return false;
+  return Array.from(ARCHIVE_FALLBACK_HOSTS).some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
+async function fetchHtmlFromUrl(fetchUrl: string): Promise<{ ok: boolean; html: string; finalUrl: string }> {
+  const response = await fetch(fetchUrl, {
+    headers: {
+      'User-Agent': 'FreedomTimes-Local-Agent/0.1',
+      Accept: 'text/html,application/xhtml+xml',
+    },
+    redirect: 'follow',
+  });
+
+  if (!response.ok) {
+    return { ok: false, html: '', finalUrl: fetchUrl };
+  }
+
+  return {
+    ok: true,
+    html: await response.text(),
+    finalUrl: response.url,
+  };
+}
+
+function metaFromHtml(html: string): Omit<StoryMeta, 'contentMirrorUrl' | 'archiveMirrorLinks'> {
+  const pageMeta = extractPageMetadataFromHtml(html);
+  return {
+    title: pageMeta.title,
+    description: pageMeta.description,
+    image: pageMeta.image,
+    publishedAt: pageMeta.publishedAt,
+    articleText: htmlToPlainArticleText(html),
+    htmlLang: pageMeta.htmlLang,
+  };
+}
+
+export async function fetchStoryMeta(url: string, options?: { contentMirrorUrl?: string }): Promise<StoryMeta> {
+  const canonicalUrl = getCanonicalArticleUrl(url);
+  const host = hostFromUrl(canonicalUrl);
+  const knownSnapshots = options?.contentMirrorUrl ? [options.contentMirrorUrl] : [];
+  const mirrorLinks = () =>
+    buildArchiveMirrorLinks(canonicalUrl, { knownSnapshotUrls: knownSnapshots });
+
+  try {
+    const direct = await fetchHtmlFromUrl(canonicalUrl);
+    let html = direct.html;
+    let contentMirrorUrl = options?.contentMirrorUrl;
+
+    if (
+      shouldTryArchiveForHost(host) &&
+      (!direct.ok || looksLikePartialPaywall(metaFromHtml(html).articleText ?? ''))
+    ) {
+      const archiveFetch = await fetchHtmlFromUrl(`https://archive.ph/newest/${canonicalUrl}`);
+      if (archiveFetch.ok) {
+        const archiveMeta = metaFromHtml(archiveFetch.html);
+        const directMeta = metaFromHtml(html);
+        const archiveText = archiveMeta.articleText ?? '';
+        const directText = directMeta.articleText ?? '';
+        if (!direct.ok || archiveText.length > directText.length + 400) {
+          html = archiveFetch.html;
+          contentMirrorUrl = archiveFetch.finalUrl;
+          knownSnapshots.length = 0;
+          knownSnapshots.push(archiveFetch.finalUrl);
+        }
+      }
     }
 
-    const html = await response.text();
+    if (!html) {
+      return { archiveMirrorLinks: mirrorLinks() };
+    }
 
-    const htmlLang = html.match(/<html[^>]+lang=["']([^"']+)["'][^>]*>/i)?.[1]?.trim() ?? undefined;
-
-    const title =
-      getMetaContent(html, 'og:title', 'property') ??
-      getMetaContent(html, 'twitter:title', 'name') ??
-      html.match(/<title>([^<]+)<\/title>/i)?.[1]?.trim();
-
-    const description =
-      getMetaContent(html, 'og:description', 'property') ??
-      getMetaContent(html, 'description', 'name') ??
-      getMetaContent(html, 'twitter:description', 'name');
-
-    const image =
-      getMetaContent(html, 'og:image', 'property') ??
-      getMetaContent(html, 'twitter:image', 'name') ??
-      getMetaContent(html, 'og:image:url', 'property');
-
-    const publishedAt = normalizeIso(
-      getMetaContent(html, 'article:published_time', 'property') ??
-        getMetaContent(html, 'article:published_time', 'name') ??
-        getMetaContent(html, 'og:published_time', 'property') ??
-        getMetaContent(html, 'pubdate', 'name') ??
-        getMetaContent(html, 'publishdate', 'name') ??
-        html.match(/<time[^>]+datetime=["']([^"']+)["'][^>]*>/i)?.[1],
-    );
-
+    const meta = metaFromHtml(html);
     return {
-      title: title ? decodeHtmlEntities(title) : undefined,
-      description: description ? decodeHtmlEntities(description) : undefined,
-      image,
-      publishedAt,
-      articleText: extractArticleText(html),
-      htmlLang,
+      ...meta,
+      ...(contentMirrorUrl ? { contentMirrorUrl } : {}),
+      archiveMirrorLinks: buildArchiveMirrorLinks(canonicalUrl, { knownSnapshotUrls: knownSnapshots }),
     };
   } catch {
-    return {};
+    return { archiveMirrorLinks: mirrorLinks() };
   }
 }
 

@@ -1,5 +1,5 @@
-import type { CachedFetchResult } from './http-cache/types.js';
-import { BROWSER_RENDER_TIMEOUT_MS, HTTP_USER_AGENT } from './http-cache/config.js';
+import type { CachedFetchResult } from './http-cache/types.ts';
+import { BROWSER_RENDER_TIMEOUT_MS, HTTP_USER_AGENT } from './http-cache/config.ts';
 
 export async function fetchTextWithBrowserRender(url: string): Promise<CachedFetchResult> {
   const renderStarted = Date.now();

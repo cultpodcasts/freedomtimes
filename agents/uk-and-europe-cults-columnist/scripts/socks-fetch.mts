@@ -8,7 +8,7 @@
 
 import nodeFetch from 'node-fetch';
 import { SocksProxyAgent } from 'socks-proxy-agent';
-import type { FetchFn } from '../src/httpCache.js';
+import type { FetchFn } from '../src/httpCache.ts';
 
 /**
  * Patch globalThis.fetch with the SOCKS proxy fetch so third-party libs

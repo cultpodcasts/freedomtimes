@@ -1,7 +1,7 @@
-import type { RelevanceResult } from './types.js';
-import { ALL_CULT_TERMS } from './cultTerms.js';
-import { EUROPE_REGION_TERMS, UK_REGION_TERMS } from './discoveryConfig.js';
-import { getCoerciveHarmTermsForLanguage, getReligiousGroupTermsForLanguage } from './pipelineTerms.js';
+import type { RelevanceResult } from './types.ts';
+import { ALL_CULT_TERMS } from './cultTerms.ts';
+import { EUROPE_REGION_TERMS, UK_REGION_TERMS } from './discoveryConfig.ts';
+import { getCoerciveHarmTermsForLanguage, getReligiousGroupTermsForLanguage } from './pipelineTerms.ts';
 
 const STRONG_CULT_KEYWORDS = ALL_CULT_TERMS;
 const CONFIGURED_UK_TERMS = normalizeConfiguredTerms(UK_REGION_TERMS);

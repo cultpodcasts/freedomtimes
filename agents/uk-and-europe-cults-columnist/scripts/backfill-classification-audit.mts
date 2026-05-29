@@ -5,7 +5,7 @@
  */
 import { readFile, writeFile } from 'fs/promises';
 // Import directly from pipeline to avoid triggering discoverStories
-import { isCultTopicPreciseWithAudit } from '../src/pipeline.js';
+import { isCultTopicPreciseWithAudit } from '../src/pipeline.ts';
 
 interface DraftArchiveEntry {
   url: string;

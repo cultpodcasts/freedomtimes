@@ -12,9 +12,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../src/config.js';
-import { ARCHIVE_FALLBACK_HOSTS } from '../src/http-cache/config.js';
-import { runPipeline } from '../src/pipeline.js';
+import { loadConfig } from '../src/config.ts';
+import { ARCHIVE_FALLBACK_HOSTS } from '../src/http-cache/config.ts';
+import { runPipeline } from '../src/pipeline.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');

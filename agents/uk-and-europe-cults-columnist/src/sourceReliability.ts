@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { SourceMetadata } from './types.js';
+import type { SourceMetadata } from './types.ts';
 
 function loadPublisherDisplayNames(): Record<string, string> {
   const fileUrl = new URL('../data/publisher-display-names.json', import.meta.url);
