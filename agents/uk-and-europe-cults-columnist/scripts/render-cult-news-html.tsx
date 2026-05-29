@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { detect as detectLanguage } from 'tinyld';
 import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from '../src/discoveryLangGroupStopwords.js';
+import { extractQuotedSpans } from '../src/quotePatterns.js';
 import {
   getReligiousGroupTermsForLanguage,
   getCoerciveHarmTermsForLanguage,
@@ -1100,7 +1101,18 @@ function addNgrams(termCounts: Map<string, number>, tokens: string[], n: number,
  * capitalised) by requiring the preceding character to be a non-sentence-opening context
  * (i.e. the token must not be the very first word and must follow a space, not a period).
  */
-function extractProperNounTokens(original: string, tokens: string[], stopwords: Set<string>): Set<string> {
+function extractQuotedTerms(text: string): Set<string> {
+  const result = new Set<string>();
+  for (const quotedText of extractQuotedSpans(text)) {
+    const lowerQuoted = quotedText.toLowerCase().trim();
+    if (lowerQuoted.length >= 3) {
+      result.add(lowerQuoted);
+    }
+  }
+  return result;
+}
+
+function extractProperNounTokens(original: string, tokens: string[], stopwords: Set<string>, language: string = 'en'): Set<string> {
   // Normalize special quote characters to regular quotes
   original = original.replace(/[ΓÇÿΓÇÖ]/g, "\"");
   const result = new Set<string>();
@@ -1116,64 +1128,68 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
     }
   }
   
-  // Also extract terms that appear in quotes (quoted terms are often proper nouns)
-  // Handle all European quote styles with properly paired quotes
-  // Preserve full quoted phrases including stop words (e.g., "Game of Thrones")
-  const quotePatterns = [
-    // Regular double quotes: "text"
-    /"([^"]+)"/g,
-    // Curly double quotes: "text" "text"
-    /[\u201C\u201E]([^\u201C\u201D\u201E\u201F]+)[\u201D\u201F]/g,
-    // German quotes: „text"
-    /\u201E([^\u201E\u201C]+)\u201C/g,
-    // Guillemets: «text»
-    /\u00BB([^\u00AB\u00BB]+)\u00AB/g,
-    /\u00AB([^\u00AB\u00BB]+)\u00BB/g,
-    // Regular single quotes: 'text'
-    /'([^']+)'/g,
-    // Curly single quotes: 'text' 'text'
-    /[\u2018\u201A]([^\u2018\u2019\u201A\u201B]+)[\u2019\u201B]/g,
-  ];
-  for (const pattern of quotePatterns) {
-    let match;
-    while ((match = pattern.exec(original)) !== null) {
-      const quotedText = match[1];
-      // Add the full quoted phrase as a single term (preserves stop words like "of")
-      const lowerQuoted = quotedText.toLowerCase().trim();
-      if (lowerQuoted.length >= 3) {
-        result.add(lowerQuoted);
-      }
-      // Also add individual non-stopword words for matching flexibility
-      const quotedWords = quotedText.split(/\s+/);
-      for (const word of quotedWords) {
-        const lowerWord = word.toLowerCase();
-        if (lowerWord.length >= 3 && !stopwords.has(lowerWord)) {
-          result.add(lowerWord);
+  // Extract sequences of capitalized words with stop words in between (e.g., "Ahmadi Religion of Peace and Light")
+  // This captures organization names, book titles, etc. that have internal stop words
+  const capitalizedWordPattern = /\b[A-Z][a-z]+\b/g;
+  const capitalizedWords = [];
+  let match;
+  while ((match = capitalizedWordPattern.exec(original)) !== null) {
+    capitalizedWords.push({ word: match[0], index: match.index });
+  }
+  
+  // Build sequences of capitalized words (allowing stop words between them)
+  // Use locale-specific stopwords from discovery lang files
+  const englishStopwords = GROUP_STOPWORDS_BY_LANGUAGE['en'] ?? [];
+  const localStopwords = GROUP_STOPWORDS_BY_LANGUAGE[language] ?? [];
+  const phraseStopwords = new Set([...englishStopwords, ...localStopwords]);
+  
+  for (let i = 0; i < capitalizedWords.length; i++) {
+    const currentWord = capitalizedWords[i];
+    if (!currentWord) continue;
+    
+    let phrase = currentWord.word;
+    let phraseEndIndex = currentWord.index + currentWord.word.length;
+    
+    for (let j = i + 1; j < capitalizedWords.length; j++) {
+      const nextWord = capitalizedWords[j];
+      if (!nextWord) break;
+      
+      const textBetween = original.slice(phraseEndIndex, nextWord.index).trim().toLowerCase();
+      
+      // Allow only stop words between capitalized words
+      const wordsBetween = textBetween.split(/\s+/).filter(w => w.length > 0);
+      const allStopwords = wordsBetween.every(w => phraseStopwords.has(w));
+      
+      if (allStopwords && wordsBetween.length <= 2) {
+        // Build the full phrase including stop words
+        phrase += ' ' + textBetween + ' ' + nextWord.word;
+        phraseEndIndex = nextWord.index + nextWord.word.length;
+        
+        // Add the phrase if it has at least 2 capitalized words
+        const lowerPhrase = phrase.toLowerCase();
+        if (lowerPhrase.length >= 8) {
+          result.add(lowerPhrase);
         }
+      } else {
+        break; // Stop if non-stopword encountered
       }
     }
   }
   
-  // Also extract terms that appear next to German quotation marks
-  const germanQuotePattern = /„([^„“]+)“/g;
-  let germanMatch;
-  while ((germanMatch = germanQuotePattern.exec(original)) !== null) {
-    const quotedText = germanMatch[1];
-    // Add the full quoted phrase as a single term (preserves stop words like "of")
+  // Quoted terms (often proper nouns) — full phrase plus non-stopword tokens
+  for (const quotedText of extractQuotedSpans(original)) {
     const lowerQuoted = quotedText.toLowerCase().trim();
     if (lowerQuoted.length >= 3) {
       result.add(lowerQuoted);
     }
-    // Also add individual non-stopword words for matching flexibility
-    const quotedWords = quotedText.split(/\s+/);
-    for (const word of quotedWords) {
+    for (const word of quotedText.split(/\s+/)) {
       const lowerWord = word.toLowerCase();
       if (lowerWord.length >= 3 && !stopwords.has(lowerWord)) {
         result.add(lowerWord);
       }
     }
   }
-  
+
   return result;
 }
 
@@ -1184,13 +1200,7 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
  */
 function extractQuotedPhraseTerms(text: string, language: string): Set<string> {
   const result = new Set<string>();
-  // Match quoted phrases (both curly quotes and straight quotes)
-  const quotePatterns = [
-    /[""„\u201C\u201D\u201E\u201F\u00AB\u00BB](.+?)[""„\u201C\u201D\u201E\u201F\u00AB\u00BB]/g,
-    /[''\u2018\u2019\u201A\u201B](.+?)[''\u2018\u2019\u201A\u201B]/g,
-  ];
 
-  // Get all cult name aliases for this language
   const cultNames = new Set<string>();
   for (const { canonical, aliases } of SUBJECT_ALIASES) {
     cultNames.add(canonical);
@@ -1201,26 +1211,19 @@ function extractQuotedPhraseTerms(text: string, language: string): Set<string> {
     }
   }
 
-  for (const pattern of quotePatterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const phrase = match[1]!.toLowerCase();
-      const phraseTokens = phrase.split(/\s+/).filter(t => t.length >= 3);
+  for (const quotedText of extractQuotedSpans(text)) {
+    const phrase = quotedText.toLowerCase();
+    const phraseTokens = phrase.split(/\s+/).filter((t) => t.length >= 3);
 
-      // Only process if the quoted phrase contains a cult name
-      const hasCultName = phraseTokens.some(t => cultNames.has(t));
-      if (!hasCultName) continue;
+    const hasCultName = phraseTokens.some((t) => cultNames.has(t));
+    if (!hasCultName) continue;
 
-      // Remove cult names from the phrase
-      const remainingTokens = phraseTokens.filter(t => !cultNames.has(t));
+    const remainingTokens = phraseTokens.filter((t) => !cultNames.has(t));
 
-      // Add remaining tokens and their non-plural variations
-      for (const token of remainingTokens) {
-        result.add(token);
-        // Remove trailing 's' for non-plural variation (if not ending in 'ss')
-        if (token.length > 5 && token.endsWith('s') && !token.endsWith('ss')) {
-          result.add(token.slice(0, -1));
-        }
+    for (const token of remainingTokens) {
+      result.add(token);
+      if (token.length > 5 && token.endsWith('s') && !token.endsWith('ss')) {
+        result.add(token.slice(0, -1));
       }
     }
   }
@@ -1248,9 +1251,9 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
     addNgrams(termCounts, descriptionTokens, 3, 0.9);
     addNgrams(termCounts, articleTokens, 2, 0.3);
 
-    const titleProperNouns = extractProperNounTokens(story.title, titleTokens, stopwords);
-    const descProperNouns = extractProperNounTokens(story.description ?? '', descriptionTokens, stopwords);
-    const articleProperNouns = extractProperNounTokens(story.articleText ?? '', articleTokens, stopwords);
+    const titleProperNouns = extractProperNounTokens(story.title, titleTokens, stopwords, language);
+    const descProperNouns = extractProperNounTokens(story.description ?? '', descriptionTokens, stopwords, language);
+    const articleProperNouns = extractProperNounTokens(story.articleText ?? '', articleTokens, stopwords, language);
     
     // Extract proper nouns from URL slug (entity names often in path even when omitted from title)
     const urlPath = new URL(story.url).pathname;
@@ -1468,6 +1471,26 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         continue;
       }
 
+      // PRIMARY CLUSTERING SIGNAL 2: Shared quoted proper noun unigram (e.g., "Artgemeinschaft")
+      // If stories share a proper noun that appears in quotes in both titles, link them regardless of language
+      // This handles single-word proper nouns like "Artgemeinschaft" that are quoted in titles
+      // Extract quoted terms from both titles and check for overlap
+      const iTitleQuoted = extractQuotedTerms(stories[i].title);
+      const jTitleQuoted = extractQuotedTerms(stories[j].title);
+      const sharedTitleQuoted = [...iTitleQuoted].filter(t => 
+        t.length >= 8 && jTitleQuoted.has(t)
+      );
+      
+      if (sharedTitleQuoted.length >= 1) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
       // SECONDARY: Shared proper noun unigrams (e.g., "hannah", "murray", "game", "thrones")
       // If stories share 3+ proper noun unigrams, link them with lower similarity threshold
       const sharedProperNounUnigrams = [...features[i].anchorTerms].filter(t => 
@@ -1538,8 +1561,11 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
 const MIN_CLUSTER_COHERENCE = 0.01;
 
-function isClusterCoherent(component: number[], features: StoryFeatures[], idf: Map<string, number>): boolean {
+function isClusterCoherent(component: number[], features: StoryFeatures[], idf: Map<string, number>, hasEntityAliasOverlap = false): boolean {
   if (component.length <= 2) return true;
+  // For clusters with entity alias overlap, use much lower coherence threshold
+  // since cross-language stories naturally have low cosine similarity
+  const threshold = hasEntityAliasOverlap ? 0.001 : MIN_CLUSTER_COHERENCE;
   let totalSim = 0;
   let pairs = 0;
   for (let i = 0; i < component.length; i += 1) {
@@ -1548,7 +1574,7 @@ function isClusterCoherent(component: number[], features: StoryFeatures[], idf: 
       pairs += 1;
     }
   }
-  return pairs === 0 || totalSim / pairs >= MIN_CLUSTER_COHERENCE;
+  return pairs === 0 || totalSim / pairs >= threshold;
 }
 
 function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf: Map<string, number>): string {
@@ -1587,9 +1613,16 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
     if (!feature) continue;
     for (const term of feature.anchorTerms) {
       if (term.includes(' ') && term.length >= 8) {
-        const seenCount = storyIndexes.filter(i => features[i]?.anchorTerms.has(term)).length;
-        if (seenCount >= minimumCoverage && !bigramCandidates.includes(term)) {
-          bigramCandidates.push(term);
+        // Normalize spacing to prevent duplicates (e.g., "lev tahor" vs "lev  tahor")
+        const normalizedTerm = term.replace(/\s+/g, ' ').trim();
+        const seenCount = storyIndexes.filter(i => {
+          const feature = features[i];
+          if (!feature) return false;
+          // Check if this story has the term (with any spacing)
+          return [...feature.anchorTerms].some(t => t.replace(/\s+/g, ' ').trim() === normalizedTerm);
+        }).length;
+        if (seenCount >= minimumCoverage && !bigramCandidates.includes(normalizedTerm)) {
+          bigramCandidates.push(normalizedTerm);
         }
       }
     }
@@ -1598,8 +1631,16 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
   // Sort bigram candidates: prefer shorter bigrams, but prioritize those with higher coverage
   // Also prefer bigrams that preserve stop words (like "game of thrones" over "game throne")
   bigramCandidates.sort((a, b) => {
-    const aCoverage = storyIndexes.filter(i => features[i]?.anchorTerms.has(a)).length;
-    const bCoverage = storyIndexes.filter(i => features[i]?.anchorTerms.has(b)).length;
+    const aCoverage = storyIndexes.filter(i => {
+      const feature = features[i];
+      if (!feature) return false;
+      return [...feature.anchorTerms].some(t => t.replace(/\s+/g, ' ').trim() === a);
+    }).length;
+    const bCoverage = storyIndexes.filter(i => {
+      const feature = features[i];
+      if (!feature) return false;
+      return [...feature.anchorTerms].some(t => t.replace(/\s+/g, ' ').trim() === b);
+    }).length;
     // First sort by coverage (higher is better)
     if (aCoverage !== bCoverage) {
       return bCoverage - aCoverage;
@@ -1614,12 +1655,37 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
     return 'Detected Cluster';
   }
 
-  return toTitleCase(top.join(' '));
+  // Deduplicate to prevent doubling (e.g., "Lev Tahor Lev Tahor")
+  // Use case-insensitive deduplication since terms might have different casing
+  const seen = new Set<string>();
+  const uniqueTop: string[] = [];
+  for (const term of top) {
+    const lower = term.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      uniqueTop.push(term);
+    }
+  }
+  
+  // Remove overlapping phrases (e.g., "Ahmadi Religion of Peace and Light" and "Religion of Peace and Light")
+  // Keep only the longest phrase when one is a substring of another
+  const filteredTop = uniqueTop.filter((term, idx) => {
+    const lowerTerm = term.toLowerCase();
+    return !uniqueTop.some((other, otherIdx) => {
+      if (idx === otherIdx) return false;
+      const lowerOther = other.toLowerCase();
+      // If this term is a substring of another term, remove it (keep the longer one)
+      return lowerOther.includes(lowerTerm) && lowerOther.length > lowerTerm.length;
+    });
+  });
+  
+  return toTitleCase(filteredTop.join(' '));
 }
 
 function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
   const features = buildStoryFeatures(stories);
   const idf = buildIdf(features);
+  const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
   const edges = buildAdjacency(features, idf, stories);
   const groups: DetectedGroup[] = [];
   const assigned = new Set<number>();
@@ -1657,17 +1723,40 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
     const totalPairs = (component.length * (component.length - 1)) / 2;
     const bigramEdgeRatio = totalPairs > 0 ? bigramEdgeCount / totalPairs : 0;
     const hasSignificantBigramOverlap = bigramEdgeRatio >= 0.3; // At least 30% of pairs share 2+ bigrams
-
+    
+    // Check if component has significant quoted title term overlap (alternative cross-language signal)
+    // This handles single-word proper nouns like "Artgemeinschaft" that are quoted in titles
+    let quotedTermEdgeCount = 0;
+    for (let a = 0; a < component.length; a++) {
+      for (let b = a + 1; b < component.length; b++) {
+        const idxA = component[a];
+        const idxB = component[b];
+        const quotedTermsA = extractQuotedTerms(stories[idxA].title);
+        const quotedTermsB = extractQuotedTerms(stories[idxB].title);
+        const sharedQuoted = [...quotedTermsA].filter(t => 
+          t.length >= 8 && quotedTermsB.has(t)
+        );
+        if (sharedQuoted.length >= 1) {
+          quotedTermEdgeCount++;
+        }
+      }
+    }
+    const quotedTermEdgeRatio = totalPairs > 0 ? quotedTermEdgeCount / totalPairs : 0;
+    const hasSignificantQuotedTermOverlap = quotedTermEdgeRatio >= 0.3; // At least 30% of pairs share quoted terms
 
     // Iteratively prune members that don't link to required percentage of others.
     // Pure complete-linkage (100%) is too strict for cross-language clusters;
     // majority-linkage prevents transitive bridges while still allowing near-cliques.
-    // Cross-language clusters with shared proper noun bigrams use lower threshold (60%).
-    const majorityThreshold = (isCrossLanguage && hasSignificantBigramOverlap) ? 0.6 : 0.8;
+    // Cross-language clusters with shared proper noun bigrams OR quoted terms use lower threshold (60%).
+    const majorityThreshold = (isCrossLanguage && (hasSignificantBigramOverlap || hasSignificantQuotedTermOverlap)) ? 0.6 : 0.8;
     let changed = true;
+    let iterationCount = 0;
+    
     while (changed) {
+      iterationCount++;
       changed = false;
       const next: number[] = [];
+      
       for (const a of component) {
         const aEdges = edges.get(a) ?? new Set<number>();
         const others = component.filter((b) => b !== a);
@@ -1683,16 +1772,40 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         }).length;
         const bigramRatio = others.length === 0 ? 1 : bigramSharedCount / others.length;
         
+        // Additional check: if story shares quoted title terms with enough others, keep it even if linkRatio is lower
+        const aTitleQuoted = extractQuotedTerms(stories[a].title);
+        const titleQuotedSharedCount = others.filter((b) => {
+          const bTitleQuoted = extractQuotedTerms(stories[b].title);
+          const shared = [...aTitleQuoted].filter(t => 
+            t.length >= 8 && bTitleQuoted.has(t)
+          );
+          return shared.length >= 1;
+        }).length;
+        const titleQuotedRatio = others.length === 0 ? 1 : titleQuotedSharedCount / others.length;
+        
         // If story has exclusive bigrams not shared with others, require higher threshold
+        // BUT skip this check if component has significant quoted term overlap (stronger signal for single-word proper nouns)
         const aBigrams = [...features[a].anchorTerms].filter(t => t.includes(' ') && t.length >= 8);
         const hasExclusiveBigrams = aBigrams.some(t => !others.every(b => features[b].anchorTerms.has(t)));
         
         // If story has exclusive bigrams, require it to share bigrams with 60%+ of others AND have linkRatio >= 60%
-        if (hasExclusiveBigrams) {
+        // Skip this check if component has significant quoted term overlap (e.g., for "Artgemeinschaft")
+        if (hasExclusiveBigrams && !hasSignificantQuotedTermOverlap) {
           if (bigramRatio < 0.6 || linkRatio < 0.6) {
             changed = true;
             continue;
           }
+        }
+        
+        // If story shares quoted title terms with 50%+ of others, use lower threshold (40%)
+        // This keeps quoted-term-based clusters together even if they don't have high linkage
+        if (titleQuotedRatio >= 0.5) {
+          if (linkRatio >= 0.4) {
+            next.push(a);
+          } else {
+            changed = true;
+          }
+          continue;
         }
         
         // If story shares bigrams with 50%+ of others, use lower threshold (50%)

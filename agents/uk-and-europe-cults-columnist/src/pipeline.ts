@@ -25,6 +25,8 @@ import {
 } from './pipelineTerms.js';
 import { fetchTextWithCache } from './httpCache.js';
 import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.js';
+import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.js';
+import { extractQuotedSpans } from './quotePatterns.js';
 import type { DraftPayload, PipelineResult } from './types.js';
 
 // Load subject aliases for proper noun matching
@@ -56,7 +58,7 @@ function tokenizeForProperNouns(text: string): string[] {
 /**
  * Extract proper nouns from text using capitalization and quoted phrases
  */
-function extractProperNouns(text: string): Set<string> {
+function extractProperNouns(text: string, language: string = 'en'): Set<string> {
   const result = new Set<string>();
   const tokens = tokenizeForProperNouns(text);
   
@@ -70,34 +72,65 @@ function extractProperNouns(text: string): Set<string> {
     }
   }
   
-  // Extract quoted terms (often proper nouns) - preserve full phrase including stop words
-  const quotePatterns = [
-    /"([^"]+)"/g,
-    /[\u201C\u201E]([^\u201C\u201D\u201E\u201F]+)[\u201D\u201F]/g,
-    /\u201E([^\u201E\u201C]+)\u201C/g,
-    /\u00BB([^\u00AB\u00BB]+)\u00AB/g,
-    /\u00AB([^\u00AB\u00BB]+)\u00BB/g,
-    /'([^']+)'/g,
-    /[\u2018\u201A]([^\u2018\u2019\u201A\u201B]+)[\u2019\u201B]/g,
-  ];
+  // Extract sequences of capitalized words with stop words in between (e.g., "Ahmadi Religion of Peace and Light")
+  // This captures organization names, book titles, etc. that have internal stop words
+  const capitalizedWordPattern = /\b[A-Z][a-z]+\b/g;
+  const capitalizedWords = [];
+  let match;
+  while ((match = capitalizedWordPattern.exec(text)) !== null) {
+    capitalizedWords.push({ word: match[0], index: match.index });
+  }
   
-  for (const pattern of quotePatterns) {
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      const quotedText = match[1];
-      if (!quotedText) continue;
-      // Add the full quoted phrase as a single proper noun (preserves stop words like "of")
-      const lowerQuoted = quotedText.toLowerCase().trim();
-      if (lowerQuoted.length >= 3) {
-        result.add(lowerQuoted);
-      }
-      // Also add individual words for matching flexibility
-      const quotedWords = quotedText.split(/\s+/);
-      for (const word of quotedWords) {
-        const lowerWord = word.toLowerCase();
-        if (lowerWord.length >= 3) {
-          result.add(lowerWord);
+  // Build sequences of capitalized words (allowing stop words between them)
+  // Use locale-specific stopwords from discovery lang files
+  const groupStopwordsByLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
+  const englishStopwords = groupStopwordsByLang['en'] ?? [];
+  const localStopwords = groupStopwordsByLang[language] ?? [];
+  const stopwords = new Set([...englishStopwords, ...localStopwords]);
+  
+  for (let i = 0; i < capitalizedWords.length; i++) {
+    const currentWord = capitalizedWords[i];
+    if (!currentWord) continue;
+    
+    let phrase = currentWord.word;
+    let phraseEndIndex = currentWord.index + currentWord.word.length;
+    
+    for (let j = i + 1; j < capitalizedWords.length; j++) {
+      const nextWord = capitalizedWords[j];
+      if (!nextWord) break;
+      
+      const textBetween = text.slice(phraseEndIndex, nextWord.index).trim().toLowerCase();
+      
+      // Allow only stop words between capitalized words
+      const wordsBetween = textBetween.split(/\s+/).filter(w => w.length > 0);
+      const allStopwords = wordsBetween.every(w => stopwords.has(w));
+      
+      if (allStopwords && wordsBetween.length <= 2) {
+        // Build the full phrase including stop words
+        phrase += ' ' + textBetween + ' ' + nextWord.word;
+        phraseEndIndex = nextWord.index + nextWord.word.length;
+        
+        // Add the phrase if it has at least 2 capitalized words
+        const lowerPhrase = phrase.toLowerCase();
+        if (lowerPhrase.length >= 8) {
+          result.add(lowerPhrase);
         }
+      } else {
+        break; // Stop if non-stopword encountered
+      }
+    }
+  }
+  
+  // Extract quoted terms (often proper nouns) - preserve full phrase including stop words
+  for (const quotedText of extractQuotedSpans(text)) {
+    const lowerQuoted = quotedText.toLowerCase().trim();
+    if (lowerQuoted.length >= 3) {
+      result.add(lowerQuoted);
+    }
+    for (const word of quotedText.split(/\s+/)) {
+      const lowerWord = word.toLowerCase();
+      if (lowerWord.length >= 3) {
+        result.add(lowerWord);
       }
     }
   }
@@ -332,7 +365,7 @@ export function isCultTopicPreciseWithAudit(
 
   // Extract proper nouns from title and body
   const fullText = `${title} ${text.slice(0, 2800)}`;
-  const properNouns = extractProperNouns(fullText);
+  const properNouns = extractProperNouns(fullText, language);
   const matchedAliases = matchProperNounsToAliases(properNouns);
 
   const strictExtensions = getStrictCultTermExtensionsForLanguage(language);
