@@ -54,13 +54,11 @@ Terms indicating actual harm, abuse, or coercion (strong signals of problematic 
 - Italian: `["abuso", "lavaggio del cervello", "coercizione", "schiavitù moderna"]`
 
 ### 5. `groupStopwords` (array of strings)
-Common words that should be ignored when identifying group names.
+Common words ignored when extracting cluster phrases and anchor terms (grammar, news chrome, publisher UI).
 
-**Purpose:** Prevents matching on generic terms that aren't actual group names.
+**Purpose:** Single per-locale stopword list for clustering and phrase extraction. Language-agnostic terms shared by all locales live in `data/cluster-token-stopwords.json` → `base` and are merged at load time.
 
-**Examples:**
-- English: `["group", "community", "organization"]`
-- Italian: `["gruppo", "comunità", "organizzazione"]`
+**Edit here** — not in TypeScript. Do not duplicate lists in `cluster-token-stopwords.json` locale keys (removed).
 
 ### 6. `figurativeCultPhrases` (array of strings)
 **MOST IMPORTANT FOR FALSE POSITIVES**

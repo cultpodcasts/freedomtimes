@@ -27,7 +27,7 @@ import { extractPageMetadataFromHtml, htmlToPlainArticleText } from './articleCo
 import { getCanonicalArticleUrl, isArchiveMirrorHost, looksLikePartialPaywall } from './archiveMirrors.ts';
 import { fetchTextWithCache } from './httpCache.ts';
 import { REGION_TERMS, REGIONAL_HOST_SUFFIXES } from './discoveryConfig.ts';
-import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.ts';
+import { clusterStopwordsForLanguage } from './clusterStopwords.ts';
 import { extractQuotedSpans } from './quotePatterns.ts';
 import type { DraftPayload, PipelineResult } from './types.ts';
 
@@ -85,10 +85,7 @@ function extractProperNouns(text: string, language: string = 'en'): Set<string> 
   
   // Build sequences of capitalized words (allowing stop words between them)
   // Use locale-specific stopwords from discovery lang files
-  const groupStopwordsByLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
-  const englishStopwords = groupStopwordsByLang['en'] ?? [];
-  const localStopwords = groupStopwordsByLang[language] ?? [];
-  const stopwords = new Set([...englishStopwords, ...localStopwords]);
+  const stopwords = clusterStopwordsForLanguage(language);
   
   for (let i = 0; i < capitalizedWords.length; i++) {
     const currentWord = capitalizedWords[i];

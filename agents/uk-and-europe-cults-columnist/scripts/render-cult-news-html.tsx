@@ -4,20 +4,31 @@
 /** @jsxFrag Fragment */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { detect as detectLanguage } from 'tinyld';
-import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from '../src/discoveryLangGroupStopwords.js';
-import { extractQuotedSpans } from '../src/quotePatterns.js';
+import { clusterStopwordsForLanguage } from '../src/clusterStopwords.ts';
+import { extractQuotedSpans } from '../src/quotePatterns.ts';
 import {
   getReligiousGroupTermsForLanguage,
   getCoerciveHarmTermsForLanguage,
-} from '../src/pipelineTerms.js';
-import { getCultTermsForLanguage } from '../src/cultTerms.js';
-import { hasFigurativeCultUsage } from '../src/pipeline.js';
+} from '../src/pipelineTerms.ts';
+import { getCultTermsForLanguage } from '../src/cultTerms.ts';
+import { cleanDisplayTitle } from '../src/articleContent.ts';
+import { buildArchiveMirrorLinks, getCanonicalArticleUrl } from '../src/archiveMirrors.ts';
+import { ARCHIVE_FALLBACK_HOSTS } from '../src/http-cache/config.ts';
+import { buildCitationReport, buildStorySourceCitation, type CitationReport } from '../src/sourceCitation.ts';
+import { hasFigurativeCultUsage } from '../src/pipeline.ts';
+import {
+  buildGenericCultClusterTermSet,
+  isClusterSignalBigram,
+  isClusterSignalUnigram,
+  isGenericCultClusterTerm,
+} from '../src/clusterGenericCultTerms.ts';
 import {
   Fragment,
   DRAFTS_ARCHIVE_PATH,
   DRAFTS_PATH,
   LOG_PATH,
   OUTPUT_PATH,
+  SOURCES_OUTPUT_PATH,
   extractDraftsFromLog,
   extractRunSummary,
   fetchStoryMeta,
@@ -25,7 +36,7 @@ import {
   h,
   renderDocument,
   type EnrichedStory,
-} from './render-cult-news-html.helpers.js';
+} from './render-cult-news-html.helpers.ts';
 
 declare global {
   namespace JSX {
@@ -46,6 +57,7 @@ type DraftStory = {
   url: string;
   host?: string;
   publishedAt?: string;
+  contentMirrorUrl?: string;
   classificationAudit?: CultClassificationAudit;
 };
 
@@ -61,19 +73,25 @@ type CultClassificationAudit = {
 
 type RawDraftShape = {
   title?: unknown;
-  source?: { url?: unknown; host?: unknown; publishedAt?: unknown };
+  source?: { url?: unknown; host?: unknown; publishedAt?: unknown; contentMirrorUrl?: unknown };
   classificationAudit?: CultClassificationAudit;
 };
 
 function mapRawDraft(draft: RawDraftShape): DraftStory | null {
   const title = typeof draft.title === 'string' ? draft.title : '';
-  const url = typeof draft.source?.url === 'string' ? draft.source.url : '';
+  const rawSourceUrl = typeof draft.source?.url === 'string' ? draft.source.url : '';
+  const url = getCanonicalArticleUrl(rawSourceUrl);
   if (!title || !url) return null;
+  const storedMirror =
+    typeof draft.source?.contentMirrorUrl === 'string' ? draft.source.contentMirrorUrl : undefined;
+  const contentMirrorUrl =
+    storedMirror ?? (rawSourceUrl && rawSourceUrl !== url ? rawSourceUrl : undefined);
   return {
     title,
     url,
     host: typeof draft.source?.host === 'string' ? draft.source.host : undefined,
     publishedAt: typeof draft.source?.publishedAt === 'string' ? draft.source.publishedAt : undefined,
+    contentMirrorUrl,
     classificationAudit: draft.classificationAudit,
   };
 }
@@ -393,12 +411,25 @@ function summarizeExclusions(excluded: Array<{ url: string; reason: string }>): 
   }
 }
 
+function shouldShowArchiveMirrors(story: EnrichedStory): boolean {
+  const host = (story.host || getHostname(story.url) || '').toLowerCase();
+  if (story.contentMirrorUrl) return true;
+  return Array.from(ARCHIVE_FALLBACK_HOSTS).some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
+}
+
 function renderCard(story: EnrichedStory, language?: string) {
-  const hostname = story.host || new URL(story.url).hostname.replace(/^www\./, '');
+  const canonicalUrl = story.url;
+  const hostname = story.host || new URL(canonicalUrl).hostname.replace(/^www\./, '');
   const logo = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`;
   const isNonEnglish = language && language !== 'en';
-  const escapedUrl = story.url;
+  const escapedUrl = canonicalUrl;
   const escapedTitle = story.title;
+  const archiveMirrors =
+    story.archiveMirrorLinks ??
+    buildArchiveMirrorLinks(canonicalUrl, {
+      knownSnapshotUrls: story.contentMirrorUrl ? [story.contentMirrorUrl] : [],
+    });
+  const showArchiveMirrors = shouldShowArchiveMirrors(story) && archiveMirrors.length > 0;
   // Serialize classification audit for data attribute
   const hasAudit = !!story.classificationAudit;
   const auditData = hasAudit
@@ -422,13 +453,29 @@ function renderCard(story: EnrichedStory, language?: string) {
           {isNonEnglish ? <span className="lang-tag">{language}</span> : null}
         </div>
         <h2 {...(isNonEnglish ? { lang: language } : {})}>
-          <a href={story.url} target="_blank" rel="noopener noreferrer">
+          <a href={canonicalUrl} target="_blank" rel="noopener noreferrer">
             {story.title}
           </a>
         </h2>
         <p {...(isNonEnglish ? { lang: language } : {})}>{story.description || 'No abstract available.'}</p>
         <div className="feedback-row">
-          <a className="read" href={story.url} target="_blank" rel="noopener noreferrer">Read full story</a>
+          <a className="read" href={canonicalUrl} target="_blank" rel="noopener noreferrer">Read on {hostname}</a>
+          {showArchiveMirrors ? (
+            <div className="archive-mirror-links">
+              <span className="archive-mirror-label">Also via archive:</span>
+              {archiveMirrors.map((mirror) => (
+                <a
+                  className="archive-mirror-link"
+                  href={mirror.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {mirror.label}
+                </a>
+              ))}
+            </div>
+          ) : null}
+          <div className="fb-row-actions">
           <button
             className="fb-btn"
             data-fb-url={escapedUrl}
@@ -443,6 +490,7 @@ function renderCard(story: EnrichedStory, language?: string) {
             data-fb-reason="wrong-cluster"
             onclick="window._fbClick(this)"
           >⚠️ Wrong cluster</button>
+          </div>
         </div>
       </div>
     </article>
@@ -622,9 +670,36 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
           }
           .feedback-row {
             display: flex;
+            flex-direction: column;
+            align-items: flex-start;
             gap: 6px;
             margin-top: 10px;
+          }
+          .feedback-row .fb-row-actions {
+            display: flex;
+            gap: 6px;
             flex-wrap: wrap;
+          }
+          .archive-mirror-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 10px;
+            align-items: center;
+            font-size: 0.82rem;
+            font-family: system-ui, sans-serif;
+            color: #5c5548;
+          }
+          .archive-mirror-label {
+            font-weight: 600;
+          }
+          .archive-mirror-link {
+            color: #4a5568;
+            text-decoration: none;
+            border-bottom: 1px dotted #9a9488;
+          }
+          .archive-mirror-link:hover {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
           }
           .fb-btn {
             font-size: 0.72rem;
@@ -923,8 +998,6 @@ type DetectedGroup = {
   storyIndexes: Set<number>;
 };
 
-type StopwordsByLanguage = Record<string, string[]>;
-
 type StoryFeatures = {
   index: number;
   language: string;
@@ -933,7 +1006,7 @@ type StoryFeatures = {
   termCounts: Map<string, number>;
 };
 
-import type { SubjectAlias } from '../src/pipelineTerms.js';
+import type { SubjectAlias } from '../src/pipelineTerms.ts';
 
 const SUBJECT_ALIASES: SubjectAlias[] = (() => {
   try {
@@ -943,6 +1016,8 @@ const SUBJECT_ALIASES: SubjectAlias[] = (() => {
     return [];
   }
 })();
+
+const GENERIC_CULT_CLUSTER_TERMS = buildGenericCultClusterTermSet();
 
 function injectEntityAliases(
   text: string,
@@ -970,13 +1045,6 @@ function injectEntityAliases(
     }
   }
 }
-
-const GROUP_STOPWORDS_BY_LANGUAGE: StopwordsByLanguage = (() => {
-  const byLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
-  return Object.fromEntries(
-    Object.entries(byLang).map(([lang, terms]) => [lang, terms.map((value) => value.toLowerCase())]),
-  );
-})();
 
 function tokenize(value: string, stopwords: Set<string>): string[] {
   function stemOnce(token: string): string {
@@ -1021,9 +1089,7 @@ function toTitleCase(value: string): string {
 }
 
 function buildStopwordSet(language: string): Set<string> {
-  const english = GROUP_STOPWORDS_BY_LANGUAGE.en ?? [];
-  const local = GROUP_STOPWORDS_BY_LANGUAGE[language] ?? [];
-  return new Set([...english, ...local]);
+  return clusterStopwordsForLanguage(language);
 }
 
 function detectStoryLanguage(story: EnrichedStory): string {
@@ -1139,9 +1205,7 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
   
   // Build sequences of capitalized words (allowing stop words between them)
   // Use locale-specific stopwords from discovery lang files
-  const englishStopwords = GROUP_STOPWORDS_BY_LANGUAGE['en'] ?? [];
-  const localStopwords = GROUP_STOPWORDS_BY_LANGUAGE[language] ?? [];
-  const phraseStopwords = new Set([...englishStopwords, ...localStopwords]);
+  const phraseStopwords = clusterStopwordsForLanguage(language);
   
   for (let i = 0; i < capitalizedWords.length; i++) {
     const currentWord = capitalizedWords[i];
@@ -1379,6 +1443,9 @@ function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map
       shared += 1;
       continue;
     }
+    if (isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+      continue;
+    }
     if ((idf.get(term) ?? 0) < 1.0) {
       continue;
     }
@@ -1386,6 +1453,33 @@ function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map
   }
 
   return shared;
+}
+
+/** Canonical subject-aliases present in a story's anchor terms. */
+function subjectAliasesInAnchorTerms(anchorTerms: Set<string>): string[] {
+  const canonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
+  return [...anchorTerms].filter((t) => canonicals.has(t));
+}
+
+/**
+ * Block clustering when stories refer to different named groups from subject-aliases.json,
+ * or when only one story names a tracked group and the other does not.
+ */
+function hasSubjectAliasClusterConflict(aliasesA: string[], aliasesB: string[]): boolean {
+  const setA = new Set(aliasesA);
+  const setB = new Set(aliasesB);
+  if (setA.size === 0 && setB.size === 0) {
+    return false;
+  }
+  if (setA.size === 0 || setB.size === 0) {
+    return true;
+  }
+  for (const alias of setA) {
+    if (setB.has(alias)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, stories: EnrichedStory[]): Map<number, Set<number>> {
@@ -1402,15 +1496,35 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
       const sameLanguage = features[i].language === features[j].language;
 
-      // Check if stories share the same entity alias (not just any entity alias)
-      const entityAliasesI = [...features[i].anchorTerms].filter(t => entityAliasCanonicals.has(t));
-      const entityAliasesJ = [...features[j].anchorTerms].filter(t => entityAliasCanonicals.has(t));
-      const hasEntityAliasMatch = entityAliasesI.some(t => entityAliasesJ.includes(t));
+      const entityAliasesI = subjectAliasesInAnchorTerms(features[i].anchorTerms);
+      const entityAliasesJ = subjectAliasesInAnchorTerms(features[j].anchorTerms);
+      const hasEntityAliasMatch = entityAliasesI.some((t) => entityAliasesJ.includes(t));
+
+      // Apply before primary signals (bigrams / generic "secte" unigrams bypassed the old fallback-only check).
+      if (hasSubjectAliasClusterConflict(entityAliasesI, entityAliasesJ)) {
+        continue;
+      }
+
+      const sharedEntityAliases = entityAliasesI.filter((a) => entityAliasesJ.includes(a));
+      if (sharedEntityAliases.length > 0) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
 
       // Count non-entity-alias shared terms
       let nonAliasShared = 0;
       for (const term of features[i].anchorTerms) {
-        if (features[j].anchorTerms.has(term) && !entityAliasCanonicals.has(term) && term.length >= 4) {
+        if (
+          features[j].anchorTerms.has(term) &&
+          !entityAliasCanonicals.has(term) &&
+          term.length >= 4 &&
+          !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)
+        ) {
           nonAliasShared += 1;
         }
       }
@@ -1441,24 +1555,16 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
                                       (hasQuotedTermsI && hasQuotedTermsJ &&
                                        ![...features[i].quotedPhraseTerms].some(t => features[j].quotedPhraseTerms.has(t))));
 
-      // For Plymouth Brethren, also check for sub-topic keywords in title
-      // Only block if stories have mutually exclusive sub-topic keywords (e.g., one has "unchosen", other has "pets")
-      const hasUnchosenI = stories[i].title.toLowerCase().includes('unchosen');
-      const hasUnchosenJ = stories[j].title.toLowerCase().includes('unchosen');
-      const hasPetsI = stories[i].title.toLowerCase().includes('pets') || stories[i].title.toLowerCase().includes('animaux');
-      const hasPetsJ = stories[j].title.toLowerCase().includes('pets') || stories[j].title.toLowerCase().includes('animaux');
-      const bothPlymouthBrethren = (entityAliasesI.includes('plymouth brethren') || entityAliasesJ.includes('plymouth brethren'));
-      const hasSubTopicMismatch = bothPlymouthBrethren &&
-                                  ((hasUnchosenI && hasPetsJ) || (hasPetsI && hasUnchosenJ));
-
       // Check if stories share any quoted phrase terms (quoted proper nouns are strong clustering signal)
       const sharedQuotedTerms = [...features[i].quotedPhraseTerms].filter(t => features[j].quotedPhraseTerms.has(t));
       const hasSharedQuotedTerm = sharedQuotedTerms.length > 0;
 
       // PRIMARY CLUSTERING SIGNAL: Shared proper noun bigrams (e.g., "hannah murray", "game of thrones")
       // If stories share 2+ proper noun bigrams, link them regardless of language or similarity
-      const sharedProperNounBigrams = [...features[i].anchorTerms].filter(t => 
-        t.includes(' ') && t.length >= 8 && features[j].anchorTerms.has(t)
+      const sharedProperNounBigrams = [...features[i].anchorTerms].filter(
+        (t) =>
+          features[j].anchorTerms.has(t) &&
+          isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
       );
       
       if (sharedProperNounBigrams.length >= 2) {
@@ -1477,8 +1583,11 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       // Extract quoted terms from both titles and check for overlap
       const iTitleQuoted = extractQuotedTerms(stories[i].title);
       const jTitleQuoted = extractQuotedTerms(stories[j].title);
-      const sharedTitleQuoted = [...iTitleQuoted].filter(t => 
-        t.length >= 8 && jTitleQuoted.has(t)
+      const sharedTitleQuoted = [...iTitleQuoted].filter(
+        (t) =>
+          t.length >= 8 &&
+          jTitleQuoted.has(t) &&
+          !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
       );
       
       if (sharedTitleQuoted.length >= 1) {
@@ -1493,10 +1602,22 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 
       // SECONDARY: Shared proper noun unigrams (e.g., "hannah", "murray", "game", "thrones")
       // If stories share 3+ proper noun unigrams, link them with lower similarity threshold
-      const sharedProperNounUnigrams = [...features[i].anchorTerms].filter(t => 
-        !t.includes(' ') && t.length >= 4 && features[j].anchorTerms.has(t) && !entityAliasCanonicals.has(t)
+      const sharedProperNounUnigrams = [...features[i].anchorTerms].filter(
+        (t) =>
+          features[j].anchorTerms.has(t) &&
+          isClusterSignalUnigram(t, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals),
       );
-      if (sharedProperNounUnigrams.length >= 3 && similarity >= 0.10) {
+      const sharedSignalBigrams = [...features[i].anchorTerms].filter(
+        (t) =>
+          features[j].anchorTerms.has(t) &&
+          isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
+      );
+      // Unigrams alone often reflect publisher chrome (same site template), not the same story.
+      if (
+        sharedProperNounUnigrams.length >= 3 &&
+        sharedSignalBigrams.length >= 1 &&
+        similarity >= 0.10
+      ) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
         left.add(j);
@@ -1525,24 +1646,22 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         (!sameLanguage && sharedRareAnchorTerms >= 2 && similarity >= 0.15) || // Cross-language: 2+ shared terms, higher similarity
         (hasSharedQuotedTerm && similarity >= 0.12); // Quoted terms need meaningful similarity
 
-      // Block linking if one story carries an entity alias the other doesn't share.
-      // This prevents alias-bearing stories from being pulled into generic clusters.
-      const eitherHasAlias = entityAliasesI.length > 0 || entityAliasesJ.length > 0;
-      if (eitherHasAlias && !hasEntityAliasMatch) {
-        continue;
-      }
-
       // Block linking if stories have mismatched quoted phrase terms
       if (hasMismatchedQuotedTerms) {
         continue;
       }
 
-      // Block linking if Plymouth Brethren stories have sub-topic mismatch
-      if (hasSubTopicMismatch) {
+      if (!shouldLink) {
         continue;
       }
 
-      if (!shouldLink) {
+      // Cosine / rare-term overlap alone is not enough (publisher templates, section nav).
+      if (
+        !hasEntityAliasMatch &&
+        sharedSignalBigrams.length < 1 &&
+        sharedTitleQuoted.length < 1 &&
+        sharedProperNounBigrams.length < 2
+      ) {
         continue;
       }
 
@@ -1577,7 +1696,29 @@ function isClusterCoherent(component: number[], features: StoryFeatures[], idf: 
   return pairs === 0 || totalSim / pairs >= threshold;
 }
 
-function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf: Map<string, number>): string {
+function selectGroupLabel(
+  features: StoryFeatures[],
+  storyIndexes: number[],
+  idf: Map<string, number>,
+): string {
+  const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
+  const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.5));
+  const aliasCoverage = new Map<string, number>();
+  for (const idx of storyIndexes) {
+    const feature = features[idx];
+    if (!feature) continue;
+    for (const term of feature.anchorTerms) {
+      if (!entityAliasCanonicals.has(term)) continue;
+      aliasCoverage.set(term, (aliasCoverage.get(term) ?? 0) + 1);
+    }
+  }
+  const dominantAlias = [...aliasCoverage.entries()]
+    .filter(([, count]) => count >= minimumCoverage)
+    .sort((a, b) => b[1] - a[1])[0];
+  if (dominantAlias) {
+    return toTitleCase(dominantAlias[0]);
+  }
+
   const scoreByTerm = new Map<string, number>();
   const seenByTerm = new Map<string, number>();
 
@@ -1600,9 +1741,12 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
     }
   }
 
-  const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.5));
   const candidates = Array.from(scoreByTerm.entries())
-    .filter(([term]) => (seenByTerm.get(term) ?? 0) >= minimumCoverage)
+    .filter(
+      ([term]) =>
+        (seenByTerm.get(term) ?? 0) >= minimumCoverage &&
+        !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS),
+    )
     .sort((a, b) => b[1] - a[1])
     .map(([term]) => term);
 
@@ -1612,7 +1756,7 @@ function selectGroupLabel(features: StoryFeatures[], storyIndexes: number[], idf
     const feature = features[idx];
     if (!feature) continue;
     for (const term of feature.anchorTerms) {
-      if (term.includes(' ') && term.length >= 8) {
+      if (isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) {
         // Normalize spacing to prevent duplicates (e.g., "lev tahor" vs "lev  tahor")
         const normalizedTerm = term.replace(/\s+/g, ' ').trim();
         const seenCount = storyIndexes.filter(i => {
@@ -1712,8 +1856,8 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
       for (let b = a + 1; b < component.length; b++) {
         const idxA = component[a];
         const idxB = component[b];
-        const shared = [...features[idxA].anchorTerms].filter(t => 
-          t.includes(' ') && t.length >= 8 && features[idxB].anchorTerms.has(t)
+        const shared = [...features[idxA].anchorTerms].filter(
+          (t) => features[idxB].anchorTerms.has(t) && isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
         );
         if (shared.length >= 2) {
           bigramEdgeCount++;
@@ -1733,8 +1877,11 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         const idxB = component[b];
         const quotedTermsA = extractQuotedTerms(stories[idxA].title);
         const quotedTermsB = extractQuotedTerms(stories[idxB].title);
-        const sharedQuoted = [...quotedTermsA].filter(t => 
-          t.length >= 8 && quotedTermsB.has(t)
+        const sharedQuoted = [...quotedTermsA].filter(
+          (t) =>
+            t.length >= 8 &&
+            quotedTermsB.has(t) &&
+            !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
         );
         if (sharedQuoted.length >= 1) {
           quotedTermEdgeCount++;
@@ -1765,8 +1912,8 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         
         // Additional check: if story shares proper noun bigrams with enough others, keep it even if linkRatio is lower
         const bigramSharedCount = others.filter((b) => {
-          const shared = [...features[a].anchorTerms].filter(t => 
-            t.includes(' ') && t.length >= 8 && features[b].anchorTerms.has(t)
+          const shared = [...features[a].anchorTerms].filter(
+            (t) => features[b].anchorTerms.has(t) && isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
           );
           return shared.length >= 2;
         }).length;
@@ -1776,8 +1923,11 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         const aTitleQuoted = extractQuotedTerms(stories[a].title);
         const titleQuotedSharedCount = others.filter((b) => {
           const bTitleQuoted = extractQuotedTerms(stories[b].title);
-          const shared = [...aTitleQuoted].filter(t => 
-            t.length >= 8 && bTitleQuoted.has(t)
+          const shared = [...aTitleQuoted].filter(
+            (t) =>
+              t.length >= 8 &&
+              bTitleQuoted.has(t) &&
+              !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS),
           );
           return shared.length >= 1;
         }).length;
@@ -1785,7 +1935,9 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         
         // If story has exclusive bigrams not shared with others, require higher threshold
         // BUT skip this check if component has significant quoted term overlap (stronger signal for single-word proper nouns)
-        const aBigrams = [...features[a].anchorTerms].filter(t => t.includes(' ') && t.length >= 8);
+        const aBigrams = [...features[a].anchorTerms].filter((t) =>
+          isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
+        );
         const hasExclusiveBigrams = aBigrams.some(t => !others.every(b => features[b].anchorTerms.has(t)));
         
         // If story has exclusive bigrams, require it to share bigrams with 60%+ of others AND have linkRatio >= 60%
@@ -1901,7 +2053,7 @@ async function main(): Promise<void> {
 
   // Canonicalize known mirror URLs so dedupe collapses wrapped-source duplicates.
   const canonicalDrafts = rawDrafts.map((draft) => {
-    const canonicalUrl = canonicalizeStoryUrl(draft.url);
+    const canonicalUrl = getCanonicalArticleUrl(canonicalizeStoryUrl(draft.url));
     const canonicalHost = (() => {
       try {
         return new URL(canonicalUrl).hostname.replace(/^www\./, '');
@@ -1969,15 +2121,17 @@ async function main(): Promise<void> {
 
   const fetchedStories: EnrichedStory[] = [];
   for (const draft of drafts) {
-    const meta = await fetchStoryMeta(draft.url);
+    const meta = await fetchStoryMeta(draft.url, { contentMirrorUrl: draft.contentMirrorUrl });
     const enrichedStory: EnrichedStory = {
       ...draft,
-      title: meta.title?.trim() || draft.title,
+      title: meta.title?.trim() || cleanDisplayTitle(draft.title),
       description: meta.description?.trim() || '',
       image: meta.image,
       publishedAt: meta.publishedAt || draft.publishedAt,
       articleText: meta.articleText?.trim() || '',
       htmlLang: meta.htmlLang,
+      contentMirrorUrl: meta.contentMirrorUrl ?? draft.contentMirrorUrl,
+      archiveMirrorLinks: meta.archiveMirrorLinks,
       classificationAudit: draft.classificationAudit, // Explicitly preserve audit data
     };
     fetchedStories.push(enrichedStory);

@@ -15,7 +15,10 @@ import {
   PRIORITY_WATCHLIST_HOSTS,
   REGION_TERMS,
 } from './discoveryConfig.ts';
-import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.ts';
+import {
+  clusterStopwordsForLanguage,
+  normalizeClusterStopwordLang,
+} from './clusterStopwords.ts';
 import {
   getCoerciveHarmTermsForLanguage,
   getReligiousGroupTermsForLanguage,
@@ -804,95 +807,6 @@ export function buildWatchlistQueries(): string[] {
 }
 
 const CULT_TERMS = ALL_CULT_TERMS;
-
-const CLUSTER_STOPWORD_LANG_ALIASES: Record<string, string> = {
-  nb: 'no',
-  nn: 'no',
-};
-
-let clusterStopwordsByLangCache: Map<string, Set<string>> | undefined;
-
-function normalizeClusterStopwordLang(code: string | undefined): string {
-  if (!code || code.length < 2) {
-    return 'en';
-  }
-  const base = code.toLowerCase().trim().split('-')[0] ?? 'en';
-  return CLUSTER_STOPWORD_LANG_ALIASES[base] ?? base;
-}
-
-function loadClusterStopwordsByLang(): Map<string, Set<string>> {
-  if (clusterStopwordsByLangCache) {
-    return clusterStopwordsByLangCache;
-  }
-
-  const map = new Map<string, Set<string>>();
-  try {
-    const configUrl = new URL('../data/cluster-token-stopwords.json', import.meta.url);
-    const raw = readFileSync(configUrl, 'utf-8');
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const baseRaw = parsed.base;
-    const baseArr = Array.isArray(baseRaw) ? baseRaw : [];
-    const baseSet = new Set(baseArr.map((t) => String(t).toLowerCase()));
-
-    for (const [key, val] of Object.entries(parsed)) {
-      if (key === 'base' || key.startsWith('_')) {
-        continue;
-      }
-      if (!Array.isArray(val)) {
-        continue;
-      }
-      const set = new Set(baseSet);
-      for (const t of val) {
-        set.add(String(t).toLowerCase());
-      }
-      map.set(key.toLowerCase(), set);
-    }
-
-    if (!map.has('en')) {
-      map.set('en', new Set(baseSet));
-    }
-
-    try {
-      const groupByLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
-      for (const [lang, val] of Object.entries(groupByLang)) {
-        if (!Array.isArray(val) || val.length === 0) {
-          continue;
-        }
-        const code = lang.toLowerCase();
-        const set = map.get(code) ?? new Set(baseSet);
-        for (const t of val) {
-          set.add(String(t).toLowerCase());
-        }
-        map.set(code, set);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn('[agent] failed to merge discovery lang groupStopwords', { message });
-    }
-
-    clusterStopwordsByLangCache = map;
-    return map;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn('[agent] failed to load cluster-token-stopwords.json', { message });
-    const fallback = new Set(
-      [
-        'with', 'from', 'that', 'this', 'after', 'under', 'about', 'into', 'over', 'more', 'than', 'have',
-        'been', 'were', 'their', 'they', 'them', 'will', 'what', 'where', 'which', 'while', 'during',
-        'religious', 'group', 'groups', 'sect', 'sects', 'cult', 'cults', 'slavery', 'raid', 'raids',
-        'police', 'investigation', 'members', 'people', 'arrested', 'bail', 'charged', 'allegations',
-      ].map((t) => t.toLowerCase()),
-    );
-    clusterStopwordsByLangCache = new Map([['en', fallback]]);
-    return clusterStopwordsByLangCache;
-  }
-}
-
-function clusterStopwordsForLanguage(lang: string | undefined): Set<string> {
-  const map = loadClusterStopwordsByLang();
-  const code = normalizeClusterStopwordLang(lang);
-  return map.get(code) ?? map.get('en')!;
-}
 
 function detectTitleLanguageForCluster(title: string, hint?: string | undefined): string {
   const trimmed = hint?.trim();
