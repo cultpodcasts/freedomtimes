@@ -422,6 +422,25 @@ function shouldShowArchiveMirrors(story: EnrichedStory): boolean {
   return Array.from(ARCHIVE_FALLBACK_HOSTS).some((allowed) => host === allowed || host.endsWith(`.${allowed}`));
 }
 
+function storyCitationInput(story: EnrichedStory) {
+  return {
+    title: story.title,
+    url: story.url,
+    host: story.host,
+    publishedAt: story.publishedAt,
+    articleText: story.articleText,
+    contentMirrorUrl: story.contentMirrorUrl,
+    archiveMirrorLinks: story.archiveMirrorLinks,
+  };
+}
+
+function attachSourceCitation(story: EnrichedStory): EnrichedStory {
+  return {
+    ...story,
+    sourceCitation: buildStorySourceCitation(storyCitationInput(story)),
+  };
+}
+
 function renderCard(story: EnrichedStory, language?: string) {
   const canonicalUrl = story.url;
   const hostname = story.host || new URL(canonicalUrl).hostname.replace(/^www\./, '');
@@ -435,6 +454,7 @@ function renderCard(story: EnrichedStory, language?: string) {
       knownSnapshotUrls: story.contentMirrorUrl ? [story.contentMirrorUrl] : [],
     });
   const showArchiveMirrors = shouldShowArchiveMirrors(story) && archiveMirrors.length > 0;
+  const citation = story.sourceCitation;
   // Serialize classification audit for data attribute
   const hasAudit = !!story.classificationAudit;
   const auditData = hasAudit
@@ -465,6 +485,11 @@ function renderCard(story: EnrichedStory, language?: string) {
         <p {...(isNonEnglish ? { lang: language } : {})}>{story.description || 'No abstract available.'}</p>
         <div className="feedback-row">
           <a className="read" href={canonicalUrl} target="_blank" rel="noopener noreferrer">Read on {hostname}</a>
+          {citation?.paywalled && citation.accessibleUrl ? (
+            <a className="read cite-accessible" href={citation.accessibleUrl} target="_blank" rel="noopener noreferrer">
+              Accessible copy for citing
+            </a>
+          ) : null}
           {showArchiveMirrors ? (
             <div className="archive-mirror-links">
               <span className="archive-mirror-label">Also via archive:</span>
@@ -481,6 +506,11 @@ function renderCard(story: EnrichedStory, language?: string) {
             </div>
           ) : null}
           <div className="fb-row-actions">
+          <button
+            className="fb-btn copy-cite-btn"
+            data-cite-url={escapedUrl}
+            onclick="window._copyStoryCitation(this)"
+          >📋 Copy citation</button>
           <button
             className="fb-btn"
             data-fb-url={escapedUrl}
@@ -502,7 +532,12 @@ function renderCard(story: EnrichedStory, language?: string) {
   );
 }
 
-function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string) {
+function buildPage(
+  groups: StoryGroup[],
+  totalCount: number,
+  generatedAt: string,
+  citationReport: CitationReport,
+) {
   const hasStories = totalCount > 0;
 
   return (
@@ -673,6 +708,44 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
             font-weight: 600;
             text-decoration: none;
           }
+          .read.cite-accessible {
+            margin-top: 0;
+            font-size: 0.9rem;
+            color: #4a5568;
+          }
+          .read.cite-accessible:hover { color: var(--accent); }
+          .copy-citations-btn {
+            font-family: system-ui, sans-serif;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 5px;
+            border: 1px solid var(--line);
+            background: #f4f2ea;
+            color: #5c5548;
+            cursor: pointer;
+            margin-left: auto;
+          }
+          .copy-citations-btn:hover { background: #e8e0d0; }
+          .copy-citations-btn.copied {
+            background: #d4edda;
+            color: #1a5c38;
+            border-color: #a3d3b0;
+          }
+          .header-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 8px;
+          }
+          .header-actions .status-note {
+            font-family: system-ui, sans-serif;
+            font-size: 0.8rem;
+            color: #1a5c38;
+            display: none;
+          }
+          .header-actions .status-note.show { display: inline; }
           .feedback-row {
             display: flex;
             flex-direction: column;
@@ -742,24 +815,40 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
           <header>
             <h1>Cult News Digest</h1>
             <p>Generated from latest agent run. {totalCount} shortlisted stories. Generated at {generatedAt}.</p>
-            <button id="export-fb-btn" onclick="window._fbExport()" style="font-family:system-ui,sans-serif;font-size:0.8rem;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid #ded6c4;background:#f4f2ea;color:#5c5548;cursor:pointer;margin-bottom:8px;">📋 Export all feedback to clipboard</button>
+            <div className="header-actions">
+            <button id="export-fb-btn" onclick="window._fbExport()" style="font-family:system-ui,sans-serif;font-size:0.8rem;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid #ded6c4;background:#f4f2ea;color:#5c5548;cursor:pointer;">📋 Export all feedback to clipboard</button>
             <span id="export-fb-status" style="font-family:system-ui,sans-serif;font-size:0.8rem;color:#1a5c38;margin-left:8px;display:none;">✓ Copied! Paste into data/feedback/false-positives.json → entries array</span>
+            <button id="copy-all-citations-btn" onclick="window._copyAllCitations()" style="font-family:system-ui,sans-serif;font-size:0.8rem;font-weight:600;padding:5px 12px;border-radius:6px;border:1px solid #ded6c4;background:#f4f2ea;color:#5c5548;cursor:pointer;">📋 Copy all source citations</button>
+            <span id="copy-all-citations-status" className="status-note">✓ Citations copied — paste into your draft</span>
+            </div>
           </header>
           {hasStories ? (
-            groups.map((group) =>
+            groups.map((group, groupIndex) =>
               group.type === 'independent' ? (
-                <div className="story-group">
-                  <p className="latest-heading">Latest Stories</p>
+                <div className="story-group" data-citation-group-index={groupIndex}>
+                  <div className="group-header">
+                    <p className="latest-heading" style="margin:0;border:0;padding:0;">Latest Stories</p>
+                    <button
+                      className="copy-citations-btn"
+                      data-citation-group-index={groupIndex}
+                      onclick="window._copyGroupCitations(this)"
+                    >Copy citations</button>
+                  </div>
                   <div className="grid">
                     {group.stories.map((story) => renderCard(story, detectStoryLanguage(story)))}
                   </div>
                 </div>
               ) : (
-                <div className="story-group">
+                <div className="story-group" data-citation-group-index={groupIndex}>
                   <div className="group-header">
                     <h3 className="group-label">{group.label}</h3>
                     <span className={`group-badge ${group.type}`}>Cluster</span>
                     <span className="group-count">{group.stories.length} {group.stories.length === 1 ? 'article' : 'articles'}</span>
+                    <button
+                      className="copy-citations-btn"
+                      data-citation-group-index={groupIndex}
+                      onclick="window._copyGroupCitations(this)"
+                    >Copy citations</button>
                   </div>
                   <div className="grid">
                     {group.stories.map((story) => renderCard(story, detectStoryLanguage(story)))}
@@ -790,8 +879,64 @@ function buildPage(groups: StoryGroup[], totalCount: number, generatedAt: string
       </div>
       <script dangerouslySetInnerHTML={{ __html: `
 var FB_GENERATED_AT = '${generatedAt}';
+var CITATION_REPORT = ${JSON.stringify(citationReport)};
+var CITATION_BY_URL = {};
+(CITATION_REPORT.groups || []).forEach(function(group) {
+  (group.sources || []).forEach(function(source) {
+    CITATION_BY_URL[source.publisherUrl] = source.markdown;
+  });
+});
 var API_BASE = window.location.origin;
 var currentReport = null;
+
+function _copyTextToClipboard(text, onSuccess) {
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(function() {
+    if (onSuccess) onSuccess();
+  }).catch(function(err) {
+    console.error('Clipboard copy failed:', err);
+    alert('Could not copy to clipboard');
+  });
+}
+
+window._copyStoryCitation = function(btn) {
+  var url = btn.getAttribute('data-cite-url');
+  var md = url ? CITATION_BY_URL[url] : '';
+  _copyTextToClipboard(md, function() {
+    btn.classList.add('copied');
+    btn.textContent = '✓ Copied';
+    setTimeout(function() {
+      btn.classList.remove('copied');
+      btn.textContent = '📋 Copy citation';
+    }, 1800);
+  });
+};
+
+window._copyGroupCitations = function(btn) {
+  var idx = Number(btn.getAttribute('data-citation-group-index'));
+  var group = CITATION_REPORT.groups[idx];
+  if (!group) return;
+  var heading = group.type === 'independent' ? '## Latest Stories' : ('## ' + group.label);
+  var body = group.sources.map(function(source) { return source.markdown; }).join('\\n');
+  _copyTextToClipboard(heading + '\\n\\n' + body, function() {
+    btn.classList.add('copied');
+    btn.textContent = '✓ Copied';
+    setTimeout(function() {
+      btn.classList.remove('copied');
+      btn.textContent = 'Copy citations';
+    }, 1800);
+  });
+};
+
+window._copyAllCitations = function() {
+  _copyTextToClipboard(CITATION_REPORT.markdown, function() {
+    var status = document.getElementById('copy-all-citations-status');
+    if (status) {
+      status.classList.add('show');
+      setTimeout(function() { status.classList.remove('show'); }, 2500);
+    }
+  });
+};
 
 function _fbLoad() {
   _checkReportStatus();
@@ -2225,7 +2370,7 @@ async function main(): Promise<void> {
   excluded.push(...dedupeResult.excluded);
   summarizeExclusions(excluded);
 
-  const stories = dedupeResult.kept;
+  const stories = dedupeResult.kept.map(attachSourceCitation);
 
   const groups = classifyStories(stories, wrongClusterSet);
 
@@ -2234,9 +2379,21 @@ async function main(): Promise<void> {
     for (const s of g.stories) console.log(`  - ${s.title.slice(0, 90)}`);
   }
 
-  const html = renderDocument(buildPage(groups, stories.length, new Date().toISOString()));
+  const generatedAt = new Date().toISOString();
+  const citationReport = buildCitationReport(
+    groups.map((group) => ({
+      label: group.label,
+      type: group.type,
+      stories: group.stories.map(storyCitationInput),
+    })),
+    generatedAt,
+  );
+
+  const html = renderDocument(buildPage(groups, stories.length, generatedAt, citationReport));
   mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
   writeFileSync(OUTPUT_PATH, html, 'utf-8');
+  writeFileSync(SOURCES_OUTPUT_PATH, JSON.stringify(citationReport, null, 2), 'utf-8');
+  console.log(`[agent] wrote source citations to ${SOURCES_OUTPUT_PATH.pathname}`);
 
   if (summary) {
     console.log(`[agent] wrote ${stories.length} stories to ${OUTPUT_PATH.pathname} from ${summary.processed ?? 0} processed candidates`);

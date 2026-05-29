@@ -204,14 +204,17 @@ Use the **final** `reports/cult-news-latest.html` (after close report / optional
 | **Latest Stories** (ungrouped / independent) | Short mentions or “also this week” bullets |
 | Card links | Primary sources for attribution |
 | Published dates on cards | Confirm they fall inside your `DISCOVERY_MAX_AGE_HOURS` window |
+| **Copy citations** (header / per cluster / per card) | Markdown source list with publisher URL + archive mirrors for paywalled pieces |
+| `reports/cult-news-sources.json` | Same citation data as JSON (`markdown` field is ready to paste) |
 
 Practical approach:
 
 1. List cluster headings from the console `[cluster]` lines or the HTML group headers.
-2. For each cluster, read 2–3 representative pieces (titles + “Read full story”).
-3. Write a short narrative per cluster (what happened, who, jurisdiction UK/EU).
-4. Add 1–2 sentences on notable independent stories.
-5. Keep `report-review-notes.md` updated with systematic false positives to fix in code later.
+2. For each cluster, click **Copy citations** on the group header (or use **Copy all source citations** in the digest header).
+3. For paywalled outlets, use **Accessible copy for citing** or the `Accessible copy:` line in the pasted markdown — not the publisher URL alone.
+4. Write a short narrative per cluster (what happened, who, jurisdiction UK/EU).
+5. Add 1–2 sentences on notable independent stories.
+6. Keep `report-review-notes.md` updated with systematic false positives to fix in code later.
 
 ---
 
@@ -234,7 +237,7 @@ Manual edit (emergency): add an entry to `false-positives.json`, then re-run `np
 |---------|----------------|
 | `npm run dev` | Discovery + pipeline (env from `.env` / `package.json`; set `DISCOVERY_MAX_AGE_HOURS` for window) |
 | `npm run pipeline:only` | Pipeline only from `last-run-candidates.json` |
-| `npm run render:html` | Build `reports/cult-news-latest.html` |
+| `npm run render:html` | Build `reports/cult-news-latest.html` and `reports/cult-news-sources.json` |
 | `npm run feedback:server` | Review UI at http://localhost:3000 |
 | `npm run snapshot:html` | Backup current digest HTML |
 | `npm run diff:html` | Diff latest vs snapshot digest |
