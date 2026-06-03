@@ -2627,30 +2627,83 @@ function pickBestSharedTitleProperNoun(
     )[0]?.[0];
 }
 
+function isPositiveBigramLabelTerm(
+  term: string,
+  stopwords: Set<string>,
+): boolean {
+  if (!term.includes(' ') || term.length < 8) return false;
+  if (!isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
+  const words = term.split(/\s+/).filter((word) => word.length > 0);
+  if (words.length < 2 || words.some((word) => stopwords.has(word))) return false;
+  return true;
+}
+
+function isCapitalizedPhraseInTitle(title: string, phrase: string): boolean {
+  const words = phrase.trim().split(/\s+/).filter((word) => word.length > 0);
+  if (words.length === 0) return false;
+  const pattern = words
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('\\s+');
+  const match = title.match(new RegExp(`\\b${pattern}\\b`, 'iu'));
+  if (!match) return false;
+  return match[0]
+    .split(/\s+/)
+    .every((word) => /^\p{Lu}/u.test(word.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '')));
+}
+
 function pickSharedTitleBigramLabel(
   storyIndexes: number[],
   stories: EnrichedStory[],
   features: StoryFeatures[],
   minimumCoverage: number,
   entityAliasCanonicals: Set<string>,
+  idf: Map<string, number>,
 ): string | undefined {
   const counts = new Map<string, number>();
+  const capitalizedCounts = new Map<string, number>();
   for (const idx of storyIndexes) {
     const story = stories[idx];
     const feature = features[idx];
     if (!story || !feature) continue;
     const stopwords = buildStopwordSet(feature.language);
     const titleLower = story.title.toLowerCase();
+    const seenInStory = new Set<string>();
     for (const term of feature.anchorTerms) {
       if (!term.includes(' ') || term.length < 8) continue;
       if (!titleLower.includes(term)) continue;
-      if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      if (!isPositiveBigramLabelTerm(term, stopwords)) continue;
+      seenInStory.add(term);
+    }
+    for (const term of seenInStory) {
       counts.set(term, (counts.get(term) ?? 0) + 1);
+      if (isCapitalizedPhraseInTitle(story.title, term)) {
+        capitalizedCounts.set(term, (capitalizedCounts.get(term) ?? 0) + 1);
+      }
     }
   }
-  return [...counts.entries()]
-    .filter(([, count]) => count >= minimumCoverage)
-    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0]?.[0];
+
+  const candidates = [...counts.entries()].filter(([, count]) => count >= minimumCoverage);
+  const capitalizedCandidates = candidates.filter(
+    ([term]) => (capitalizedCounts.get(term) ?? 0) >= minimumCoverage,
+  );
+  const pool = capitalizedCandidates.length > 0 ? capitalizedCandidates : candidates;
+
+  return pool.sort(
+    (a, b) =>
+      b[1] - a[1] ||
+      (idf.get(b[0]) ?? 0) - (idf.get(a[0]) ?? 0) ||
+      b[0].length - a[0].length,
+  )[0]?.[0];
+}
+
+function isRedundantClusterQualifier(canonical: string, qualifier: string): boolean {
+  const c = canonical.toLowerCase().trim();
+  const q = qualifier.toLowerCase().trim();
+  if (!c || !q) return true;
+  if (c.includes(q) || q.includes(c)) return true;
+  const canonicalWords = new Set(c.split(/\s+/).filter((word) => word.length >= 3));
+  const qualifierWords = q.split(/\s+/).filter((word) => word.length >= 3);
+  return qualifierWords.length > 0 && qualifierWords.every((word) => canonicalWords.has(word));
 }
 
 function selectGroupLabel(
@@ -2675,10 +2728,22 @@ function selectGroupLabel(
       dominantAlias[0],
       minimumCoverage,
     );
-    if (qualifier) {
+    if (qualifier && !isRedundantClusterQualifier(dominantAlias[0], qualifier)) {
       return `${toTitleCase(dominantAlias[0])} ${toTitleCase(qualifier)}`;
     }
     return toTitleCase(dominantAlias[0]);
+  }
+
+  const bigramLabel = pickSharedTitleBigramLabel(
+    storyIndexes,
+    stories,
+    features,
+    minimumCoverage,
+    entityAliasCanonicals,
+    idf,
+  );
+  if (bigramLabel) {
+    return toTitleCase(bigramLabel);
   }
 
   const properNounLabel = pickBestSharedTitleProperNoun(
@@ -2703,17 +2768,6 @@ function selectGroupLabel(
   );
   if (articleProperNounLabel) {
     return toTitleCase(articleProperNounLabel);
-  }
-
-  const bigramLabel = pickSharedTitleBigramLabel(
-    storyIndexes,
-    stories,
-    features,
-    minimumCoverage,
-    entityAliasCanonicals,
-  );
-  if (bigramLabel) {
-    return toTitleCase(bigramLabel);
   }
 
   const companionLabel = pickCompanionClusterLabel(storyIndexes, stories, features, idf);

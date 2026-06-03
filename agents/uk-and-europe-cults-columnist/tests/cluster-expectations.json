@@ -28,7 +28,7 @@
     {
       "id": "pbcc-pet-cull",
       "labelPattern": "pbcc|plymouth|brethren|cull|pet",
-      "minSize": 2,
+      "minSize": 3,
       "requiredStoryPatterns": ["pbcc-pet-cull", "plymouth-brethren-cull-pets", "animaux-compagnie"]
     },
     {
@@ -48,7 +48,7 @@
     {
       "id": "guillaume-canet-karma",
       "labelPattern": "guillaume|canet|karma|marion|cotillard",
-      "minSize": 2,
+      "minSize": 3,
       "requiredStoryPatterns": ["guillaume-canet-karma"]
     },
     {
@@ -70,7 +70,12 @@
       "requiredStoryPatterns": ["pope-leo-slavery"]
     }
   ],
-  "mustNotShareCluster": [],
+  "mustNotShareCluster": [
+    {
+      "id": "unrelated-festivals",
+      "storyPatterns": ["campania-young-festival", "celico-cronenberg-festival"]
+    }
+  ],
   "mustStayIndependent": [
     {
       "id": "figurative-cult-football",
