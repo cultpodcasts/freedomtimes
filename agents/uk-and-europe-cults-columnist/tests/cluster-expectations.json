@@ -26,10 +26,10 @@
       "requiredStoryPatterns": ["13368200", "13371318"]
     },
     {
-      "id": "pet-cull",
-      "labelPattern": "plymouth|brethren|cull|pet",
+      "id": "pbcc-pet-cull",
+      "labelPattern": "pbcc|plymouth|brethren|cull|pet",
       "minSize": 2,
-      "requiredStoryPatterns": ["cull-pets", "animaux-compagnie"]
+      "requiredStoryPatterns": ["pbcc-pet-cull", "plymouth-brethren-cull-pets", "animaux-compagnie"]
     },
     {
       "id": "scientology-speedrun",
@@ -44,6 +44,30 @@
       "minSize": 2,
       "requiredStoryPatterns": ["verfassungsschutz-scientology"],
       "exclusiveStoryPatterns": ["verfassungsschutz-scientology", "verfassungsschutz"]
+    },
+    {
+      "id": "guillaume-canet-karma",
+      "labelPattern": "guillaume|canet|karma|marion|cotillard",
+      "minSize": 2,
+      "requiredStoryPatterns": ["guillaume-canet-karma"]
+    },
+    {
+      "id": "marjorie-taylor-greene-maga",
+      "labelPattern": "marjorie|taylor|greene|maga|hegseth",
+      "minSize": 2,
+      "requiredStoryPatterns": ["marjorie-taylor-greene-maga"]
+    },
+    {
+      "id": "aropl",
+      "labelPattern": "ahmadi|aropl|religion of peace",
+      "minSize": 2,
+      "requiredStoryPatterns": ["aropl"]
+    },
+    {
+      "id": "pope-leo-slavery",
+      "labelPattern": "pope|leo|slavery|vatican",
+      "minSize": 2,
+      "requiredStoryPatterns": ["pope-leo-slavery"]
     }
   ],
   "mustNotShareCluster": [],

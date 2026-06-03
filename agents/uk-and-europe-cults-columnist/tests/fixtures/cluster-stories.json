@@ -76,8 +76,16 @@
     "url": "https://example.com/en/plymouth-brethren-cull-pets",
     "host": "example.com",
     "publishedAt": "2026-05-13T10:00:00.000Z",
-    "description": "Plymouth Brethren pet order.",
-    "articleText": "The Exclusive Brethren ordered members to cull pets. The Plymouth Brethren sect faces global outrage over the pet destruction order."
+    "description": "PBCC pet cull order.",
+    "articleText": "The Plymouth Brethren Christian Church ordered members to cull pets. PBCC leaders issued the pet destruction order. The Exclusive Brethren sect faces global outrage."
+  },
+  {
+    "title": "PBCC members ordered to destroy pets as Plymouth Brethren Christian Church faces backlash",
+    "url": "https://example.com/en/pbcc-pet-cull-order",
+    "host": "example.com",
+    "publishedAt": "2026-05-13T12:00:00.000Z",
+    "description": "PBCC pet cull backlash.",
+    "articleText": "Members of the Plymouth Brethren Christian Church were told to cull pets. PBCC officials defended the order amid international criticism."
   },
   {
     "title": "Une secte chrétienne appelle ses milliers de membres à se débarrasser de leurs animaux de compagnie",
@@ -142,5 +150,77 @@
     "publishedAt": "2026-05-07T10:00:00.000Z",
     "description": "Football and cult fandom.",
     "articleText": "Aston Villa and Crystal Palace in a show that skewed more cult than mainstream."
+  },
+  {
+    "title": "ENTRETIEN. Cannes 2026 : Guillaume Canet plonge Marion Cotillard au cœur d'une secte dans « Karma »",
+    "url": "https://example.com/fr/guillaume-canet-karma-ouest-france",
+    "host": "example.com",
+    "publishedAt": "2026-05-06T10:00:00.000Z",
+    "description": "Guillaume Canet et Karma à Cannes.",
+    "articleText": "Guillaume Canet présente le film Karma au Festival de Cannes. Marion Cotillard joue dans cette fiction sur une secte."
+  },
+  {
+    "title": "Avec \"Karma\", Guillaume Canet place Marion Cotillard face à l'emprise sectaire",
+    "url": "https://example.com/fr/guillaume-canet-karma-france24",
+    "host": "example.com",
+    "publishedAt": "2026-05-06T11:00:00.000Z",
+    "description": "Karma et emprise sectaire.",
+    "articleText": "Guillaume Canet explique que Karma explore l'emprise sectaire. Marion Cotillard est au casting."
+  },
+  {
+    "title": "Guillaume Canet e Marion Cotillard aprendem espanhol para filme sobre seita",
+    "url": "https://example.com/pt/guillaume-canet-karma-swissinfo",
+    "host": "example.com",
+    "publishedAt": "2026-05-06T12:00:00.000Z",
+    "description": "Filme sobre seita com Canet.",
+    "articleText": "Guillaume Canet e Marion Cotillard preparam filme sobre seita. O projeto Karma centra-se numa comunidade fechada."
+  },
+  {
+    "title": "Is MAGA a Cult? Marjorie Taylor Greene Blasts Pete Hegseth's 'Disturbing' White House Demands",
+    "url": "https://example.com/en/marjorie-taylor-greene-maga-cult-ibtimes",
+    "host": "example.com",
+    "publishedAt": "2026-05-05T10:00:00.000Z",
+    "description": "Marjorie Taylor Greene on MAGA as cult.",
+    "articleText": "Marjorie Taylor Greene asked whether MAGA is a cult. Marjorie Taylor Greene criticized Pete Hegseth's White House demands."
+  },
+  {
+    "title": "Is MAGA a Cult? Marjorie Taylor Greene Blasts Pete Hegseth's 'Disturbing' White House Demands",
+    "url": "https://example.com/en/marjorie-taylor-greene-maga-cult-inkl",
+    "host": "example.com",
+    "publishedAt": "2026-05-05T11:00:00.000Z",
+    "description": "Marjorie Taylor Greene MAGA cult debate.",
+    "articleText": "Marjorie Taylor Greene questioned whether MAGA has become a cult. The Georgia congresswoman singled out Pete Hegseth."
+  },
+  {
+    "title": "Spanish police raid Ahmadi Religion of Peace and Light compound",
+    "url": "https://example.com/en/aropl-raid-malaga",
+    "host": "example.com",
+    "publishedAt": "2026-05-04T10:00:00.000Z",
+    "description": "AROPL raid in Spain.",
+    "articleText": "Police raided a compound linked to the Ahmadi Religion of Peace and Light. AROPL members were questioned by investigators."
+  },
+  {
+    "title": "La secte Ahmadi Religion of Peace and Light visée par une enquête en Espagne",
+    "url": "https://example.com/fr/aropl-enquete-espagne",
+    "host": "example.com",
+    "publishedAt": "2026-05-04T11:00:00.000Z",
+    "description": "Enquête sur AROPL.",
+    "articleText": "La secte Ahmadi Religion of Peace and Light est visée par une enquête. Les autorités espagnoles ciblent AROPL."
+  },
+  {
+    "title": "Pope Leo XIV makes historic apology for Vatican's role in legitimizing slavery",
+    "url": "https://example.com/en/pope-leo-slavery-apology-a",
+    "host": "example.com",
+    "publishedAt": "2026-05-03T10:00:00.000Z",
+    "description": "Pope Leo slavery apology.",
+    "articleText": "Pope Leo XIV issued a historic apology for the Vatican role in legitimizing slavery. Pope Leo spoke at a ceremony in Rome."
+  },
+  {
+    "title": "Pope Leo issues historic apology for Vatican's own role in legitimising slavery",
+    "url": "https://example.com/en/pope-leo-slavery-apology-b",
+    "host": "example.com",
+    "publishedAt": "2026-05-03T11:00:00.000Z",
+    "description": "Vatican slavery apology.",
+    "articleText": "Pope Leo XIV apologized for the Holy See role in slavery. Pope Leo called the apology long overdue."
   }
 ]
