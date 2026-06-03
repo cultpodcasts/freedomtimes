@@ -1,0 +1,61 @@
+{
+  "_description": "Temporary integration expectations for story clustering. Delete or tighten once clustering stabilises.",
+  "expectedClusters": [
+    {
+      "id": "unchosen",
+      "labelPattern": "unchosen",
+      "minSize": 3,
+      "requiredStoryPatterns": ["unchosen"]
+    },
+    {
+      "id": "artgemeinschaft",
+      "labelPattern": "artgemeinschaft",
+      "minSize": 2,
+      "requiredStoryPatterns": ["artgemeinschaft"]
+    },
+    {
+      "id": "lev-tahor-ecuador",
+      "labelPattern": "lev tahor",
+      "minSize": 2,
+      "requiredStoryPatterns": ["lev-tahor", "lev tahor", "equador", "équateur"]
+    },
+    {
+      "id": "midilibre-companion",
+      "labelPattern": ".",
+      "minSize": 2,
+      "requiredStoryPatterns": ["13368200", "13371318"]
+    },
+    {
+      "id": "pet-cull",
+      "labelPattern": "plymouth|brethren|cull|pet",
+      "minSize": 2,
+      "requiredStoryPatterns": ["cull-pets", "animaux-compagnie"]
+    },
+    {
+      "id": "scientology-speedrun",
+      "labelPattern": "speedrun|scientology",
+      "minSize": 2,
+      "requiredStoryPatterns": ["speedrunnings-a", "speedrunnings-b"],
+      "exclusiveStoryPatterns": ["speedrunnings-a", "speedrunnings-b", "speedrun"]
+    },
+    {
+      "id": "scientology-verfassungsschutz",
+      "labelPattern": "scientology|verfassungsschutz",
+      "minSize": 2,
+      "requiredStoryPatterns": ["verfassungsschutz-scientology"],
+      "exclusiveStoryPatterns": ["verfassungsschutz-scientology", "verfassungsschutz"]
+    }
+  ],
+  "mustNotShareCluster": [
+    {
+      "id": "unrelated-festivals",
+      "storyPatterns": ["campania-young-festival", "celico-cronenberg"]
+    }
+  ],
+  "mustStayIndependent": [
+    {
+      "id": "figurative-cult-football",
+      "storyPattern": "aston-villa-cult"
+    }
+  ]
+}
