@@ -16,8 +16,8 @@
     {
       "id": "lev-tahor-ecuador",
       "labelPattern": "lev tahor",
-      "minSize": 2,
-      "requiredStoryPatterns": ["lev-tahor", "lev tahor", "equador", "équateur"]
+      "minSize": 3,
+      "requiredStoryPatterns": ["lev-tahor", "lev tahor", "bol.uol.com.br", "le-pays.fr"]
     },
     {
       "id": "midilibre-companion",
@@ -28,8 +28,8 @@
     {
       "id": "pbcc-pet-cull",
       "labelPattern": "pbcc|plymouth|brethren|cull|pet",
-      "minSize": 3,
-      "requiredStoryPatterns": ["pbcc-pet-cull", "plymouth-brethren-cull-pets", "animaux-compagnie"]
+      "minSize": 2,
+      "requiredStoryPatterns": ["streamlinefeed.co.ke", "fr.news.yahoo.com"]
     },
     {
       "id": "scientology-speedrun",

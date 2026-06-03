@@ -49,11 +49,19 @@
   },
   {
     "title": "Equador resgata seis menores de uma rede de tráfico de pessoas ligada a seita Lev Tahor",
-    "url": "https://example.com/pt/equador-lev-tahor-menores",
-    "host": "example.com",
-    "publishedAt": "2026-05-16T11:00:00.000Z",
+    "url": "https://www.bol.uol.com.br/noticias/2026/05/19/equador-resgata-seis-menores-de-uma-rede-de-trafico-de-pessoas-ligada-a-seita.amp.htm",
+    "host": "bol.uol.com.br",
+    "publishedAt": "2026-05-19T11:00:00.000Z",
     "description": "Lev Tahor no Equador.",
-    "articleText": "Autoridades do Equador resgataram seis menores. A rede está ligada à seita Lev Tahor."
+    "articleText": "Autoridades do Equador resgataram seis menores de uma rede de tráfico de pessoas. A rede está ligada à seita Lev Tahor."
+  },
+  {
+    "title": "Traite d'êtres humains : six adolescentes sauvées d'un réseau soupçonné d'être lié à la secte ultra-orthodoxe Lev Tahor",
+    "url": "https://le-pays.fr/france-monde/faits-divers/traite-detres-humains-six-adolescentes-sauvees-dun-reseau-soupconne-detre-lie-a-la-secte-ultra-orthodoxe-lev-tahor_14989745/",
+    "host": "le-pays.fr",
+    "publishedAt": "2026-05-20T08:48:00.000Z",
+    "description": "Lev Tahor en Équateur.",
+    "articleText": "Six mineures étrangères ont été secourues en Équateur lors d'une opération visant un réseau lié à la secte ultra-orthodoxe Lev Tahor. L'enquête porte sur des membres de la secte Lev Tahor."
   },
   {
     "title": "INFO MIDI LIBRE \"C'est un prédateur sexuel\" : la communauté secrète du gourou hollandais démantelée au pied des Pyrénées",
@@ -73,27 +81,19 @@
   },
   {
     "title": "Secretive Christian Sect Faces Global Outrage Following Drastic Order to Cull Pets",
-    "url": "https://example.com/en/plymouth-brethren-cull-pets",
-    "host": "example.com",
-    "publishedAt": "2026-05-13T10:00:00.000Z",
+    "url": "https://streamlinefeed.co.ke/news/secretive-christian-sect-faces-global-outrage-following-drastic-order-cull-pets",
+    "host": "streamlinefeed.co.ke",
+    "publishedAt": "2026-05-19T10:00:00.000Z",
     "description": "PBCC pet cull order.",
-    "articleText": "The Plymouth Brethren Christian Church ordered members to cull pets. PBCC leaders issued the pet destruction order. The Exclusive Brethren sect faces global outrage."
-  },
-  {
-    "title": "PBCC members ordered to destroy pets as Plymouth Brethren Christian Church faces backlash",
-    "url": "https://example.com/en/pbcc-pet-cull-order",
-    "host": "example.com",
-    "publishedAt": "2026-05-13T12:00:00.000Z",
-    "description": "PBCC pet cull backlash.",
-    "articleText": "Members of the Plymouth Brethren Christian Church were told to cull pets. PBCC officials defended the order amid international criticism."
+    "articleText": "The Plymouth Brethren Christian Church has mandated members to eradicate household pets. The Exclusive Brethren sect faces global outrage over the order to cull pets."
   },
   {
     "title": "Une secte chrétienne appelle ses milliers de membres à se débarrasser de leurs animaux de compagnie",
-    "url": "https://example.com/fr/secte-animaux-compagnie",
-    "host": "example.com",
-    "publishedAt": "2026-05-12T10:00:00.000Z",
-    "description": "Secte et animaux de compagnie.",
-    "articleText": "Une secte chrétienne a ordonné à ses membres de se débarrasser de leurs animaux de compagnie. Les Frères de Plymouth sont mentionnés."
+    "url": "https://fr.news.yahoo.com/secte-chr%C3%A9tienne-appelle-milliers-membres-124621517.html",
+    "host": "fr.news.yahoo.com",
+    "publishedAt": "2026-05-19T12:46:00.000Z",
+    "description": "Frères de Plymouth et animaux de compagnie.",
+    "articleText": "Les Frères de Plymouth ont rappelé à leurs membres qu'il est manifestement mal de détenir un animal de compagnie. Chaque foyer doit être nettoyé de tout animal sale."
   },
   {
     "title": "Les \"Scientology speedrunnings\" servent-ils vraiment la lutte contre les sectes ?",
