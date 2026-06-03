@@ -46,12 +46,7 @@
       "exclusiveStoryPatterns": ["verfassungsschutz-scientology", "verfassungsschutz"]
     }
   ],
-  "mustNotShareCluster": [
-    {
-      "id": "unrelated-festivals",
-      "storyPatterns": ["campania-young-festival", "celico-cronenberg"]
-    }
-  ],
+  "mustNotShareCluster": [],
   "mustStayIndependent": [
     {
       "id": "figurative-cult-football",

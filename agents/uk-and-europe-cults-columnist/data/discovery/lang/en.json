@@ -512,5 +512,11 @@
   "newsCoveragePrepositions": [
     "about",
     "on"
+  ],
+  "publisherBoilerplateCutPatterns": [
+    "\\bSubscribe to continue[\\s\\S]*$",
+    "\\bSubscribers? only[\\s\\S]*$",
+    "\\bRegister to continue[\\s\\S]*$",
+    "\\bTo continue reading[\\s\\S]*$"
   ]
 }

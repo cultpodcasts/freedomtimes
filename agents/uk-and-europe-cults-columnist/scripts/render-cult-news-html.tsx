@@ -3,6 +3,7 @@
 /** @jsx h */
 /** @jsxFrag Fragment */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { detect as detectLanguage } from 'tinyld';
 import { clusterStopwordsForLanguage } from '../src/clusterStopwords.ts';
 import { extractQuotedSpans } from '../src/quotePatterns.ts';
@@ -10,6 +11,7 @@ import {
   getReligiousGroupTermsForLanguage,
   getCoerciveHarmTermsForLanguage,
 } from '../src/pipelineTerms.ts';
+import { stripPublisherBoilerplate } from '../src/publisherBoilerplate.ts';
 import { getCultTermsForLanguage } from '../src/cultTerms.ts';
 import { cleanDisplayTitle } from '../src/articleContent.ts';
 import { buildArchiveMirrorLinks, getCanonicalArticleUrl } from '../src/archiveMirrors.ts';
@@ -51,6 +53,9 @@ type StoryGroup = {
   type: 'detected' | 'independent';
   stories: EnrichedStory[];
 };
+
+export type { StoryGroup, ClusterDetectionResult, ClusterAuditReport };
+export { classifyStories, detectStoryClusters, auditClusterGaps, createDedupeKey };
 
 type DraftStory = {
   title: string;
@@ -1317,6 +1322,350 @@ function addNgrams(termCounts: Map<string, number>, tokens: string[], n: number,
   }
 }
 
+function distinctiveCaseTerms(story: EnrichedStory, language: string): Set<string> {
+  const stopwords = buildStopwordSet(language);
+  const terms = new Set<string>();
+  for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
+    if (term.length >= 5 && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+      terms.add(term);
+    }
+  }
+  try {
+    const slugText = new URL(story.url).pathname.replace(/\.[a-z0-9]+$/i, '').replace(/-/g, ' ');
+    for (const token of tokenize(slugText, stopwords)) {
+      if (token.length >= 6 && !isGenericCultClusterTerm(token, GENERIC_CULT_CLUSTER_TERMS)) {
+        terms.add(token);
+      }
+    }
+  } catch {
+    // Ignore malformed URLs.
+  }
+  return terms;
+}
+
+function bodyReferencesDistinctiveTerms(body: string, peerTerms: Set<string>): number {
+  if (!body.trim() || peerTerms.size === 0) return 0;
+  const lower = body.toLowerCase();
+  let hits = 0;
+  for (const term of peerTerms) {
+    if (term.length < 5) continue;
+    if (lower.includes(term)) hits += 1;
+  }
+  const peerMentionsPyrenees = [...peerTerms].some((t) => /pyren/i.test(t));
+  if (peerMentionsPyrenees && /\bp\.?\s*o(?:[\s.,;:!?)]|$)/i.test(body)) {
+    hits += 1;
+  }
+  return hits;
+}
+
+/** Same publisher companion pieces: one article body references the other's case (title/slug terms). */
+function hasCompanionCaseCrossReference(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  featI: StoryFeatures,
+  featJ: StoryFeatures,
+): boolean {
+  if (featI.language !== featJ.language) return false;
+  const hostI = (storyI.host || getHostname(storyI.url) || '').toLowerCase();
+  const hostJ = (storyJ.host || getHostname(storyJ.url) || '').toLowerCase();
+  if (!hostI || hostI !== hostJ) return false;
+
+  const pubI = storyI.publishedAt ? Date.parse(storyI.publishedAt) : NaN;
+  const pubJ = storyJ.publishedAt ? Date.parse(storyJ.publishedAt) : NaN;
+  if (Number.isFinite(pubI) && Number.isFinite(pubJ)) {
+    const maxGapMs = 7 * 24 * 60 * 60 * 1000;
+    if (Math.abs(pubI - pubJ) > maxGapMs) return false;
+  }
+
+  const termsI = distinctiveCaseTerms(storyI, featI.language);
+  const termsJ = distinctiveCaseTerms(storyJ, featJ.language);
+  if (termsI.size === 0 || termsJ.size === 0) return false;
+
+  const bodyI = stripPublisherBoilerplate(storyI.articleText ?? '');
+  const bodyJ = stripPublisherBoilerplate(storyJ.articleText ?? '');
+  const textI = bodyI.length >= 200 ? bodyI : `${storyI.description ?? ''} ${bodyI}`.trim();
+  const textJ = bodyJ.length >= 200 ? bodyJ : `${storyJ.description ?? ''} ${bodyJ}`.trim();
+  const iRefsJ = bodyReferencesDistinctiveTerms(textI, termsJ);
+  const jRefsI = bodyReferencesDistinctiveTerms(textJ, termsI);
+
+  if (iRefsJ >= 1 && jRefsI >= 1) return true;
+  if (iRefsJ >= 2 || jRefsI >= 2) return true;
+
+  if (Number.isFinite(pubI) && Number.isFinite(pubJ)) {
+    const closeCompanionMs = 4 * 24 * 60 * 60 * 1000;
+    if (Math.abs(pubI - pubJ) <= closeCompanionMs && (jRefsI >= 1 || iRefsJ >= 1)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function countSharedArticleBodyProperNouns(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  featI: StoryFeatures,
+  featJ: StoryFeatures,
+  entityAliasCanonicals: Set<string>,
+): number {
+  const bodyI = stripPublisherBoilerplate(storyI.articleText ?? '');
+  const bodyJ = stripPublisherBoilerplate(storyJ.articleText ?? '');
+  if (bodyI.length < 400 || bodyJ.length < 400) return 0;
+
+  const stopI = buildStopwordSet(featI.language);
+  const stopJ = buildStopwordSet(featJ.language);
+  const snippetI = bodyI.slice(0, 5000);
+  const snippetJ = bodyJ.slice(0, 5000);
+  const properI = extractProperNounTokens(snippetI, tokenize(snippetI, stopI), stopI, featI.language);
+  const properJ = extractProperNounTokens(snippetJ, tokenize(snippetJ, stopJ), stopJ, featJ.language);
+
+  let shared = 0;
+  for (const term of properI) {
+    if (!properJ.has(term)) continue;
+    if (entityAliasCanonicals.has(term)) continue;
+    if (isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) continue;
+    if (term.length < 5) continue;
+    shared += 1;
+  }
+  return shared;
+}
+
+function entityAliasesInFullStoryText(story: EnrichedStory): Set<string> {
+  const text = `${story.title} ${story.description ?? ''} ${stripPublisherBoilerplate(story.articleText ?? '')}`.toLowerCase();
+  const found = new Set<string>();
+  for (const { canonical, aliases } of SUBJECT_ALIASES) {
+    if (text.includes(canonical)) {
+      found.add(canonical);
+      continue;
+    }
+    if (aliases.some((alias) => text.includes(alias.text.toLowerCase()))) {
+      found.add(canonical);
+    }
+  }
+  return found;
+}
+
+function sharedQuotedPhraseWordOverlap(titleA: string, titleB: string): number {
+  const emptyStop = new Set<string>();
+  const wordsA = new Set<string>();
+  const wordsB = new Set<string>();
+  for (const phrase of extractQuotedTerms(titleA)) {
+    for (const word of tokenize(phrase, emptyStop)) {
+      if (word.length >= 5 && !isGenericCultClusterTerm(word, GENERIC_CULT_CLUSTER_TERMS)) {
+        wordsA.add(word);
+      }
+    }
+  }
+  for (const phrase of extractQuotedTerms(titleB)) {
+    for (const word of tokenize(phrase, emptyStop)) {
+      if (word.length >= 5 && !isGenericCultClusterTerm(word, GENERIC_CULT_CLUSTER_TERMS)) {
+        wordsB.add(word);
+      }
+    }
+  }
+  let shared = 0;
+  for (const word of wordsA) {
+    if (wordsB.has(word)) shared += 1;
+  }
+  return shared;
+}
+
+type ClusterDetectionResult = {
+  groups: DetectedGroup[];
+  edges: Map<number, Set<number>>;
+  features: StoryFeatures[];
+};
+
+type ClusterAuditReport = {
+  generatedAt: string;
+  storyCount: number;
+  detectedClusterCount: number;
+  independentCount: number;
+  missedPairs: Array<{
+    reason: string;
+    severity: 'high' | 'medium';
+    storyA: { title: string; url: string };
+    storyB: { title: string; url: string };
+  }>;
+  suspiciousClusters: Array<{
+    label: string;
+    storyCount: number;
+    reason: string;
+    stories: Array<{ title: string; url: string }>;
+  }>;
+  linkedButUngrouped: Array<{
+    reason: string;
+    storyA: { title: string; url: string };
+    storyB: { title: string; url: string };
+  }>;
+};
+
+function auditClusterGaps(
+  stories: EnrichedStory[],
+  classifiedGroups: StoryGroup[],
+  detection: ClusterDetectionResult,
+): ClusterAuditReport {
+  const { edges, features } = detection;
+  const indexByUrl = new Map(stories.map((story, idx) => [createDedupeKey(story.url), idx]));
+
+  const clusteredIndexes = new Set<number>();
+  for (const group of classifiedGroups) {
+    if (group.type !== 'detected') continue;
+    for (const story of group.stories) {
+      const idx = indexByUrl.get(createDedupeKey(story.url));
+      if (idx !== undefined) clusteredIndexes.add(idx);
+    }
+  }
+
+  const independentIndexes = stories.map((_, idx) => idx).filter((idx) => !clusteredIndexes.has(idx));
+  const missedPairs: ClusterAuditReport['missedPairs'] = [];
+  const linkedButUngrouped: ClusterAuditReport['linkedButUngrouped'] = [];
+
+  for (let a = 0; a < independentIndexes.length; a += 1) {
+    for (let b = a + 1; b < independentIndexes.length; b += 1) {
+      const i = independentIndexes[a];
+      const j = independentIndexes[b];
+      if (i === undefined || j === undefined) continue;
+      const storyI = stories[i];
+      const storyJ = stories[j];
+      const featI = features[i];
+      const featJ = features[j];
+      if (!storyI || !storyJ || !featI || !featJ) continue;
+
+      const reasons: string[] = [];
+      if (hasCompanionCaseCrossReference(storyI, storyJ, featI, featJ)) {
+        reasons.push('same-publisher companion cross-reference');
+      }
+      const aliasesI = entityAliasesInFullStoryText(storyI);
+      const aliasesJ = entityAliasesInFullStoryText(storyJ);
+      const sharedAliases = [...aliasesI].filter((alias) => aliasesJ.has(alias));
+      if (sharedAliases.length > 0) {
+        reasons.push(`shared entity in text: ${sharedAliases.join(', ')}`);
+      }
+      if (sharedQuotedPhraseWordOverlap(storyI.title, storyJ.title) >= 2) {
+        reasons.push('shared quoted headline words');
+      }
+      if (sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, new Set(SUBJECT_ALIASES.map((e) => e.canonical))).length > 0) {
+        reasons.push('shared title identity');
+      }
+
+      if (reasons.length === 0) continue;
+
+      missedPairs.push({
+        reason: reasons.join('; '),
+        severity: reasons.some((r) => r.includes('entity') || r.includes('companion')) ? 'high' : 'medium',
+        storyA: { title: storyI.title, url: storyI.url },
+        storyB: { title: storyJ.title, url: storyJ.url },
+      });
+    }
+  }
+
+  for (const i of independentIndexes) {
+    for (const j of independentIndexes) {
+      if (i === undefined || j === undefined || i >= j) continue;
+      if (edges.get(i)?.has(j)) {
+        const storyI = stories[i];
+        const storyJ = stories[j];
+        if (!storyI || !storyJ) continue;
+        linkedButUngrouped.push({
+          reason: 'adjacency edge exists but complete-linkage/coherence kept both ungrouped',
+          storyA: { title: storyI.title, url: storyI.url },
+          storyB: { title: storyJ.title, url: storyJ.url },
+        });
+      }
+    }
+  }
+
+  const suspiciousClusters: ClusterAuditReport['suspiciousClusters'] = [];
+  for (const group of classifiedGroups) {
+    if (group.type !== 'detected') continue;
+    const indexes = group.stories
+      .map((s) => indexByUrl.get(createDedupeKey(s.url)))
+      .filter((idx): idx is number => idx !== undefined);
+    let identityPairs = 0;
+    let totalPairs = 0;
+    for (let a = 0; a < indexes.length; a += 1) {
+      for (let b = a + 1; b < indexes.length; b += 1) {
+        const idxA = indexes[a];
+        const idxB = indexes[b];
+        if (idxA === undefined || idxB === undefined) continue;
+        totalPairs += 1;
+        const storyA = stories[idxA];
+        const storyB = stories[idxB];
+        const featA = features[idxA];
+        const featB = features[idxB];
+        if (!storyA || !storyB || !featA || !featB) continue;
+        if (
+          sharedTitleIdentityTerms(
+            storyA,
+            storyB,
+            featA,
+            featB,
+            new Set(SUBJECT_ALIASES.map((e) => e.canonical)),
+          ).length > 0
+        ) {
+          identityPairs += 1;
+        }
+      }
+    }
+    if (totalPairs > 0 && identityPairs / totalPairs < 0.34) {
+      suspiciousClusters.push({
+        label: group.label,
+        storyCount: group.stories.length,
+        reason: 'no shared title identity across most pairs (possible bridge merge)',
+        stories: group.stories.map((s) => ({ title: s.title, url: s.url })),
+      });
+    }
+  }
+
+  missedPairs.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    storyCount: stories.length,
+    detectedClusterCount: classifiedGroups.filter((g) => g.type === 'detected').length,
+    independentCount: independentIndexes.length,
+    missedPairs: missedPairs.slice(0, 40),
+    suspiciousClusters,
+    linkedButUngrouped: linkedButUngrouped.slice(0, 20),
+  };
+}
+
+function titleMentionsPetCullTopic(title: string): boolean {
+  const lower = title.toLowerCase();
+  return /\bcull\b/.test(lower) || /\bpets?\b/.test(lower) || /\banimaux\b/.test(lower) || /\bcompagnie\b/.test(lower);
+}
+
+function sharedPetCullTopicLink(storyI: EnrichedStory, storyJ: EnrichedStory): boolean {
+  if (!titleMentionsPetCullTopic(storyI.title) || !titleMentionsPetCullTopic(storyJ.title)) {
+    return false;
+  }
+  const aliasesI = entityAliasesInFullStoryText(storyI);
+  const aliasesJ = entityAliasesInFullStoryText(storyJ);
+  return aliasesI.has('plymouth brethren') && aliasesJ.has('plymouth brethren');
+}
+
+function titleHasSpeedrunSubtopic(title: string): boolean {
+  return title.toLowerCase().includes('speedrun');
+}
+
+function sharedSubjectAliasViaTitleGrounding(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  sharedAliases: string[],
+): boolean {
+  return sharedAliases.some(
+    (alias) =>
+      subjectAliasesGroundedInTitle(storyI, [alias]).length > 0 &&
+      subjectAliasesGroundedInTitle(storyJ, [alias]).length > 0,
+  );
+}
+
+function shouldBlockScientologySubtopicBridge(storyI: EnrichedStory, storyJ: EnrichedStory, sharedAliases: string[]): boolean {
+  if (!sharedAliases.includes('scientology')) return false;
+  return titleHasSpeedrunSubtopic(storyI.title) !== titleHasSpeedrunSubtopic(storyJ.title);
+}
+
 /**
  * Returns lowercased tokens that appear capitalised mid-sentence in the original text —
  * a cheap proper-noun signal. The first word of a sentence is excluded (it's always
@@ -1507,7 +1856,8 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
 
     const titleTokens = tokenize(story.title, stopwords);
     const descriptionTokens = tokenize(story.description ?? '', stopwords);
-    const articleTokens = tokenize(story.articleText ?? '', stopwords).slice(0, 500);
+    const articleRaw = stripPublisherBoilerplate(story.articleText ?? '');
+    const articleTokens = tokenize(articleRaw, stopwords).slice(0, 500);
 
     addTokens(termCounts, titleTokens, 3);
     addTokens(termCounts, descriptionTokens, 1);
@@ -1576,8 +1926,8 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
 
     const headlineText = `${story.title} ${story.description ?? ''}`;
     injectEntityAliases(headlineText, language, termCounts, anchorTerms, 6);
-    if (story.articleText) {
-      injectEntityAliases(story.articleText, language, termCounts, new Set(), 0.4);
+    if (articleRaw) {
+      injectEntityAliases(articleRaw, language, termCounts, new Set(), 0.4);
     }
 
     // Give quoted phrase terms very high weight to make them dominant clustering signal
@@ -1769,6 +2119,67 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       // Shared capitalized / quoted title token (Unchosen, Artgemeinschaft, …) — always link first.
       if (
         sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, entityAliasCanonicals).length >= 1
+      ) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      if (hasCompanionCaseCrossReference(storyI, storyJ, featI, featJ)) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      if (sharedPetCullTopicLink(storyI, storyJ)) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      const textAliasesI = entityAliasesInFullStoryText(storyI);
+      const textAliasesJ = entityAliasesInFullStoryText(storyJ);
+      const sharedTextAliases = [...textAliasesI].filter((alias) => textAliasesJ.has(alias));
+      if (
+        sharedTextAliases.length > 0 &&
+        !hasSubjectAliasClusterConflict(entityAliasesI, entityAliasesJ, storyI, storyJ) &&
+        !shouldBlockScientologySubtopicBridge(storyI, storyJ, sharedTextAliases) &&
+        (sharedSubjectAliasViaTitleGrounding(storyI, storyJ, sharedTextAliases) ||
+          sharedPetCullTopicLink(storyI, storyJ))
+      ) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      if (sharedQuotedPhraseWordOverlap(storyI.title, storyJ.title) >= 2) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
+      if (
+        countSharedArticleBodyProperNouns(storyI, storyJ, featI, featJ, entityAliasCanonicals) >= 2
       ) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
@@ -2305,10 +2716,46 @@ function selectGroupLabel(
     return toTitleCase(bigramLabel);
   }
 
+  const companionLabel = pickCompanionClusterLabel(storyIndexes, stories, features, idf);
+  if (companionLabel) {
+    return companionLabel;
+  }
+
   return 'Detected Cluster';
 }
 
-function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
+function pickCompanionClusterLabel(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+  features: StoryFeatures[],
+  idf: Map<string, number>,
+): string | undefined {
+  if (storyIndexes.length !== 2) return undefined;
+  const idxA = storyIndexes[0];
+  const idxB = storyIndexes[1];
+  if (idxA === undefined || idxB === undefined) return undefined;
+  const storyA = stories[idxA];
+  const storyB = stories[idxB];
+  const featA = features[idxA];
+  const featB = features[idxB];
+  if (!storyA || !storyB || !featA || !featB) return undefined;
+  if (!hasCompanionCaseCrossReference(storyA, storyB, featA, featB)) return undefined;
+
+  const termsA = distinctiveCaseTerms(storyA, featA.language);
+  const termsB = distinctiveCaseTerms(storyB, featB.language);
+  const shared = [...termsA].filter((term) => termsB.has(term) && term.length >= 5);
+  if (shared.length > 0) {
+    const best = shared.sort(
+      (a, b) => (idf.get(b) ?? 0) - (idf.get(a) ?? 0) || b.length - a.length,
+    )[0];
+    if (best) return toTitleCase(best);
+  }
+
+  const host = (storyA.host || getHostname(storyA.url) || '').replace(/^www\./i, '').split('.')[0];
+  return host ? toTitleCase(host) : undefined;
+}
+
+function detectStoryClusters(stories: EnrichedStory[]): ClusterDetectionResult {
   const features = buildStoryFeatures(stories);
   const idf = buildIdf(features);
   const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
@@ -2502,7 +2949,13 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
         
         // If story has exclusive bigrams, require it to share bigrams with 60%+ of others AND have linkRatio >= 60%
         // Skip this check if component has significant quoted term overlap (e.g., for "Artgemeinschaft")
-        if (hasExclusiveBigrams && !hasSignificantQuotedTermOverlap && !hasSignificantTitleHeadOverlap) {
+        // Two-node pairs already passed an explicit adjacency rule — do not prune on bigram overlap alone.
+        if (
+          component.length > 2 &&
+          hasExclusiveBigrams &&
+          !hasSignificantQuotedTermOverlap &&
+          !hasSignificantTitleHeadOverlap
+        ) {
           if (bigramRatio < 0.6 || linkRatio < 0.6) {
             changed = true;
             continue;
@@ -2547,18 +3000,24 @@ function detectStoryClusters(stories: EnrichedStory[]): DetectedGroup[] {
 
     if (!isClusterCoherent(component, features, idf)) continue;
 
+    const probeLabel = selectGroupLabel(features, component, idf, stories);
+
     for (const idx of component) assigned.add(idx);
     groups.push({
-      label: selectGroupLabel(features, component, idf, stories),
+      label: probeLabel,
       storyIndexes: new Set(component),
     });
   }
 
   groups.sort((a, b) => b.storyIndexes.size - a.storyIndexes.size);
-  return groups;
+  return { groups, edges, features };
 }
 
-function classifyStories(stories: EnrichedStory[], wrongClusterUrls?: Set<string>): StoryGroup[] {
+function classifyStories(
+  stories: EnrichedStory[],
+  wrongClusterUrls?: Set<string>,
+  detection?: ClusterDetectionResult,
+): { groups: StoryGroup[]; detection: ClusterDetectionResult } {
   const wrongClusterIndexes = new Set<number>();
   if (wrongClusterUrls && wrongClusterUrls.size > 0) {
     stories.forEach((story, idx) => {
@@ -2568,7 +3027,8 @@ function classifyStories(stories: EnrichedStory[], wrongClusterUrls?: Set<string
     });
   }
 
-  const detectedGroups = detectStoryClusters(stories);
+  const resolvedDetection = detection ?? detectStoryClusters(stories);
+  const detectedGroups = resolvedDetection.groups;
   const groupedIndexes = new Set<number>();
   const result: StoryGroup[] = [];
 
@@ -2605,7 +3065,63 @@ function classifyStories(stories: EnrichedStory[], wrongClusterUrls?: Set<string
     result.push({ label: 'Independent Journalism', type: 'independent', stories: independentStories });
   }
 
-  return result;
+  return { groups: result, detection: resolvedDetection };
+}
+
+function loadWrongClusterSet(): Set<string> {
+  const feedbackPath = new URL('../data/feedback/false-positives.json', import.meta.url);
+  try {
+    const parsed = JSON.parse(readFileSync(feedbackPath, 'utf-8')) as { entries?: Array<{ url?: string; reason?: string }> };
+    const entries = parsed.entries ?? [];
+    return new Set(
+      entries.filter((e) => e.reason === 'wrong-cluster' && typeof e.url === 'string').map((e) => createDedupeKey(e.url!)),
+    );
+  } catch {
+    return new Set<string>();
+  }
+}
+
+/** Classify stories and write cult-news-latest.html. */
+function writeDigestFromStories(stories: EnrichedStory[], wrongClusterSet?: Set<string>): void {
+  const citedStories = stories.map(attachSourceCitation);
+  const { groups, detection } = classifyStories(citedStories, wrongClusterSet);
+
+  const audit = auditClusterGaps(citedStories, groups, detection);
+  const auditPath = new URL('../reports/cluster-audit-latest.json', import.meta.url);
+  mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
+  writeFileSync(auditPath, `${JSON.stringify(audit, null, 2)}\n`, 'utf-8');
+  console.log(
+    `[cluster-audit] ${audit.missedPairs.length} likely missing pairs, ${audit.suspiciousClusters.length} suspicious clusters, ${audit.linkedButUngrouped.length} linked-but-ungrouped → reports/cluster-audit-latest.json`,
+  );
+  for (const miss of audit.missedPairs.slice(0, 8)) {
+    console.log(`[cluster-audit] MISS (${miss.severity}): ${miss.reason}`);
+    console.log(`  A: ${miss.storyA.title.slice(0, 85)}`);
+    console.log(`  B: ${miss.storyB.title.slice(0, 85)}`);
+  }
+  for (const suspect of audit.suspiciousClusters.slice(0, 5)) {
+    console.log(`[cluster-audit] SUSPECT "${suspect.label}" (${suspect.storyCount}): ${suspect.reason}`);
+  }
+
+  for (const g of groups) {
+    console.log(`[cluster] "${g.label}" (${g.type}) — ${g.stories.length} stories`);
+    for (const s of g.stories) console.log(`  - ${s.title.slice(0, 90)}`);
+  }
+
+  const generatedAt = new Date().toISOString();
+  const citationReport = buildCitationReport(
+    groups.map((group) => ({
+      label: group.label,
+      type: group.type,
+      stories: group.stories.map(storyCitationInput),
+    })),
+    generatedAt,
+  );
+
+  const html = renderDocument(buildPage(groups, citedStories.length, generatedAt, citationReport));
+  writeFileSync(OUTPUT_PATH, html, 'utf-8');
+  writeFileSync(SOURCES_OUTPUT_PATH, JSON.stringify(citationReport, null, 2), 'utf-8');
+  console.log(`[agent] wrote source citations to ${SOURCES_OUTPUT_PATH.pathname}`);
+  console.log(`[agent] wrote ${citedStories.length} stories to ${OUTPUT_PATH.pathname}`);
 }
 
 async function main(): Promise<void> {
@@ -2650,12 +3166,10 @@ async function main(): Promise<void> {
         feedbackBlocklist: new Set(
           entries.filter((e) => e.reason === 'false-positive' && typeof e.url === 'string').map((e) => createDedupeKey(e.url!))
         ),
-        wrongClusterSet: new Set(
-          entries.filter((e) => e.reason === 'wrong-cluster' && typeof e.url === 'string').map((e) => createDedupeKey(e.url!))
-        ),
+        wrongClusterSet: loadWrongClusterSet(),
       };
     } catch {
-      return { feedbackBlocklist: new Set<string>(), wrongClusterSet: new Set<string>() };
+      return { feedbackBlocklist: new Set<string>(), wrongClusterSet: loadWrongClusterSet() };
     }
   })();
 
@@ -2718,6 +3232,12 @@ async function main(): Promise<void> {
     });
     return false;
   });
+  const freshnessExcluded = excluded.filter((entry) => entry.reason.includes('older than'));
+  if (freshnessExcluded.length > 0) {
+    console.log(
+      `[render] freshness filter excluded ${freshnessExcluded.length} stories (window=${RENDER_MAX_AGE_HOURS}h). Set CULT_NEWS_RENDER_MAX_AGE_HOURS higher for multi-day review.`,
+    );
+  }
 
   const figurativeFilteredStories = freshnessFilteredStories.filter((story) => {
     const language = detectStoryLanguage(story);
@@ -2734,43 +3254,29 @@ async function main(): Promise<void> {
   excluded.push(...dedupeResult.excluded);
   summarizeExclusions(excluded);
 
-  const stories = dedupeResult.kept.map(attachSourceCitation);
-
-  const groups = classifyStories(stories, wrongClusterSet);
-
-  for (const g of groups) {
-    console.log(`[cluster] "${g.label}" (${g.type}) — ${g.stories.length} stories`);
-    for (const s of g.stories) console.log(`  - ${s.title.slice(0, 90)}`);
-  }
-
-  const generatedAt = new Date().toISOString();
-  const citationReport = buildCitationReport(
-    groups.map((group) => ({
-      label: group.label,
-      type: group.type,
-      stories: group.stories.map(storyCitationInput),
-    })),
-    generatedAt,
-  );
-
-  const html = renderDocument(buildPage(groups, stories.length, generatedAt, citationReport));
-  mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
-  writeFileSync(OUTPUT_PATH, html, 'utf-8');
-  writeFileSync(SOURCES_OUTPUT_PATH, JSON.stringify(citationReport, null, 2), 'utf-8');
-  console.log(`[agent] wrote source citations to ${SOURCES_OUTPUT_PATH.pathname}`);
-
+  writeDigestFromStories(dedupeResult.kept, wrongClusterSet);
   if (summary) {
-    console.log(`[agent] wrote ${stories.length} stories to ${OUTPUT_PATH.pathname} from ${summary.processed ?? 0} processed candidates`);
-  } else {
-    console.log(`[agent] wrote ${stories.length} stories to ${OUTPUT_PATH.pathname}`);
+    console.log(`[agent] rendered from ${summary.processed ?? 0} processed candidates`);
   }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error('[agent] failed to render html digest', { message });
-  process.exitCode = 1;
-});
+function isDirectScriptRun(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(entry).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectScriptRun()) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[agent] failed to render html digest', { message });
+    process.exitCode = 1;
+  });
+}
 
 
 

@@ -305,5 +305,12 @@
     "sur",
     "de",
     "dans"
+  ],
+  "publisherBoilerplateCutPatterns": [
+    "\\bCet article est réservé aux abonnés[\\s\\S]*$",
+    "\\bAccédez immédiatement à cet article[\\s\\S]*$",
+    "\\bJe m'abonne pour lire la suite[\\s\\S]*$",
+    "\\bRégler mon impayé[\\s\\S]*$",
+    "\\bMettre à jour[\\s\\S]*$"
   ]
 }

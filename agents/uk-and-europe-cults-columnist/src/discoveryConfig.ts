@@ -438,6 +438,8 @@ export type LocaleLangFile = {
    * Used for phrase extraction, anchor tokenization, and cluster edge filtering.
    */
   groupStopwords?: string[];
+  /** Regex sources (without flags) trimming paywall/subscription tails from article text before clustering. */
+  publisherBoilerplateCutPatterns?: string[];
   /**
    * Locale-specific Google News query templates.
    * Each entry is either a plain string (auto-pinned to this file's `language` as hl)
