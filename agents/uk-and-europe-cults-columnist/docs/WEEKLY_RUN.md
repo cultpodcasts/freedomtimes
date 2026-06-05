@@ -233,8 +233,10 @@ Practical approach:
 |------|---------|
 | `data/feedback/active-report.json` | In-progress review session (created by **Init Report**) |
 | `data/feedback/false-positives.json` | Persistent blocklist; `reason: "false-positive"` excluded on render; `reason: "wrong-cluster"` detached from clusters |
+| `data/feedback/cluster-layout.json` | Manual cluster overrides from verification **Save layout & refresh** |
 | `data/feedback/archived/<reportId>.json` | Closed review sessions after **Finalize** |
 | `data/training-data.jsonl` | One JSON line per finalized entry |
+| `reports/approved-layout.json` | Final cluster layout after **Finalize** (writing phase input) |
 
 Manual edit (emergency): add an entry to `false-positives.json`, then re-run `npm run render:html`.
 
@@ -251,6 +253,10 @@ Manual edit (emergency): add an entry to `false-positives.json`, then re-run `np
 | `npm run snapshot:html` | Backup current digest HTML |
 | `npm run diff:html` | Diff latest vs snapshot digest |
 | `npm run backup:before-run` | Timestamped backup of log, drafts, digest, feedback |
+| `npm run sync:cluster-regression` | Snapshot enriched stories (720h window) into `tests/fixtures/cluster-stories-regression.json` |
+| `npm run test:clusters` | Regression test auto-clustering against `tests/cluster-expectations.json` |
+
+See [tests/CLUSTER_REGRESSION.md](../tests/CLUSTER_REGRESSION.md) for the clustering test workflow.
 
 ---
 

@@ -56,8 +56,8 @@ type StoryGroup = {
   stories: EnrichedStory[];
 };
 
-export type { StoryGroup, ClusterDetectionResult, ClusterAuditReport };
-export { classifyStories, detectStoryClusters, auditClusterGaps, createDedupeKey };
+export type { StoryGroup, ClusterDetectionResult, ClusterAuditReport, RenderStorySet };
+export { classifyStories, detectStoryClusters, auditClusterGaps, createDedupeKey, loadEnrichedStoriesForClustering };
 
 type DraftStory = {
   title: string;
@@ -3632,7 +3632,17 @@ function writeDigestFromStories(stories: EnrichedStory[], wrongClusterSet?: Set<
   console.log(`[agent] wrote ${citedStories.length} stories to ${OUTPUT_PATH.pathname}`);
 }
 
-async function main(): Promise<void> {
+type RenderStorySet = {
+  stories: EnrichedStory[];
+  wrongClusterSet: Set<string>;
+  renderMaxAgeHours: number | undefined;
+  draftSource: 'archive' | 'last-run-drafts' | 'log';
+  draftCount: number;
+  excluded: Array<{ url: string; reason: string }>;
+};
+
+/** Same story set render:html feeds into classifyStories (before manual layout overrides). */
+async function loadEnrichedStoriesForClustering(): Promise<RenderStorySet> {
   const logText = readFileSync(LOG_PATH, 'utf-8');
   const archiveDrafts = loadDraftsFromArchive();
   const structuredDrafts = archiveDrafts ?? loadDraftsFromJson();
@@ -3642,10 +3652,9 @@ async function main(): Promise<void> {
       `No draft stories found. Run npm run dev first and confirm ${DRAFTS_ARCHIVE_PATH.pathname} or ${DRAFTS_PATH.pathname} exists with count > 0.`,
     );
   }
-  console.log(`[render] loaded ${rawDrafts.length} drafts from ${archiveDrafts ? 'archive' : structuredDrafts ? 'last-run-drafts' : 'log'}`);
-  const summary = extractRunSummary(logText);
+  const draftSource = archiveDrafts ? 'archive' : structuredDrafts ? 'last-run-drafts' : 'log';
+  console.log(`[render] loaded ${rawDrafts.length} drafts from ${draftSource}`);
 
-  // Canonicalize known mirror URLs so dedupe collapses wrapped-source duplicates.
   const canonicalDrafts = rawDrafts.map((draft) => {
     const canonicalUrl = getCanonicalArticleUrl(canonicalizeStoryUrl(draft.url));
     const canonicalHost = (() => {
@@ -3672,7 +3681,7 @@ async function main(): Promise<void> {
       const entries = parsed.entries ?? [];
       return {
         feedbackBlocklist: new Set(
-          entries.filter((e) => e.reason === 'false-positive' && typeof e.url === 'string').map((e) => createDedupeKey(e.url!))
+          entries.filter((e) => e.reason === 'false-positive' && typeof e.url === 'string').map((e) => createDedupeKey(e.url!)),
         ),
         wrongClusterSet: loadWrongClusterSet(),
       };
@@ -3681,20 +3690,21 @@ async function main(): Promise<void> {
     }
   })();
 
-  const eligibleDrafts = feedbackBlocklist.size > 0
-    ? canonicalDrafts.filter((draft) => {
-        const dedupeKey = createDedupeKey(draft.url);
-        if (!feedbackBlocklist.has(dedupeKey)) return true;
-        excluded.push({ url: draft.url, reason: 'Marked as false positive in feedback file.' });
-        return false;
-      })
-    : canonicalDrafts;
+  const eligibleDrafts =
+    feedbackBlocklist.size > 0
+      ? canonicalDrafts.filter((draft) => {
+          const dedupeKey = createDedupeKey(draft.url);
+          if (!feedbackBlocklist.has(dedupeKey)) return true;
+          excluded.push({ url: draft.url, reason: 'Marked as false positive in feedback file.' });
+          return false;
+        })
+      : canonicalDrafts;
 
   const nonCultnewsSlugs = new Set<string>(
     eligibleDrafts
       .filter((draft) => getHostname(draft.url) !== 'cultnews.net')
       .map((draft) => getSlug(draft.url))
-      .filter((slug): slug is string => Boolean(slug))
+      .filter((slug): slug is string => Boolean(slug)),
   );
 
   const drafts = eligibleDrafts.filter((draft) => {
@@ -3714,7 +3724,7 @@ async function main(): Promise<void> {
   const fetchedStories: EnrichedStory[] = [];
   for (const draft of drafts) {
     const meta = await fetchStoryMeta(draft.url, { contentMirrorUrl: draft.contentMirrorUrl });
-    const enrichedStory: EnrichedStory = {
+    fetchedStories.push({
       ...draft,
       title: meta.title?.trim() || cleanDisplayTitle(draft.title),
       description: meta.description?.trim() || '',
@@ -3724,9 +3734,8 @@ async function main(): Promise<void> {
       htmlLang: meta.htmlLang,
       contentMirrorUrl: meta.contentMirrorUrl ?? draft.contentMirrorUrl,
       archiveMirrorLinks: meta.archiveMirrorLinks,
-      classificationAudit: draft.classificationAudit, // Explicitly preserve audit data
-    };
-    fetchedStories.push(enrichedStory);
+      classificationAudit: draft.classificationAudit,
+    });
   }
 
   const freshnessFilteredStories = fetchedStories.filter((story) => {
@@ -3762,7 +3771,21 @@ async function main(): Promise<void> {
   excluded.push(...dedupeResult.excluded);
   summarizeExclusions(excluded);
 
-  writeDigestFromStories(dedupeResult.kept, wrongClusterSet);
+  return {
+    stories: dedupeResult.kept,
+    wrongClusterSet,
+    renderMaxAgeHours: RENDER_MAX_AGE_HOURS,
+    draftSource,
+    draftCount: rawDrafts.length,
+    excluded,
+  };
+}
+
+async function main(): Promise<void> {
+  const logText = readFileSync(LOG_PATH, 'utf-8');
+  const summary = extractRunSummary(logText);
+  const { stories, wrongClusterSet } = await loadEnrichedStoriesForClustering();
+  writeDigestFromStories(stories, wrongClusterSet);
   if (summary) {
     console.log(`[agent] rendered from ${summary.processed ?? 0} processed candidates`);
   }
