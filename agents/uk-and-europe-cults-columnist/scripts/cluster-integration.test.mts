@@ -1,16 +1,18 @@
 /**
- * Temporary integration tests for story clustering.
- * Runs against tests/fixtures/cluster-stories.json — no network, no drafts archive.
+ * Integration tests for story clustering (synthetic + real digest fixtures).
+ * Real URLs: tests/cluster-fixture-urls.json — refresh after render:html:
  *
+ *   npm run sync:cluster-fixtures
  *   npm run test:clusters
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { EnrichedStory } from './render-cult-news-html.helpers.ts';
 import { classifyStories, type StoryGroup } from './render-cult-news-html.tsx';
 
 const ROOT = new URL('../', import.meta.url);
-const FIXTURES_PATH = new URL('tests/fixtures/cluster-stories.json', ROOT);
+const SYNTHETIC_FIXTURES_PATH = new URL('tests/fixtures/cluster-stories-synthetic.json', ROOT);
+const REAL_FIXTURES_PATH = new URL('tests/fixtures/cluster-stories-real.json', ROOT);
 const EXPECTATIONS_PATH = new URL('tests/cluster-expectations.json', ROOT);
 
 type ExpectedCluster = {
@@ -28,7 +30,11 @@ type ExpectationsFile = {
 };
 
 function loadFixtures(): EnrichedStory[] {
-  const raw = JSON.parse(readFileSync(FIXTURES_PATH, 'utf-8')) as Array<Record<string, string>>;
+  const synthetic = JSON.parse(readFileSync(SYNTHETIC_FIXTURES_PATH, 'utf-8')) as Array<Record<string, string>>;
+  const real = existsSync(REAL_FIXTURES_PATH)
+    ? (JSON.parse(readFileSync(REAL_FIXTURES_PATH, 'utf-8')) as Array<Record<string, string>>)
+    : [];
+  const raw = [...synthetic, ...real];
   return raw.map((row) => ({
     title: row.title ?? '',
     url: row.url ?? '',
@@ -169,7 +175,8 @@ function assertMustStayIndependent(groups: StoryGroup[], stories: EnrichedStory[
 }
 
 function main(): void {
-  console.log('[test:clusters] fixture:', fileURLToPath(FIXTURES_PATH));
+  console.log('[test:clusters] synthetic:', fileURLToPath(SYNTHETIC_FIXTURES_PATH));
+  console.log('[test:clusters] real:', existsSync(REAL_FIXTURES_PATH) ? fileURLToPath(REAL_FIXTURES_PATH) : '(missing — run npm run sync:cluster-fixtures)');
   const stories = loadFixtures();
   const expectations = JSON.parse(readFileSync(EXPECTATIONS_PATH, 'utf-8')) as ExpectationsFile;
 

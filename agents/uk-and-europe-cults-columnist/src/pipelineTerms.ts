@@ -10,6 +10,11 @@ export interface SubjectAlias {
   canonical: string;
   /** Array of aliases, optionally with language codes */
   aliases: SubjectAliasEntry[];
+  /**
+   * group — tracked organisation/person (default).
+   * topic — cross-language event/theme signal; title-grounding pairs with a shared group for clustering.
+   */
+  clusterRole?: 'group' | 'topic';
 }
 
 export interface SubjectAliasEntry {

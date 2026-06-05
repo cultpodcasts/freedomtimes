@@ -1178,6 +1178,17 @@ const SUBJECT_ALIASES: SubjectAlias[] = (() => {
   }
 })();
 
+const SUBJECT_GROUP_CANONICALS = new Set(
+  SUBJECT_ALIASES.filter((entry) => entry.clusterRole !== 'topic').map((entry) => entry.canonical),
+);
+const SUBJECT_TOPIC_CANONICALS = new Set(
+  SUBJECT_ALIASES.filter((entry) => entry.clusterRole === 'topic').map((entry) => entry.canonical),
+);
+
+function normalizeSubjectMatchText(value: string): string {
+  return value.toLowerCase().replace(/[\u2018\u2019\u201B\u2032]/g, "'");
+}
+
 const GENERIC_CULT_CLUSTER_TERMS = buildGenericCultClusterTermSet();
 
 function injectEntityAliases(
@@ -1430,19 +1441,33 @@ function countSharedArticleBodyProperNouns(
   return shared;
 }
 
-function entityAliasesInFullStoryText(story: EnrichedStory): Set<string> {
-  const text = `${story.title} ${story.description ?? ''} ${stripPublisherBoilerplate(story.articleText ?? '')}`.toLowerCase();
+function subjectAliasesInText(text: string): Set<string> {
+  const normalized = normalizeSubjectMatchText(text);
   const found = new Set<string>();
   for (const { canonical, aliases } of SUBJECT_ALIASES) {
-    if (text.includes(canonical)) {
+    if (normalized.includes(normalizeSubjectMatchText(canonical))) {
       found.add(canonical);
       continue;
     }
-    if (aliases.some((alias) => text.includes(alias.text.toLowerCase()))) {
+    if (aliases.some((alias) => normalized.includes(normalizeSubjectMatchText(alias.text)))) {
       found.add(canonical);
     }
   }
   return found;
+}
+
+function entityAliasesInFullStoryText(story: EnrichedStory): Set<string> {
+  return subjectAliasesInText(
+    `${story.title} ${story.description ?? ''} ${stripPublisherBoilerplate(story.articleText ?? '')}`,
+  );
+}
+
+function groupSubjectsInStoryBody(story: EnrichedStory): Set<string> {
+  return new Set(
+    [...subjectAliasesInText(`${story.description ?? ''} ${stripPublisherBoilerplate(story.articleText ?? '')}`)].filter(
+      (canonical) => SUBJECT_GROUP_CANONICALS.has(canonical),
+    ),
+  );
 }
 
 function sharedQuotedPhraseWordOverlap(titleA: string, titleB: string): number {
@@ -1631,18 +1656,147 @@ function auditClusterGaps(
   };
 }
 
-function titleMentionsPetCullTopic(title: string): boolean {
-  const lower = title.toLowerCase();
-  return /\bcull\b/.test(lower) || /\bpets?\b/.test(lower) || /\banimaux\b/.test(lower) || /\bcompagnie\b/.test(lower);
+function groupSubjectsInFullStoryText(story: EnrichedStory): Set<string> {
+  return new Set([...entityAliasesInFullStoryText(story)].filter((canonical) => SUBJECT_GROUP_CANONICALS.has(canonical)));
 }
 
-function sharedPetCullTopicLink(storyI: EnrichedStory, storyJ: EnrichedStory): boolean {
-  if (!titleMentionsPetCullTopic(storyI.title) || !titleMentionsPetCullTopic(storyJ.title)) {
+function topicSubjectsGroundedInTitle(story: EnrichedStory): Set<string> {
+  return new Set(subjectAliasesGroundedInTitle(story, [...SUBJECT_TOPIC_CANONICALS]));
+}
+
+function normalizeWireStorySlug(rawUrl: string): string | undefined {
+  const slug = getSlug(rawUrl);
+  if (!slug) return undefined;
+  return slug
+    .replace(/\.amp\.html?$/i, '')
+    .replace(/\.html?$/i, '')
+    .replace(/_ad-\d+$/i, '');
+}
+
+function sharedWireReprintSlugLink(storyI: EnrichedStory, storyJ: EnrichedStory): boolean {
+  const slugI = normalizeWireStorySlug(storyI.url);
+  const slugJ = normalizeWireStorySlug(storyJ.url);
+  return Boolean(slugI && slugJ && slugI === slugJ && slugI.length >= 24);
+}
+
+function groupSubjectBodyMentionCount(story: EnrichedStory, canonical: string): number {
+  const body = normalizeSubjectMatchText(
+    `${story.description ?? ''} ${stripPublisherBoilerplate(story.articleText ?? '')}`,
+  );
+  const entry = SUBJECT_ALIASES.find((candidate) => candidate.canonical === canonical);
+  if (!entry) return 0;
+
+  const needles = [canonical, ...entry.aliases.map((alias) => alias.text)].map((text) =>
+    normalizeSubjectMatchText(text),
+  );
+  let count = 0;
+  for (const needle of needles) {
+    if (needle.length < 4) continue;
+    let from = 0;
+    for (;;) {
+      const idx = body.indexOf(needle, from);
+      if (idx === -1) break;
+      count += 1;
+      from = idx + needle.length;
+    }
+  }
+  return count;
+}
+
+/** Shared group subject in story text + matching topic subjects in both titles, or cross-language body coverage. */
+function sharedGroupPlusEventTitleLink(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  languageI: string | undefined,
+  languageJ: string | undefined,
+): boolean {
+  const groupsI = groupSubjectsInFullStoryText(storyI);
+  const groupsJ = groupSubjectsInFullStoryText(storyJ);
+  const sharedGroups = [...groupsI].filter((canonical) => groupsJ.has(canonical));
+  if (sharedGroups.length === 0) {
     return false;
   }
-  const aliasesI = entityAliasesInFullStoryText(storyI);
-  const aliasesJ = entityAliasesInFullStoryText(storyJ);
-  return aliasesI.has('plymouth brethren') && aliasesJ.has('plymouth brethren');
+
+  const topicsI = topicSubjectsGroundedInTitle(storyI);
+  const topicsJ = topicSubjectsGroundedInTitle(storyJ);
+  if ([...topicsI].some((canonical) => topicsJ.has(canonical))) {
+    return true;
+  }
+
+  if (!languageI || !languageJ || languageI === languageJ) {
+    return false;
+  }
+
+  const bodyGroupsI = groupSubjectsInStoryBody(storyI);
+  const bodyGroupsJ = groupSubjectsInStoryBody(storyJ);
+  const sharedBodyGroups = sharedGroups.filter(
+    (canonical) => bodyGroupsI.has(canonical) && bodyGroupsJ.has(canonical),
+  );
+  if (sharedBodyGroups.length === 0) {
+    return false;
+  }
+
+  return sharedBodyGroups.some(
+    (canonical) =>
+      !shouldBlockScientologySubtopicBridge(storyI, storyJ, [canonical]) &&
+      groupSubjectBodyMentionCount(storyI, canonical) >= 2 &&
+      groupSubjectBodyMentionCount(storyJ, canonical) >= 2,
+  );
+}
+
+function hasDistinctGroupSubjectConflict(storyI: EnrichedStory, storyJ: EnrichedStory): boolean {
+  const groupsI = groupSubjectsInFullStoryText(storyI);
+  const groupsJ = groupSubjectsInFullStoryText(storyJ);
+  if (groupsI.size === 0 || groupsJ.size === 0) {
+    return false;
+  }
+  return ![...groupsI].some((canonical) => groupsJ.has(canonical));
+}
+
+function hasSubjectClusterBridgeLink(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  languageI: string | undefined,
+  languageJ: string | undefined,
+): boolean {
+  return (
+    sharedWireReprintSlugLink(storyI, storyJ) ||
+    sharedGroupPlusEventTitleLink(storyI, storyJ, languageI, languageJ)
+  );
+}
+
+/** Absorb wire syndication / subject-bridge siblings into the seed component. */
+function expandComponentWithSubjectBridges(
+  component: number[],
+  edges: Map<number, Set<number>>,
+  stories: EnrichedStory[],
+  features: StoryFeatures[],
+): number[] {
+  const componentSet = new Set(component);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    for (const idx of [...component]) {
+      const storyIdx = stories[idx];
+      const featIdx = features[idx];
+      if (!storyIdx || !featIdx) continue;
+      for (const j of edges.get(idx) ?? []) {
+        if (componentSet.has(j)) continue;
+        const storyJ = stories[j];
+        const featJ = features[j];
+        if (!storyJ || !featJ) continue;
+        if (
+          !hasSubjectClusterBridgeLink(storyIdx, storyJ, featIdx.language, featJ.language)
+        ) {
+          continue;
+        }
+        component.push(j);
+        componentSet.add(j);
+        expanded = true;
+      }
+    }
+  }
+  return component;
 }
 
 function titleHasSpeedrunSubtopic(title: string): boolean {
@@ -2032,12 +2186,12 @@ function subjectAliasesInAnchorTerms(anchorTerms: Set<string>): string[] {
  * Body-only alias mentions (e.g. Plymouth Brethren discussed inside an Unchosen review) are ignored.
  */
 function subjectAliasesGroundedInTitle(story: EnrichedStory, aliases: string[]): string[] {
-  const titleLower = story.title.toLowerCase();
+  const titleLower = normalizeSubjectMatchText(story.title);
   return aliases.filter((canonical) => {
-    if (titleLower.includes(canonical)) return true;
+    if (titleLower.includes(normalizeSubjectMatchText(canonical))) return true;
     const entry = SUBJECT_ALIASES.find((e) => e.canonical === canonical);
     if (!entry) return false;
-    return entry.aliases.some((alias) => titleLower.includes(alias.text));
+    return entry.aliases.some((alias) => titleLower.includes(normalizeSubjectMatchText(alias.text)));
   });
 }
 
@@ -2107,6 +2261,18 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         continue;
       }
 
+      if (hasDistinctGroupSubjectConflict(storyI, storyJ)) {
+        if (sharedWireReprintSlugLink(storyI, storyJ)) {
+          const left = edges.get(i) ?? new Set<number>();
+          const right = edges.get(j) ?? new Set<number>();
+          left.add(j);
+          right.add(i);
+          edges.set(i, left);
+          edges.set(j, right);
+        }
+        continue;
+      }
+
       const similarity = cosineSimilarity(featI, featJ, idf);
       const sharedRareAnchorTerms = countSharedRareAnchorTerms(featI, featJ, idf);
 
@@ -2139,7 +2305,10 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         continue;
       }
 
-      if (sharedPetCullTopicLink(storyI, storyJ)) {
+      if (
+        sharedGroupPlusEventTitleLink(storyI, storyJ, featI.language, featJ.language) ||
+        sharedWireReprintSlugLink(storyI, storyJ)
+      ) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
         left.add(j);
@@ -2156,8 +2325,7 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         sharedTextAliases.length > 0 &&
         !hasSubjectAliasClusterConflict(entityAliasesI, entityAliasesJ, storyI, storyJ) &&
         !shouldBlockScientologySubtopicBridge(storyI, storyJ, sharedTextAliases) &&
-        (sharedSubjectAliasViaTitleGrounding(storyI, storyJ, sharedTextAliases) ||
-          sharedPetCullTopicLink(storyI, storyJ))
+        sharedSubjectAliasViaTitleGrounding(storyI, storyJ, sharedTextAliases)
       ) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
@@ -2825,8 +2993,8 @@ function detectStoryClusters(stories: EnrichedStory[]): ClusterDetectionResult {
     const neighbors = edges.get(i) ?? new Set<number>();
     if (neighbors.size === 0) continue;
 
-    // Seed cluster with i and its direct neighbours
-    let component: number[] = [i, ...neighbors];
+    // Seed cluster with i and its direct neighbours, then absorb topic/wire siblings (e.g. bol.uol ↔ noticias.uol).
+    let component: number[] = expandComponentWithSubjectBridges([i, ...neighbors], edges, stories, features);
 
     // Check if component has multiple languages and shares proper noun bigrams
     const componentLanguages = new Set(
@@ -2945,6 +3113,20 @@ function detectStoryClusters(stories: EnrichedStory[]): ClusterDetectionResult {
         const others = component.filter((b) => b !== a);
         const linkedCount = others.filter((b) => aEdges.has(b)).length;
         const linkRatio = others.length === 0 ? 1 : linkedCount / others.length;
+
+        const topicBridgeLinked = others.some((b) => {
+          const storyB = stories[b];
+          const featB = features[b];
+          return (
+            storyB &&
+            featB &&
+            hasSubjectClusterBridgeLink(storyA, storyB, featA.language, featB.language)
+          );
+        });
+        if (topicBridgeLinked) {
+          next.push(a);
+          continue;
+        }
         
         // Additional check: if story shares proper noun bigrams with enough others, keep it even if linkRatio is lower
         const bigramSharedCount = others.filter((b) => {

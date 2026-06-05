@@ -1,0 +1,149 @@
+{
+  "reportId": "2026-05-29T21-01-33-540Z",
+  "createdAt": "2026-05-29T21:01:33.565Z",
+  "status": "review",
+  "entries": [
+    {
+      "url": "https://ilmattino.it/napolismart/teatro/campania_young_festival_750_studenti_diventano_artisti_teatro_dei_piccoli_napoli-9553417.html",
+      "title": "Al via il Campania Young Festival: da domani 26 maggio 750 studenti diventano artisti nel Teatro dei piccoli a Napoli",
+      "reason": "false-positive",
+      "flaggedAt": "2026-05-29T21:01:35.739Z",
+      "articleText": "Al via il Campania Young Festival: da domani 26 maggio 750 studenti diventano artisti nel Teatro dei piccoli a Napoli lunedì 25 maggio 2026, 10:30 4 Minuti di Lettura --> Top News - Newsletter Ogni giorno le notizie pi&ugrave; lette della giornata Iscriviti e ricevi le notizie via email &Egrave; fissato per domani 26 maggio alle ore 9 il suono della prima campanella del progetto Campania Young-Next Generation: Tocca a noi!, evento finanziato dalla Regione Campania, Direzione Generale Politiche Sociali, Politiche Giovanili e Sport. Un vero e proprio Festival, in programma dal 26 al 29 maggio nel Teatro dei Piccoli a Napoli , organizzato dalla Fondazione Campania dei Festival , con la direzione artistica di Ruggero Cappuccio e a cura della regista Nadia Baldi. APPROFONDIMENTI L'intervista Toni Servillo: &laquo;Reggia, turismo colto con la musica classica la teatro di Corte&raquo;",
+      "classificationAudit": {
+        "matchedTerms": [],
+        "matchLocations": [],
+        "matchContexts": [],
+        "classificationSource": "isCultTopicPrecise-passed",
+        "filtersChecked": [
+          "legalCultEquivalent",
+          "nonAmbiguousSpecific",
+          "urlSignal",
+          "commercialFigurative",
+          "figurativeUsage"
+        ],
+        "filterResults": {
+          "legalCultEquivalent": {
+            "passed": false,
+            "reason": "No legal cult equivalent detected"
+          },
+          "nonAmbiguousSpecific": {
+            "passed": false,
+            "reason": "No non-ambiguous specific terms"
+          },
+          "urlSignal": {
+            "passed": false,
+            "reason": "No URL cult signal"
+          },
+          "commercialFigurative": {
+            "passed": true,
+            "reason": "No commercial figurative usage"
+          },
+          "figurativeUsage": {
+            "passed": true,
+            "reason": "No figurative usage detected"
+          }
+        },
+        "classifiedAt": "2026-05-26T18:24:56.021Z"
+      }
+    },
+    {
+      "url": "https://ilmattino.it/spettacoli/cinema/celico_international_arts_festival_regista_canadese_david_cronenberg_presidente_onorario-9548648.html",
+      "title": "“Celico International Arts Festival”: torna il regista canadese David Cronenberg da presidente onorario",
+      "reason": "false-positive",
+      "flaggedAt": "2026-05-29T21:01:37.851Z",
+      "articleText": "“Celico International Arts Festival”: torna il regista canadese David Cronenberg da presidente onorario venerdì 22 maggio 2026, 19:13 4 Minuti di Lettura --> Top News - Newsletter Ogni giorno le notizie pi&ugrave; lette della giornata Iscriviti e ricevi le notizie via email Otto giorni, diciotto appuntamenti, un ricco cartellone di eventi gratuiti con registi, scrittori, attori e autori nazionali e internazionali. Dal 23 al 31 maggio 2026 prende il via la seconda edizione del Celico International Arts Festival. Il regista, sceneggiatore e produttore canadese David Cronenberg , maestro indiscusso della cinematografia mondiale, torna in Calabria in veste di Presidente onorario del Festival, affiancato dai direttori artistici Antonio Nicaso , saggista e storico delle organizzazioni criminali, e Donato Santeramo , professore della Queen’s University di Kingston in Canada. APPROFONDIMENTI Festival di Cannes, Almodovar: &laquo;Gli artisti hanno il dovere di prendere posizione&raquo;",
+      "classificationAudit": {
+        "matchedTerms": [],
+        "matchLocations": [],
+        "matchContexts": [],
+        "classificationSource": "isCultTopicPrecise-passed",
+        "filtersChecked": [
+          "legalCultEquivalent",
+          "nonAmbiguousSpecific",
+          "urlSignal",
+          "commercialFigurative",
+          "figurativeUsage"
+        ],
+        "filterResults": {
+          "legalCultEquivalent": {
+            "passed": false,
+            "reason": "No legal cult equivalent detected"
+          },
+          "nonAmbiguousSpecific": {
+            "passed": false,
+            "reason": "No non-ambiguous specific terms"
+          },
+          "urlSignal": {
+            "passed": false,
+            "reason": "No URL cult signal"
+          },
+          "commercialFigurative": {
+            "passed": true,
+            "reason": "No commercial figurative usage"
+          },
+          "figurativeUsage": {
+            "passed": true,
+            "reason": "No figurative usage detected"
+          }
+        },
+        "classifiedAt": "2026-05-26T18:24:57.225Z"
+      }
+    },
+    {
+      "url": "https://cinema.everyeye.it/notizie/cult-sci-fi-ridley-scott-domina-streaming-vederlo-italia-878507.html",
+      "title": "Questo cult sci-fi di Ridley Scott domina lo streaming: dove vederlo in Italia?",
+      "reason": "false-positive",
+      "flaggedAt": "2026-05-29T21:02:07.948Z",
+      "articleText": "HOME Sopravvissuto - The Martian Notizie Questo cult sci-fi di Ridley Scott domina lo streaming: dove vederlo in Italia? INFORMAZIONI FILM Sopravvissuto - The Martian Recensione Articoli Notizie Immagini Aggiungici come fonte preferita su Google di Davide Sica 16/05/2026, ore 17:39 Tra i film di successo di questa prima parte di 2026 al cinema spicca Project Hail Mary di Phil Lord e Chris Miller, con protagonista Ryan Gosling nel bel mezzo di un'avventura spaziale staordinaria da oltre 650 milioni di incasso globale. Project Hail Mary, tuttavia, non &egrave; la prima avventura spaziale cinematografica basata su un bestseller di Andy Weir. Nel 2015, il romanzo di Weir dal titolo The Martian , divenne un'esperienza cinematografica di grande impatto grazie a Ridley Scott dietro la macchina da presa e Matt Damon come protagonista. Analogo anche il successo al box-office, con 653 milioni di dollari in tutto il mondo incassati tra mercato USA e mercato internazionale. Nel frattempo, il successo di Sopravvissuto - The Martian non &egrave; ancora finito, visto che il film sta riscuotendo rinnovati consensi anche in streaming. Negli Stati Uniti, il lungometraggio di Ridley Scott svetta nelle classifiche grazie alla sua presenza su Peacock. Non perdetevi la nostra spiegazione del finale di Sopravvissuto The Martian . Ma in Italia dove si pu&ograve; recuperare? Sopravvissuto - The Martian &egrave; attualmente disponibile nel piano d'abbonamento delle piattaforme Disney+ e Mediaset Infinity, anche tramite il canale Amazon Infinity Selection. Nella versione a noleggio o in acquisto &egrave; invece visionabile su Rakuten TV, Apple TV e Amazon Prime Video. Su Everyeye potete recuperare la nostra recensione di Sopravvissuto The Martian . FONTE: Collider I TOP contenuti selezionati per te Iscriviti al CANALE WHATSAPP Altri contenuti per Sopravvissuto - The Martian Questo capolavoro sci-fi ha stregato persino gli astronauti della NASA Sopravvissuto - The Martian: la spiegazione del finale del film di Ridley Scott The Martian, furono chieste delle consulenze alla NASA durante la produzione Sopravvissuto - The Martian, Matt Damon si commosse davvero durante una scena Naomi Scott era in The Martian, ma fu tagliata: \"Ho rovinato una scena!\" The Punisher: 3 storie dei fumetti che vogliamo vedere nel Marvel Cinematic Universe! I fan di Tom Cruise in delirio per il trailer di Digger nascosto al cinema con Top Gun Curiosit&agrave; I film e le serie TV d'animazione da vedere a giugno Recensione Cinema Jack Ryan Ghost War Recensione: montagne russe tutt'altro che esaltanti 5 Speciale Videogiochi Hollywood e videogiochi: ecco i film mai nati che avrebbero potuto cambiare tutto Speciale Cinema Le 10 scene più iconiche di Kill Bill, dalla meno assurda alla più tarantinana Recensione Cinema Backrooms recensione: un horror ambientale che non lascia respiro 7 News Serie TV Zerocalcare tra ansia e leggerezza: come Due Spicci racconta la vita adulta Sopravvissuto - The Martian Distributore: 20th Century Fox Genere: Fantascienza Regia: Ridley Scott Interpreti: Matt Damon, Jeff Daniels, Kate Mara, Michael Pena, Jessica Chastain, Sean Bean Sceneggiatura: Andy Weir, Drew Goddard Sito Ufficiale: Link Nazione: USA Produttore: Simon Kinberg, Aditya Sood Durata: 141 min + Che voto dai a: Sopravvissuto - The Martian Media Voto Utenti Voti: 19 7.3 nd Contenuti pi&ugrave; Letti &egrave; su RaiPlay ed &egrave; un capolavoro thriller: il film che devi assolutamente vedere stasera Disclosure Day, reazioni gridano al capolavoro: \"Miglior Spielberg degli ultimi 20 anni\" 3 misteri irrisolti nella trilogia di Batman di Nolan che ancora fanno discutere Dietro le quinte del cinema: ecco cosa succedeva davvero sui set pi&ugrave; litigiosi Sherlock Holmes 3 si far&agrave;? La verit&agrave; arriva direttamente da Guy Ritchie I 5 migliori film che hanno modificato un evento storico reale Nicolas Cage ha ufficialmente cambiato cognome! 'Non sono il cugino clown' Indiana Jones e il Quadrante del Destino, spiegazione del finale del film del 2023 Che cosa sono le Backrooms? Storia del fenomeno horror sbarcato al cinema Backrooms recensione: un horror ambientale che non lascia respiro",
+      "classificationAudit": null
+    },
+    {
+      "url": "https://vanityfair.it/article/michele-venitucci-la-sobrieta-intervista",
+      "title": "Michele Venitucci: «Il mondo dello spettacolo? A volte sembra una setta. Il mio neo? Per anni l’ho nascosto, oggi è il mio segno distintivo»",
+      "reason": "false-positive",
+      "flaggedAt": "2026-05-29T21:02:11.464Z",
+      "articleText": "La Sobrietà di Carlo Fenizi porta sullo schermo un ritratto del mondo dello spettacolo con tutte le sue contraddizioni. Un film corale, tra satira e realtà, in cui convivono volti iconici come Amanda Lear e Carmen Russo, e al centro il personaggio di Rodrigo, interpretato da Michele Venitucci , che attraversa un sistema affascinante fino a restarne coinvolto. Con Venitucci abbiamo parlato del mestiere dell’attore e delle dinamiche che regolano il dietro le quinte, partendo dagli inizi della sua carriera, dall’incontro decisivo con Sergio Rubini e da quel primo provino vissuto come un viaggio formativo, fino al rapporto con il cinema su pellicola e alla scoperta del mestiere. Tra un’industria che cambia e un sistema sempre più precario, Venitucci riflette anche sul passaggio tra cinema e televisione, dove il ritmo sostituisce il respiro più lento del set, forte anche del successo del suo personaggio Trancredi in Guerrieri al fianco di Alessandro Gassmann. E su ciò che lo ha reso riconoscibile, nel bene e nel male: quel neo che lo ha sempre anticipato, sin dai tempi della scuola, oggi diventato segno distintivo. Nel film si racconta un certo “dietro le quinte” del mondo del cinema. È tutto vero? «Il regista Carlo Fenizi ha raccontato un sottobosco che riguarda non solo il cinema, ma lo spettacolo in generale. La figura del coach, ad esempio, è assolutamente rispettabile quando viene esercitata con professionalità. Però esiste anche un lato più ambiguo. Io stesso, dopo la formazione, ho vissuto quel momento in cui ti sentì perso: finisce l’accademia, perdi la routine e devi entrare nel mondo del lavoro. Spesso ci si rifugia nei workshop. In questi ambienti a volte orbitano persone che colmano dei vuoti emotivi, e per qualcuno diventa quasi una terapia. Il problema nasce quando il coach non segna un limite e diventa una figura terapeutica: lì può diventare pericoloso, perché si smuovono emozioni profonde e si crea dipendenza». Ha parlato anche di vere e proprie sette... «In realtà queste dinamiche le ho osservate da fuori. Non le ho mai praticate davvero, perché avevo paura di quelle che sembravano quasi delle “sette”. Poi però, anni dopo, per caso ho partecipato a un seminario a Budapest grazie a una borsa di studio. E lì ho trovato un grande professionista, Paolo Antonio Simioni, che sa mantenere il giusto confine. Oggi lavoro ancora con lui: è una palestra che ti sostiene e migliora. Nel nostro mestiere il processo creativo è molto solitario, quindi avere un luogo di confronto è fondamentale». Al di là dei metodi, non crede che il vissuto personale faccia la differenza? «Assolutamente sì. Ho sempre pensato che l’interprete faccia la differenza in base al proprio mondo interiore e alle esperienze. Divido i personaggi in due parti: la “maschera sociale”, cioè ciò che è scritto, e la parte privata, misteriosa. Ed è lì che entra in gioco la tua esperienza, la tua emotività». La Sobrietà di Carlo Fenizi, qui sul set con Amanda Lear Il suo personaggio, Rodrigo, parte per smascherare un sistema ma finisce coinvolto. È inevitabile? «Più che coinvolto, direi che prende consapevolezza. È attratto da questo mondo borderline, perché ha una fantasia molto viva e vuole raccontare cose diverse. All’inizio trova porte chiuse, poi per caso decide di fare un documentario e scopre che quel mondo lo rappresenta già. Alla fine non ci casca: riesce a raccontare il suo punto di vista aggirando il sistema. È una vittoria sottile». Ha detto che il sistema è addirittura peggiore di quello raccontato in Boris . È davvero così? «In parte sì. Ci sono ancora situazioni di grande professionalità, ma il sistema ha molte falle. Negli ultimi anni sono peggiorate alcune dinamiche organizzative e produttive. Quello che una volta sembrava una caricatura, come in Boris, oggi a volte è diventato realtà. E il problema è che spesso le risorse non vengono distribuite bene». Nel film la vediamo dietro la macchina da presa, le piacerebbe? «Sì, è una cosa che affascina molti attori. Davanti alla macchina da presa sei molto esposto, e a un certo punto senti il desiderio di cambiare prospettiva. Interpretando Rodrigo è stato interessante osservare gli altri attori anche da fuori. In futuro mi piacerebbe raccontare qualcosa di mio, con la mia visione». Com’è stato lavorare con Amanda Lear e Carmen Russo? «Sono figure iconiche, soprattutto per la mia generazione. Ma la cosa che colpisce è la loro professionalità: arrivano preparate, con la memoria perfetta, e sono potentissime in scena. Una generazione che ha lavorato con grandi maestri e si porta dietro un rigore incredibile, indipendentemente dal percorso artistico». Una volta ha detto: «il teatro prepara, il cinema racconta e la tv vende». È ancora così? «In parte sì. Ho fatto molta tv anche perché oggi si fa meno cinema e il sistema è più chiuso. Il nostro è un lavoro precario: finisce un progetto e devi ricominciare da capo. La tv però mi ha insegnato qualcosa di importante: il ritmo. Il cinema ha tempi più dilatati, mentre la televisione richiede velocità e adattamento». In tv con Alessandro Gassmann è protagonista di Guerrieri: perché il suo personaggio di Tancredi è diventato così popolare? «Me lo sono chiesto anche io. Credo che il pubblico si sia affezionato alla sua parte più segreta, fragile. Non tanto alla performance in sé, ma a quello che non viene detto. Quando un personaggio ha un mistero, qualcosa di non esplicitato, le persone si attaccano a quello». Il cinema per lei comincia con l’incontro con Sergio Rubini: che ricordo ha di quel provino? «Più che un film, è un pezzo di vita. Era come il primo viaggio a 18 anni. Ho avuto la fortuna di lavorare in un periodo in cui il cinema era ancora su pellicola. Ricordo bene il provino e il viaggio in auto con Rubini: per me era un mito. Durante quel viaggio mi fece una sorta di intervista sulla mia vita. È stato un momento formativo incredibile». Le sarebbe piaciuto fare carriera all’estero? «Le esperienze all’estero sono state",
+      "classificationAudit": null
+    },
+    {
+      "url": "https://observer.co.uk/news/sport/article/aston-villa-and-crystal-palace-are-they-the-baddies",
+      "title": "Aston Villa and Crystal Palace: are they the baddies?",
+      "reason": "false-positive",
+      "flaggedAt": "2026-05-29T21:02:15.280Z",
+      "articleText": "Aston Villa and Crystal Palace: are they the baddies? Get full access to the app & website: Subscribe Sport Tuesday 19 May 2026 Aston Villa and Crystal Palace: are they the baddies? The Europa League and Conference League finals are examples of how football has become engineered to a point where domestic clubs are cast as unromantic behemoths Rory Smith Football Correspondent Sport Football Aston Villa Share",
+      "classificationAudit": {
+        "matchedTerms": [
+          "cult"
+        ],
+        "matchLocations": [
+          "title",
+          "body"
+        ],
+        "matchContexts": [
+          "a show that skewed more cult than mainstream"
+        ],
+        "classificationSource": "isCultTopicPrecise-specificOrUrl",
+        "filtersChecked": [
+          "legalCultEquivalent",
+          "nonAmbiguousSpecific",
+          "urlSignal"
+        ],
+        "filterResults": {
+          "legalCultEquivalent": {
+            "passed": false,
+            "reason": "No legal cult equivalent detected"
+          },
+          "nonAmbiguousSpecific": {
+            "passed": true,
+            "reason": "Matched: cult (title)"
+          },
+          "urlSignal": {
+            "passed": false,
+            "reason": "No URL cult signal"
+          }
+        },
+        "classifiedAt": "2026-05-21T12:04:19.924Z"
+      }
+    }
+  ]
+}

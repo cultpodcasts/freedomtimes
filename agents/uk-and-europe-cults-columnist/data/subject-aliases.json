@@ -49,6 +49,19 @@
     ]
   },
   {
+    "canonical": "human trafficking",
+    "clusterRole": "topic",
+    "aliases": [
+      { "text": "human trafficking" },
+      { "text": "traite d'êtres humains", "lang": "fr" },
+      { "text": "traite des êtres humains", "lang": "fr" },
+      { "text": "tráfico de pessoas", "lang": "pt" },
+      { "text": "trafico de pessoas", "lang": "pt" },
+      { "text": "trata de personas", "lang": "es" },
+      { "text": "red de trata", "lang": "es" }
+    ]
+  },
+  {
     "canonical": "konstantin rudnev",
     "aliases": [
       { "text": "константин руднев", "lang": "ru" },

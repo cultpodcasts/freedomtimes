@@ -16,8 +16,8 @@
     {
       "id": "lev-tahor-ecuador",
       "labelPattern": "lev tahor",
-      "minSize": 3,
-      "requiredStoryPatterns": ["lev-tahor", "lev tahor", "bol.uol.com.br", "le-pays.fr"]
+      "minSize": 5,
+      "requiredStoryPatterns": ["bfmtv.com", "bol.uol.com.br", "le-pays.fr", "crhoy.com", "noticias.uol.com.br"]
     },
     {
       "id": "midilibre-companion",

@@ -29,7 +29,8 @@
     "diff:html": "node scripts/diff-cult-news-reports.mjs reports/cult-news-latest.html reports/cult-news-snapshot.html",
     "e2e:smoke": "cmd /c scripts\\run-e2e-smoke.cmd 5",
     "e2e:full": "cmd /c \"cd /d %CD% && set AGENT_ENV=staging && set DISCOVERY_MAX_AGE_HOURS=168 && set DRY_RUN=true && npx tsx src/index.ts\"",
-    "test:clusters": "tsx scripts/cluster-integration.test.mts"
+    "test:clusters": "tsx scripts/cluster-integration.test.mts",
+    "sync:cluster-fixtures": "tsx --env-file=.env scripts/sync-cluster-fixtures.mts"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
