@@ -57,7 +57,7 @@ Use the **same** window for discovery and render when writing about a single wee
 | Variable | Role |
 |----------|------|
 | `DISCOVERY_MAX_AGE_HOURS` | How far back discovery searches (required for `npm run dev`) |
-| `CULT_NEWS_RENDER_MAX_AGE_HOURS` | Drops stories older than this at render time (defaults to `DISCOVERY_MAX_AGE_HOURS` if unset). **Close Report re-render uses this** — use `504` (21 days) for multi-day review. |
+| `CULT_NEWS_RENDER_MAX_AGE_HOURS` | Drops stories older than this at render time (defaults to `DISCOVERY_MAX_AGE_HOURS` if unset). **Close Report re-render uses this** — use `720` (30 days) for multi-day review. |
 
 **Weekly example (7 days, same-day render):**
 
@@ -70,13 +70,13 @@ $env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '168'
 
 ```powershell
 $env:DISCOVERY_MAX_AGE_HOURS = '168'
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '504'
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'
 npm run render:html
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '504'   # same value before starting server
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'   # same value before starting server
 npm run feedback:server
 ```
 
-Put `CULT_NEWS_RENDER_MAX_AGE_HOURS=504` in `.env` so `npm run render:html` and the feedback server share the same window.
+Put `CULT_NEWS_RENDER_MAX_AGE_HOURS=720` in `.env` so `npm run render:html` and the feedback server share the same window.
 
 **Custom window (e.g. 10 days):**
 
@@ -179,15 +179,19 @@ The server serves `reports/cult-news-latest.html` and exposes the feedback API. 
 2. For each **non-cult** card, click **False positive**. Entries are stored in the active report (with URL, title, article text, classification audit when available).
 3. When finished, click **Close Report**.
    - Merges false positives into `data/feedback/false-positives.json`
-   - Re-runs `render-cult-news-html.tsx` using the feedback server’s environment (`CULT_NEWS_RENDER_MAX_AGE_HOURS` — set before starting the server, e.g. `504`)
+   - Re-runs `render-cult-news-html.tsx` using the feedback server’s environment (`CULT_NEWS_RENDER_MAX_AGE_HOURS` — set before starting the server, e.g. `720`)
    - Reloads the page with **updated clusters** (false positives excluded)
 
 ### 5. Review: clusters (verification phase)
 
-After close, status becomes **verification**. The digest should show tighter clusters.
+After close, status becomes **verification**. A cluster editor toolbar appears at the bottom of the page.
 
-- **Wrong cluster** buttons appear in this phase. Prefer fixing grouping by re-running render after updating `data/feedback/false-positives.json` with `"reason": "wrong-cluster"` for URLs that should be detached from a cluster (see [Feedback files](#feedback-files)).
-- When satisfied, click **Finalize** to archive the active report to `data/feedback/archived/` and append entries to `data/training-data.jsonl`.
+- **Rename clusters** — edit the label field in each cluster header.
+- **Move stories** — use the “Move to…” dropdown on each card.
+- **Wrong cluster** — moves the story to Independent (unsaved until you save).
+- **New cluster** / **Dissolve cluster** — toolbar buttons.
+- **Save layout & refresh** — writes `data/feedback/cluster-layout.json`, re-renders, and reloads with your layout applied on top of auto-clustering.
+- When satisfied, click **Finalize** — archives the report, exports training data, and writes `reports/approved-layout.json` for the writing phase.
 
 To start a new review cycle on the same HTML, click **Init Report** again after finalize.
 

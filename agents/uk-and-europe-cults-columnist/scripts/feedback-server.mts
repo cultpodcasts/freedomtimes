@@ -4,6 +4,12 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { URL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import {
+  loadClusterLayout,
+  saveApprovedLayout,
+  saveClusterLayout,
+  type ClusterLayout,
+} from '../src/clusterLayout.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -76,6 +82,24 @@ function sendJson(res: ServerResponse, data: unknown, status = 200): void {
 
 function sendError(res: ServerResponse, message: string, status = 400): void {
   sendJson(res, { error: message }, status);
+}
+
+function runRender(): void {
+  const renderMaxAge = process.env.CULT_NEWS_RENDER_MAX_AGE_HOURS?.trim() || '(unset)';
+  console.log('[feedback-server] re-rendering digest; CULT_NEWS_RENDER_MAX_AGE_HOURS =', renderMaxAge);
+  execSync('npx tsx --env-file=.env scripts/render-cult-news-html.tsx', {
+    cwd: join(__dirname, '..'),
+    env: process.env,
+    stdio: 'inherit',
+  });
+}
+
+async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
+  let body = '';
+  for await (const chunk of req) {
+    body += chunk.toString();
+  }
+  return JSON.parse(body) as T;
 }
 
 function getCorsHeaders(): Record<string, string> {
@@ -254,14 +278,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     // Re-render HTML so clustering excludes the false-positives.
     // Inherit CULT_NEWS_RENDER_MAX_AGE_HOURS from the server process (set it when
     // starting feedback:server, or in .env). Never force a narrower window here.
-    const renderMaxAge = process.env.CULT_NEWS_RENDER_MAX_AGE_HOURS?.trim() || '(unset)';
-    console.log('[feedback-server] re-rendering digest; CULT_NEWS_RENDER_MAX_AGE_HOURS =', renderMaxAge);
     try {
-      execSync('npx tsx --env-file=.env scripts/render-cult-news-html.tsx', {
-        cwd: join(__dirname, '..'),
-        env: process.env,
-        stdio: 'inherit',
-      });
+      runRender();
     } catch (err) {
       console.error('[feedback-server] render failed:', err);
     }
@@ -269,6 +287,55 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     report.status = 'verification';
     saveActiveReport(report);
     sendJson(res, { success: true, status: 'verification' });
+    return;
+  }
+
+  // API: Get saved cluster layout
+  if (path === '/api/cluster-layout' && req.method === 'GET') {
+    sendJson(res, { layout: loadClusterLayout() });
+    return;
+  }
+
+  // API: Save cluster layout without re-render
+  if (path === '/api/cluster-layout' && req.method === 'PUT') {
+    const data = await readJsonBody<{ layout?: ClusterLayout }>(req);
+    if (!data.layout || !Array.isArray(data.layout.clusters) || !Array.isArray(data.layout.independentUrls)) {
+      sendError(res, 'layout with clusters and independentUrls is required');
+      return;
+    }
+    data.layout.updatedAt = new Date().toISOString();
+    saveClusterLayout(data.layout);
+    sendJson(res, { success: true });
+    return;
+  }
+
+  // API: Save layout and re-render digest (verification phase)
+  if (path === '/api/report/apply-layout' && req.method === 'POST') {
+    const report = loadActiveReport();
+    if (!report) {
+      sendError(res, 'No active report', 404);
+      return;
+    }
+    if (report.status !== 'verification') {
+      sendError(res, 'Layout edits require verification phase', 400);
+      return;
+    }
+
+    const data = await readJsonBody<{ layout?: ClusterLayout }>(req);
+    if (!data.layout || !Array.isArray(data.layout.clusters) || !Array.isArray(data.layout.independentUrls)) {
+      sendError(res, 'layout with clusters and independentUrls is required');
+      return;
+    }
+    data.layout.updatedAt = new Date().toISOString();
+    saveClusterLayout(data.layout);
+    try {
+      runRender();
+    } catch (err) {
+      console.error('[feedback-server] render failed:', err);
+      sendError(res, 'Render failed', 500);
+      return;
+    }
+    sendJson(res, { success: true });
     return;
   }
 
@@ -318,6 +385,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
     // Archive report
     archiveReport(report);
+
+    const layout = loadClusterLayout();
+    if (layout) {
+      saveApprovedLayout(layout);
+      console.log('[feedback-server] wrote approved layout to reports/approved-layout.json');
+    }
 
     // Export to training data
     ensureDirectories();

@@ -17,6 +17,7 @@ import { cleanDisplayTitle } from '../src/articleContent.ts';
 import { buildArchiveMirrorLinks, getCanonicalArticleUrl } from '../src/archiveMirrors.ts';
 import { ARCHIVE_FALLBACK_HOSTS } from '../src/http-cache/config.ts';
 import { buildCitationReport, buildStorySourceCitation, type CitationReport } from '../src/sourceCitation.ts';
+import { applyClusterLayout, loadClusterLayout } from '../src/clusterLayout.ts';
 import { hasFigurativeCultUsage } from '../src/pipeline.ts';
 import {
   buildGenericCultClusterTermSet,
@@ -49,6 +50,7 @@ declare global {
 }
 
 type StoryGroup = {
+  id?: string;
   label: string;
   type: 'detected' | 'independent';
   stories: EnrichedStory[];
@@ -534,8 +536,12 @@ function renderCard(story: EnrichedStory, language?: string) {
             data-fb-url={escapedUrl}
             data-fb-title={escapedTitle}
             data-fb-reason="wrong-cluster"
-            onclick="window._fbClick(this)"
+            onclick="window._fbWrongCluster(this)"
           >⚠️ Wrong cluster</button>
+          <select className="cluster-move-select" data-story-url={escapedUrl} onchange="window._moveStorySelect(this)">
+            <option value="">Move to…</option>
+            <option value="independent">Independent</option>
+          </select>
           </div>
         </div>
       </div>
@@ -807,6 +813,77 @@ function buildPage(
           .fb-btn[data-fb-reason="wrong-cluster"] { display: none; }
           .fb-btn[data-fb-reason="false-positive"] { display: none; }
           body.review-phase .fb-btn[data-fb-reason="false-positive"] { display: inline-block; }
+          body.verification-phase .fb-btn[data-fb-reason="wrong-cluster"] { display: inline-block; }
+          body.verification-phase .cluster-move-select,
+          body.verification-phase .cluster-label-input,
+          body.verification-phase .cluster-delete-btn { display: inline-block; }
+          body.verification-phase .group-label { display: none; }
+          .cluster-move-select,
+          .cluster-label-input,
+          .cluster-delete-btn,
+          #cluster-editor { display: none; }
+          body.verification-phase #cluster-editor { display: flex; }
+          .cluster-move-select {
+            font-size: 0.72rem;
+            font-family: system-ui, sans-serif;
+            max-width: 11rem;
+            padding: 3px 6px;
+            border-radius: 5px;
+            border: 1px solid var(--line);
+            background: #fff;
+          }
+          .cluster-label-input {
+            font-size: 1rem;
+            font-weight: 700;
+            font-family: Georgia, serif;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 4px 8px;
+            min-width: 12rem;
+          }
+          .cluster-delete-btn {
+            font-size: 0.72rem;
+            font-family: system-ui, sans-serif;
+            padding: 3px 9px;
+            border-radius: 5px;
+            border: 1px solid #e57373;
+            background: #fff5f5;
+            color: #8b1a1a;
+            cursor: pointer;
+          }
+          #cluster-editor {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1001;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 12px 18px;
+            background: rgba(255, 253, 250, 0.97);
+            border-top: 2px solid var(--line);
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+            font-family: system-ui, sans-serif;
+            font-size: 0.85rem;
+          }
+          #cluster-editor button {
+            font-family: system-ui, sans-serif;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--line);
+            background: #f4f2ea;
+            cursor: pointer;
+          }
+          #cluster-editor button.primary {
+            background: #1a5c38;
+            color: #fff;
+            border-color: #1a5c38;
+          }
+          #layout-status { color: #4a463d; }
+          body.verification-phase main.wrap { padding-bottom: 72px; }
           .card.flagged-fp { opacity: 0.45; border-color: #e57373; }
           .card.flagged-wc { opacity: 0.55; border-color: #f9a825; }
           #fb-toast {
@@ -836,7 +913,7 @@ function buildPage(
           {hasStories ? (
             groups.map((group, groupIndex) =>
               group.type === 'independent' ? (
-                <div className="story-group" data-citation-group-index={groupIndex}>
+                <div className="story-group" data-citation-group-index={groupIndex} data-group-type="independent">
                   <div className="group-header">
                     <p className="latest-heading" style="margin:0;border:0;padding:0;">Latest Stories</p>
                     <button
@@ -850,9 +927,21 @@ function buildPage(
                   </div>
                 </div>
               ) : (
-                <div className="story-group" data-citation-group-index={groupIndex}>
+                <div
+                  className="story-group"
+                  data-citation-group-index={groupIndex}
+                  data-cluster-id={group.id ?? `auto-${groupIndex}`}
+                  data-group-type="detected"
+                >
                   <div className="group-header">
                     <h3 className="group-label">{group.label}</h3>
+                    <input
+                      className="cluster-label-input"
+                      type="text"
+                      defaultValue={group.label}
+                      data-cluster-id={group.id ?? `auto-${groupIndex}`}
+                      placeholder="Cluster name"
+                    />
                     <span className={`group-badge ${group.type}`}>Cluster</span>
                     <span className="group-count">{group.stories.length} {group.stories.length === 1 ? 'article' : 'articles'}</span>
                     <button
@@ -860,6 +949,12 @@ function buildPage(
                       data-citation-group-index={groupIndex}
                       onclick="window._copyGroupCitations(this)"
                     >Copy citations</button>
+                    <button
+                      className="cluster-delete-btn"
+                      type="button"
+                      data-cluster-id={group.id ?? `auto-${groupIndex}`}
+                      onclick="window._dissolveCluster(this)"
+                    >Dissolve cluster</button>
                   </div>
                   <div className="grid">
                     {group.stories.map((story) => renderCard(story, detectStoryLanguage(story)))}
@@ -882,6 +977,12 @@ function buildPage(
           )}
         </main>
       <div id="fb-toast">Feedback saved</div>
+      <div id="cluster-editor">
+        <strong>Cluster editor</strong>
+        <button type="button" id="new-cluster-btn" onclick="window._newCluster()">+ New cluster</button>
+        <button type="button" id="save-layout-btn" className="primary" onclick="window._saveLayout()">Save layout &amp; refresh</button>
+        <span id="layout-status"></span>
+      </div>
       <div id="report-status" style="position: fixed; top: 10px; right: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: 0.85rem; z-index: 1000;">
         <span id="status-text">Loading...</span>
         <button id="init-report-btn" style="margin-left: 10px; padding: 4px 8px; cursor: pointer;">Init Report</button>
@@ -987,14 +1088,188 @@ function _updateStatusUI(data) {
     finalizeBtn.style.display = 'none';
     document.body.classList.add('review-phase');
   } else if (data.status === 'verification') {
-    statusText.textContent = 'Clusters updated — ' + (data.entryCount || 0) + ' false-positives excluded. Finalize or start new review.';
+    statusText.textContent = 'Verification — edit clusters below, then Save layout & refresh';
     initBtn.style.display = 'inline';
     closeBtn.style.display = 'none';
     finalizeBtn.style.display = 'inline';
     document.body.classList.add('verification-phase');
+    _loadClusterLayoutEditor();
   }
   _updateButtonVisibility();
 }
+
+var clusterLayoutState = null;
+
+function _layoutFromDom() {
+  var clusters = [];
+  document.querySelectorAll('.story-group[data-group-type="detected"]').forEach(function(group, index) {
+    var id = group.getAttribute('data-cluster-id') || ('auto-' + index);
+    var labelInput = group.querySelector('.cluster-label-input');
+    var labelEl = group.querySelector('.group-label');
+    var label = labelInput ? labelInput.value : (labelEl ? labelEl.textContent : 'Cluster');
+    var urls = [];
+    group.querySelectorAll('.card[data-url]').forEach(function(card) {
+      var url = card.getAttribute('data-url');
+      if (url) urls.push(url);
+    });
+    clusters.push({ id: id, label: (label || 'Cluster').trim(), urls: urls });
+  });
+  var independentUrls = [];
+  document.querySelectorAll('.story-group[data-group-type="independent"] .card[data-url]').forEach(function(card) {
+    var url = card.getAttribute('data-url');
+    if (url) independentUrls.push(url);
+  });
+  return { updatedAt: new Date().toISOString(), clusters: clusters, independentUrls: independentUrls };
+}
+
+function _findClusterForUrl(layout, url) {
+  for (var i = 0; i < layout.clusters.length; i++) {
+    if (layout.clusters[i].urls.indexOf(url) !== -1) return layout.clusters[i].id;
+  }
+  if (layout.independentUrls.indexOf(url) !== -1) return 'independent';
+  return '';
+}
+
+function _removeUrlFromLayout(layout, url) {
+  layout.clusters.forEach(function(cluster) {
+    cluster.urls = cluster.urls.filter(function(u) { return u !== url; });
+  });
+  layout.independentUrls = layout.independentUrls.filter(function(u) { return u !== url; });
+}
+
+function _populateMoveSelects() {
+  if (!clusterLayoutState) return;
+  document.querySelectorAll('.cluster-move-select').forEach(function(select) {
+    var url = select.getAttribute('data-story-url');
+    if (!url) return;
+    while (select.options.length > 1) select.remove(1);
+    clusterLayoutState.clusters.forEach(function(cluster) {
+      var opt = document.createElement('option');
+      opt.value = cluster.id;
+      opt.textContent = cluster.label;
+      select.appendChild(opt);
+    });
+    var current = _findClusterForUrl(clusterLayoutState, url);
+    select.value = current || '';
+  });
+  document.querySelectorAll('.cluster-label-input').forEach(function(input) {
+    var id = input.getAttribute('data-cluster-id');
+    var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === id; });
+    if (cluster && !input.matches(':focus')) input.value = cluster.label;
+  });
+}
+
+async function _loadClusterLayoutEditor() {
+  try {
+    var res = await fetch(API_BASE + '/api/cluster-layout');
+    var data = await res.json();
+    clusterLayoutState = data.layout && data.layout.clusters ? data.layout : _layoutFromDom();
+    _populateMoveSelects();
+  } catch (e) {
+    console.error('Failed to load cluster layout:', e);
+    clusterLayoutState = _layoutFromDom();
+    _populateMoveSelects();
+  }
+}
+
+window._moveStorySelect = function(select) {
+  if (!clusterLayoutState) return;
+  var url = select.getAttribute('data-story-url');
+  var target = select.value;
+  if (!url || !target) return;
+  _removeUrlFromLayout(clusterLayoutState, url);
+  if (target === 'independent') {
+    clusterLayoutState.independentUrls.push(url);
+  } else {
+    var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === target; });
+    if (cluster) cluster.urls.push(url);
+  }
+  clusterLayoutState.updatedAt = new Date().toISOString();
+  _populateMoveSelects();
+  var status = document.getElementById('layout-status');
+  if (status) status.textContent = 'Unsaved changes';
+};
+
+window._newCluster = function() {
+  if (!clusterLayoutState) clusterLayoutState = _layoutFromDom();
+  var label = prompt('Cluster name');
+  if (!label || !label.trim()) return;
+  var id = 'manual-' + Date.now();
+  clusterLayoutState.clusters.push({ id: id, label: label.trim(), urls: [] });
+  clusterLayoutState.updatedAt = new Date().toISOString();
+  _populateMoveSelects();
+  var status = document.getElementById('layout-status');
+  if (status) status.textContent = 'Unsaved changes';
+};
+
+window._dissolveCluster = function(btn) {
+  if (!clusterLayoutState) return;
+  var id = btn.getAttribute('data-cluster-id');
+  var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === id; });
+  if (!cluster) return;
+  cluster.urls.forEach(function(url) {
+    if (clusterLayoutState.independentUrls.indexOf(url) === -1) {
+      clusterLayoutState.independentUrls.push(url);
+    }
+  });
+  clusterLayoutState.clusters = clusterLayoutState.clusters.filter(function(c) { return c.id !== id; });
+  clusterLayoutState.updatedAt = new Date().toISOString();
+  _populateMoveSelects();
+  var status = document.getElementById('layout-status');
+  if (status) status.textContent = 'Unsaved changes — save to refresh';
+};
+
+window._saveLayout = async function() {
+  if (!clusterLayoutState) clusterLayoutState = _layoutFromDom();
+  document.querySelectorAll('.cluster-label-input').forEach(function(input) {
+    var id = input.getAttribute('data-cluster-id');
+    var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === id; });
+    if (cluster) cluster.label = input.value.trim() || cluster.label;
+  });
+  var btn = document.getElementById('save-layout-btn');
+  var status = document.getElementById('layout-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    var res = await fetch(API_BASE + '/api/report/apply-layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layout: clusterLayoutState })
+    });
+    var data = await res.json();
+    if (data.success) {
+      window.location.reload();
+    } else {
+      throw new Error(data.error || 'Apply failed');
+    }
+  } catch (e) {
+    console.error('Failed to save layout:', e);
+    alert('Failed to save layout');
+    if (btn) { btn.disabled = false; btn.textContent = 'Save layout & refresh'; }
+    if (status) status.textContent = 'Save failed';
+  }
+};
+
+window._fbWrongCluster = async function(btn) {
+  if (!currentReport || currentReport.status !== 'verification') {
+    alert('Wrong cluster is available in verification phase after Close Report');
+    return;
+  }
+  if (!clusterLayoutState) await _loadClusterLayoutEditor();
+  var url = btn.getAttribute('data-fb-url');
+  if (!url || !clusterLayoutState) return;
+  _removeUrlFromLayout(clusterLayoutState, url);
+  if (clusterLayoutState.independentUrls.indexOf(url) === -1) {
+    clusterLayoutState.independentUrls.push(url);
+  }
+  clusterLayoutState.updatedAt = new Date().toISOString();
+  _populateMoveSelects();
+  var card = btn.closest('.card');
+  if (card) card.classList.add('flagged-wc');
+  btn.classList.add('copied');
+  btn.textContent = '⚠️ To independent';
+  var status = document.getElementById('layout-status');
+  if (status) status.textContent = 'Moved to independent (unsaved) — click Save layout & refresh';
+};
 
 async function _loadFeedback() {
   try {
@@ -1019,23 +1294,18 @@ async function _loadFeedback() {
 function _updateButtonVisibility() {
   var wrongClusterBtns = document.querySelectorAll('.fb-btn[data-fb-reason="wrong-cluster"]');
   wrongClusterBtns.forEach(function(btn) {
-    if (currentReport && currentReport.status === 'verification') {
-      btn.style.display = 'inline-block';
-    } else {
-      btn.style.display = 'none';
-    }
+    btn.style.display = (currentReport && currentReport.status === 'verification') ? 'inline-block' : 'none';
   });
 }
 
 window._fbClick = async function(btn) {
   if (!currentReport || currentReport.status !== 'review') {
-    alert('Please initialize a report first');
+    alert('False positive marking is only available during review phase (after Init Report)');
     return;
   }
-
   var url = btn.getAttribute('data-fb-url');
   var title = btn.getAttribute('data-fb-title');
-  var reason = btn.getAttribute('data-fb-reason');
+  var reason = btn.getAttribute('data-fb-reason') || 'false-positive';
   var card = btn.closest('.card');
   var auditJson = card ? card.getAttribute('data-classification-audit') : null;
   var classificationAudit = null;
@@ -1084,7 +1354,7 @@ window._fbClick = async function(btn) {
     const data = await res.json();
     if (data.success) {
       btn.classList.add('copied');
-      btn.textContent = '� Flagged';
+      btn.textContent = '🚫 Flagged';
       if (card) {
         card.classList.remove('flagged-fp', 'flagged-wc');
         card.classList.add('flagged-fp');
@@ -3320,7 +3590,9 @@ function loadWrongClusterSet(): Set<string> {
 /** Classify stories and write cult-news-latest.html. */
 function writeDigestFromStories(stories: EnrichedStory[], wrongClusterSet?: Set<string>): void {
   const citedStories = stories.map(attachSourceCitation);
-  const { groups, detection } = classifyStories(citedStories, wrongClusterSet);
+  const { groups: autoGroups, detection } = classifyStories(citedStories, wrongClusterSet);
+  const layout = loadClusterLayout();
+  const groups = applyClusterLayout(autoGroups, citedStories, layout) as StoryGroup[];
 
   const audit = auditClusterGaps(citedStories, groups, detection);
   const auditPath = new URL('../reports/cluster-audit-latest.json', import.meta.url);
