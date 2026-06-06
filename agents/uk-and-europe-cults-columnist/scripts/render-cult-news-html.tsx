@@ -531,17 +531,17 @@ function renderCard(story: EnrichedStory, language?: string) {
             data-fb-reason="false-positive"
             onclick="window._fbClick(this)"
           >🚫 False positive</button>
-          <button
-            className="fb-btn"
-            data-fb-url={escapedUrl}
-            data-fb-title={escapedTitle}
-            data-fb-reason="wrong-cluster"
-            onclick="window._fbWrongCluster(this)"
-          >⚠️ Wrong cluster</button>
-          <select className="cluster-move-select" data-story-url={escapedUrl} onchange="window._moveStorySelect(this)">
+          <select className="cluster-move-select" data-story-url={escapedUrl} onchange="window._onMoveTargetPick(this)">
             <option value="">Move to…</option>
             <option value="independent">Independent</option>
           </select>
+          <button
+            type="button"
+            className="cluster-move-btn"
+            data-story-url={escapedUrl}
+            onclick="window._confirmStoryMove(this)"
+            disabled
+          >Move</button>
           </div>
         </div>
       </div>
@@ -810,15 +810,15 @@ function buildPage(
           }
           .fb-btn:hover { background: #e8e0d0; }
           .fb-btn.copied { background: #d4edda; color: #1a5c38; border-color: #a3d3b0; }
-          .fb-btn[data-fb-reason="wrong-cluster"] { display: none; }
           .fb-btn[data-fb-reason="false-positive"] { display: none; }
           body.review-phase .fb-btn[data-fb-reason="false-positive"] { display: inline-block; }
-          body.verification-phase .fb-btn[data-fb-reason="wrong-cluster"] { display: inline-block; }
           body.verification-phase .cluster-move-select,
+          body.verification-phase .cluster-move-btn,
           body.verification-phase .cluster-label-input,
           body.verification-phase .cluster-delete-btn { display: inline-block; }
           body.verification-phase .group-label { display: none; }
           .cluster-move-select,
+          .cluster-move-btn,
           .cluster-label-input,
           .cluster-delete-btn,
           #cluster-editor { display: none; }
@@ -831,6 +831,24 @@ function buildPage(
             border-radius: 5px;
             border: 1px solid var(--line);
             background: #fff;
+          }
+          .cluster-move-btn {
+            font-size: 0.72rem;
+            font-family: system-ui, sans-serif;
+            font-weight: 600;
+            padding: 3px 9px;
+            border-radius: 5px;
+            border: 1px solid #1a5c38;
+            background: #dff0e8;
+            color: #1a5c38;
+            cursor: pointer;
+          }
+          .cluster-move-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            border-color: var(--line);
+            background: #f4f2ea;
+            color: #756f63;
           }
           .cluster-label-input {
             font-size: 1rem;
@@ -938,7 +956,7 @@ function buildPage(
                     <input
                       className="cluster-label-input"
                       type="text"
-                      defaultValue={group.label}
+                      value={group.label}
                       data-cluster-id={group.id ?? `auto-${groupIndex}`}
                       placeholder="Cluster name"
                     />
@@ -980,7 +998,7 @@ function buildPage(
       <div id="cluster-editor">
         <strong>Cluster editor</strong>
         <button type="button" id="new-cluster-btn" onclick="window._newCluster()">+ New cluster</button>
-        <button type="button" id="save-layout-btn" className="primary" onclick="window._saveLayout()">Save layout &amp; refresh</button>
+        <button type="button" id="save-layout-btn" className="primary" onclick="window._saveLayout()">Apply changes &amp; refresh</button>
         <span id="layout-status"></span>
       </div>
       <div id="report-status" style="position: fixed; top: 10px; right: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: 0.85rem; z-index: 1000;">
@@ -1088,7 +1106,7 @@ function _updateStatusUI(data) {
     finalizeBtn.style.display = 'none';
     document.body.classList.add('review-phase');
   } else if (data.status === 'verification') {
-    statusText.textContent = 'Verification — edit clusters below, then Save layout & refresh';
+    statusText.textContent = 'Verification — pick a cluster, click Move, then Apply changes';
     initBtn.style.display = 'inline';
     closeBtn.style.display = 'none';
     finalizeBtn.style.display = 'inline';
@@ -1106,7 +1124,9 @@ function _layoutFromDom() {
     var id = group.getAttribute('data-cluster-id') || ('auto-' + index);
     var labelInput = group.querySelector('.cluster-label-input');
     var labelEl = group.querySelector('.group-label');
-    var label = labelInput ? labelInput.value : (labelEl ? labelEl.textContent : 'Cluster');
+    var label = (labelInput && labelInput.value.trim())
+      ? labelInput.value.trim()
+      : (labelEl ? labelEl.textContent.trim() : 'Cluster');
     var urls = [];
     group.querySelectorAll('.card[data-url]').forEach(function(card) {
       var url = card.getAttribute('data-url');
@@ -1137,6 +1157,95 @@ function _removeUrlFromLayout(layout, url) {
   layout.independentUrls = layout.independentUrls.filter(function(u) { return u !== url; });
 }
 
+function _showToast(message) {
+  var toast = document.getElementById('fb-toast');
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(function() { toast.classList.remove('show'); }, 2200);
+}
+
+function _clusterGridForTarget(targetId) {
+  if (targetId === 'independent') {
+    var independent = document.querySelector('.story-group[data-group-type="independent"] .grid');
+    return independent || null;
+  }
+  var group = document.querySelector('.story-group[data-group-type="detected"][data-cluster-id="' + targetId + '"]');
+  return group ? group.querySelector('.grid') : null;
+}
+
+function _updateClusterCounts() {
+  document.querySelectorAll('.story-group[data-group-type="detected"]').forEach(function(group) {
+    var countEl = group.querySelector('.group-count');
+    var cards = group.querySelectorAll('.grid .card[data-url]');
+    if (countEl) {
+      countEl.textContent = cards.length + ' ' + (cards.length === 1 ? 'article' : 'articles');
+    }
+  });
+}
+
+function _insertClusterSection(id, label) {
+  if (document.querySelector('.story-group[data-cluster-id="' + id + '"]')) return;
+  var section = document.createElement('div');
+  section.className = 'story-group';
+  section.setAttribute('data-group-type', 'detected');
+  section.setAttribute('data-cluster-id', id);
+  section.innerHTML =
+    '<div class="group-header">' +
+      '<h3 class="group-label">' + label + '</h3>' +
+      '<input class="cluster-label-input" type="text" value="' + label.replace(/"/g, '&quot;') + '" data-cluster-id="' + id + '" placeholder="Cluster name">' +
+      '<span class="group-badge detected">Cluster</span>' +
+      '<span class="group-count">0 articles</span>' +
+      '<button class="cluster-delete-btn" type="button" data-cluster-id="' + id + '" onclick="window._dissolveCluster(this)">Dissolve cluster</button>' +
+    '</div>' +
+    '<div class="grid"></div>';
+  var independent = document.querySelector('.story-group[data-group-type="independent"]');
+  if (independent && independent.parentNode) {
+    independent.parentNode.insertBefore(section, independent);
+  } else {
+    var main = document.querySelector('main.wrap');
+    if (main) main.appendChild(section);
+  }
+}
+
+function _moveCardInDom(card, targetId) {
+  var grid = _clusterGridForTarget(targetId);
+  if (!grid || !card) return false;
+  grid.appendChild(card);
+  card.classList.remove('flagged-wc', 'flagged-fp');
+  _updateClusterCounts();
+  return true;
+}
+
+function _applyStoryMove(url, targetId) {
+  if (!clusterLayoutState || !url || !targetId) return false;
+  var current = _findClusterForUrl(clusterLayoutState, url);
+  if (current === targetId) return false;
+  _removeUrlFromLayout(clusterLayoutState, url);
+  if (targetId === 'independent') {
+    clusterLayoutState.independentUrls.push(url);
+  } else {
+    var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === targetId; });
+    if (!cluster) return false;
+    cluster.urls.push(url);
+  }
+  clusterLayoutState.updatedAt = new Date().toISOString();
+  return true;
+}
+
+function _syncMoveButton(select) {
+  var row = select.closest('.fb-row-actions');
+  var btn = row ? row.querySelector('.cluster-move-btn') : null;
+  if (!btn || !clusterLayoutState) {
+    if (btn) btn.disabled = true;
+    return;
+  }
+  var url = select.getAttribute('data-story-url');
+  var current = _findClusterForUrl(clusterLayoutState, url);
+  var target = select.value;
+  btn.disabled = !target || target === current;
+}
+
 function _populateMoveSelects() {
   if (!clusterLayoutState) return;
   document.querySelectorAll('.cluster-move-select').forEach(function(select) {
@@ -1149,8 +1258,8 @@ function _populateMoveSelects() {
       opt.textContent = cluster.label;
       select.appendChild(opt);
     });
-    var current = _findClusterForUrl(clusterLayoutState, url);
-    select.value = current || '';
+    select.value = '';
+    _syncMoveButton(select);
   });
   document.querySelectorAll('.cluster-label-input').forEach(function(input) {
     var id = input.getAttribute('data-cluster-id');
@@ -1158,6 +1267,45 @@ function _populateMoveSelects() {
     if (cluster && !input.matches(':focus')) input.value = cluster.label;
   });
 }
+
+window._onMoveTargetPick = function(select) {
+  _syncMoveButton(select);
+};
+
+window._confirmStoryMove = function(btn) {
+  if (!clusterLayoutState) return;
+  var url = btn.getAttribute('data-story-url');
+  var row = btn.closest('.fb-row-actions');
+  var select = row ? row.querySelector('.cluster-move-select') : null;
+  var target = select ? select.value : '';
+  if (!url || !target) return;
+  var current = _findClusterForUrl(clusterLayoutState, url);
+  if (target === current) return;
+
+  if (target !== 'independent') {
+    var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === target; });
+    if (cluster) _insertClusterSection(cluster.id, cluster.label);
+  }
+
+  if (!_applyStoryMove(url, target)) return;
+
+  var card = btn.closest('.card');
+  if (card && !_moveCardInDom(card, target)) {
+    alert('Could not move card in the page. Click Apply changes & refresh to sync.');
+  }
+
+  if (select) {
+    select.value = '';
+    _syncMoveButton(select);
+  }
+
+  var status = document.getElementById('layout-status');
+  if (status) status.textContent = 'Unsaved moves — click Apply changes & refresh when done';
+  var targetLabel = target === 'independent'
+    ? 'Independent'
+    : ((clusterLayoutState.clusters.find(function(c) { return c.id === target; }) || {}).label || 'cluster');
+  _showToast('Moved to ' + targetLabel);
+};
 
 async function _loadClusterLayoutEditor() {
   try {
@@ -1172,24 +1320,6 @@ async function _loadClusterLayoutEditor() {
   }
 }
 
-window._moveStorySelect = function(select) {
-  if (!clusterLayoutState) return;
-  var url = select.getAttribute('data-story-url');
-  var target = select.value;
-  if (!url || !target) return;
-  _removeUrlFromLayout(clusterLayoutState, url);
-  if (target === 'independent') {
-    clusterLayoutState.independentUrls.push(url);
-  } else {
-    var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === target; });
-    if (cluster) cluster.urls.push(url);
-  }
-  clusterLayoutState.updatedAt = new Date().toISOString();
-  _populateMoveSelects();
-  var status = document.getElementById('layout-status');
-  if (status) status.textContent = 'Unsaved changes';
-};
-
 window._newCluster = function() {
   if (!clusterLayoutState) clusterLayoutState = _layoutFromDom();
   var label = prompt('Cluster name');
@@ -1197,9 +1327,11 @@ window._newCluster = function() {
   var id = 'manual-' + Date.now();
   clusterLayoutState.clusters.push({ id: id, label: label.trim(), urls: [] });
   clusterLayoutState.updatedAt = new Date().toISOString();
+  _insertClusterSection(id, label.trim());
   _populateMoveSelects();
   var status = document.getElementById('layout-status');
-  if (status) status.textContent = 'Unsaved changes';
+  if (status) status.textContent = 'New cluster added — move stories with Move, then Apply changes';
+  _showToast('Created cluster: ' + label.trim());
 };
 
 window._dissolveCluster = function(btn) {
@@ -1216,7 +1348,7 @@ window._dissolveCluster = function(btn) {
   clusterLayoutState.updatedAt = new Date().toISOString();
   _populateMoveSelects();
   var status = document.getElementById('layout-status');
-  if (status) status.textContent = 'Unsaved changes — save to refresh';
+  if (status) status.textContent = 'Unsaved changes — click Apply changes & refresh';
 };
 
 window._saveLayout = async function() {
@@ -1244,31 +1376,9 @@ window._saveLayout = async function() {
   } catch (e) {
     console.error('Failed to save layout:', e);
     alert('Failed to save layout');
-    if (btn) { btn.disabled = false; btn.textContent = 'Save layout & refresh'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Apply changes & refresh'; }
     if (status) status.textContent = 'Save failed';
   }
-};
-
-window._fbWrongCluster = async function(btn) {
-  if (!currentReport || currentReport.status !== 'verification') {
-    alert('Wrong cluster is available in verification phase after Close Report');
-    return;
-  }
-  if (!clusterLayoutState) await _loadClusterLayoutEditor();
-  var url = btn.getAttribute('data-fb-url');
-  if (!url || !clusterLayoutState) return;
-  _removeUrlFromLayout(clusterLayoutState, url);
-  if (clusterLayoutState.independentUrls.indexOf(url) === -1) {
-    clusterLayoutState.independentUrls.push(url);
-  }
-  clusterLayoutState.updatedAt = new Date().toISOString();
-  _populateMoveSelects();
-  var card = btn.closest('.card');
-  if (card) card.classList.add('flagged-wc');
-  btn.classList.add('copied');
-  btn.textContent = '⚠️ To independent';
-  var status = document.getElementById('layout-status');
-  if (status) status.textContent = 'Moved to independent (unsaved) — click Save layout & refresh';
 };
 
 async function _loadFeedback() {
@@ -1291,12 +1401,7 @@ async function _loadFeedback() {
   }
 }
 
-function _updateButtonVisibility() {
-  var wrongClusterBtns = document.querySelectorAll('.fb-btn[data-fb-reason="wrong-cluster"]');
-  wrongClusterBtns.forEach(function(btn) {
-    btn.style.display = (currentReport && currentReport.status === 'verification') ? 'inline-block' : 'none';
-  });
-}
+function _updateButtonVisibility() {}
 
 window._fbClick = async function(btn) {
   if (!currentReport || currentReport.status !== 'review') {
