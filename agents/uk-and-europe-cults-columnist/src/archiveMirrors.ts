@@ -137,6 +137,8 @@ export function looksLikeBlockedPageTitle(title: string | undefined): boolean {
   return (
     /\battention required!\b/.test(normalized) ||
     /\byou have been blocked\b/.test(normalized) ||
+    /\bjust a moment\b/.test(normalized) ||
+    /\baccess denied\b/.test(normalized) ||
     (/\bcloudflare\b/.test(normalized) && normalized.length < 120)
   );
 }
@@ -144,6 +146,8 @@ export function looksLikeBlockedPageTitle(title: string | undefined): boolean {
 /** Raw HTML from a direct fetch that is not usable article content. */
 export function isBlockedHttpBody(html: string): boolean {
   if (/<title[^>]*>\s*attention required!/i.test(html)) return true;
+  if (/<title[^>]*>\s*just a moment/i.test(html)) return true;
+  if (/<title[^>]*>\s*access denied/i.test(html)) return true;
   return looksLikeBlockedFetchPage(html);
 }
 

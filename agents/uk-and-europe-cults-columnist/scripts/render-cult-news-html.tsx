@@ -3474,6 +3474,30 @@ function isCapitalizedPhraseInTitle(title: string, phrase: string): boolean {
     .every((word) => /^\p{Lu}/u.test(word.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '')));
 }
 
+function isCapitalizedPhraseInText(text: string, phrase: string): boolean {
+  if (!text.trim()) return false;
+  const words = phrase.trim().split(/\s+/).filter((word) => word.length > 0);
+  if (words.length === 0) return false;
+  const pattern = words
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('\\s+');
+  const match = text.match(new RegExp(`\\b${pattern}\\b`, 'iu'));
+  if (!match) return false;
+  return match[0]
+    .split(/\s+/)
+    .every((word) => /^\p{Lu}/u.test(word.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '')));
+}
+
+function isPersonNameBigramInStory(
+  story: EnrichedStory,
+  term: string,
+  stopwords: Set<string>,
+): boolean {
+  if (isNamedHeadlineBigramInStory(story, term, stopwords)) return true;
+  const lead = story.articleText?.slice(0, 5000) ?? '';
+  return lead.length > 0 && isCapitalizedPhraseInText(lead, term);
+}
+
 function pickSharedTitleBigramLabel(
   storyIndexes: number[],
   stories: EnrichedStory[],
@@ -3537,7 +3561,7 @@ function pickSharedNamedProperNounBigram(
     for (const term of feature.anchorTerms) {
       if (!term.includes(' ') || term.length < 8) continue;
       if (isWeakClusterBigram(term, stopwords)) continue;
-      if (!isNamedHeadlineBigramInStory(story, term, stopwords)) continue;
+      if (!isPersonNameBigramInStory(story, term, stopwords)) continue;
       if (!isPositiveBigramLabelTerm(term, stopwords)) continue;
       if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals, story)) continue;
       seenInStory.add(term);
@@ -3547,14 +3571,52 @@ function pickSharedNamedProperNounBigram(
     }
   }
 
+  const coverage = headlineIdentityCoverageThreshold(storyIndexes.length);
   return [...counts.entries()]
-    .filter(([, count]) => count >= minimumCoverage)
+    .filter(([, count]) => count >= coverage)
     .sort(
       (a, b) =>
         b[1] - a[1] ||
         (idf.get(b[0]) ?? 0) - (idf.get(a[0]) ?? 0) ||
         b[0].length - a[0].length,
     )[0]?.[0];
+}
+
+/** Minimum stories sharing a headline identity (quoted phrase or person bigram) to label a cluster. */
+function headlineIdentityCoverageThreshold(storyCount: number): number {
+  const defaultMinimum = Math.max(2, Math.ceil(storyCount * 0.5));
+  return Math.max(2, Math.min(defaultMinimum, Math.ceil(storyCount * 0.34)));
+}
+
+function pickSharedQuotedClusterLabel(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+): string | undefined {
+  const coverage = headlineIdentityCoverageThreshold(storyIndexes.length);
+  const union = unionClusterStopwords();
+  const counts = new Map<string, number>();
+
+  for (const idx of storyIndexes) {
+    const story = stories[idx];
+    if (!story) continue;
+    const seen = new Set<string>();
+    for (const term of extractQuotedTerms(story.title)) {
+      const normalized = term.trim().toLowerCase();
+      const words = normalized.split(/\s+/).filter(Boolean);
+      if (normalized.length < 7) continue;
+      if (words.length < 2 && normalized.length < 10) continue;
+      if (words.some((word) => isClusterStopword(word, union))) continue;
+      if (words.length === 1 && isGenericCultClusterTerm(normalized, GENERIC_CULT_CLUSTER_TERMS)) continue;
+      seen.add(normalized);
+    }
+    for (const term of seen) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count >= coverage)
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0]?.[0];
 }
 
 function isRedundantClusterQualifier(canonical: string, qualifier: string): boolean {
@@ -3575,6 +3637,24 @@ function selectGroupLabel(
 ): string {
   const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
   const minimumCoverage = Math.max(2, Math.ceil(storyIndexes.length * 0.5));
+
+  const quotedLabel = pickSharedQuotedClusterLabel(storyIndexes, stories);
+  if (quotedLabel) {
+    return toTitleCase(quotedLabel);
+  }
+
+  const namedBigramLabel = pickSharedNamedProperNounBigram(
+    storyIndexes,
+    stories,
+    features,
+    minimumCoverage,
+    entityAliasCanonicals,
+    idf,
+  );
+  if (namedBigramLabel) {
+    return toTitleCase(namedBigramLabel);
+  }
+
   const aliasCoverage = subjectAliasCoverageInStories(storyIndexes, stories);
   const dominantAlias = [...aliasCoverage.entries()]
     .filter(([, count]) => count >= minimumCoverage)
@@ -3593,18 +3673,6 @@ function selectGroupLabel(
       return `${toTitleCase(dominantAlias[0])} ${toTitleCase(qualifier)}`;
     }
     return toTitleCase(dominantAlias[0]);
-  }
-
-  const namedBigramLabel = pickSharedNamedProperNounBigram(
-    storyIndexes,
-    stories,
-    features,
-    minimumCoverage,
-    entityAliasCanonicals,
-    idf,
-  );
-  if (namedBigramLabel) {
-    return toTitleCase(namedBigramLabel);
   }
 
   const properNounLabel = pickBestSharedTitleProperNoun(

@@ -46,9 +46,24 @@
     },
     {
       "id": "hannah-murray-cult",
-      "labelPattern": "hannah|murray|game of thrones|thrones",
+      "labelPattern": "hannah murray",
       "minSize": 4,
       "requiredStoryPatterns": ["film.wp.pl", "lured into wellness cult", "geriet sie in eine sekte"]
+    },
+    {
+      "id": "scientology-speedrunnings",
+      "labelPattern": "scientology speedrunn",
+      "minSize": 2,
+      "requiredStoryPatterns": [
+        "courrierinternational.com/stories/video-les-scientology-speedrunnings",
+        "fr.news.yahoo.com/scientology-speedrunnings"
+      ]
+    },
+    {
+      "id": "crni-plamen",
+      "labelPattern": "crni plamen",
+      "minSize": 2,
+      "requiredStoryPatterns": ["crni plamen"]
     },
     {
       "id": "marjorie-taylor-greene-maga",
@@ -105,7 +120,29 @@
       "storyPatterns": ["campania_young_festival", "celico_international"]
     }
   ],
-  "mustStayIndependent": [],
+  "mustStayIndependent": [
+    { "id": "fp-cult-kits-football-brand", "storyPattern": "creativereview.co.uk/cult-kits" },
+    { "id": "fp-greek-football-obit", "storyPattern": "krone.at/4154771" },
+    { "id": "fp-coez-rooftop-tour", "storyPattern": "adnkronos.com/spettacoli/coez-torna-con-from-the-rooftop" },
+    { "id": "fp-dimmu-borgir-album", "storyPattern": "metalzone.fr/chroniques/233282-dimmu-borgir" },
+    { "id": "fp-cherwell-fake-fan", "storyPattern": "cherwell.org/2026/05/19/on-geese-and-fakeness" },
+    { "id": "fp-archers-soap", "storyPattern": "mirror.co.uk/news/uk-news/archers-75-theatre-tour" },
+    { "id": "fp-frankie-pingel-cult-heroes", "storyPattern": "tf1892.substack.com/p/cult-heroes-3-frankie-pingel" },
+    { "id": "fp-nathan-kiboba-comedy", "storyPattern": "nathan-kiboba-dalle-iene-al-palco" },
+    { "id": "fp-fotocult-music-ally", "storyPattern": "fotocult.it" },
+    { "id": "fp-fotocult-fashion-territory", "storyPattern": "photography and high fashion embrace" }
+  ],
+  "mustBeClustered": [
+    {
+      "id": "paul-moody-not-independent",
+      "labelPattern": "paul moody",
+      "storyPatterns": [
+        "investigation-into-complaints-against-ex-garda-paul-moody",
+        "watchdog-says-handling-of-partner",
+        "arid-41849973"
+      ]
+    }
+  ],
   "forbiddenMegaClusters": [
     {
       "id": "no-england-mega",
@@ -129,9 +166,14 @@
     { "id": "no-probably-label", "labelPattern": "^Probably$" },
     { "id": "no-detected-cluster-label", "labelPattern": "^Detected Cluster$" },
     { "id": "no-attention-required-label", "labelPattern": "^Attention Required" },
-    { "id": "no-moody-surname-only-label", "labelPattern": "^Moody$" }
+    { "id": "no-moody-surname-only-label", "labelPattern": "^Moody$" },
+    { "id": "no-murray-surname-only-label", "labelPattern": "^Murray$" },
+    { "id": "no-crni-surname-only-label", "labelPattern": "^Crni$" },
+    { "id": "no-scientology-generic-label", "labelPattern": "^Scientology$" }
   ],
   "forbiddenStoryTitlePatterns": [
-    { "id": "no-attention-required-title", "titlePattern": "attention required" }
+    { "id": "no-attention-required-title", "titlePattern": "attention required" },
+    { "id": "no-just-a-moment-title", "titlePattern": "just a moment" },
+    { "id": "no-access-denied-title", "titlePattern": "access denied" }
   ]
 }

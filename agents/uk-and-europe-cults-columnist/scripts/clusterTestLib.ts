@@ -22,6 +22,7 @@ export type ClusterExpectations = {
   }>;
   forbiddenClusterLabels?: Array<{ id: string; labelPattern: string }>;
   forbiddenStoryTitlePatterns?: Array<{ id: string; titlePattern: string }>;
+  mustBeClustered?: Array<{ id: string; storyPatterns: string[]; labelPattern?: string }>;
 };
 
 export type RegressionFixture = {
@@ -259,6 +260,45 @@ export function assertForbiddenStoryTitlePatterns(
     }
     console.log(`  ✓ ${spec.id}: no story title matches /${spec.titlePattern}/i`);
   }
+  return failures;
+}
+
+export function assertMustBeClustered(
+  groups: StoryGroup[],
+  stories: EnrichedStory[],
+  specs: ClusterExpectations['mustBeClustered'],
+): string[] {
+  const failures: string[] = [];
+  if (!specs?.length) return failures;
+
+  for (const spec of specs) {
+    const labelRe = spec.labelPattern ? new RegExp(spec.labelPattern, 'i') : undefined;
+    let specFailed = false;
+
+    for (const pattern of spec.storyPatterns) {
+      const story = findStoryByPattern(stories, pattern);
+      if (!story) continue;
+      const cluster = clusterForStory(groups, story);
+      if (!cluster) {
+        failures.push(
+          `[${spec.id}] "${pattern}" should be in a detected cluster but is in Latest Stories / independent`,
+        );
+        specFailed = true;
+        continue;
+      }
+      if (labelRe && !labelRe.test(cluster.label)) {
+        failures.push(
+          `[${spec.id}] "${pattern}" is in cluster "${cluster.label}" but expected label /${spec.labelPattern}/i`,
+        );
+        specFailed = true;
+      }
+    }
+
+    if (!specFailed && spec.storyPatterns.some((pattern) => findStoryByPattern(stories, pattern))) {
+      console.log(`  ✓ ${spec.id}: required stories clustered${spec.labelPattern ? ` as /${spec.labelPattern}/i` : ''}`);
+    }
+  }
+
   return failures;
 }
 
