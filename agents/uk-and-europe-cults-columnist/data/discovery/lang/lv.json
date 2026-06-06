@@ -12,9 +12,7 @@
   ],
   "europeCountryOr": [
     "Eiropa",
-    "Europe",
     "Apvienotā Karaliste",
-    "UK",
     "Francija",
     "Vācija",
     "Spānija",
@@ -39,7 +37,6 @@
     "Bosnija",
     "Melnkalne",
     "\"Ziemeļmaķedonija\"",
-    "\"North Macedonia\"",
     "Kosova",
     "Albānija",
     "Igaunija",
@@ -52,7 +49,11 @@
     "Lihtenšteina",
     "Andora",
     "Vatikāns",
-    "Kipra"
+    "Kipra",
+    "Anglija",
+    "Skotija",
+    "Velsa",
+    "Ziemeļīrija"
   ],
   "harmSignals": [
     "piespiedu kontrole",

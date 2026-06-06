@@ -20,6 +20,7 @@ export type ClusterExpectations = {
     labelPattern: string;
     mustNotContainPatterns: string[];
   }>;
+  forbiddenClusterLabels?: Array<{ id: string; labelPattern: string }>;
 };
 
 export type RegressionFixture = {
@@ -208,6 +209,28 @@ export function assertForbiddenMegaClusters(
     if (!failures.some((f) => f.startsWith(`[${spec.id}]`))) {
       console.log(`  ✓ ${spec.id}: no forbidden stories under matching label`);
     }
+  }
+  return failures;
+}
+
+export function assertForbiddenClusterLabels(
+  groups: StoryGroup[],
+  specs: ClusterExpectations['forbiddenClusterLabels'],
+): string[] {
+  const failures: string[] = [];
+  if (!specs?.length) return failures;
+
+  const detected = groups.filter((g) => g.type === 'detected');
+  for (const spec of specs) {
+    const labelRe = new RegExp(spec.labelPattern, 'i');
+    const hit = detected.find((cluster) => labelRe.test(cluster.label));
+    if (hit) {
+      failures.push(
+        `[${spec.id}] detected cluster must not use country/region label "${hit.label}" (${hit.stories.length} stories)`,
+      );
+      continue;
+    }
+    console.log(`  ✓ ${spec.id}: no cluster labeled /${spec.labelPattern}/i`);
   }
   return failures;
 }

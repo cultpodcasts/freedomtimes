@@ -13,9 +13,7 @@
   ],
   "europeCountryOr": [
     "Eurooppa",
-    "Europe",
     "Yhdistynyt kuningaskunta",
-    "UK",
     "Ranska",
     "Saksa",
     "Espanja",
@@ -41,7 +39,6 @@
     "Bosnia",
     "Montenegro",
     "\"Pohjois-Makedonia\"",
-    "\"North Macedonia\"",
     "Kosovo",
     "Albania",
     "Viro",
@@ -54,7 +51,11 @@
     "Liechtenstein",
     "Andorra",
     "Vatikaani",
-    "Kypros"
+    "Kypros",
+    "Englanti",
+    "Skotlanti",
+    "Pohjois-Irlanti",
+    "Wales"
   ],
   "focusGeo": [
     "Suomi"

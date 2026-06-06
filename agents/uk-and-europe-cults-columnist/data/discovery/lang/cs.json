@@ -12,9 +12,7 @@
   ],
   "europeCountryOr": [
     "Evropa",
-    "Europe",
     "Spojené království",
-    "UK",
     "Francie",
     "Německo",
     "Španělsko",
@@ -40,7 +38,6 @@
     "Bosna",
     "Černá Hora",
     "\"Severní Makedonie\"",
-    "\"North Macedonia\"",
     "Kosovo",
     "Albánie",
     "Estonsko",
@@ -53,7 +50,11 @@
     "Lichtenštejnsko",
     "Andorra",
     "Vatikán",
-    "Kypr"
+    "Kypr",
+    "Anglie",
+    "Skotsko",
+    "Severní Irsko",
+    "Wales"
   ],
   "harmSignals": [
     "donucovací kontrola",

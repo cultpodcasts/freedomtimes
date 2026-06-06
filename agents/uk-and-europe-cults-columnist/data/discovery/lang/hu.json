@@ -12,9 +12,7 @@
   ],
   "europeCountryOr": [
     "Európa",
-    "Europe",
     "Egyesült Királyság",
-    "UK",
     "Franciaország",
     "Németország",
     "Spanyolország",
@@ -25,7 +23,6 @@
     "Románia",
     "Portugália",
     "Görögország",
-    "Belgium",
     "Svédország",
     "Norvégia",
     "Dánia",
@@ -39,7 +36,6 @@
     "Bosznia",
     "Montenegró",
     "\"Észak-Macedónia\"",
-    "\"North Macedonia\"",
     "Koszovó",
     "Albánia",
     "Észtország",
@@ -52,7 +48,12 @@
     "Liechtenstein",
     "Andorra",
     "Vatikán",
-    "Ciprus"
+    "Ciprus",
+    "Anglia",
+    "Skócia",
+    "Észak-Írország",
+    "Belgium",
+    "Wales"
   ],
   "harmSignals": [
     "\"kényszerítő kontroll\"",

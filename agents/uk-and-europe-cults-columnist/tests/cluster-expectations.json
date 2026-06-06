@@ -74,5 +74,13 @@
       "labelPattern": "^England$",
       "mustNotContainPatterns": ["unchosen-on-netflix", "streamlinefeed.co.ke", "fr.news.yahoo.com/secte"]
     }
+  ],
+  "forbiddenClusterLabels": [
+    { "id": "no-england-label", "labelPattern": "^England$" },
+    { "id": "no-france-label", "labelPattern": "^France$" },
+    { "id": "no-germany-label", "labelPattern": "^Germany$" },
+    { "id": "no-uk-label", "labelPattern": "^UK$" },
+    { "id": "no-britain-label", "labelPattern": "^Britain$" },
+    { "id": "no-europe-label", "labelPattern": "^Europe$" }
   ]
 }

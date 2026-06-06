@@ -11,9 +11,7 @@
   ],
   "europeCountryOr": [
     "Evrópa",
-    "Europe",
     "Bretland",
-    "UK",
     "Frakkland",
     "Þýskaland",
     "Spánn",
@@ -38,7 +36,6 @@
     "Bosníía",
     "Svartfjallaland",
     "\"Norður-Makedónía\"",
-    "\"North Macedonia\"",
     "Kósóvó",
     "Albanía",
     "Eistland",
@@ -51,7 +48,11 @@
     "Liechtenstein",
     "Andorra",
     "Vatíkanið",
-    "Kýpur"
+    "Kýpur",
+    "Skotland",
+    "Norður-Írland",
+    "England",
+    "Wales"
   ],
   "harmSignals": [
     "þvingandi stjórn",

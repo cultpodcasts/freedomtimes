@@ -1,5 +1,6 @@
 import { ALL_GENERIC_CULT_TERMS } from './pipelineTerms.ts';
 import { buildUnionClusterStopwordSet } from './clusterStopwords.ts';
+import { loadUnionEuropeCountryOrTerms } from './discoveryLangEuropeCountries.ts';
 
 function stemOnce(token: string): string {
   if (token.length > 5 && token.endsWith('s') && !token.endsWith('ss')) return token.slice(0, -1);
@@ -38,10 +39,15 @@ function normalizeForms(term: string): string[] {
   return [...forms];
 }
 
-/** Terms that must not create or strengthen story clusters (cult/sect vocabulary, locale stopwords). */
+/** Terms that must not create or strengthen story clusters (cult/sect vocabulary, locale stopwords, countries). */
 export function buildGenericCultClusterTermSet(): Set<string> {
   const set = buildUnionClusterStopwordSet();
   for (const term of ALL_GENERIC_CULT_TERMS) {
+    for (const form of normalizeForms(term)) {
+      set.add(form);
+    }
+  }
+  for (const term of loadUnionEuropeCountryOrTerms()) {
     for (const form of normalizeForms(term)) {
       set.add(form);
     }

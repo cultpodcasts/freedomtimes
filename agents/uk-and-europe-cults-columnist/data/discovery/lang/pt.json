@@ -14,9 +14,7 @@
   ],
   "europeCountryOr": [
     "Europa",
-    "Europe",
     "Reino Unido",
-    "UK",
     "França",
     "Alemanha",
     "Espanha",
@@ -43,7 +41,6 @@
     "Bósnia",
     "Montenegro",
     "\"Macedónia do Norte\"",
-    "\"North Macedonia\"",
     "Kosovo",
     "Albânia",
     "Estónia",
@@ -56,7 +53,11 @@
     "Listenstaine",
     "Andorra",
     "Vaticano",
-    "Chipre"
+    "Chipre",
+    "Inglaterra",
+    "Escócia",
+    "País de Gales",
+    "Irlanda do Norte"
   ],
   "focusGeo": [
     "Portugal"

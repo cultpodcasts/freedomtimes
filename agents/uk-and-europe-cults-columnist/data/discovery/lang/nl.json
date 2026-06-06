@@ -13,9 +13,7 @@
   ],
   "europeCountryOr": [
     "Europa",
-    "Europe",
     "Verenigd Koninkrijk",
-    "UK",
     "Groot-Brittannië",
     "Frankrijk",
     "Duitsland",
@@ -32,7 +30,6 @@
     "Noorwegen",
     "Denemarken",
     "Oostenrijk",
-    "Finland",
     "Zwitserland",
     "Tsjechië",
     "\"Tsjechische Republiek\"",
@@ -42,7 +39,6 @@
     "Bosnië",
     "Montenegro",
     "\"Noord-Macedonië\"",
-    "\"North Macedonia\"",
     "Kosovo",
     "Albanië",
     "Estland",
@@ -55,7 +51,10 @@
     "Liechtenstein",
     "Andorra",
     "Vaticaan",
-    "Cyprus"
+    "Engeland",
+    "Schotland",
+    "Noord-Ierland",
+    "Wales"
   ],
   "focusGeo": [
     "Nederland"

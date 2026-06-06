@@ -13,9 +13,7 @@
   ],
   "europeCountryOr": [
     "Europa",
-    "Europe",
     "Wielka Brytania",
-    "UK",
     "Francja",
     "Niemcy",
     "Hiszpania",
@@ -42,7 +40,6 @@
     "Bośnia",
     "Czarnogóra",
     "\"Macedonia Północna\"",
-    "\"North Macedonia\"",
     "Kosowo",
     "Albania",
     "Estonia",
@@ -55,7 +52,11 @@
     "Liechtenstein",
     "Andora",
     "Watykan",
-    "Cypr"
+    "Cypr",
+    "Anglia",
+    "Szkocja",
+    "Walia",
+    "Irlandia Północna"
   ],
   "focusGeo": [
     "Polska"

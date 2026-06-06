@@ -12,9 +12,7 @@
   ],
   "europeCountryOr": [
     "Europa",
-    "Europe",
     "Jungtinė Karalystė",
-    "UK",
     "Prancūzija",
     "Vokietija",
     "Ispanija",
@@ -39,7 +37,6 @@
     "Bosnija",
     "Juodkalnija",
     "\"Šiaurės Makedonija\"",
-    "\"North Macedonia\"",
     "Kosovas",
     "Albanija",
     "Estija",
@@ -52,7 +49,11 @@
     "Lichtenšteinas",
     "Andora",
     "Vatikanas",
-    "Kipras"
+    "Kipras",
+    "Anglija",
+    "Škotija",
+    "Velsas",
+    "Šiaurės Airija"
   ],
   "harmSignals": [
     "prievartinė kontrolė",

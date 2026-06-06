@@ -13,9 +13,7 @@
   ],
   "europeCountryOr": [
     "Evropa",
-    "Europe",
     "Ujedinjeno Kraljevstvo",
-    "UK",
     "Francuska",
     "Nemačka",
     "Španija",
@@ -40,7 +38,6 @@
     "Bosna",
     "Crna Gora",
     "\"Severna Makedonija\"",
-    "\"North Macedonia\"",
     "Kosovo",
     "Albanija",
     "Estonija",
@@ -53,7 +50,11 @@
     "Lihtenštajn",
     "Andora",
     "Vatikan",
-    "Kipar"
+    "Kipar",
+    "Engleska",
+    "Škotska",
+    "Wels",
+    "Severna Irska"
   ],
   "harmSignals": [
     "prinudna kontrola",

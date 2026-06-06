@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { loadGroupStopwordsByLanguageFromDiscoveryLangFiles } from './discoveryLangGroupStopwords.ts';
+import {
+  loadEuropeCountryOrByLanguageFromDiscoveryLangFiles,
+  stripDiscoveryCountryTerm,
+} from './discoveryLangEuropeCountries.ts';
 
 const CLUSTER_STOPWORD_LANG_ALIASES: Record<string, string> = {
   nb: 'no',
@@ -37,12 +41,24 @@ export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
 
   const base = loadClusterBaseStopwords();
   const groupByLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
+  const countryByLang = loadEuropeCountryOrByLanguageFromDiscoveryLangFiles();
   const map = new Map<string, Set<string>>();
 
-  for (const [lang, terms] of Object.entries(groupByLang)) {
+  const allLangs = new Set([...Object.keys(groupByLang), ...Object.keys(countryByLang)]);
+  for (const lang of allLangs) {
     const set = new Set(base);
-    for (const term of terms) {
+    for (const term of groupByLang[lang] ?? []) {
       set.add(term.toLowerCase());
+    }
+    for (const term of countryByLang[lang] ?? []) {
+      const phrase = stripDiscoveryCountryTerm(term).toLowerCase();
+      if (!phrase) continue;
+      set.add(phrase);
+      for (const word of phrase.split(/\s+/)) {
+        if (word.length >= 3) {
+          set.add(word);
+        }
+      }
     }
     map.set(lang.toLowerCase(), set);
   }

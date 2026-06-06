@@ -12,9 +12,7 @@
   ],
   "europeCountryOr": [
     "Europa",
-    "Europe",
     "Storbritannien",
-    "UK",
     "Frankrig",
     "Tyskland",
     "Spanien",
@@ -31,7 +29,6 @@
     "Norge",
     "Danmark",
     "Østrig",
-    "Finland",
     "Schweiz",
     "Tjekkiet",
     "Kroatien",
@@ -40,7 +37,6 @@
     "Bosnien",
     "Montenegro",
     "\"Nordmakedonien\"",
-    "\"North Macedonia\"",
     "Kosovo",
     "Albanien",
     "Estland",
@@ -53,7 +49,11 @@
     "Liechtenstein",
     "Andorra",
     "Vatikanstaten",
-    "Cypern"
+    "Cypern",
+    "Skotland",
+    "Nordirland",
+    "England",
+    "Wales"
   ],
   "harmSignals": [
     "tvangskontrol",

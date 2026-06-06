@@ -13,9 +13,7 @@
   ],
   "europeCountryOr": [
     "Europa",
-    "Europe",
     "Regatul Unit",
-    "UK",
     "Franța",
     "Germania",
     "Spania",
@@ -42,7 +40,6 @@
     "Bosnia",
     "Muntenegru",
     "\"Macedonia de Nord\"",
-    "\"North Macedonia\"",
     "Kosovo",
     "Albania",
     "Estonia",
@@ -55,7 +52,11 @@
     "Liechtenstein",
     "Andorra",
     "Vatican",
-    "Cipru"
+    "Cipru",
+    "Anglia",
+    "Scoția",
+    "Țara Galilor",
+    "Irlanda de Nord"
   ],
   "focusGeo": [
     "România"
