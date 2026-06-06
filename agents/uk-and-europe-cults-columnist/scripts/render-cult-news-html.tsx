@@ -1815,7 +1815,7 @@ function countSharedArticleBodyProperNouns(
   for (const term of properI) {
     if (!properJ.has(term)) continue;
     if (entityAliasCanonicals.has(term)) continue;
-    if (isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) continue;
+    if (!isPositiveLabelTerm(term, stopI, entityAliasCanonicals)) continue;
     if (term.length < 5) continue;
     shared += 1;
   }
@@ -2278,7 +2278,9 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
     const pattern = new RegExp(`(?<=[^.!?
 ])\\s+${capitalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[^a-z]|$)`, 'u');
     if (pattern.test(original)) {
-      result.add(token);
+      if (!isExcludedClusterProperNoun(token, stopwords)) {
+        result.add(token);
+      }
     }
   }
   
@@ -2319,7 +2321,10 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
         
         // Add the phrase if it has at least 2 capitalized words
         const lowerPhrase = phrase.toLowerCase();
-        if (lowerPhrase.length >= 8 && !isGenericCultClusterTerm(lowerPhrase, GENERIC_CULT_CLUSTER_TERMS)) {
+        if (
+          lowerPhrase.length >= 8 &&
+          !isGenericCultClusterTerm(lowerPhrase, GENERIC_CULT_CLUSTER_TERMS)
+        ) {
           result.add(lowerPhrase);
         }
       } else {
@@ -2718,18 +2723,6 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       }
 
       if (sharedQuotedPhraseWordOverlap(storyI.title, storyJ.title) >= 2) {
-        const left = edges.get(i) ?? new Set<number>();
-        const right = edges.get(j) ?? new Set<number>();
-        left.add(j);
-        right.add(i);
-        edges.set(i, left);
-        edges.set(j, right);
-        continue;
-      }
-
-      if (
-        countSharedArticleBodyProperNouns(storyI, storyJ, featI, featJ, entityAliasCanonicals) >= 2
-      ) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
         left.add(j);
@@ -3305,18 +3298,6 @@ function selectGroupLabel(
   );
   if (properNounLabel) {
     return toTitleCase(properNounLabel);
-  }
-
-  const articleProperNounLabel = pickSharedArticleProperNounLabel(
-    storyIndexes,
-    stories,
-    features,
-    idf,
-    minimumCoverage,
-    entityAliasCanonicals,
-  );
-  if (articleProperNounLabel) {
-    return toTitleCase(articleProperNounLabel);
   }
 
   const companionLabel = pickCompanionClusterLabel(storyIndexes, stories, features, idf);
