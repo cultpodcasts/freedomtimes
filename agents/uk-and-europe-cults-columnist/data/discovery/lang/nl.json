@@ -241,5 +241,16 @@
   "newsCoveragePrepositions": [
     "over",
     "van"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "festivals",
+    "vroeg",
+    "laat",
+    "recent",
+    "recente",
+    "geheim",
+    "globaal",
+    "volgend"
   ]
 }

@@ -302,5 +302,29 @@
     "\\bJe m'abonne pour lire la suite[\\s\\S]*$",
     "\\bRégler mon impayé[\\s\\S]*$",
     "\\bMettre à jour[\\s\\S]*$"
+  ],
+  "clusterModifierSeeds": [
+    "c'est",
+    "qu'est",
+    "n'est",
+    "j'ai",
+    "t'es",
+    "m'est",
+    "s'est",
+    "l'on",
+    "festival",
+    "festivals",
+    "fête",
+    "fêtes",
+    "récent",
+    "récente",
+    "précédent",
+    "précédente",
+    "secret",
+    "suivant",
+    "suivante",
+    "tôt",
+    "mondial",
+    "mondiale"
   ]
 }

@@ -278,5 +278,16 @@
     "unas",
     "unos",
     "ya"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "festivales",
+    "temprano",
+    "reciente",
+    "recientes",
+    "secreto",
+    "secreta",
+    "global",
+    "siguiente"
   ]
 }

@@ -123,5 +123,12 @@
     "skllavëri moderne",
     "trafikim njerëzor"
   ],
-  "groupStopwords": []
+  "groupStopwords": [],
+  "clusterModifierSeeds": [
+    "festival",
+    "i hershëm",
+    "i vonshëm",
+    "i fundit",
+    "sekret"
+  ]
 }

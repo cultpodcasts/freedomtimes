@@ -211,5 +211,13 @@
     "za",
     "že",
     "zelo"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "festivali",
+    "zgodnji",
+    "pozni",
+    "nedavni",
+    "tajni"
   ]
 }

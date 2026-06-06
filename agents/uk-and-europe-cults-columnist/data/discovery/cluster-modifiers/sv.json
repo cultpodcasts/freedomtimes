@@ -1,17 +1,10 @@
 {
   "language": "sv",
   "sources": [
-    "cluster-modifier-seeds.json"
+    "lang:clusterModifierSeeds"
   ],
-  "generatedAt": "2026-06-06T15:28:36.519Z",
+  "generatedAt": "2026-06-06T16:02:42.885Z",
   "maxTermsPerLocale": 2000,
-  "termCount": 6,
-  "terms": [
-    "festival",
-    "festivaler",
-    "tidig",
-    "sen",
-    "nylig",
-    "hemlig"
-  ]
+  "termCount": 0,
+  "terms": []
 }

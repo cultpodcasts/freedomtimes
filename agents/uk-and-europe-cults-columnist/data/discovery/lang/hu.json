@@ -205,5 +205,12 @@
     "van",
     "vannak",
     "volt"
+  ],
+  "clusterModifierSeeds": [
+    "fesztivál",
+    "korai",
+    "késői",
+    "friss",
+    "titkos"
   ]
 }

@@ -122,5 +122,12 @@
     "kaasaegne orjus",
     "inimkaubandus"
   ],
-  "groupStopwords": []
+  "groupStopwords": [],
+  "clusterModifierSeeds": [
+    "festival",
+    "varane",
+    "hiline",
+    "hiljutine",
+    "salajane"
+  ]
 }

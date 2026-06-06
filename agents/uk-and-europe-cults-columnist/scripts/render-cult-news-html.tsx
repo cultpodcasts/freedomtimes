@@ -5,7 +5,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { detect as detectLanguage } from 'tinyld';
-import { clusterStopwordsForLanguage } from '../src/clusterStopwords.ts';
+import { clusterStopwordsForLanguage, normalizeClusterStopwordLookupToken } from '../src/clusterStopwords.ts';
+import { canonicalizeApostrophes } from '../src/discoveryTextNormalize.ts';
 import { extractQuotedSpans } from '../src/quotePatterns.ts';
 import {
   getReligiousGroupTermsForLanguage,
@@ -1561,14 +1562,18 @@ const SUBJECT_TOPIC_CANONICALS = new Set(
 );
 
 function normalizeSubjectMatchText(value: string): string {
-  return value.toLowerCase().replace(/[\u2018\u2019\u201B\u2032]/g, "'");
+  return canonicalizeApostrophes(value.toLowerCase());
+}
+
+function isClusterStopword(token: string, stopwords: Set<string>): boolean {
+  return stopwords.has(normalizeClusterStopwordLookupToken(token));
 }
 
 const GENERIC_CULT_CLUSTER_TERMS = buildGenericCultClusterTermSet();
 
 /** Skip cult/sect/religion vocabulary even when capitalized like a proper noun. */
 function isExcludedClusterProperNoun(token: string, stopwords: Set<string>): boolean {
-  if (stopwords.has(token)) return true;
+  if (isClusterStopword(token, stopwords)) return true;
   return isGenericCultClusterTerm(token, GENERIC_CULT_CLUSTER_TERMS);
 }
 
@@ -1631,7 +1636,7 @@ function tokenize(value: string, stopwords: Set<string>): string[] {
     .filter((token) => token.length >= 3)
     .map((token) => normalizeToken(token))
     .filter((token) => token.length >= 3)
-    .filter((token) => !stopwords.has(token));
+    .filter((token) => !isClusterStopword(token, stopwords));
 }
 
 function toTitleCase(value: string): string {
@@ -1639,6 +1644,13 @@ function toTitleCase(value: string): string {
     .split(' ')
     .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
     .join(' ');
+}
+
+/** French/Italian headline elisions (c'est, qu'est, j'ai, …) — not cluster identity. */
+function isHeadlineElisionLikeToken(term: string): boolean {
+  const t = term.toLowerCase().trim();
+  if (t.length < 4 || t.length > 8) return false;
+  return /^[\p{L}]{1,2}[''\u2019][\p{L}]/u.test(t);
 }
 
 function buildStopwordSet(language: string): Set<string> {
@@ -1718,12 +1730,12 @@ function distinctiveCaseTerms(story: EnrichedStory, language: string): Set<strin
   const stopwords = buildStopwordSet(language);
   const terms = new Set<string>();
   for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
-    if (term.length >= 5 && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+    if (term.length >= 5 && !isHeadlineElisionLikeToken(term) && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
       terms.add(term);
     }
   }
   for (const term of extractQuotedTerms(story.title)) {
-    if (term.length >= 5 && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+    if (term.length >= 5 && !isHeadlineElisionLikeToken(term) && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
       terms.add(term);
     }
   }
@@ -3004,11 +3016,12 @@ function isPositiveLabelTerm(
   stopwords: Set<string>,
   entityAliasCanonicals: Set<string>,
 ): boolean {
-  if (!term || stopwords.has(term)) return false;
+  if (!term || isClusterStopword(term, stopwords)) return false;
+  if (isHeadlineElisionLikeToken(term)) return false;
   if (entityAliasCanonicals.has(term)) return true;
   if (isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
   const words = term.split(/\s+/).filter((word) => word.length > 0);
-  if (words.length === 0 || words.some((word) => stopwords.has(word))) return false;
+  if (words.length === 0 || words.some((word) => isClusterStopword(word, stopwords))) return false;
   if (term.includes(' ')) {
     if (!isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
     return words.some((word) => word.length >= 6 || entityAliasCanonicals.has(word));
@@ -3164,7 +3177,7 @@ function isPositiveBigramLabelTerm(
   if (!term.includes(' ') || term.length < 8) return false;
   if (!isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
   const words = term.split(/\s+/).filter((word) => word.length > 0);
-  if (words.length < 2 || words.some((word) => stopwords.has(word))) return false;
+  if (words.length < 2 || words.some((word) => isClusterStopword(word, stopwords))) return false;
   return true;
 }
 
@@ -3315,7 +3328,9 @@ function pickCompanionClusterLabel(
 
   const termsA = distinctiveCaseTerms(storyA, featA.language);
   const termsB = distinctiveCaseTerms(storyB, featB.language);
-  const shared = [...termsA].filter((term) => termsB.has(term) && term.length >= 5);
+  const shared = [...termsA].filter(
+    (term) => termsB.has(term) && term.length >= 5 && !isHeadlineElisionLikeToken(term),
+  );
   if (shared.length > 0) {
     const best = shared.sort(
       (a, b) => (idf.get(b) ?? 0) - (idf.get(a) ?? 0) || b.length - a.length,

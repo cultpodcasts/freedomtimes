@@ -549,5 +549,20 @@
     "\\bSubscribers? only[\\s\\S]*$",
     "\\bRegister to continue[\\s\\S]*$",
     "\\bTo continue reading[\\s\\S]*$"
+  ],
+  "clusterModifierSeeds": [
+    "chillingly",
+    "disturbing",
+    "drastic",
+    "early",
+    "festival",
+    "festivals",
+    "following",
+    "former",
+    "global",
+    "late",
+    "ongoing",
+    "recent",
+    "secretive"
   ]
 }

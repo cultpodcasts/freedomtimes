@@ -1,5 +1,8 @@
 /**
- * Build data/discovery/cluster-modifiers/<locale>.json from Kaikki JSONL + manual seeds.
+ * Build data/discovery/cluster-modifiers/<locale>.json from Kaikki JSONL.
+ *
+ * Manual supplements live in data/discovery/lang/<code>.json → clusterModifierSeeds
+ * (merged at runtime with generated lexicons — not duplicated in cluster-modifiers/).
  *
  * Kaikki dump is ~2.6GB gzip — cached under data/discovery/_cache/ (gitignored).
  *
@@ -7,14 +10,14 @@
  *   npx tsx scripts/build-cluster-modifier-terms.mts --input data/discovery/_cache/raw-wiktextract-data.jsonl.gz
  *   npx tsx scripts/build-cluster-modifier-terms.mts --seeds-only
  *   npx tsx scripts/build-cluster-modifier-terms.mts --strip-lang-fields
- *
- * Committed output: data/discovery/cluster-modifiers/*.json (not lang/*.json).
  */
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createGunzip } from 'node:zlib';
 import { createInterface } from 'node:readline';
 import { get as httpGet } from 'node:https';
 import { fileURLToPath } from 'node:url';
+import { loadClusterModifierSeedsByLanguageFromDiscoveryLangFiles } from '../src/discoveryLangClusterModifiers.ts';
+import { canonicalizeApostrophes } from '../src/discoveryTextNormalize.ts';
 import {
   DEFAULT_MAX_TERMS_PER_LOCALE,
   DISCOVERY_LOCALE_TO_KAIKKI_LANG,
@@ -24,14 +27,12 @@ import {
 import {
   capModifierTerms,
   lemmasFromKaikkiEntry,
-  mergeModifierTermLists,
   type KaikkiEntry,
 } from '../src/kaikkiClusterModifierExtract.ts';
 
 const ROOT = new URL('../', import.meta.url);
 const MODIFIERS_DIR = new URL('data/discovery/cluster-modifiers/', ROOT);
 const CACHE_DIR = new URL('data/discovery/_cache/', ROOT);
-const SEEDS_PATH = new URL('data/discovery/cluster-modifier-seeds.json', ROOT);
 const LANG_DIR = new URL('data/discovery/lang/', ROOT);
 const DEFAULT_CACHE_FILE = fileURLToPath(new URL('raw-wiktextract-data.jsonl.gz', CACHE_DIR));
 
@@ -71,19 +72,6 @@ function parseArgs(argv: string[]): {
   }
 
   return { download, seedsOnly, stripLangFields, inputPath, maxTerms, maxLines };
-}
-
-function loadSeeds(): Record<string, string[]> {
-  if (!existsSync(SEEDS_PATH)) return {};
-  const parsed = JSON.parse(readFileSync(SEEDS_PATH, 'utf-8')) as {
-    locales?: Record<string, unknown>;
-  };
-  const result: Record<string, string[]> = {};
-  for (const [lang, terms] of Object.entries(parsed.locales ?? {})) {
-    if (!Array.isArray(terms)) continue;
-    result[lang.toLowerCase()] = terms.filter((t) => typeof t === 'string') as string[];
-  }
-  return result;
 }
 
 async function downloadKaikki(targetPath: string): Promise<void> {
@@ -145,7 +133,7 @@ async function extractFromKaikki(
 
     const set = byLang.get(langCode)!;
     for (const lemma of lemmas) {
-      set.add(lemma.toLowerCase());
+      set.add(canonicalizeApostrophes(lemma.toLowerCase()));
     }
     matched += 1;
 
@@ -179,7 +167,8 @@ function stripClusterModifierTermsFromLangFiles(): void {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
-  const seeds = loadSeeds();
+
+  const seedsByLang = loadClusterModifierSeedsByLanguageFromDiscoveryLangFiles();
   const generatedAt = new Date().toISOString();
 
   if (args.stripLangFields) {
@@ -218,12 +207,12 @@ async function main(): Promise<void> {
   for (const locale of discoveryLocales()) {
     const kaikkiLang = DISCOVERY_LOCALE_TO_KAIKKI_LANG[locale]!;
     const kaikkiTerms = kaikkiByLang.get(kaikkiLang) ?? new Set<string>();
-    const capped = capModifierTerms(kaikkiTerms, args.maxTerms);
-    const terms = mergeModifierTermLists(capped, seeds[locale] ?? []);
+    const terms = capModifierTerms(kaikkiTerms, args.maxTerms);
+    const seedCount = (seedsByLang[locale] ?? []).length;
 
     const sources: string[] = [];
     if (kaikkiTerms.size > 0) sources.push('kaikki:raw-wiktextract-data');
-    if ((seeds[locale] ?? []).length > 0) sources.push('cluster-modifier-seeds.json');
+    if (seedCount > 0) sources.push('lang:clusterModifierSeeds');
     if (sources.length === 0) sources.push('empty');
 
     const payload: ModifierFile = {
@@ -241,7 +230,7 @@ async function main(): Promise<void> {
     totalTerms += terms.length;
     totalBytes += bytes;
     console.log(
-      `[build-cluster-modifier-terms] ${locale}: ${terms.length} terms (${(bytes / 1024).toFixed(1)} KB, kaikki=${kaikkiTerms.size}, seeds=${(seeds[locale] ?? []).length})`,
+      `[build-cluster-modifier-terms] ${locale}: ${terms.length} kaikki terms (${(bytes / 1024).toFixed(1)} KB, langSeeds=${seedCount})`,
     );
   }
 

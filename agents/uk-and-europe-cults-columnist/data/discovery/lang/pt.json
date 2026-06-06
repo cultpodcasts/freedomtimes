@@ -268,5 +268,16 @@
     "de",
     "da",
     "do"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "festivais",
+    "precoce",
+    "recente",
+    "recentes",
+    "secreto",
+    "secreta",
+    "global",
+    "seguinte"
   ]
 }

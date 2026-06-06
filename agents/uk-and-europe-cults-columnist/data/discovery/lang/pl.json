@@ -222,5 +222,16 @@
     "wam",
     "was",
     "że"
+  ],
+  "clusterModifierSeeds": [
+    "festiwal",
+    "festiwalu",
+    "wczesny",
+    "wczesna",
+    "późny",
+    "późna",
+    "niedawny",
+    "tajny",
+    "tajna"
   ]
 }

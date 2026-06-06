@@ -82,5 +82,12 @@
     "Andorra",
     "Vatikan",
     "Ċipru"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "kmieni",
+    "tard",
+    "reċenti",
+    "sigriet"
   ]
 }

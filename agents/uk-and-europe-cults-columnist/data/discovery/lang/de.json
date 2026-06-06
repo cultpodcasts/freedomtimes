@@ -319,5 +319,16 @@
   "newsCoveragePrepositions": [
     "von",
     "zur"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "festivals",
+    "früh",
+    "spät",
+    "neu",
+    "neue",
+    "global",
+    "geheim",
+    "folgend"
   ]
 }

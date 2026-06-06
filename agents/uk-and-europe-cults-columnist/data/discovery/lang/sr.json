@@ -153,5 +153,12 @@
     "pratioci",
     "navijači"
   ],
-  "groupStopwords": []
+  "groupStopwords": [],
+  "clusterModifierSeeds": [
+    "фестивал",
+    "rani",
+    "kasni",
+    "nedavni",
+    "tajni"
+  ]
 }

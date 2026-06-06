@@ -259,5 +259,13 @@
     "trebui",
     "unde",
     "voastre"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "festivaluri",
+    "devreme",
+    "târziu",
+    "recent",
+    "secret"
   ]
 }

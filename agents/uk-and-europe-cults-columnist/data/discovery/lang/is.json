@@ -119,5 +119,12 @@
     "nútíma þrælahald",
     "mansal"
   ],
-  "groupStopwords": []
+  "groupStopwords": [],
+  "clusterModifierSeeds": [
+    "hátíð",
+    "snemma",
+    "seint",
+    "nýlega",
+    "leynilegur"
+  ]
 }

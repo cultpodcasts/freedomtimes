@@ -210,5 +210,12 @@
     "vain",
     "varten",
     "voida"
+  ],
+  "clusterModifierSeeds": [
+    "festivaali",
+    "aikainen",
+    "myöhäinen",
+    "tuore",
+    "salainen"
   ]
 }

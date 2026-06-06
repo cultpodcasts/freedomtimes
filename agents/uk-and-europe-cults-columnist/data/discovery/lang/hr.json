@@ -237,5 +237,13 @@
     "više",
     "vrlo",
     "za"
+  ],
+  "clusterModifierSeeds": [
+    "festival",
+    "festivali",
+    "rani",
+    "kasni",
+    "nedavni",
+    "tajni"
   ]
 }

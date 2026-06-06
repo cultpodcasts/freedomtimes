@@ -122,5 +122,12 @@
     "mūsdienu verdzība",
     "cilvēku tirdzniecība"
   ],
-  "groupStopwords": []
+  "groupStopwords": [],
+  "clusterModifierSeeds": [
+    "festivāls",
+    "agrīns",
+    "vēls",
+    "nesens",
+    "slepens"
+  ]
 }

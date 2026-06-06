@@ -1,20 +1,10 @@
 {
   "language": "es",
   "sources": [
-    "cluster-modifier-seeds.json"
+    "lang:clusterModifierSeeds"
   ],
-  "generatedAt": "2026-06-06T15:28:36.519Z",
+  "generatedAt": "2026-06-06T16:02:42.885Z",
   "maxTermsPerLocale": 2000,
-  "termCount": 9,
-  "terms": [
-    "festival",
-    "festivales",
-    "temprano",
-    "reciente",
-    "recientes",
-    "secreto",
-    "secreta",
-    "global",
-    "siguiente"
-  ]
+  "termCount": 0,
+  "terms": []
 }

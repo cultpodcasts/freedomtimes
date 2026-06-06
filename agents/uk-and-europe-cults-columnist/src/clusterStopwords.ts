@@ -5,7 +5,11 @@ import {
   stripDiscoveryCountryTerm,
 } from './discoveryLangEuropeCountries.ts';
 import { loadGenericCultTermsByLanguageFromDiscoveryLangFiles } from './discoveryLangGenericCultTerms.ts';
-import { loadClusterModifierTermsByLanguage } from './discoveryLangClusterModifiers.ts';
+import {
+  loadClusterModifierTermsByLanguage,
+  normalizeClusterModifierToken,
+} from './discoveryLangClusterModifiers.ts';
+import { canonicalizeApostrophes } from './discoveryTextNormalize.ts';
 
 const CLUSTER_STOPWORD_LANG_ALIASES: Record<string, string> = {
   nb: 'no',
@@ -35,7 +39,7 @@ export function normalizeClusterStopwordLang(code: string | undefined): string {
   return CLUSTER_STOPWORD_LANG_ALIASES[base] ?? base;
 }
 
-/** Per-locale cluster stopwords: groupStopwords, genericCultTerms, europeCountryOr, cluster-modifiers/<code>.json. */
+/** Per-locale cluster stopwords: groupStopwords, genericCultTerms, europeCountryOr, clusterModifierSeeds + Kaikki lexicon. */
 export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
   if (clusterStopwordsByLangCache) {
     return clusterStopwordsByLangCache;
@@ -80,7 +84,7 @@ export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
       }
     }
     for (const term of modifierByLang[lang] ?? []) {
-      const phrase = term.toLowerCase().replace(/^["'«»„""]+|["'«»„""]+$/g, '').trim();
+      const phrase = normalizeClusterModifierToken(term);
       if (!phrase) continue;
       set.add(phrase);
       for (const word of phrase.split(/\s+/)) {
@@ -104,6 +108,11 @@ export function clusterStopwordsForLanguage(lang: string | undefined): Set<strin
   const map = loadClusterStopwordsByLang();
   const code = normalizeClusterStopwordLang(lang);
   return map.get(code) ?? map.get('en')!;
+}
+
+/** Normalize headline tokens before stopword lookup (ASCII apostrophe, lowercase). */
+export function normalizeClusterStopwordLookupToken(token: string): string {
+  return canonicalizeApostrophes(token.toLowerCase());
 }
 
 /** Union of every locale list — for language-agnostic cluster edge filtering. */
