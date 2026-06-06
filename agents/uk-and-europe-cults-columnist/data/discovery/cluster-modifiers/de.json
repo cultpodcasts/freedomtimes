@@ -1,0 +1,20 @@
+{
+  "language": "de",
+  "sources": [
+    "cluster-modifier-seeds.json"
+  ],
+  "generatedAt": "2026-06-06T15:28:36.519Z",
+  "maxTermsPerLocale": 2000,
+  "termCount": 9,
+  "terms": [
+    "festival",
+    "festivals",
+    "früh",
+    "spät",
+    "neu",
+    "neue",
+    "global",
+    "geheim",
+    "folgend"
+  ]
+}

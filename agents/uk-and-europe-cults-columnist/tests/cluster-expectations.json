@@ -42,7 +42,7 @@
       "id": "pope-leo-slavery",
       "labelPattern": "pope|leo|slavery|vatican",
       "minSize": 2,
-      "requiredStoryPatterns": ["pope-leo", "pope/apologizes-slavery"]
+      "requiredStoryPatterns": ["pope-leo", "pope-apologizes-slavery"]
     }
   ],
   "mustNotShareCluster": [

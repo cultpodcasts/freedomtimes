@@ -31,6 +31,8 @@
     "e2e:full": "cmd /c \"cd /d %CD% && set AGENT_ENV=staging && set DISCOVERY_MAX_AGE_HOURS=168 && set DRY_RUN=true && npx tsx src/index.ts\"",
     "test:clusters": "tsx --env-file=.env scripts/cluster-integration.test.mts",
     "sync:cluster-regression": "tsx --env-file=.env scripts/sync-cluster-regression.mts",
+    "build:cluster-modifiers": "tsx scripts/build-cluster-modifier-terms.mts",
+    "build:cluster-modifiers:seeds": "tsx scripts/build-cluster-modifier-terms.mts --seeds-only --strip-lang-fields",
     "cluster:print-expectations": "tsx scripts/cluster-print-expectations.mts"
   },
   "devDependencies": {

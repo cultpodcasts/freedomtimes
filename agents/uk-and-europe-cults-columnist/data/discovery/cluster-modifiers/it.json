@@ -1,0 +1,21 @@
+{
+  "language": "it",
+  "sources": [
+    "cluster-modifier-seeds.json"
+  ],
+  "generatedAt": "2026-06-06T15:28:36.519Z",
+  "maxTermsPerLocale": 2000,
+  "termCount": 10,
+  "terms": [
+    "festival",
+    "festa",
+    "feste",
+    "precoce",
+    "recente",
+    "recenti",
+    "segreto",
+    "segreta",
+    "globale",
+    "seguente"
+  ]
+}

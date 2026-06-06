@@ -1,0 +1,16 @@
+{
+  "language": "uk",
+  "sources": [
+    "cluster-modifier-seeds.json"
+  ],
+  "generatedAt": "2026-06-06T15:28:36.519Z",
+  "maxTermsPerLocale": 2000,
+  "termCount": 5,
+  "terms": [
+    "фестиваль",
+    "ранній",
+    "пізній",
+    "недавній",
+    "таємний"
+  ]
+}

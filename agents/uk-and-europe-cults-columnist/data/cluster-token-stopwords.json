@@ -1,5 +1,5 @@
 {
-  "_description": "Cross-language UI/boilerplate tokens merged into every locale at load time. Locale-specific cult/sect/religion vocabulary lives in data/discovery/lang/<code>.json → genericCultTerms. Journalistic stopwords live in groupStopwords per locale.",
+  "_description": "Cross-language UI/boilerplate tokens merged into every locale at load time. Locale-specific cult/sect/religion vocabulary lives in data/discovery/lang/<code>.json → genericCultTerms. Journalistic stopwords in groupStopwords. Kaikki-derived modifiers in data/discovery/cluster-modifiers/<code>.json.",
   "base": [
     "cookie",
     "cookies",
