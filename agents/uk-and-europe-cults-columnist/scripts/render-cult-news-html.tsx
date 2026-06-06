@@ -5,7 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { detect as detectLanguage } from 'tinyld';
-import { clusterStopwordsForLanguage, normalizeClusterStopwordLookupToken } from '../src/clusterStopwords.ts';
+import { clusterStopwordsForLanguage, normalizeClusterStopwordLookupToken, buildUnionClusterStopwordSet } from '../src/clusterStopwords.ts';
 import { canonicalizeApostrophes } from '../src/discoveryTextNormalize.ts';
 import { extractQuotedSpans } from '../src/quotePatterns.ts';
 import {
@@ -1653,8 +1653,90 @@ function isHeadlineElisionLikeToken(term: string): boolean {
   return /^[\p{L}]{1,2}[''\u2019][\p{L}]/u.test(t);
 }
 
+/** Publisher / site chrome from hostname or trailing "| Publisher" in titles — not story identity. */
+function publisherLabelTokens(story: EnrichedStory): Set<string> {
+  const tokens = new Set<string>();
+  const host = (story.host || getHostname(story.url) || '').replace(/^www\./i, '').toLowerCase();
+  if (host) {
+    const slug = host.split('.')[0] ?? '';
+    if (slug.length >= 5) tokens.add(slug);
+    const brand = slug.replace(/magazine$/i, '').replace(/examiner$/i, (m) => (m ? 'examiner' : ''));
+    if (brand.length >= 5 && brand !== slug) tokens.add(brand);
+  }
+  const pipeMatch = story.title.match(/\|\s*([^|]+)$/);
+  if (pipeMatch) {
+    const suffix = pipeMatch[1]!.trim().toLowerCase();
+    if (suffix.length >= 4) tokens.add(suffix);
+    for (const word of suffix.split(/\s+/)) {
+      if (word.length >= 4) tokens.add(word);
+    }
+  }
+  return tokens;
+}
+
+function isPublisherChromeTerm(term: string, story: EnrichedStory): boolean {
+  return publisherLabelTokens(story).has(term.toLowerCase().trim());
+}
+
+/**
+ * Headline bigram with no named-entity signal — uses per-locale stopwords, not English word lists.
+ * Catches possessive/article-led phrases ("his wife" when "his" is a stopword) and all-stopword pairs.
+ */
+function isWeakClusterBigram(term: string, stopwords: Set<string>): boolean {
+  const normalized = term.toLowerCase().trim();
+  if (!normalized.includes(' ')) return false;
+  const words = normalized.split(/\s+/).filter((word) => word.length > 0);
+  if (words.length < 2) return false;
+
+  if (isClusterStopword(words[0]!, stopwords)) return true;
+  if (words.every((word) => isClusterStopword(word, stopwords))) return true;
+
+  return false;
+}
+
+function isWeakClusterBigramForLanguagePair(
+  term: string,
+  stopwordsI: Set<string>,
+  stopwordsJ: Set<string>,
+): boolean {
+  return isWeakClusterBigram(term, stopwordsI) || isWeakClusterBigram(term, stopwordsJ);
+}
+
+function isStrongSharedTitleBigram(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  bigram: string,
+  stopwordsI: Set<string>,
+  stopwordsJ: Set<string>,
+): boolean {
+  if (isWeakClusterBigramForLanguagePair(bigram, stopwordsI, stopwordsJ)) return false;
+  return (
+    isCapitalizedPhraseInTitle(storyI.title, bigram) &&
+    isCapitalizedPhraseInTitle(storyJ.title, bigram)
+  );
+}
+
 function buildStopwordSet(language: string): Set<string> {
   return clusterStopwordsForLanguage(language);
+}
+
+let unionClusterStopwordsCache: Set<string> | undefined;
+function unionClusterStopwords(): Set<string> {
+  unionClusterStopwordsCache ??= buildUnionClusterStopwordSet();
+  return unionClusterStopwordsCache;
+}
+
+/** Bigram reads as a named headline entity (Title Case or consecutive title-head proper nouns). */
+function isNamedHeadlineBigramInStory(
+  story: EnrichedStory,
+  term: string,
+  stopwords: Set<string>,
+): boolean {
+  if (isCapitalizedPhraseInTitle(story.title, term)) return true;
+  const words = term.toLowerCase().split(/\s+/).filter((word) => word.length > 0);
+  if (words.length < 2) return false;
+  const heads = extractTitleHeadProperNouns(story.title, stopwords);
+  return words.every((word) => heads.has(word));
 }
 
 function detectStoryLanguage(story: EnrichedStory): string {
@@ -1730,12 +1812,22 @@ function distinctiveCaseTerms(story: EnrichedStory, language: string): Set<strin
   const stopwords = buildStopwordSet(language);
   const terms = new Set<string>();
   for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
-    if (term.length >= 5 && !isHeadlineElisionLikeToken(term) && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+    if (
+      term.length >= 5 &&
+      !isHeadlineElisionLikeToken(term) &&
+      !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS) &&
+      !isPublisherChromeTerm(term, story)
+    ) {
       terms.add(term);
     }
   }
   for (const term of extractQuotedTerms(story.title)) {
-    if (term.length >= 5 && !isHeadlineElisionLikeToken(term) && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+    if (
+      term.length >= 5 &&
+      !isHeadlineElisionLikeToken(term) &&
+      !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS) &&
+      !isPublisherChromeTerm(term, story)
+    ) {
       terms.add(term);
     }
   }
@@ -1779,6 +1871,14 @@ function hasCompanionCaseCrossReference(
   const termsI = distinctiveCaseTerms(storyI, featI.language);
   const termsJ = distinctiveCaseTerms(storyJ, featJ.language);
   if (termsI.size === 0 || termsJ.size === 0) return false;
+
+  const sharedTitleTerms = [...termsI].filter(
+    (term) =>
+      termsJ.has(term) &&
+      !isPublisherChromeTerm(term, storyI) &&
+      !isPublisherChromeTerm(term, storyJ),
+  );
+  if (sharedTitleTerms.length === 0) return false;
 
   const bodyI = stripPublisherBoilerplate(storyI.articleText ?? '');
   const bodyJ = stripPublisherBoilerplate(storyJ.articleText ?? '');
@@ -2389,6 +2489,7 @@ function extractQuotedPhraseTerms(text: string, language: string): Set<string> {
 }
 
 function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
+  const entityAliasCanonicals = new Set(SUBJECT_ALIASES.map((entry) => entry.canonical));
   return stories.map((story, index) => {
     const language = detectStoryLanguage(story);
     const stopwords = buildStopwordSet(language);
@@ -2455,13 +2556,38 @@ function buildStoryFeatures(stories: EnrichedStory[]): StoryFeatures[] {
 
     for (let i = 0; i < titleTokens.length - 1; i += 1) {
       const bigram = `${titleTokens[i]} ${titleTokens[i + 1]}`;
-      if (bigram.length >= 8 && isClusterSignalBigram(bigram, GENERIC_CULT_CLUSTER_TERMS)) {
+      if (bigram.length >= 8 && isClusterSignalBigram(bigram, GENERIC_CULT_CLUSTER_TERMS) && !isWeakClusterBigram(bigram, stopwords)) {
         anchorTerms.add(bigram);
+      }
+    }
+
+    const articleLead = articleRaw.slice(0, 5000);
+    if (articleLead.length >= 200) {
+      const leadTokens = tokenize(articleLead, stopwords);
+      const leadProper = extractProperNounTokens(articleLead, leadTokens, stopwords, language);
+      for (let i = 0; i < leadTokens.length - 1; i += 1) {
+        const left = leadTokens[i]!;
+        const right = leadTokens[i + 1]!;
+        if (!leadProper.has(left) || !leadProper.has(right)) continue;
+        if (left.length < 4 || right.length < 4) continue;
+        const bigram = `${left} ${right}`;
+        if (entityAliasCanonicals.has(bigram)) continue;
+        if (bigram.length >= 8 && isClusterSignalBigram(bigram, GENERIC_CULT_CLUSTER_TERMS) && !isWeakClusterBigram(bigram, stopwords)) {
+          anchorTerms.add(bigram);
+        }
       }
     }
 
     for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
       anchorTerms.add(term);
+    }
+
+    const titleProperBigramPattern = /\b([\p{Lu}][\p{Ll}]+(?:[''][\p{Ll}]+)?)\s+([\p{Lu}][\p{Ll}]+(?:[''][\p{Ll}]+)?)\b/gu;
+    for (const match of story.title.matchAll(titleProperBigramPattern)) {
+      const bigram = `${match[1]!.toLowerCase()} ${match[2]!.toLowerCase()}`;
+      if (bigram.length >= 8 && isClusterSignalBigram(bigram, GENERIC_CULT_CLUSTER_TERMS) && !isWeakClusterBigram(bigram, stopwords)) {
+        anchorTerms.add(bigram);
+      }
     }
 
     const headlineText = `${story.title} ${story.description ?? ''}`;
@@ -2561,10 +2687,31 @@ function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map
   return shared;
 }
 
-/** Canonical subject-aliases present in a story's anchor terms. */
-function subjectAliasesInAnchorTerms(anchorTerms: Set<string>): string[] {
-  const canonicals = new Set(SUBJECT_ALIASES.map((e) => e.canonical));
-  return [...anchorTerms].filter((t) => canonicals.has(t));
+/** Canonical subject-aliases in title + description (same scope as headline injectEntityAliases). */
+function entityAliasesInHeadline(story: EnrichedStory): Set<string> {
+  const language = detectStoryLanguage(story);
+  const found = new Set<string>();
+  const headline = normalizeSubjectMatchText(`${story.title} ${story.description ?? ''}`);
+  for (const { canonical, aliases } of SUBJECT_ALIASES) {
+    if (headline.includes(normalizeSubjectMatchText(canonical))) {
+      found.add(canonical);
+      continue;
+    }
+    for (const alias of aliases) {
+      if (alias.lang && alias.lang !== language) continue;
+      if (headline.includes(normalizeSubjectMatchText(alias.text))) {
+        found.add(canonical);
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+/** Canonical subject-aliases present in anchor terms and grounded in the headline. */
+function subjectAliasesInAnchorTerms(anchorTerms: Set<string>, story: EnrichedStory): string[] {
+  const headlineAliases = entityAliasesInHeadline(story);
+  return [...anchorTerms].filter((t) => headlineAliases.has(t));
 }
 
 /**
@@ -2625,9 +2772,25 @@ function sharedTitleIdentityTerms(
       t.length >= 7 &&
       headJ.has(t) &&
       !isGenericCultClusterTerm(t, GENERIC_CULT_CLUSTER_TERMS) &&
-      !entityAliasCanonicals.has(t),
+      !entityAliasCanonicals.has(t) &&
+      !isPublisherChromeTerm(t, storyI) &&
+      !isPublisherChromeTerm(t, storyJ),
   );
   return [...quoted, ...heads];
+}
+
+/** Same registrable domain with no shared story identity — never a cluster edge. */
+function isSamePublisherWithoutStoryIdentity(
+  storyI: EnrichedStory,
+  storyJ: EnrichedStory,
+  featI: StoryFeatures,
+  featJ: StoryFeatures,
+  entityAliasCanonicals: Set<string>,
+): boolean {
+  const hostI = (storyI.host || getHostname(storyI.url) || '').toLowerCase();
+  const hostJ = (storyJ.host || getHostname(storyJ.url) || '').toLowerCase();
+  if (!hostI || hostI !== hostJ) return false;
+  return sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, entityAliasCanonicals).length === 0;
 }
 
 function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, stories: EnrichedStory[]): Map<number, Set<number>> {
@@ -2647,8 +2810,11 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         continue;
       }
 
-      const entityAliasesI = subjectAliasesInAnchorTerms(featI.anchorTerms);
-      const entityAliasesJ = subjectAliasesInAnchorTerms(featJ.anchorTerms);
+      const stopwordsI = buildStopwordSet(featI.language);
+      const stopwordsJ = buildStopwordSet(featJ.language);
+
+      const entityAliasesI = subjectAliasesInAnchorTerms(featI.anchorTerms, storyI);
+      const entityAliasesJ = subjectAliasesInAnchorTerms(featJ.anchorTerms, storyJ);
       const hasEntityAliasMatch = entityAliasesI.some((t) => entityAliasesJ.includes(t));
 
       // Shared capitalized / quoted title token — link before group-subject conflict checks.
@@ -2676,20 +2842,17 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         continue;
       }
 
+      if (
+        isSamePublisherWithoutStoryIdentity(storyI, storyJ, featI, featJ, entityAliasCanonicals) &&
+        !sharedWireReprintSlugLink(storyI, storyJ)
+      ) {
+        continue;
+      }
+
       const similarity = cosineSimilarity(featI, featJ, idf);
       const sharedRareAnchorTerms = countSharedRareAnchorTerms(featI, featJ, idf);
 
       const sameLanguage = featI.language === featJ.language;
-
-      if (hasCompanionCaseCrossReference(storyI, storyJ, featI, featJ)) {
-        const left = edges.get(i) ?? new Set<number>();
-        const right = edges.get(j) ?? new Set<number>();
-        left.add(j);
-        right.add(i);
-        edges.set(i, left);
-        edges.set(j, right);
-        continue;
-      }
 
       if (
         sharedGroupPlusEventTitleLink(storyI, storyJ, featI.language, featJ.language) ||
@@ -2834,6 +2997,24 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
           isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS),
       );
       
+      // Cross-language wire: one shared person/show bigram in article or title (e.g. Hannah Murray PL ↔ EN).
+      if (!sameLanguage && sharedProperNounBigrams.length >= 1) {
+        const named = sharedProperNounBigrams.filter(
+          (t) =>
+            !isWeakClusterBigramForLanguagePair(t, stopwordsI, stopwordsJ) &&
+            t.split(/\s+/).every((w) => w.length >= 4),
+        );
+        if (named.length >= 1) {
+          const left = edges.get(i) ?? new Set<number>();
+          const right = edges.get(j) ?? new Set<number>();
+          left.add(j);
+          right.add(i);
+          edges.set(i, left);
+          edges.set(j, right);
+          continue;
+        }
+      }
+
       if (sharedProperNounBigrams.length >= 2) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
@@ -2873,8 +3054,10 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
           t.includes(' ') &&
           featJ.anchorTerms.has(t) &&
           isClusterSignalBigram(t, GENERIC_CULT_CLUSTER_TERMS) &&
+          !isWeakClusterBigramForLanguagePair(t, stopwordsI, stopwordsJ) &&
           storyI.title.toLowerCase().includes(t) &&
-          storyJ.title.toLowerCase().includes(t),
+          storyJ.title.toLowerCase().includes(t) &&
+          isStrongSharedTitleBigram(storyI, storyJ, t, stopwordsI, stopwordsJ),
       );
 
       if (sharedTitleBigrams.length >= 1) {
@@ -3026,7 +3209,7 @@ function isPositiveLabelTerm(
     if (!isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
     return words.some((word) => word.length >= 6 || entityAliasCanonicals.has(word));
   }
-  return isClusterSignalUnigram(term, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals) && term.length >= 5;
+  return isClusterSignalUnigram(term, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals) && term.length >= 4;
 }
 
 function subjectAliasCoverageInStories(
@@ -3097,6 +3280,16 @@ function pickSharedArticleProperNounLabel(
   minimumCoverage: number,
   entityAliasCanonicals: Set<string>,
 ): string | undefined {
+  const titleHeadLabel = pickBestSharedTitleProperNoun(
+    storyIndexes,
+    stories,
+    features,
+    idf,
+    minimumCoverage,
+    entityAliasCanonicals,
+  );
+  if (titleHeadLabel) return undefined;
+
   const counts = new Map<string, number>();
   for (const idx of storyIndexes) {
     const story = stories[idx];
@@ -3147,7 +3340,8 @@ function pickBestSharedTitleProperNoun(
     const seenInStory = new Set<string>();
 
     for (const term of extractTitleHeadProperNouns(story.title, stopwords)) {
-      if (term.length < 7 || !isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      if (term.length < 4 || !isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      if (isPublisherChromeTerm(term, story)) continue;
       seenInStory.add(term);
     }
     for (const term of extractQuotedTerms(story.title)) {
@@ -3175,9 +3369,11 @@ function isPositiveBigramLabelTerm(
   stopwords: Set<string>,
 ): boolean {
   if (!term.includes(' ') || term.length < 8) return false;
+  if (isWeakClusterBigram(term, stopwords)) return false;
   if (!isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
   const words = term.split(/\s+/).filter((word) => word.length > 0);
-  if (words.length < 2 || words.some((word) => isClusterStopword(word, stopwords))) return false;
+  const union = unionClusterStopwords();
+  if (words.length < 2 || words.some((word) => isClusterStopword(word, union))) return false;
   return true;
 }
 
@@ -3229,14 +3425,52 @@ function pickSharedTitleBigramLabel(
   const capitalizedCandidates = candidates.filter(
     ([term]) => (capitalizedCounts.get(term) ?? 0) >= minimumCoverage,
   );
-  const pool = capitalizedCandidates.length > 0 ? capitalizedCandidates : candidates;
+  if (capitalizedCandidates.length === 0) return undefined;
 
-  return pool.sort(
+  return capitalizedCandidates.sort(
     (a, b) =>
       b[1] - a[1] ||
       (idf.get(b[0]) ?? 0) - (idf.get(a[0]) ?? 0) ||
       b[0].length - a[0].length,
   )[0]?.[0];
+}
+
+function pickSharedNamedProperNounBigram(
+  storyIndexes: number[],
+  stories: EnrichedStory[],
+  features: StoryFeatures[],
+  minimumCoverage: number,
+  entityAliasCanonicals: Set<string>,
+  idf: Map<string, number>,
+): string | undefined {
+  const counts = new Map<string, number>();
+  for (const idx of storyIndexes) {
+    const story = stories[idx];
+    const feature = features[idx];
+    if (!story || !feature) continue;
+    const stopwords = buildStopwordSet(feature.language);
+    const seenInStory = new Set<string>();
+    for (const term of feature.anchorTerms) {
+      if (!term.includes(' ') || term.length < 8) continue;
+      if (isWeakClusterBigram(term, stopwords)) continue;
+      if (!isNamedHeadlineBigramInStory(story, term, stopwords)) continue;
+      if (!isPositiveBigramLabelTerm(term, stopwords)) continue;
+      if (!isPositiveLabelTerm(term, stopwords, entityAliasCanonicals)) continue;
+      seenInStory.add(term);
+    }
+    for (const term of seenInStory) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count >= minimumCoverage)
+    .sort(
+      (a, b) =>
+        b[1] - a[1] ||
+        (idf.get(b[0]) ?? 0) - (idf.get(a[0]) ?? 0) ||
+        b[0].length - a[0].length,
+    )[0]?.[0];
 }
 
 function isRedundantClusterQualifier(canonical: string, qualifier: string): boolean {
@@ -3277,7 +3511,7 @@ function selectGroupLabel(
     return toTitleCase(dominantAlias[0]);
   }
 
-  const bigramLabel = pickSharedTitleBigramLabel(
+  const namedBigramLabel = pickSharedNamedProperNounBigram(
     storyIndexes,
     stories,
     features,
@@ -3285,8 +3519,8 @@ function selectGroupLabel(
     entityAliasCanonicals,
     idf,
   );
-  if (bigramLabel) {
-    return toTitleCase(bigramLabel);
+  if (namedBigramLabel) {
+    return toTitleCase(namedBigramLabel);
   }
 
   const properNounLabel = pickBestSharedTitleProperNoun(
@@ -3299,6 +3533,30 @@ function selectGroupLabel(
   );
   if (properNounLabel) {
     return toTitleCase(properNounLabel);
+  }
+
+  const articleProperNounLabel = pickSharedArticleProperNounLabel(
+    storyIndexes,
+    stories,
+    features,
+    idf,
+    minimumCoverage,
+    entityAliasCanonicals,
+  );
+  if (articleProperNounLabel) {
+    return toTitleCase(articleProperNounLabel);
+  }
+
+  const bigramLabel = pickSharedTitleBigramLabel(
+    storyIndexes,
+    stories,
+    features,
+    minimumCoverage,
+    entityAliasCanonicals,
+    idf,
+  );
+  if (bigramLabel) {
+    return toTitleCase(bigramLabel);
   }
 
   const companionLabel = pickCompanionClusterLabel(storyIndexes, stories, features, idf);
@@ -3329,7 +3587,12 @@ function pickCompanionClusterLabel(
   const termsA = distinctiveCaseTerms(storyA, featA.language);
   const termsB = distinctiveCaseTerms(storyB, featB.language);
   const shared = [...termsA].filter(
-    (term) => termsB.has(term) && term.length >= 5 && !isHeadlineElisionLikeToken(term),
+    (term) =>
+      termsB.has(term) &&
+      term.length >= 5 &&
+      !isHeadlineElisionLikeToken(term) &&
+      !isPublisherChromeTerm(term, storyA) &&
+      !isPublisherChromeTerm(term, storyB),
   );
   if (shared.length > 0) {
     const best = shared.sort(
@@ -3338,8 +3601,7 @@ function pickCompanionClusterLabel(
     if (best) return toTitleCase(best);
   }
 
-  const host = (storyA.host || getHostname(storyA.url) || '').replace(/^www\./i, '').split('.')[0];
-  return host ? toTitleCase(host) : undefined;
+  return undefined;
 }
 
 function detectStoryClusters(stories: EnrichedStory[]): ClusterDetectionResult {

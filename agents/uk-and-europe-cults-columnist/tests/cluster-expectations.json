@@ -43,6 +43,12 @@
       "labelPattern": "pope|leo|slavery|vatican",
       "minSize": 2,
       "requiredStoryPatterns": ["pope-leo", "pope-apologizes-slavery"]
+    },
+    {
+      "id": "hannah-murray-cult",
+      "labelPattern": "hannah|murray|game of thrones|thrones",
+      "minSize": 4,
+      "requiredStoryPatterns": ["film.wp.pl", "lured into wellness cult", "geriet sie in eine sekte"]
     }
   ],
   "mustNotShareCluster": [
@@ -53,6 +59,14 @@
     {
       "id": "unchosen-vs-pbcc-yahoo",
       "storyPatterns": ["unchosen-on-netflix", "fr.news.yahoo.com/secte"]
+    },
+    {
+      "id": "irishexaminer-unrelated",
+      "storyPatterns": ["irishexaminer.com/news/arid-41845872", "irishexaminer.com/news/arid-41845575"]
+    },
+    {
+      "id": "searchlight-unrelated",
+      "storyPatterns": ["searchlightmagazine.com/2026/05/vatican", "searchlightmagazine.com/2026/05/how-rupert-lowe"]
     },
     {
       "id": "unchosen-vs-uk-raid-bridge",
@@ -83,6 +97,10 @@
     { "id": "no-britain-label", "labelPattern": "^Britain$" },
     { "id": "no-europe-label", "labelPattern": "^Europe$" },
     { "id": "no-christian-label", "labelPattern": "^Christian$" },
-    { "id": "no-cest-label", "labelPattern": "^C.?est$" }
+    { "id": "no-cest-label", "labelPattern": "^C.?est$" },
+    { "id": "no-irishexaminer-label", "labelPattern": "^Irishexaminer$" },
+    { "id": "no-searchlight-label", "labelPattern": "^Searchlight$" },
+    { "id": "no-his-wife-label", "labelPattern": "^His Wife$" },
+    { "id": "no-lured-into-label", "labelPattern": "^Lured Into$" }
   ]
 }
