@@ -14,6 +14,7 @@ import { classifyStories } from './render-cult-news-html.tsx';
 import {
   assertExpectedClusters,
   assertForbiddenClusterLabels,
+  assertForbiddenStoryTitlePatterns,
   assertForbiddenMegaClusters,
   assertMustNotShareCluster,
   assertMustStayIndependent,
@@ -76,6 +77,7 @@ function main(): void {
     ...assertMustStayIndependent(groups, stories, expectations.mustStayIndependent),
     ...assertForbiddenMegaClusters(groups, stories, expectations.forbiddenMegaClusters),
     ...assertForbiddenClusterLabels(groups, expectations.forbiddenClusterLabels),
+    ...assertForbiddenStoryTitlePatterns(stories, expectations.forbiddenStoryTitlePatterns),
   ];
 
   if (failures.length > 0) {

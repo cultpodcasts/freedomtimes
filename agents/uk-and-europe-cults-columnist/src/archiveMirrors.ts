@@ -130,6 +130,23 @@ export function looksLikeBlockedFetchPage(text: string): boolean {
   );
 }
 
+/** `<title>` / og:title from bot-block pages (Cloudflare, etc.). */
+export function looksLikeBlockedPageTitle(title: string | undefined): boolean {
+  if (!title?.trim()) return false;
+  const normalized = title.trim().toLowerCase();
+  return (
+    /\battention required!\b/.test(normalized) ||
+    /\byou have been blocked\b/.test(normalized) ||
+    (/\bcloudflare\b/.test(normalized) && normalized.length < 120)
+  );
+}
+
+/** Raw HTML from a direct fetch that is not usable article content. */
+export function isBlockedHttpBody(html: string): boolean {
+  if (/<title[^>]*>\s*attention required!/i.test(html)) return true;
+  return looksLikeBlockedFetchPage(html);
+}
+
 export function needsArchiveMirrorFallback(
   fetchOk: boolean,
   status: number,

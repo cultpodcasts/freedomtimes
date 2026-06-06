@@ -21,6 +21,7 @@ export type ClusterExpectations = {
     mustNotContainPatterns: string[];
   }>;
   forbiddenClusterLabels?: Array<{ id: string; labelPattern: string }>;
+  forbiddenStoryTitlePatterns?: Array<{ id: string; titlePattern: string }>;
 };
 
 export type RegressionFixture = {
@@ -223,14 +224,40 @@ export function assertForbiddenClusterLabels(
   const detected = groups.filter((g) => g.type === 'detected');
   for (const spec of specs) {
     const labelRe = new RegExp(spec.labelPattern, 'i');
-    const hit = detected.find((cluster) => labelRe.test(cluster.label));
-    if (hit) {
+    const hits = detected.filter((cluster) => labelRe.test(cluster.label));
+    if (hits.length > 0) {
+      const summary = hits.map((cluster) => `"${cluster.label}" (${cluster.stories.length})`).join(', ');
       failures.push(
-        `[${spec.id}] detected cluster must not use country/region label "${hit.label}" (${hit.stories.length} stories)`,
+        `[${spec.id}] ${hits.length} detected cluster(s) must not match /${spec.labelPattern}/i — ${summary}`,
       );
       continue;
     }
     console.log(`  ✓ ${spec.id}: no cluster labeled /${spec.labelPattern}/i`);
+  }
+  return failures;
+}
+
+export function assertForbiddenStoryTitlePatterns(
+  stories: EnrichedStory[],
+  specs: ClusterExpectations['forbiddenStoryTitlePatterns'],
+): string[] {
+  const failures: string[] = [];
+  if (!specs?.length) return failures;
+
+  for (const spec of specs) {
+    const titleRe = new RegExp(spec.titlePattern, 'i');
+    const hits = stories.filter((story) => titleRe.test(story.title));
+    if (hits.length > 0) {
+      const sample = hits
+        .slice(0, 3)
+        .map((story) => `"${story.title.slice(0, 60)}" (${story.url})`)
+        .join('; ');
+      failures.push(
+        `[${spec.id}] ${hits.length} story title(s) match /${spec.titlePattern}/i — e.g. ${sample}`,
+      );
+      continue;
+    }
+    console.log(`  ✓ ${spec.id}: no story title matches /${spec.titlePattern}/i`);
   }
   return failures;
 }

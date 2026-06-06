@@ -13,6 +13,7 @@ import {
   HTTP_FETCH_TIMEOUT_MS,
   HTTP_USER_AGENT,
 } from './http-cache/config.ts';
+import { isBlockedHttpBody } from './archiveMirrors.ts';
 import { buildCacheKey, normalizeHeaders } from './http-cache/key.ts';
 import type { CachedEntry, CachedFetchResult } from './http-cache/types.ts';
 
@@ -186,6 +187,23 @@ function getCacheFileUrl(cacheKey: string): URL {
   return new URL(`${hash}.json`, HTTP_CACHE_DIR);
 }
 
+function isUsableCachedBody(body: string): boolean {
+  return body.length > 0 && !isBlockedHttpBody(body);
+}
+
+function cachedResultFromEntry(entry: CachedEntry, requestDurationMs: number): CachedFetchResult {
+  return {
+    ok: entry.status >= 200 && entry.status < 300,
+    status: entry.status,
+    url: entry.finalUrl,
+    headers: entry.headers,
+    text: entry.body,
+    fromCache: true,
+    requestDurationMs,
+    networkAttempts: 0,
+  };
+}
+
 function readEntry(cacheKey: string): CachedEntry | undefined {
   try {
     const fileUrl = getCacheFileUrl(cacheKey);
@@ -338,19 +356,11 @@ export async function fetchTextWithCache(
 
   const cacheKey = buildCacheKey(url, options?.cacheKeySuffix);
   const cached = readEntry(cacheKey);
+  const staleUsableEntry = cached && isUsableCachedBody(cached.body) ? cached : undefined;
 
-  if (cached && isFresh(cached)) {
+  if (cached && isFresh(cached) && isUsableCachedBody(cached.body)) {
     const cacheReadStarted = Date.now();
-    return {
-      ok: cached.status >= 200 && cached.status < 300,
-      status: cached.status,
-      url: cached.finalUrl,
-      headers: cached.headers,
-      text: cached.body,
-      fromCache: true,
-      requestDurationMs: Date.now() - cacheReadStarted,
-      networkAttempts: 0,
-    };
+    return cachedResultFromEntry(cached, Date.now() - cacheReadStarted);
   }
 
   const existingInFlight = inFlight.get(cacheKey);
@@ -367,7 +377,7 @@ export async function fetchTextWithCache(
     );
     const responseHeaders = normalizeHeaders(response.headers);
 
-    if (shouldCacheStatus(response.status) && body.length > 0) {
+    if (shouldCacheStatus(response.status) && body.length > 0 && isUsableCachedBody(body)) {
       writeEntry(cacheKey, {
         fetchedAt: new Date().toISOString(),
         status: response.status,
@@ -375,6 +385,13 @@ export async function fetchTextWithCache(
         headers: responseHeaders,
         body,
       });
+    }
+
+    if (!isUsableCachedBody(body) && staleUsableEntry) {
+      console.log('[agent] blocked fetch; using stale http cache', {
+        url: url.length > 120 ? `${url.slice(0, 120)}…` : url,
+      });
+      return cachedResultFromEntry(staleUsableEntry, durationMs);
     }
 
     return {

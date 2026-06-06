@@ -49,6 +49,12 @@
       "labelPattern": "hannah|murray|game of thrones|thrones",
       "minSize": 4,
       "requiredStoryPatterns": ["film.wp.pl", "lured into wellness cult", "geriet sie in eine sekte"]
+    },
+    {
+      "id": "marjorie-taylor-greene-maga",
+      "labelPattern": "marjorie|taylor|greene|maga",
+      "minSize": 2,
+      "requiredStoryPatterns": ["ibtimes.co.uk/marjorie-taylor-greene", "inkl.com/news/is-maga-a-cult"]
     }
   ],
   "mustNotShareCluster": [
@@ -77,6 +83,14 @@
       "storyPatterns": ["streamlinefeed.co.ke", "family-of-missing-woman-hope-raid-on-uk-based-sect"]
     },
     {
+      "id": "mtg-vs-uk-raid-bridge",
+      "storyPatterns": ["ibtimes.co.uk/marjorie-taylor-greene", "family-of-missing-woman-hope-raid-on-uk-based-sect"]
+    },
+    {
+      "id": "rowing-vs-archaeology-bridge",
+      "storyPatterns": ["arid-41845005", "turkey-archaeological-christianity"]
+    },
+    {
       "id": "unrelated-festivals",
       "storyPatterns": ["campania_young_festival", "celico_international"]
     }
@@ -101,6 +115,12 @@
     { "id": "no-irishexaminer-label", "labelPattern": "^Irishexaminer$" },
     { "id": "no-searchlight-label", "labelPattern": "^Searchlight$" },
     { "id": "no-his-wife-label", "labelPattern": "^His Wife$" },
-    { "id": "no-lured-into-label", "labelPattern": "^Lured Into$" }
+    { "id": "no-lured-into-label", "labelPattern": "^Lured Into$" },
+    { "id": "no-probably-label", "labelPattern": "^Probably$" },
+    { "id": "no-detected-cluster-label", "labelPattern": "^Detected Cluster$" },
+    { "id": "no-attention-required-label", "labelPattern": "^Attention Required" }
+  ],
+  "forbiddenStoryTitlePatterns": [
+    { "id": "no-attention-required-title", "titlePattern": "attention required" }
   ]
 }

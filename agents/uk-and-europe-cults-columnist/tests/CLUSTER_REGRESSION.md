@@ -28,6 +28,8 @@ Commit `tests/fixtures/cluster-stories-regression.json` when the corpus changes 
 - **`expectedClusters`** — stories that must appear together with a sensible label
 - **`mustNotShareCluster`** — pairs that must not be merged (e.g. Unchosen vs PBCC)
 - **`forbiddenMegaClusters`** — bad labels that must not absorb known stories (e.g. `England` mega-cluster)
+- **`forbiddenClusterLabels`** — labels that must never appear (e.g. `Detected Cluster`, geo junk)
+- **`forbiddenStoryTitlePatterns`** — fetch-quality gates (e.g. Cloudflare `Attention Required` titles)
 - **`mustStayIndependent`** — figurative/non-story items that must not cluster
 
 Draft from current auto output:

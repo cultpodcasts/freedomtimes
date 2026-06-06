@@ -4,6 +4,7 @@ import {
   buildArchiveMirrorLinks,
   getCanonicalArticleUrl,
   looksLikeBlockedFetchPage,
+  looksLikeBlockedPageTitle,
   needsArchiveMirrorFallback,
   type ArchiveMirrorLink,
 } from '../src/archiveMirrors.ts';
@@ -268,8 +269,10 @@ function isUsableArticleText(text: string): boolean {
 
 function metaFromHtml(html: string): Omit<StoryMeta, 'contentMirrorUrl' | 'archiveMirrorLinks'> {
   const pageMeta = extractPageMetadataFromHtml(html);
+  const title =
+    pageMeta.title && !looksLikeBlockedPageTitle(pageMeta.title) ? pageMeta.title : undefined;
   return {
-    title: pageMeta.title,
+    title,
     description: pageMeta.description,
     image: pageMeta.image,
     publishedAt: pageMeta.publishedAt,
