@@ -81,6 +81,7 @@
     { "id": "no-germany-label", "labelPattern": "^Germany$" },
     { "id": "no-uk-label", "labelPattern": "^UK$" },
     { "id": "no-britain-label", "labelPattern": "^Britain$" },
-    { "id": "no-europe-label", "labelPattern": "^Europe$" }
+    { "id": "no-europe-label", "labelPattern": "^Europe$" },
+    { "id": "no-christian-label", "labelPattern": "^Christian$" }
   ]
 }

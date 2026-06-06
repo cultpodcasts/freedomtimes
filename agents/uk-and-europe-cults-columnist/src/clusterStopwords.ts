@@ -4,6 +4,7 @@ import {
   loadEuropeCountryOrByLanguageFromDiscoveryLangFiles,
   stripDiscoveryCountryTerm,
 } from './discoveryLangEuropeCountries.ts';
+import { loadGenericCultTermsByLanguageFromDiscoveryLangFiles } from './discoveryLangGenericCultTerms.ts';
 
 const CLUSTER_STOPWORD_LANG_ALIASES: Record<string, string> = {
   nb: 'no',
@@ -33,7 +34,7 @@ export function normalizeClusterStopwordLang(code: string | undefined): string {
   return CLUSTER_STOPWORD_LANG_ALIASES[base] ?? base;
 }
 
-/** Per-locale cluster stopwords from `data/discovery/lang/<code>.json` → `groupStopwords`. */
+/** Per-locale cluster stopwords from lang files: groupStopwords, genericCultTerms, europeCountryOr. */
 export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
   if (clusterStopwordsByLangCache) {
     return clusterStopwordsByLangCache;
@@ -42,13 +43,28 @@ export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
   const base = loadClusterBaseStopwords();
   const groupByLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
   const countryByLang = loadEuropeCountryOrByLanguageFromDiscoveryLangFiles();
+  const genericCultByLang = loadGenericCultTermsByLanguageFromDiscoveryLangFiles();
   const map = new Map<string, Set<string>>();
 
-  const allLangs = new Set([...Object.keys(groupByLang), ...Object.keys(countryByLang)]);
+  const allLangs = new Set([
+    ...Object.keys(groupByLang),
+    ...Object.keys(countryByLang),
+    ...Object.keys(genericCultByLang),
+  ]);
   for (const lang of allLangs) {
     const set = new Set(base);
     for (const term of groupByLang[lang] ?? []) {
       set.add(term.toLowerCase());
+    }
+    for (const term of genericCultByLang[lang] ?? []) {
+      const phrase = term.toLowerCase().replace(/^["'«»„""]+|["'«»„""]+$/g, '').trim();
+      if (!phrase) continue;
+      set.add(phrase);
+      for (const word of phrase.split(/\s+/)) {
+        if (word.length >= 3) {
+          set.add(word);
+        }
+      }
     }
     for (const term of countryByLang[lang] ?? []) {
       const phrase = stripDiscoveryCountryTerm(term).toLowerCase();

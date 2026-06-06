@@ -1566,6 +1566,12 @@ function normalizeSubjectMatchText(value: string): string {
 
 const GENERIC_CULT_CLUSTER_TERMS = buildGenericCultClusterTermSet();
 
+/** Skip cult/sect/religion vocabulary even when capitalized like a proper noun. */
+function isExcludedClusterProperNoun(token: string, stopwords: Set<string>): boolean {
+  if (stopwords.has(token)) return true;
+  return isGenericCultClusterTerm(token, GENERIC_CULT_CLUSTER_TERMS);
+}
+
 function injectEntityAliases(
   text: string,
   storyLanguage: string,
@@ -2218,7 +2224,7 @@ function extractTitleHeadProperNouns(title: string, stopwords: Set<string>): Set
   const pattern = /\b[\p{Lu}][\p{Ll}]+(?:[''][\p{Ll}]+)?\b/gu;
   for (const match of title.matchAll(pattern)) {
     const lower = match[0].toLowerCase();
-    if (lower.length >= 4 && !stopwords.has(lower)) {
+    if (lower.length >= 4 && !isExcludedClusterProperNoun(lower, stopwords)) {
       result.add(lower);
     }
   }
@@ -2228,14 +2234,14 @@ function extractTitleHeadProperNouns(title: string, stopwords: Set<string>): Set
     if (!trimmed) continue;
     if (!trimmed.includes(' ')) {
       const lower = trimmed.toLowerCase();
-      if (lower.length >= 4 && !stopwords.has(lower)) {
+      if (lower.length >= 4 && !isExcludedClusterProperNoun(lower, stopwords)) {
         result.add(lower);
       }
       continue;
     }
     for (const word of trimmed.split(/\s+/)) {
       const lower = word.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '').toLowerCase();
-      if (lower.length >= 4 && !stopwords.has(lower)) {
+      if (lower.length >= 4 && !isExcludedClusterProperNoun(lower, stopwords)) {
         result.add(lower);
       }
     }
@@ -2265,7 +2271,7 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
   original = original.replace(/[ΓÇÿΓÇÖ]/g, "\"");
   const result = new Set<string>();
   for (const token of tokens) {
-    if (stopwords.has(token)) continue;
+    if (isExcludedClusterProperNoun(token, stopwords)) continue;
     if (token.length < 3) continue;
     const capitalized = token[0]!.toUpperCase() + token.slice(1);
     // Match the token when preceded by a space (not sentence-start after . or start-of-string)
@@ -2313,7 +2319,7 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
         
         // Add the phrase if it has at least 2 capitalized words
         const lowerPhrase = phrase.toLowerCase();
-        if (lowerPhrase.length >= 8) {
+        if (lowerPhrase.length >= 8 && !isGenericCultClusterTerm(lowerPhrase, GENERIC_CULT_CLUSTER_TERMS)) {
           result.add(lowerPhrase);
         }
       } else {
@@ -2325,12 +2331,12 @@ function extractProperNounTokens(original: string, tokens: string[], stopwords: 
   // Quoted terms (often proper nouns) — full phrase plus non-stopword tokens
   for (const quotedText of extractQuotedSpans(original)) {
     const lowerQuoted = quotedText.toLowerCase().trim();
-    if (lowerQuoted.length >= 3) {
+    if (lowerQuoted.length >= 3 && !isGenericCultClusterTerm(lowerQuoted, GENERIC_CULT_CLUSTER_TERMS)) {
       result.add(lowerQuoted);
     }
     for (const word of quotedText.split(/\s+/)) {
       const lowerWord = word.toLowerCase();
-      if (lowerWord.length >= 3 && !stopwords.has(lowerWord)) {
+      if (lowerWord.length >= 3 && !isExcludedClusterProperNoun(lowerWord, stopwords)) {
         result.add(lowerWord);
       }
     }
