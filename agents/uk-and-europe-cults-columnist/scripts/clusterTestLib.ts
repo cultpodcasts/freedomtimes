@@ -275,9 +275,17 @@ export function assertMustBeClustered(
     const labelRe = spec.labelPattern ? new RegExp(spec.labelPattern, 'i') : undefined;
     let specFailed = false;
 
+    let sawStory = false;
     for (const pattern of spec.storyPatterns) {
       const story = findStoryByPattern(stories, pattern);
-      if (!story) continue;
+      if (!story) {
+        failures.push(
+          `[${spec.id}] required story matching "${pattern}" is not in the render corpus (missing from drafts or filtered out before clustering)`,
+        );
+        specFailed = true;
+        continue;
+      }
+      sawStory = true;
       const cluster = clusterForStory(groups, story);
       if (!cluster) {
         failures.push(
@@ -294,7 +302,7 @@ export function assertMustBeClustered(
       }
     }
 
-    if (!specFailed && spec.storyPatterns.some((pattern) => findStoryByPattern(stories, pattern))) {
+    if (!specFailed && sawStory) {
       console.log(`  ✓ ${spec.id}: required stories clustered${spec.labelPattern ? ` as /${spec.labelPattern}/i` : ''}`);
     }
   }

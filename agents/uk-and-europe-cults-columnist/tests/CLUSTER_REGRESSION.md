@@ -4,7 +4,9 @@ Tests prove **auto-clustering on your real digest corpus** stays correct as you 
 
 ## What is tested
 
-`npm run test:clusters` runs `classifyStories()` on `tests/fixtures/cluster-stories-regression.json` — the same enriched story set `render:html` uses (720h freshness window, dedupe, figurative-cult filter, false-positive blocklist). It does **not** apply manual `cluster-layout.json` overrides; those are an editorial layer on top.
+`npm run test:clusters` runs `loadEnrichedStoriesForClustering()` then `classifyStories()` — the same enriched story set and auto-clustering `render:html` uses **before** manual `cluster-layout.json` overrides. It does **not** apply layout overrides from the feedback UI.
+
+For a fast offline check against a frozen snapshot only: `npm run test:clusters:fixture` (or `CLUSTER_TEST_USE_FIXTURE=1`).
 
 ## Workflow
 
