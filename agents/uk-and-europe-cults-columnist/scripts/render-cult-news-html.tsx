@@ -1722,15 +1722,10 @@ function distinctiveCaseTerms(story: EnrichedStory, language: string): Set<strin
       terms.add(term);
     }
   }
-  try {
-    const slugText = new URL(story.url).pathname.replace(/\.[a-z0-9]+$/i, '').replace(/-/g, ' ');
-    for (const token of tokenize(slugText, stopwords)) {
-      if (token.length >= 6 && !isGenericCultClusterTerm(token, GENERIC_CULT_CLUSTER_TERMS)) {
-        terms.add(token);
-      }
+  for (const term of extractQuotedTerms(story.title)) {
+    if (term.length >= 5 && !isGenericCultClusterTerm(term, GENERIC_CULT_CLUSTER_TERMS)) {
+      terms.add(term);
     }
-  } catch {
-    // Ignore malformed URLs.
   }
   return terms;
 }
@@ -1782,13 +1777,6 @@ function hasCompanionCaseCrossReference(
 
   if (iRefsJ >= 1 && jRefsI >= 1) return true;
   if (iRefsJ >= 2 || jRefsI >= 2) return true;
-
-  if (Number.isFinite(pubI) && Number.isFinite(pubJ)) {
-    const closeCompanionMs = 4 * 24 * 60 * 60 * 1000;
-    if (Math.abs(pubI - pubJ) <= closeCompanionMs && (jRefsI >= 1 || iRefsJ >= 1)) {
-      return true;
-    }
-  }
 
   return false;
 }
@@ -2647,6 +2635,23 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         continue;
       }
 
+      const entityAliasesI = subjectAliasesInAnchorTerms(featI.anchorTerms);
+      const entityAliasesJ = subjectAliasesInAnchorTerms(featJ.anchorTerms);
+      const hasEntityAliasMatch = entityAliasesI.some((t) => entityAliasesJ.includes(t));
+
+      // Shared capitalized / quoted title token — link before group-subject conflict checks.
+      if (
+        sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, entityAliasCanonicals).length >= 1
+      ) {
+        const left = edges.get(i) ?? new Set<number>();
+        const right = edges.get(j) ?? new Set<number>();
+        left.add(j);
+        right.add(i);
+        edges.set(i, left);
+        edges.set(j, right);
+        continue;
+      }
+
       if (hasDistinctGroupSubjectConflict(storyI, storyJ)) {
         if (sharedWireReprintSlugLink(storyI, storyJ)) {
           const left = edges.get(i) ?? new Set<number>();
@@ -2663,23 +2668,6 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       const sharedRareAnchorTerms = countSharedRareAnchorTerms(featI, featJ, idf);
 
       const sameLanguage = featI.language === featJ.language;
-
-      const entityAliasesI = subjectAliasesInAnchorTerms(featI.anchorTerms);
-      const entityAliasesJ = subjectAliasesInAnchorTerms(featJ.anchorTerms);
-      const hasEntityAliasMatch = entityAliasesI.some((t) => entityAliasesJ.includes(t));
-
-      // Shared capitalized / quoted title token (Unchosen, Artgemeinschaft, …) — always link first.
-      if (
-        sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, entityAliasCanonicals).length >= 1
-      ) {
-        const left = edges.get(i) ?? new Set<number>();
-        const right = edges.get(j) ?? new Set<number>();
-        left.add(j);
-        right.add(i);
-        edges.set(i, left);
-        edges.set(j, right);
-        continue;
-      }
 
       if (hasCompanionCaseCrossReference(storyI, storyJ, featI, featJ)) {
         const left = edges.get(i) ?? new Set<number>();

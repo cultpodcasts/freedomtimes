@@ -5,6 +5,7 @@ import {
   stripDiscoveryCountryTerm,
 } from './discoveryLangEuropeCountries.ts';
 import { loadGenericCultTermsByLanguageFromDiscoveryLangFiles } from './discoveryLangGenericCultTerms.ts';
+import { loadClusterModifierTermsByLanguage } from './discoveryLangClusterModifiers.ts';
 
 const CLUSTER_STOPWORD_LANG_ALIASES: Record<string, string> = {
   nb: 'no',
@@ -34,7 +35,7 @@ export function normalizeClusterStopwordLang(code: string | undefined): string {
   return CLUSTER_STOPWORD_LANG_ALIASES[base] ?? base;
 }
 
-/** Per-locale cluster stopwords from lang files: groupStopwords, genericCultTerms, europeCountryOr. */
+/** Per-locale cluster stopwords: groupStopwords, genericCultTerms, europeCountryOr, cluster-modifiers/<code>.json. */
 export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
   if (clusterStopwordsByLangCache) {
     return clusterStopwordsByLangCache;
@@ -44,12 +45,14 @@ export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
   const groupByLang = loadGroupStopwordsByLanguageFromDiscoveryLangFiles();
   const countryByLang = loadEuropeCountryOrByLanguageFromDiscoveryLangFiles();
   const genericCultByLang = loadGenericCultTermsByLanguageFromDiscoveryLangFiles();
+  const modifierByLang = loadClusterModifierTermsByLanguage();
   const map = new Map<string, Set<string>>();
 
   const allLangs = new Set([
     ...Object.keys(groupByLang),
     ...Object.keys(countryByLang),
     ...Object.keys(genericCultByLang),
+    ...Object.keys(modifierByLang),
   ]);
   for (const lang of allLangs) {
     const set = new Set(base);
@@ -68,6 +71,16 @@ export function loadClusterStopwordsByLang(): Map<string, Set<string>> {
     }
     for (const term of countryByLang[lang] ?? []) {
       const phrase = stripDiscoveryCountryTerm(term).toLowerCase();
+      if (!phrase) continue;
+      set.add(phrase);
+      for (const word of phrase.split(/\s+/)) {
+        if (word.length >= 3) {
+          set.add(word);
+        }
+      }
+    }
+    for (const term of modifierByLang[lang] ?? []) {
+      const phrase = term.toLowerCase().replace(/^["'«»„""]+|["'«»„""]+$/g, '').trim();
       if (!phrase) continue;
       set.add(phrase);
       for (const word of phrase.split(/\s+/)) {
