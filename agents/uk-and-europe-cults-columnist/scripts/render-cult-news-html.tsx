@@ -3230,6 +3230,11 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
 }
 
 const MIN_CLUSTER_COHERENCE = 0.01;
+const UNLABELED_CLUSTER_FALLBACK = 'Detected Cluster';
+
+function isUnlabeledClusterFallback(label: string): boolean {
+  return label === UNLABELED_CLUSTER_FALLBACK;
+}
 
 function isClusterCoherent(component: number[], features: StoryFeatures[], idf: Map<string, number>, hasEntityAliasOverlap = false): boolean {
   if (component.length <= 2) return true;
@@ -3282,6 +3287,9 @@ function isPositiveLabelTerm(
   if (story && !appearsCapitalizedInHeadline(story, term)) return false;
   if (term.includes(' ')) {
     if (!isClusterSignalBigram(term, GENERIC_CULT_CLUSTER_TERMS)) return false;
+    if (story && isNamedHeadlineBigramInStory(story, term, stopwords)) {
+      return words.every((word) => word.length >= 3);
+    }
     return words.some((word) => word.length >= 6 || entityAliasCanonicals.has(word));
   }
   return isClusterSignalUnigram(term, GENERIC_CULT_CLUSTER_TERMS, entityAliasCanonicals) && term.length >= 4;
@@ -3640,7 +3648,7 @@ function selectGroupLabel(
     return companionLabel;
   }
 
-  return 'Detected Cluster';
+  return UNLABELED_CLUSTER_FALLBACK;
 }
 
 function pickCompanionClusterLabel(
@@ -3942,6 +3950,7 @@ function detectStoryClusters(stories: EnrichedStory[]): ClusterDetectionResult {
     if (!isClusterCoherent(component, features, idf)) continue;
 
     const probeLabel = selectGroupLabel(features, component, idf, stories);
+    if (isUnlabeledClusterFallback(probeLabel)) continue;
 
     for (const idx of component) assigned.add(idx);
     groups.push({
@@ -3967,10 +3976,12 @@ function detectStoryClusters(stories: EnrichedStory[]): ClusterDetectionResult {
       }
       const pair = [i, j];
       if (!isClusterCoherent(pair, features, idf)) continue;
+      const pairLabel = selectGroupLabel(features, pair, idf, stories);
+      if (isUnlabeledClusterFallback(pairLabel)) continue;
       assigned.add(i);
       assigned.add(j);
       groups.push({
-        label: selectGroupLabel(features, pair, idf, stories),
+        label: pairLabel,
         storyIndexes: new Set(pair),
       });
     }

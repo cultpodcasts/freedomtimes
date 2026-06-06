@@ -55,6 +55,16 @@
       "labelPattern": "marjorie|taylor|greene|maga",
       "minSize": 2,
       "requiredStoryPatterns": ["ibtimes.co.uk/marjorie-taylor-greene", "inkl.com/news/is-maga-a-cult"]
+    },
+    {
+      "id": "paul-moody-coercive-control",
+      "labelPattern": "paul moody",
+      "minSize": 3,
+      "requiredStoryPatterns": [
+        "investigation-into-complaints-against-ex-garda-paul-moody",
+        "watchdog-says-handling-of-partner",
+        "arid-41849973"
+      ]
     }
   ],
   "mustNotShareCluster": [
@@ -118,7 +128,8 @@
     { "id": "no-lured-into-label", "labelPattern": "^Lured Into$" },
     { "id": "no-probably-label", "labelPattern": "^Probably$" },
     { "id": "no-detected-cluster-label", "labelPattern": "^Detected Cluster$" },
-    { "id": "no-attention-required-label", "labelPattern": "^Attention Required" }
+    { "id": "no-attention-required-label", "labelPattern": "^Attention Required" },
+    { "id": "no-moody-surname-only-label", "labelPattern": "^Moody$" }
   ],
   "forbiddenStoryTitlePatterns": [
     { "id": "no-attention-required-title", "titlePattern": "attention required" }
