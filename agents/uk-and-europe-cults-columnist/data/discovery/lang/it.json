@@ -113,7 +113,18 @@
     "tratta di esseri umani"
   ],
   "genericCultTerms": [
-    "setta"
+    "setta",
+    "cristiano",
+    "cristiana",
+    "cristiani",
+    "cristianesimo",
+    "cattolico",
+    "cattolica",
+    "musulmano",
+    "islamico",
+    "ebreo",
+    "ebraico",
+    "ebraismo"
   ],
   "coerciveHarmTerms": [
     "schiavitù",

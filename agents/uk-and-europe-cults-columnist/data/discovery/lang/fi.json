@@ -112,7 +112,15 @@
   "genericCultTerms": [
     "lahko",
     "lahkot",
-    "kultti"
+    "kultti",
+    "kristillinen",
+    "kristitty",
+    "kristinusko",
+    "katolinen",
+    "muslimi",
+    "islamilainen",
+    "juutalainen",
+    "juutalaisuus"
   ],
   "coerciveHarmTerms": [
     "orjuus",

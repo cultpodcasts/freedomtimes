@@ -104,7 +104,16 @@
     "nútíma þrælahald",
     "mansal"
   ],
-  "genericCultTerms": [],
+  "genericCultTerms": [
+    "kristinn",
+    "kristin",
+    "kristni",
+    "katólskur",
+    "múslimskur",
+    "islamskur",
+    "gyðinga",
+    "judaismi"
+  ],
   "coerciveHarmTerms": [
     "þrælahald",
     "nútíma þrælahald",

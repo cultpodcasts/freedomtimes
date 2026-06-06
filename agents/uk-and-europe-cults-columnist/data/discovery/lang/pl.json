@@ -113,7 +113,17 @@
   "genericCultTerms": [
     "sekta",
     "sekty",
-    "kult"
+    "kult",
+    "chrześcijański",
+    "chrześcijanin",
+    "chrześcijan",
+    "chrześcijaństwo",
+    "katolicki",
+    "katolicyzm",
+    "muzułmański",
+    "islamski",
+    "żydowski",
+    "judaizm"
   ],
   "coerciveHarmTerms": [
     "niewolnictwo",

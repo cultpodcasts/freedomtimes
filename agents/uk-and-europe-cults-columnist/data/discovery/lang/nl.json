@@ -111,7 +111,17 @@
   "genericCultTerms": [
     "kult",
     "sekte",
-    "sekten"
+    "sekten",
+    "christelijk",
+    "christen",
+    "christendom",
+    "katholiek",
+    "katholieken",
+    "moslim",
+    "moslims",
+    "islamitisch",
+    "joods",
+    "jodendom"
   ],
   "coerciveHarmTerms": [
     "slavernij",

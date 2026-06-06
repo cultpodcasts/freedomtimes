@@ -107,7 +107,15 @@
   "genericCultTerms": [
     "sekt",
     "sekter",
-    "kult"
+    "kult",
+    "kristen",
+    "kristna",
+    "kristendom",
+    "katolsk",
+    "katolska",
+    "muslimsk",
+    "judisk",
+    "judendom"
   ],
   "coerciveHarmTerms": [
     "slaveri",

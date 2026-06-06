@@ -108,7 +108,16 @@
   "genericCultTerms": [
     "sekta",
     "sekty",
-    "kult"
+    "kult",
+    "křesťanský",
+    "křesťan",
+    "křesťanství",
+    "katolický",
+    "katolík",
+    "muslimský",
+    "islámský",
+    "židovský",
+    "judaismus"
   ],
   "coerciveHarmTerms": [
     "otroctví",

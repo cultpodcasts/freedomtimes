@@ -109,7 +109,15 @@
   "genericCultTerms": [
     "sekta",
     "sekte",
-    "kult"
+    "kult",
+    "kršćanski",
+    "kršćanin",
+    "kršćanstvo",
+    "katolički",
+    "muslimanski",
+    "islamski",
+    "židovski",
+    "judaizam"
   ],
   "coerciveHarmTerms": [
     "ropstvo",

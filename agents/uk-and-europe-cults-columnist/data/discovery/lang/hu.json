@@ -105,7 +105,16 @@
     "modern rabszolgaság",
     "emberkereskedelem"
   ],
-  "genericCultTerms": [],
+  "genericCultTerms": [
+    "keresztény",
+    "kereszténység",
+    "katolikus",
+    "protestáns",
+    "muszlim",
+    "iszlám",
+    "zsidó",
+    "judaizmus"
+  ],
   "coerciveHarmTerms": [
     "rabszolgaság",
     "modern rabszolgaság",

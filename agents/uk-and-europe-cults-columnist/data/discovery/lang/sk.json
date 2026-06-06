@@ -104,7 +104,17 @@
     "moderné otroctvo",
     "obchodovanie s ľuďmi"
   ],
-  "genericCultTerms": [],
+  "genericCultTerms": [
+    "kresťanský",
+    "kresťan",
+    "kresťanstvo",
+    "katolícky",
+    "katolík",
+    "moslimský",
+    "islamský",
+    "židovský",
+    "judaizmus"
+  ],
   "coerciveHarmTerms": [
     "otroctvo",
     "moderné otroctvo",

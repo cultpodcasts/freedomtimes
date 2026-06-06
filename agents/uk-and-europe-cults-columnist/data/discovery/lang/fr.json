@@ -113,7 +113,25 @@
   "genericCultTerms": [
     "secte",
     "sectes",
-    "gourou"
+    "gourou",
+    "chrétien",
+    "chrétienne",
+    "chrétiens",
+    "chrétiennes",
+    "christianisme",
+    "catholique",
+    "catholiques",
+    "protestant",
+    "protestants",
+    "musulman",
+    "musulmans",
+    "musulmane",
+    "islamique",
+    "juif",
+    "juive",
+    "juifs",
+    "judaïsme",
+    "évangélique"
   ],
   "coerciveHarmTerms": [
     "esclavage",

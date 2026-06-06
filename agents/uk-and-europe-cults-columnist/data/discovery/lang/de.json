@@ -119,7 +119,19 @@
     "kult",
     "kulte",
     "sekte",
-    "sekten"
+    "sekten",
+    "christlich",
+    "christen",
+    "christentum",
+    "katholisch",
+    "katholiken",
+    "protestantisch",
+    "protestanten",
+    "muslimisch",
+    "islamisch",
+    "jüdisch",
+    "juden",
+    "judentum"
   ],
   "coerciveHarmTerms": [
     "Sklaverei",

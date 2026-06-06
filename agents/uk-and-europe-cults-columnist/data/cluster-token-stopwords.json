@@ -1,24 +1,6 @@
 {
-  "_description": "Language-agnostic cluster stopwords. Merged into every locale at load time; edit locale-specific lists in data/discovery/lang/<code>.json → groupStopwords.",
+  "_description": "Cross-language UI/boilerplate tokens merged into every locale at load time. Locale-specific cult/sect/religion vocabulary lives in data/discovery/lang/<code>.json → genericCultTerms. Journalistic stopwords live in groupStopwords per locale.",
   "base": [
-    "religious",
-    "group",
-    "groups",
-    "sect",
-    "sects",
-    "cult",
-    "cults",
-    "slavery",
-    "raid",
-    "raids",
-    "police",
-    "investigation",
-    "members",
-    "people",
-    "arrested",
-    "bail",
-    "charged",
-    "allegations",
     "cookie",
     "cookies",
     "consent",
@@ -37,7 +19,6 @@
     "signup",
     "link",
     "article",
-    "browser",
-    "festival"
+    "browser"
   ]
 }
