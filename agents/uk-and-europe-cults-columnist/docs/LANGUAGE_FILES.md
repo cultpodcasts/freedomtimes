@@ -119,6 +119,8 @@ Explicit regex patterns for complex figurative detection cases.
 
 **When to add:** When a known subject has different names in different languages or contexts.
 
+**`matchMode: "aliasOnly"`** — use when the bare canonical phrase appears in ordinary religious prose (e.g. theological “children of God”) but explicit aliases identify the tracked group (e.g. “The Family International”).
+
 ## How to Address False Positives
 
 When a story is incorrectly flagged as cult-related (false positive), follow this process:

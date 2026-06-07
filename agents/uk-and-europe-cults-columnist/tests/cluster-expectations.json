@@ -18,13 +18,27 @@
       "id": "unchosen",
       "labelPattern": "unchosen",
       "minSize": 3,
-      "requiredStoryPatterns": ["unchosen-on-netflix"]
+      "requiredStoryPatterns": ["unchosen-on-netflix"],
+      "exclusiveStoryPatterns": [
+        "unchosen-on-netflix",
+        "unchosen-netflix-une-serie",
+        "151038799",
+        "cult-netflix",
+        "netflix serves all the crime"
+      ],
+      "mustNotContainStoryPatterns": ["streamlinefeed.co.ke", "fr.news.yahoo.com/secte"]
     },
     {
       "id": "pbcc-pet-cull",
       "labelPattern": "plymouth|brethren|pbcc|cull|pet|secte chr",
       "minSize": 2,
-      "requiredStoryPatterns": ["streamlinefeed.co.ke", "fr.news.yahoo.com/secte"]
+      "requiredStoryPatterns": ["streamlinefeed.co.ke", "fr.news.yahoo.com/secte"],
+      "exclusiveStoryPatterns": ["streamlinefeed.co.ke", "fr.news.yahoo.com/secte"],
+      "mustNotContainStoryPatterns": [
+        "unchosen-on-netflix",
+        "unchosen-netflix-une-serie",
+        "151038799"
+      ]
     },
     {
       "id": "marion-cotillard-karma",
@@ -72,6 +86,22 @@
       "requiredStoryPatterns": ["ibtimes.co.uk/marjorie-taylor-greene", "inkl.com/news/is-maga-a-cult"]
     },
     {
+      "id": "ahmadi-religion-aropl",
+      "labelPattern": "ahmadi|aropl",
+      "minSize": 3,
+      "requiredStoryPatterns": [
+        "family-of-missing-woman-hope-raid-on-uk-based-sect",
+        "131331966",
+        "ahmadi religion of peace and light"
+      ]
+    },
+    {
+      "id": "konstantin-rudnev",
+      "labelPattern": "rudnev|rudniew",
+      "minSize": 2,
+      "requiredStoryPatterns": ["europeantimes.news/pl", "infobae.com/sociedad/policiales/2026/05/13/secta-de-montenegro"]
+    },
+    {
       "id": "paul-moody-coercive-control",
       "labelPattern": "paul moody",
       "minSize": 3,
@@ -92,6 +122,14 @@
       "storyPatterns": ["unchosen-on-netflix", "fr.news.yahoo.com/secte"]
     },
     {
+      "id": "unchosen-lefigaro-vs-pbcc-streamline",
+      "storyPatterns": ["unchosen-netflix-une-serie-britannique", "streamlinefeed.co.ke"]
+    },
+    {
+      "id": "unchosen-lefigaro-vs-pbcc-yahoo",
+      "storyPatterns": ["unchosen-netflix-une-serie-britannique", "fr.news.yahoo.com/secte"]
+    },
+    {
       "id": "irishexaminer-unrelated",
       "storyPatterns": ["irishexaminer.com/news/arid-41845872", "irishexaminer.com/news/arid-41845575"]
     },
@@ -110,6 +148,14 @@
     {
       "id": "mtg-vs-uk-raid-bridge",
       "storyPatterns": ["ibtimes.co.uk/marjorie-taylor-greene", "family-of-missing-woman-hope-raid-on-uk-based-sect"]
+    },
+    {
+      "id": "mtg-vs-toi-aropl-bridge",
+      "storyPatterns": ["ibtimes.co.uk/marjorie-taylor-greene", "131331966"]
+    },
+    {
+      "id": "pope-vs-polygamous-cult-memoir",
+      "storyPatterns": ["pope-leo-slavery-magnifica", "grew-a-polygamous-cult-44-siblings"]
     },
     {
       "id": "rowing-vs-archaeology-bridge",
@@ -141,6 +187,11 @@
         "watchdog-says-handling-of-partner",
         "arid-41849973"
       ]
+    },
+    {
+      "id": "toi-aropl-in-ahmadi-cluster",
+      "labelPattern": "ahmadi|aropl",
+      "storyPatterns": ["131331966", "family-of-missing-woman-hope-raid-on-uk-based-sect"]
     }
   ],
   "forbiddenMegaClusters": [
@@ -148,6 +199,20 @@
       "id": "no-england-mega",
       "labelPattern": "^England$",
       "mustNotContainPatterns": ["unchosen-on-netflix", "streamlinefeed.co.ke", "fr.news.yahoo.com/secte"]
+    },
+    {
+      "id": "no-unchosen-absorbs-pbcc",
+      "labelPattern": "unchosen",
+      "mustNotContainPatterns": ["streamlinefeed.co.ke", "fr.news.yahoo.com/secte"]
+    },
+    {
+      "id": "no-pbcc-absorbs-unchosen",
+      "labelPattern": "plymouth|brethren",
+      "mustNotContainPatterns": [
+        "unchosen-on-netflix",
+        "unchosen-netflix-une-serie",
+        "151038799"
+      ]
     }
   ],
   "forbiddenClusterLabels": [

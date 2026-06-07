@@ -1,0 +1,40 @@
+{
+  "_description": "Minimal story snippets for digest exclusion tests (no HTTP fetch). Supplement cluster fixture where stories are absent.",
+  "snippets": [
+    {
+      "id": "fp-chiquitita-fiction",
+      "title": "Fiction in translation: ‘Chiquitita is a stunning achievement’",
+      "url": "https://irishtimes.com/culture/books/review/2026/05/24/fiction-in-translation-chiquitita-is-a-stunning-achievement/",
+      "host": "irishtimes.com",
+      "articleText": "Fiction in translation review of Chiquitita — a novel about relationships in Sweden, not a cult investigation."
+    },
+    {
+      "id": "fp-moazzami-maia-bd-seita-publisher",
+      "title": "Iraniana Shaghayegh Moazzami, autora de Assombrada, entre os convidados do Maia BD",
+      "url": "https://example.pt/maia-bd-moazzami",
+      "host": "example.pt",
+      "articleText": "Festival com organização da cooperativa editorial A Seita e entrada livre — banda desenhada iraniana."
+    },
+    {
+      "id": "fp-fotocult-music-ally",
+      "title": "Music? An excellent ally in photographic composition.",
+      "url": "https://fotocult.it/en/music-an-excellent-ally-in-photographic-composition/",
+      "host": "fotocult.it",
+      "articleText": "Music? An excellent ally in photographic composition — tips for photographers at Fotocult festival."
+    },
+    {
+      "id": "fp-fotocult-fashion-territory",
+      "title": "Photography and high fashion embrace the essence of the Italian territory",
+      "url": "https://fotocult.it/en/photography-and-high-fashion-embrace/",
+      "host": "fotocult.it",
+      "articleText": "Photography and high fashion embrace the essence of the Italian territory at Fotocult."
+    },
+    {
+      "id": "fp-eisenstaedt-photography",
+      "title": "Alfred Eisenstaedt. Photography was in the air.",
+      "url": "https://fotocult.it/en/alfred-eisenstaedt-photography-was-in-the-air/",
+      "host": "fotocult.it",
+      "articleText": "Alfred Eisenstaedt. Photography was in the air. A Fotocult tribute to the Life magazine photographer."
+    }
+  ]
+}

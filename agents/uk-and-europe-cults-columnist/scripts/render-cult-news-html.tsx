@@ -11,6 +11,8 @@ import { extractQuotedSpans } from '../src/quotePatterns.ts';
 import {
   getReligiousGroupTermsForLanguage,
   getCoerciveHarmTermsForLanguage,
+  getMediaSignalsForLanguage,
+  EXCLUDED_SOURCE_HOSTS,
 } from '../src/pipelineTerms.ts';
 import { stripPublisherBoilerplate } from '../src/publisherBoilerplate.ts';
 import { getCultTermsForLanguage } from '../src/cultTerms.ts';
@@ -58,7 +60,15 @@ type StoryGroup = {
 };
 
 export type { StoryGroup, ClusterDetectionResult, ClusterAuditReport, RenderStorySet };
-export { classifyStories, detectStoryClusters, auditClusterGaps, createDedupeKey, loadEnrichedStoriesForClustering };
+export {
+  classifyStories,
+  detectStoryClusters,
+  auditClusterGaps,
+  createDedupeKey,
+  loadEnrichedStoriesForClustering,
+  detectStoryLanguage,
+  getDigestExclusionReason,
+};
 
 type DraftStory = {
   title: string;
@@ -159,6 +169,16 @@ if (RENDER_MAX_AGE_HOURS !== undefined) {
 
 function normalizeHost(host: string): string {
   return host.replace(/^www\./i, '').toLowerCase();
+}
+
+const EXCLUDED_SOURCE_HOST_SET = new Set(EXCLUDED_SOURCE_HOSTS.map((host) => normalizeHost(host)));
+
+function isExcludedSourceHost(story: EnrichedStory): boolean {
+  const host = normalizeHost(story.host || getHostname(story.url) || '');
+  if (!host) return false;
+  return Array.from(EXCLUDED_SOURCE_HOST_SET).some(
+    (excluded) => host === excluded || host.endsWith(`.${excluded}`),
+  );
 }
 
 function isWithinRenderFreshnessWindow(publishedAt: string | undefined): boolean {
@@ -383,41 +403,117 @@ function dedupeStories(stories: EnrichedStory[]): { kept: EnrichedStory[]; exclu
   return { kept, excluded };
 }
 
+/** Figurative media coverage — not real tracked-group news (lang-file figurative signals). */
+function isFigurativeMediaClusterStory(story: EnrichedStory): boolean {
+  const language = detectStoryLanguage(story);
+  const haystack = `${story.title} ${story.description ?? ''} ${story.articleText ?? ''}`;
+  if (entityAliasesInHeadline(story).size > 0) {
+    return false;
+  }
+  for (const canonical of groupSubjectsInFullStoryText(story)) {
+    if (
+      groupSubjectBodyMentionCount(story, canonical) >= 2 &&
+      subjectAliasesGroundedInTitle(story, [canonical]).length > 0
+    ) {
+      return false;
+    }
+  }
+  return hasFigurativeCultUsage(haystack, language);
+}
+
+function isRealGroupNewsClusterStory(story: EnrichedStory): boolean {
+  for (const canonical of groupSubjectsInFullStoryText(story)) {
+    if (groupSubjectBodyMentionCount(story, canonical) >= 2) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isFigurativeVsRealNewsClusterMismatch(storyI: EnrichedStory, storyJ: EnrichedStory): boolean {
+  const figurativeI = isFigurativeMediaClusterStory(storyI);
+  const figurativeJ = isFigurativeMediaClusterStory(storyJ);
+  if (!figurativeI && !figurativeJ) {
+    return false;
+  }
+  return (figurativeI && isRealGroupNewsClusterStory(storyJ)) || (figurativeJ && isRealGroupNewsClusterStory(storyI));
+}
+
+function coerciveHarmTermsInNewsContext(haystack: string, language: string): boolean {
+  const coerciveHarmTerms = getCoerciveHarmTermsForLanguage(language);
+  const hasHarm = coerciveHarmTerms.some((term) => haystack.includes(term.toLowerCase()));
+  if (!hasHarm) {
+    return false;
+  }
+  // Harm terms cited inside figurative/entertainment framing are not news corroboration.
+  if (hasFigurativeCultUsage(haystack, language)) {
+    return false;
+  }
+  return true;
+}
+
 function getFigurativeCultExclusionReason(story: EnrichedStory, language: string): string | undefined {
   const haystack = `${story.title} ${story.description} ${story.articleText}`.toLowerCase();
   const cultTerms = getCultTermsForLanguage(language);
-  // Check for cult terms with word boundaries to avoid matching inside words like "cultural"
   const hasCultTerm = cultTerms.some((term) => {
     const t = term.toLowerCase();
-    // For short terms like "cult", require word boundaries AND not followed by letters
-    // This prevents matching when text is split across lines (e.g., "cult\nura" in "cultura")
     if (t.length <= 5) {
       const regex = new RegExp(`\\b${t}\\b(?![a-z])`, 'i');
       return regex.test(haystack);
     }
     return haystack.includes(t);
   });
-  
+
   if (!hasCultTerm) {
     return undefined;
   }
 
-  const religiousGroupTerms = getReligiousGroupTermsForLanguage(language);
-  const coerciveHarmTerms = getCoerciveHarmTermsForLanguage(language);
-  const hasReligiousOrCoercive = 
-    religiousGroupTerms.some((term) => haystack.includes(term.toLowerCase())) ||
-    coerciveHarmTerms.some((term) => haystack.includes(term.toLowerCase()));
-  
-  if (hasReligiousOrCoercive) {
-    return undefined;
-  }
-
+  const trackedGroupIdentity = entityAliasesInFullStoryText(story).size > 0;
   const isFigurative = hasFigurativeCultUsage(haystack, language);
   if (!isFigurative) {
     return undefined;
   }
 
+  if (trackedGroupIdentity) {
+    return undefined;
+  }
+
+  const religiousGroupTerms = getReligiousGroupTermsForLanguage(language);
+  const hasStrongNewsCorroboration =
+    religiousGroupTerms.some((term) => haystack.includes(term.toLowerCase())) ||
+    coerciveHarmTermsInNewsContext(haystack, language);
+
+  if (hasStrongNewsCorroboration) {
+    return undefined;
+  }
+
   return 'Figurative usage of "cult" in benign entertainment/lifestyle context.';
+}
+
+/** Media/entertainment profile without tracked group identity (lang-file mediaSignals). */
+function getMediaProfileExclusionReason(story: EnrichedStory, language: string): string | undefined {
+  if (entityAliasesInFullStoryText(story).size > 0) {
+    return undefined;
+  }
+  const haystack = `${story.title} ${story.description} ${story.articleText}`.toLowerCase();
+  const mediaSignals = getMediaSignalsForLanguage(language);
+  const matches = mediaSignals.filter((term) => haystack.includes(term.toLowerCase()));
+  if (matches.length >= 2) {
+    return 'Media/entertainment profile — not cult news coverage.';
+  }
+  return undefined;
+}
+
+/** Render-time gate: drop drafts that should never appear in cult-news-latest.html. */
+function getDigestExclusionReason(story: EnrichedStory, language?: string): string | undefined {
+  if (isExcludedSourceHost(story)) {
+    return 'Excluded source host — not cult news coverage.';
+  }
+  const resolvedLanguage = language ?? detectStoryLanguage(story);
+  return (
+    getFigurativeCultExclusionReason(story, resolvedLanguage) ??
+    getMediaProfileExclusionReason(story, resolvedLanguage)
+  );
 }
 
 function summarizeExclusions(excluded: Array<{ url: string; reason: string }>): void {
@@ -1592,21 +1688,10 @@ function injectEntityAliases(
   weight: number,
 ): void {
   const lower = text.toLowerCase();
-  for (const { canonical, aliases } of SUBJECT_ALIASES) {
-    // Check canonical first
-    if (lower.includes(canonical.toLowerCase())) {
-      termCounts.set(canonical, (termCounts.get(canonical) ?? 0) + weight);
-      anchorTerms.add(canonical);
-      continue;
-    }
-    // Then check language-specific aliases
-    for (const alias of aliases) {
-      if (alias.lang && alias.lang !== storyLanguage) continue;
-      if (lower.includes(alias.text)) {
-        termCounts.set(canonical, (termCounts.get(canonical) ?? 0) + weight);
-        anchorTerms.add(canonical);
-        break;
-      }
+  for (const entry of SUBJECT_ALIASES) {
+    if (subjectAliasMatchesInText(entry, lower, storyLanguage)) {
+      termCounts.set(entry.canonical, (termCounts.get(entry.canonical) ?? 0) + weight);
+      anchorTerms.add(entry.canonical);
     }
   }
 }
@@ -1941,24 +2026,36 @@ function countSharedArticleBodyProperNouns(
   return shared;
 }
 
-function subjectAliasesInText(text: string): Set<string> {
+function subjectAliasMatchesInText(entry: SubjectAlias, text: string, storyLanguage?: string): boolean {
   const normalized = normalizeSubjectMatchText(text);
-  const found = new Set<string>();
-  for (const { canonical, aliases } of SUBJECT_ALIASES) {
-    if (normalized.includes(normalizeSubjectMatchText(canonical))) {
-      found.add(canonical);
-      continue;
+  if (entry.matchMode !== 'aliasOnly') {
+    if (normalized.includes(normalizeSubjectMatchText(entry.canonical))) {
+      return true;
     }
-    if (aliases.some((alias) => normalized.includes(normalizeSubjectMatchText(alias.text)))) {
-      found.add(canonical);
+  }
+  return entry.aliases.some((alias) => {
+    if (alias.lang && storyLanguage && alias.lang !== storyLanguage) {
+      return false;
+    }
+    return normalized.includes(normalizeSubjectMatchText(alias.text));
+  });
+}
+
+function subjectAliasesInText(text: string, storyLanguage?: string): Set<string> {
+  const found = new Set<string>();
+  for (const entry of SUBJECT_ALIASES) {
+    if (subjectAliasMatchesInText(entry, text, storyLanguage)) {
+      found.add(entry.canonical);
     }
   }
   return found;
 }
 
 function entityAliasesInFullStoryText(story: EnrichedStory): Set<string> {
+  const language = detectStoryLanguage(story);
   return subjectAliasesInText(
     `${story.title} ${story.description ?? ''} ${stripPublisherBoilerplate(story.articleText ?? '')}`,
+    language,
   );
 }
 
@@ -2751,22 +2848,7 @@ function countSharedRareAnchorTerms(a: StoryFeatures, b: StoryFeatures, idf: Map
 /** Canonical subject-aliases in title + description (same scope as headline injectEntityAliases). */
 function entityAliasesInHeadline(story: EnrichedStory): Set<string> {
   const language = detectStoryLanguage(story);
-  const found = new Set<string>();
-  const headline = normalizeSubjectMatchText(`${story.title} ${story.description ?? ''}`);
-  for (const { canonical, aliases } of SUBJECT_ALIASES) {
-    if (headline.includes(normalizeSubjectMatchText(canonical))) {
-      found.add(canonical);
-      continue;
-    }
-    for (const alias of aliases) {
-      if (alias.lang && alias.lang !== language) continue;
-      if (headline.includes(normalizeSubjectMatchText(alias.text))) {
-        found.add(canonical);
-        break;
-      }
-    }
-  }
-  return found;
+  return subjectAliasesInText(`${story.title} ${story.description ?? ''}`, language);
 }
 
 /** Canonical subject-aliases present in anchor terms and grounded in the headline. */
@@ -2780,12 +2862,11 @@ function subjectAliasesInAnchorTerms(anchorTerms: Set<string>, story: EnrichedSt
  * Body-only alias mentions (e.g. Plymouth Brethren discussed inside an Unchosen review) are ignored.
  */
 function subjectAliasesGroundedInTitle(story: EnrichedStory, aliases: string[]): string[] {
-  const titleLower = normalizeSubjectMatchText(story.title);
+  const language = detectStoryLanguage(story);
   return aliases.filter((canonical) => {
-    if (titleLower.includes(normalizeSubjectMatchText(canonical))) return true;
     const entry = SUBJECT_ALIASES.find((e) => e.canonical === canonical);
     if (!entry) return false;
-    return entry.aliases.some((alias) => titleLower.includes(normalizeSubjectMatchText(alias.text)));
+    return subjectAliasMatchesInText(entry, story.title, language);
   });
 }
 
@@ -2871,6 +2952,10 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
         continue;
       }
 
+      if (isFigurativeVsRealNewsClusterMismatch(storyI, storyJ)) {
+        continue;
+      }
+
       const stopwordsI = buildStopwordSet(featI.language);
       const stopwordsJ = buildStopwordSet(featJ.language);
 
@@ -2878,16 +2963,60 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       const entityAliasesJ = subjectAliasesInAnchorTerms(featJ.anchorTerms, storyJ);
       const hasEntityAliasMatch = entityAliasesI.some((t) => entityAliasesJ.includes(t));
 
+      const groupsI = groupSubjectsInFullStoryText(storyI);
+      const groupsJ = groupSubjectsInFullStoryText(storyJ);
+      const sharedGroupSubjects = [...groupsI].filter((canonical) => groupsJ.has(canonical));
+      const exclusiveGroupMismatch =
+        (groupsI.size > 0 || groupsJ.size > 0) && sharedGroupSubjects.length === 0;
+
+      const textAliasesI = entityAliasesInFullStoryText(storyI);
+      const textAliasesJ = entityAliasesInFullStoryText(storyJ);
+      const sharedTextAliases = [...textAliasesI].filter((alias) => textAliasesJ.has(alias));
+
       // Shared capitalized / quoted title token — link before group-subject conflict checks.
-      if (
-        sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, entityAliasCanonicals).length >= 1
-      ) {
+      if (sharedTitleIdentityTerms(storyI, storyJ, featI, featJ, entityAliasCanonicals).length >= 1) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
         left.add(j);
         right.add(i);
         edges.set(i, left);
         edges.set(j, right);
+        continue;
+      }
+
+      if (
+        sharedTextAliases.length > 0 &&
+        !hasSubjectAliasClusterConflict(entityAliasesI, entityAliasesJ, storyI, storyJ) &&
+        !shouldBlockScientologySubtopicBridge(storyI, storyJ, sharedTextAliases)
+      ) {
+        const hasTitleGrounding = sharedSubjectAliasViaTitleGrounding(storyI, storyJ, sharedTextAliases);
+        const hasBodyGrounding = sharedTextAliases.some((alias) => {
+          if (
+            groupSubjectBodyMentionCount(storyI, alias) < 2 ||
+            groupSubjectBodyMentionCount(storyJ, alias) < 2
+          ) {
+            return false;
+          }
+          if (isFigurativeMediaClusterStory(storyI) || isFigurativeMediaClusterStory(storyJ)) {
+            return (
+              subjectAliasesGroundedInTitle(storyI, [alias]).length > 0 ||
+              subjectAliasesGroundedInTitle(storyJ, [alias]).length > 0
+            );
+          }
+          return true;
+        });
+        if (hasTitleGrounding || hasBodyGrounding) {
+          const left = edges.get(i) ?? new Set<number>();
+          const right = edges.get(j) ?? new Set<number>();
+          left.add(j);
+          right.add(i);
+          edges.set(i, left);
+          edges.set(j, right);
+          continue;
+        }
+      }
+
+      if (exclusiveGroupMismatch) {
         continue;
       }
 
@@ -2918,24 +3047,6 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
       if (
         sharedGroupPlusEventTitleLink(storyI, storyJ, featI.language, featJ.language) ||
         sharedWireReprintSlugLink(storyI, storyJ)
-      ) {
-        const left = edges.get(i) ?? new Set<number>();
-        const right = edges.get(j) ?? new Set<number>();
-        left.add(j);
-        right.add(i);
-        edges.set(i, left);
-        edges.set(j, right);
-        continue;
-      }
-
-      const textAliasesI = entityAliasesInFullStoryText(storyI);
-      const textAliasesJ = entityAliasesInFullStoryText(storyJ);
-      const sharedTextAliases = [...textAliasesI].filter((alias) => textAliasesJ.has(alias));
-      if (
-        sharedTextAliases.length > 0 &&
-        !hasSubjectAliasClusterConflict(entityAliasesI, entityAliasesJ, storyI, storyJ) &&
-        !shouldBlockScientologySubtopicBridge(storyI, storyJ, sharedTextAliases) &&
-        sharedSubjectAliasViaTitleGrounding(storyI, storyJ, sharedTextAliases)
       ) {
         const left = edges.get(i) ?? new Set<number>();
         const right = edges.get(j) ?? new Set<number>();
@@ -4332,9 +4443,9 @@ async function loadEnrichedStoriesForClustering(): Promise<RenderStorySet> {
     );
   }
 
-  const figurativeFilteredStories = freshnessFilteredStories.filter((story) => {
+  const digestFilteredStories = freshnessFilteredStories.filter((story) => {
     const language = detectStoryLanguage(story);
-    const reason = getFigurativeCultExclusionReason(story, language);
+    const reason = getDigestExclusionReason(story, language);
     if (!reason) {
       return true;
     }
@@ -4343,7 +4454,7 @@ async function loadEnrichedStoriesForClustering(): Promise<RenderStorySet> {
     return false;
   });
 
-  const dedupeResult = dedupeStories(figurativeFilteredStories);
+  const dedupeResult = dedupeStories(digestFilteredStories);
   excluded.push(...dedupeResult.excluded);
   summarizeExclusions(excluded);
 

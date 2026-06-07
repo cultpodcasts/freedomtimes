@@ -15,6 +15,10 @@ export interface SubjectAlias {
    * topic — cross-language event/theme signal; title-grounding pairs with a shared group for clustering.
    */
   clusterRole?: 'group' | 'topic';
+  /**
+   * aliasOnly — match explicit aliases only, not the bare canonical (e.g. theological "children of God").
+   */
+  matchMode?: 'canonical' | 'aliasOnly';
 }
 
 export interface SubjectAliasEntry {
@@ -257,7 +261,9 @@ function loadStrictCultTermExtensionsFromDiscoveryLangFiles(): Record<string, st
   return result;
 }
 
-function loadTermFieldFromDiscoveryLangFiles(field: 'religiousGroupTerms' | 'coerciveHarmTerms'): Record<string, string[]> {
+function loadTermFieldFromDiscoveryLangFiles(
+  field: 'religiousGroupTerms' | 'coerciveHarmTerms' | 'mediaSignals',
+): Record<string, string[]> {
   const langDirUrl = new URL('../data/discovery/lang/', import.meta.url);
   const names = readdirSync(langDirUrl).filter((n) => n.endsWith('.json'));
   const result: Record<string, string[]> = {};
@@ -323,6 +329,7 @@ export const STRICT_CULT_TERM_EXTENSIONS_BY_LANGUAGE = loadStrictCultTermExtensi
 
 export const RELIGIOUS_GROUP_TERMS_BY_LANGUAGE = loadTermFieldFromDiscoveryLangFiles('religiousGroupTerms');
 export const COERCIVE_HARM_TERMS_BY_LANGUAGE = loadTermFieldFromDiscoveryLangFiles('coerciveHarmTerms');
+export const MEDIA_SIGNALS_BY_LANGUAGE = loadTermFieldFromDiscoveryLangFiles('mediaSignals');
 
 export function getStrictCultTermExtensionsForLanguage(language: string | undefined): string[] {
   const code = normalizeCultLanguageCode(language);
@@ -344,6 +351,13 @@ export function getCoerciveHarmTermsForLanguage(language: string | undefined): s
   const code = normalizeCultLanguageCode(language);
   const localTerms = COERCIVE_HARM_TERMS_BY_LANGUAGE[code] ?? [];
   const englishTerms = COERCIVE_HARM_TERMS_BY_LANGUAGE.en ?? [];
+  return Array.from(new Set([...localTerms, ...englishTerms]));
+}
+
+export function getMediaSignalsForLanguage(language: string | undefined): string[] {
+  const code = normalizeCultLanguageCode(language);
+  const localTerms = MEDIA_SIGNALS_BY_LANGUAGE[code] ?? [];
+  const englishTerms = MEDIA_SIGNALS_BY_LANGUAGE.en ?? [];
   return Array.from(new Set([...localTerms, ...englishTerms]));
 }
 

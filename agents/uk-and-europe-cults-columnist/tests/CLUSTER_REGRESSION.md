@@ -2,6 +2,25 @@
 
 Tests prove **auto-clustering on your real digest corpus** stays correct as you change clustering logic or the feedback UI.
 
+## Issue types (regression contract)
+
+| Type | Definition | Test surface |
+|------|------------|--------------|
+| **A — Mis-clustering** | A story lands in the wrong detected cluster (weak generic bridge, not subject identity). | `expectedClusters`, `mustNotShareCluster`, `mustBeClustered` in `cluster-expectations.json` |
+| **B — Digest false positive** | A story should never appear in `cult-news-latest.html` (figurative cult, homograph, entertainment, opinion). | `mustExcludeFromDigest` in `digest-exclusion-expectations.json` + `getDigestExclusionReason()` |
+| **C — Missing subject cluster** | Two or more drafts share a `subject-aliases.json` entity and should auto-cluster with that label. | `expectedClusters` (e.g. Ahmadi Religion, Konstantin Rudnev) |
+
+### Scenario map (user feedback → type)
+
+| Scenario | Type |
+|----------|------|
+| UK police raid / TOI Lisa Wiese → Marjorie Taylor instead of Ahmadi | A |
+| Frankie Pingel, Cherwell, Dimmu Borgir, Archers, Chiquitita, observador demografia, Moazzami/Maia BD | B |
+| Fotocult / Eisenstaedt photography pieces | B (homograph host) |
+| Konstantin Rudnev (PL + ES coverage) | C |
+| Ahmadi Religion / AROPL raid coverage | C (+ A for TOI vs MTG separation) |
+| Unchosen (Netflix reviews) vs PBCC pet-cull news — must be **two separate clusters** | A |
+
 ## What is tested
 
 `npm run test:clusters` runs `loadEnrichedStoriesForClustering()` then `classifyStories()` — the same enriched story set and auto-clustering `render:html` uses **before** manual `cluster-layout.json` overrides. It does **not** apply layout overrides from the feedback UI.
@@ -46,6 +65,14 @@ npm run cluster:print-expectations -- --write
 
 ```powershell
 npm run test:clusters
+npm run test:digest-exclusion
+```
+
+Fast offline checks:
+
+```powershell
+npm run test:clusters:fixture
+npm run test:digest-exclusion:fixture
 ```
 
 Debug graph:

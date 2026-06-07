@@ -6,7 +6,10 @@ export type ExpectedCluster = {
   labelPattern: string;
   minSize: number;
   requiredStoryPatterns: string[];
+  /** Every story in the cluster must match at least one of these patterns. */
   exclusiveStoryPatterns?: string[];
+  /** Cluster must not contain any story matching these patterns (cross-topic contamination). */
+  mustNotContainStoryPatterns?: string[];
 };
 
 export type ClusterExpectations = {
@@ -125,6 +128,15 @@ export function assertExpectedClusters(
     for (const pattern of spec.requiredStoryPatterns) {
       if (!cluster.stories.some((story) => matchesPattern(story, pattern))) {
         failures.push(`[${spec.id}] cluster "${cluster.label}" missing story matching "${pattern}"`);
+      }
+    }
+
+    for (const pattern of spec.mustNotContainStoryPatterns ?? []) {
+      const hit = cluster.stories.find((story) => matchesPattern(story, pattern));
+      if (hit) {
+        failures.push(
+          `[${spec.id}] cluster "${cluster.label}" must not contain story matching "${pattern}" (${hit.url})`,
+        );
       }
     }
 
