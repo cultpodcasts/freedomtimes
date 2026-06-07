@@ -342,7 +342,14 @@ function isLikelyAliasHostDuplicate(left: EnrichedStory, right: EnrichedStory): 
     uniqueTokens(tokenizeSimilarityText(right.articleText)),
   );
 
-  return samePath || sameSlug || titleSimilarity >= 0.88 || articleSimilarity >= 0.9 || (titleSimilarity >= 0.72 && articleSimilarity >= 0.72);
+  // Article-text similarity alone is not enough — same-publisher boilerplate (e.g. coercive-control
+  // coverage on independent.ie) can exceed 0.9 without being the same story.
+  return (
+    samePath ||
+    sameSlug ||
+    titleSimilarity >= 0.88 ||
+    (titleSimilarity >= 0.72 && articleSimilarity >= 0.72)
+  );
 }
 
 function dedupeStories(stories: EnrichedStory[]): { kept: EnrichedStory[]; excluded: Array<{ url: string; reason: string }> } {
@@ -2315,6 +2322,14 @@ function hasStrongPairClusterIdentity(
         (isNamedHeadlineBigramInStory(storyI, t, stopwordsI) &&
           isNamedHeadlineBigramInStory(storyJ, t, stopwordsJ))),
   );
+  const sharedPersonNameBigrams = sharedHeadlineBigrams.filter(
+    (t) =>
+      !isWeakClusterBigramForLanguagePair(t, stopwordsI, stopwordsJ) &&
+      t.split(/\s+/).every((w) => w.length >= 4) &&
+      isPersonNameBigramInStory(storyI, t, stopwordsI) &&
+      isPersonNameBigramInStory(storyJ, t, stopwordsJ),
+  );
+  if (sharedPersonNameBigrams.length >= 1) return true;
   return sharedHeadlineBigrams.length >= 2;
 }
 
@@ -3051,6 +3066,27 @@ function buildAdjacency(features: StoryFeatures[], idf: Map<string, number>, sto
             t.split(/\s+/).every((w) => w.length >= 4),
         );
         if (named.length >= 1) {
+          const left = edges.get(i) ?? new Set<number>();
+          const right = edges.get(j) ?? new Set<number>();
+          left.add(j);
+          right.add(i);
+          edges.set(i, left);
+          edges.set(j, right);
+          continue;
+        }
+      }
+
+      // Same-language person-name wire: one shared person bigram grounded in both stories
+      // (e.g. Paul Moody across Irish Times / Independent / Examiner spotlight).
+      if (sameLanguage && sharedProperNounBigrams.length >= 1) {
+        const sharedPersonNameBigrams = sharedProperNounBigrams.filter(
+          (t) =>
+            !isWeakClusterBigramForLanguagePair(t, stopwordsI, stopwordsJ) &&
+            t.split(/\s+/).every((w) => w.length >= 4) &&
+            isPersonNameBigramInStory(storyI, t, stopwordsI) &&
+            isPersonNameBigramInStory(storyJ, t, stopwordsJ),
+        );
+        if (sharedPersonNameBigrams.length >= 1) {
           const left = edges.get(i) ?? new Set<number>();
           const right = edges.get(j) ?? new Set<number>();
           left.add(j);
