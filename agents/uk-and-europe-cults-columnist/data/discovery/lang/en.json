@@ -77,8 +77,11 @@
   ],
   "mediaSignals": [
     "documentary",
-    "netflix",
-    "series"
+    "series",
+    "the archers",
+    "soap opera",
+    "radio drama",
+    "world's most popular soap"
   ],
   "religiousGroupTerms": [
     "\"religious group\"",
@@ -199,9 +202,11 @@
     "cult jersey",
     "cult shirt",
     "cult football",
+    "cult of the fake fan",
     "cult of suffering",
     "cult legend",
-    "cult legends"
+    "cult legends",
+    "fiction in translation"
   ],
   "figurativeCultContextTerms": [
     "band",
