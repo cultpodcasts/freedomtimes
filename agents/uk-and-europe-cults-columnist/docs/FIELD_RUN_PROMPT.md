@@ -36,8 +36,8 @@ Run end-to-end for the operator’s time window:
 | Discovery + pipeline | `reports/last-run-drafts.json`, `reports/drafts-archive.json`, `last-run.log` |
 | Render | `reports/cult-news-latest.html`, `reports/cult-news-sources.json` |
 | Live tests | `test:digest-exclusion`, `test:clusters` |
-| Review handoff | Feedback server running; operator uses browser at http://localhost:3000 |
-| Final report | Stats, clusters, test failures, review queue, article outline |
+| **Automation stop point** | `reports/cult-news-latest.html` + `feedback:server` running — **operator takes over in browser** |
+| Agent final report | Stats, clusters, test failures, review queue, article outline — **then print [Human handoff checklist](#human-in-the-loop-handoff-operator-responsibilities)** |
 
 ### Constraints
 
@@ -183,36 +183,109 @@ Optional (operator opt-in):
 npm run sync:cluster-regression
 ```
 
-### 4. Feedback server (operator review)
+### 4. Start feedback server — **automation stops here**
 
 ```powershell
 $env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '<same as render>'
 npm run feedback:server
 ```
 
-Tell the operator to open **http://localhost:3000** and:
+Leave this terminal **running**. The agent’s automated work is **done** after the server is up and the [human handoff checklist](#human-in-the-loop-handoff-operator-responsibilities) has been delivered.
 
-1. **Init Report**
-2. Mark **false positives**
-3. **Close Report**
-4. Verification → **Save layout & refresh** → **Finalize**
+Agent does **not** drive the browser unless the operator explicitly asks and browser tools are available.
 
-Agent does **not** drive the browser unless operator explicitly asks and browser tools are available.
+---
 
-Maintain **`report-review-notes.md`** at the agent root with issues typed **A** (mis-cluster), **B** (digest false positive), **C** (missing cluster).
+## Human-in-the-loop handoff (operator responsibilities)
 
-### 5. Final report to operator
+**The agent must print this section in full at the end of every field run** (after discovery, render, and tests). Do not skip it.
 
-Deliver:
+---
+
+### ✅ Automated work complete
+
+You now have:
+
+| Deliverable | Location |
+|-------------|----------|
+| Digest HTML | `reports/cult-news-latest.html` |
+| Source citations (JSON) | `reports/cult-news-sources.json` |
+| Review UI | **http://localhost:3000** (feedback server must stay running) |
+
+Open the digest via the **server URL**, not `file://` — feedback buttons only work on localhost.
+
+---
+
+### 👤 Your responsibilities (browser review)
+
+Work through these in order. Nothing is published until you write the article separately.
+
+#### Phase 1 — False positives (`review` status)
+
+1. Click **Init Report** (top-right) — creates `data/feedback/active-report.json`.
+2. Scroll the digest. For each card that is **not** cult news (figurative cult, wrong site, entertainment, opinion), click **False positive**.
+3. Click **Close Report** when done.
+   - Merges entries into `data/feedback/false-positives.json`
+   - Re-renders the digest (false positives removed, clusters updated)
+   - Page reloads automatically
+
+**Prefer fixing systematic mistakes in code/config later** (`data/discovery/lang/*.json`, `data/excluded-source-hosts.json`, `data/subject-aliases.json`) — use **False positive** in the UI for this week’s blocklist and for one-offs. Log patterns in **`report-review-notes.md`** (type **A** / **B** / **C**).
+
+#### Phase 2 — Clusters (`verification` status)
+
+After Close Report, the cluster editor toolbar appears.
+
+4. **Rename** cluster labels where auto-labels are wrong or vague.
+5. **Move** misplaced stories (dropdown on each card) or mark **Wrong cluster** → Independent.
+6. **New cluster** / **Dissolve cluster** as needed.
+7. Click **Save layout & refresh** — writes `data/feedback/cluster-layout.json` and re-renders with your layout.
+8. Repeat 4–7 until clusters match how you will write the article.
+
+Check especially: real group news **not** merged with fiction (e.g. PBCC vs Unchosen); shared subjects grouped across languages.
+
+#### Phase 3 — Lock for writing
+
+9. Click **Finalize** when the digest is stable.
+   - Archives the session under `data/feedback/archived/`
+   - Writes `reports/approved-layout.json` for the writing phase
+   - Exports training lines to `data/training-data.jsonl`
+
+10. **Write the weekly article** (CMS / Freedom Times):
+    - One subsection per **cluster** heading
+    - Short mentions from **Latest Stories**
+    - Use **Copy citations** / `reports/cult-news-sources.json` for sources
+    - Only cite stories whose **published dates** fall inside your agreed coverage window
+
+11. **Note code follow-ups** in `report-review-notes.md` for the next weekly run (see [WEEKLY_RUN.md — Refining the code](WEEKLY_RUN.md#refining-the-code-during-the-first-few-weekly-runs)).
+
+---
+
+### ⛔ What the agent did *not* do
+
+- Did not **Init Report**, mark false positives, or **Finalize** for you
+- Did not publish to CMS (`DRY_RUN=true`)
+- Did not commit git changes (unless you asked)
+
+---
+
+### 5. Final report to operator (agent)
+
+Deliver **before** the human handoff checklist:
 
 1. Time window used and computed hours  
 2. Discovery stats (candidates, drafts, top rejections)  
 3. Digest summary (clusters + counts, notable independents)  
 4. Exclusion breakdown from render  
 5. Test results (fixture + live)  
-6. Review queue for the browser UI  
+6. Review queue — cards/clusters to inspect first in the browser  
 7. Config/test refinement suggestions (not one-off hacks)  
-8. Article outline (subsection per cluster + “also this week”; cite `reports/cult-news-sources.json`)
+8. Draft article outline (subsection per cluster + “also this week”)
+
+Then print the full **[Human-in-the-loop handoff](#human-in-the-loop-handoff-operator-responsibilities)** section above and confirm:
+
+- Feedback server URL and that the terminal is still running  
+- Path to `reports/cult-news-latest.html`  
+- Reminder: **your turn** — Init Report → Close Report → Save layout → Finalize → write article
 
 ---
 
