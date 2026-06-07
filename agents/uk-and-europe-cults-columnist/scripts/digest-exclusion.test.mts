@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { loadEnrichedStoriesForClustering } from './render-cult-news-html.tsx';
 import {
   assertMustExcludeFromDigest,
+  assertMustIncludeInDigest,
   assertMustNotAppearInRenderCorpus,
   type DigestExclusionExpectations,
   type DigestSnippetFixture,
@@ -30,13 +31,18 @@ async function main(): Promise<void> {
     : null;
 
   console.log('[test:digest-exclusion] getDigestExclusionReason checks\n');
+  const inclusionFailures = assertMustIncludeInDigest(
+    expectations.mustIncludeFromDigest ?? [],
+    clusterFixture,
+    snippets,
+  );
   const exclusionFailures = assertMustExcludeFromDigest(
     expectations.mustExcludeFromDigest,
     clusterFixture,
     snippets,
   );
 
-  const failures = [...exclusionFailures];
+  const failures = [...inclusionFailures, ...exclusionFailures];
 
   if (process.env.DIGEST_TEST_SKIP_LIVE !== '1') {
     console.log('\n[test:digest-exclusion] live render corpus checks\n');
@@ -57,7 +63,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(`\n[test:digest-exclusion] PASSED (${expectations.mustExcludeFromDigest.length} exclusion checks)`);
+  const includeCount = expectations.mustIncludeFromDigest?.length ?? 0;
+  console.log(
+    `\n[test:digest-exclusion] PASSED (${includeCount} inclusion + ${expectations.mustExcludeFromDigest.length} exclusion checks)`,
+  );
 }
 
 main().catch((error: unknown) => {

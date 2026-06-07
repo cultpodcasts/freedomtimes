@@ -21,7 +21,7 @@ import { buildArchiveMirrorLinks, getCanonicalArticleUrl } from '../src/archiveM
 import { ARCHIVE_FALLBACK_HOSTS } from '../src/http-cache/config.ts';
 import { buildCitationReport, buildStorySourceCitation, type CitationReport } from '../src/sourceCitation.ts';
 import { applyClusterLayout, loadClusterLayout } from '../src/clusterLayout.ts';
-import { hasFigurativeCultUsage } from '../src/pipeline.ts';
+import { hasFigurativeCultUsage, hasSubstantiveCultSubjectMatter } from '../src/pipeline.ts';
 import {
   buildGenericCultClusterTermSet,
   isClusterSignalBigram,
@@ -471,6 +471,11 @@ function getFigurativeCultExclusionReason(story: EnrichedStory, language: string
   const trackedGroupIdentity = entityAliasesInFullStoryText(story).size > 0;
   const isFigurative = hasFigurativeCultUsage(haystack, language);
   if (!isFigurative) {
+    return undefined;
+  }
+
+  // Genre "cult thriller" etc. but the story covers cult subject matter (fiction or documentary).
+  if (hasSubstantiveCultSubjectMatter(haystack, language)) {
     return undefined;
   }
 

@@ -15,6 +15,7 @@ export type DigestExclusionSpec = {
 
 export type DigestExclusionExpectations = {
   _description?: string;
+  mustIncludeFromDigest?: DigestExclusionSpec[];
   mustExcludeFromDigest: DigestExclusionSpec[];
 };
 
@@ -88,6 +89,35 @@ export function assertMustExcludeFromDigest(
     }
 
     console.log(`  ✓ ${spec.id}: excluded — ${reason.slice(0, 72)}`);
+  }
+
+  return failures;
+}
+
+export function assertMustIncludeInDigest(
+  specs: DigestExclusionSpec[],
+  clusterFixture: RegressionFixture | null,
+  snippetFixture: DigestSnippetFixture | null,
+): string[] {
+  const failures: string[] = [];
+
+  for (const spec of specs) {
+    const story = resolveExclusionStory(spec, clusterFixture, snippetFixture);
+    if (!story) {
+      console.log(`  ○ ${spec.id}: skipped (story not in fixtures)`);
+      continue;
+    }
+
+    const language = detectStoryLanguage(story);
+    const reason = getDigestExclusionReason(story, language);
+    if (reason) {
+      failures.push(
+        `[${spec.id}] "${spec.storyPattern}" should stay in digest but getDigestExclusionReason returned: ${reason}`,
+      );
+      continue;
+    }
+
+    console.log(`  ✓ ${spec.id}: kept in digest (figurative genre, substantive cult subject)`);
   }
 
   return failures;

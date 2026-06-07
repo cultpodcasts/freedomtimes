@@ -291,6 +291,89 @@ function detectLanguageFromHtml(html: string): string | undefined {
   return detected || undefined;
 }
 
+function hasNewsCoverageCultPattern(normalized: string, language?: string): boolean {
+  const langCode = language?.toLowerCase();
+  const prepositions = langCode ? (NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE[langCode] ?? []) : [];
+  const englishPrepositions = NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE.en ?? [];
+  const allPrepositions = Array.from(new Set([...englishPrepositions, ...prepositions]));
+
+  const cultTerms = langCode ? (CULT_TERMS_BY_LANGUAGE[langCode] ?? []) : [];
+  const englishCultTerms = CULT_TERMS_BY_LANGUAGE.en ?? [];
+  const allCultTerms = Array.from(new Set([...englishCultTerms, ...cultTerms]));
+
+  if (allPrepositions.length === 0 || allCultTerms.length === 0) {
+    return false;
+  }
+
+  const prepositionPattern = new RegExp(
+    `\\b(${allPrepositions.join('|')})[^.]{0,30}(${allCultTerms.join('|')})`,
+    'iu',
+  );
+  return prepositionPattern.test(normalized);
+}
+
+function countCultTermMentions(normalized: string, language?: string): number {
+  const terms = getCultTermsForLanguage(language);
+  let count = 0;
+  for (const term of terms) {
+    const t = term.toLowerCase();
+    if (t.length <= 5) {
+      const regex = new RegExp(`\\b${escapeRegExp(t)}\\b`, 'giu');
+      count += normalized.match(regex)?.length ?? 0;
+      continue;
+    }
+    let searchFrom = 0;
+    while (searchFrom < normalized.length) {
+      const idx = normalized.indexOf(t, searchFrom);
+      if (idx === -1) {
+        break;
+      }
+      count += 1;
+      searchFrom = idx + t.length;
+    }
+  }
+  return count;
+}
+
+/**
+ * Genre/marketing "cult" language present, but the piece substantively covers cult dynamics
+ * (real groups or fictional depictions — e.g. Unchosen Netflix reviews, cult documentaries).
+ */
+export function hasSubstantiveCultSubjectMatter(text: string, language?: string): boolean {
+  const normalized = normalizeMatchingText(text);
+  const mentionCount = countCultTermMentions(normalized, language);
+
+  if (mentionCount >= 4) {
+    return true;
+  }
+
+  const coerciveTerms = getCoerciveHarmTermsForLanguage(language);
+  const cultTerms = getCultTermsForLanguage(language);
+  for (const cultTerm of cultTerms) {
+    const ct = cultTerm.toLowerCase();
+    let searchFrom = 0;
+    while (searchFrom < normalized.length) {
+      const idx = normalized.indexOf(ct, searchFrom);
+      if (idx === -1) {
+        break;
+      }
+      const windowStart = Math.max(0, idx - 300);
+      const windowEnd = Math.min(normalized.length, idx + ct.length + 300);
+      const window = normalized.slice(windowStart, windowEnd);
+      if (coerciveTerms.some((term) => window.includes(term.toLowerCase()))) {
+        return true;
+      }
+      searchFrom = idx + 1;
+    }
+  }
+
+  if (mentionCount >= 2 && hasNewsCoverageCultPattern(normalized, language)) {
+    return true;
+  }
+
+  return false;
+}
+
 export function hasFigurativeCultUsage(text: string, language?: string): boolean {
   const normalized = normalizeMatchingText(text);
 
@@ -307,23 +390,8 @@ export function hasFigurativeCultUsage(text: string, language?: string): boolean
   }
 
   // News coverage patterns: preposition + cult term → not figurative
-  const langCode = language?.toLowerCase();
-  const prepositions = langCode ? (NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE[langCode] ?? []) : [];
-  const englishPrepositions = NEWS_COVERAGE_PREPOSITIONS_BY_LANGUAGE.en ?? [];
-  const allPrepositions = Array.from(new Set([...englishPrepositions, ...prepositions]));
-
-  const cultTerms = langCode ? (CULT_TERMS_BY_LANGUAGE[langCode] ?? []) : [];
-  const englishCultTerms = CULT_TERMS_BY_LANGUAGE.en ?? [];
-  const allCultTerms = Array.from(new Set([...englishCultTerms, ...cultTerms]));
-
-  if (allPrepositions.length > 0 && allCultTerms.length > 0) {
-    const prepositionPattern = new RegExp(
-      `\\b(${allPrepositions.join('|')})[^.]{0,30}(${allCultTerms.join('|')})`,
-      'iu',
-    );
-    if (prepositionPattern.test(normalized)) {
-      return false;
-    }
+  if (hasNewsCoverageCultPattern(normalized, language)) {
+    return false;
   }
 
   return false;
@@ -566,19 +634,31 @@ export function isCultTopicPreciseWithAudit(
   }
 
   filtersChecked.push('figurativeUsage');
-  const figurativeUsage = hasFigurativeCultUsage(`${titleLower} ${bodyLeadLower}`, language);
+  const combinedLead = `${titleLower} ${bodyLeadLower}`;
+  const figurativeUsage = hasFigurativeCultUsage(combinedLead, language);
+  const substantiveCultSubject =
+    figurativeUsage && hasSubstantiveCultSubjectMatter(`${titleLower} ${text.slice(0, 8000)}`, language);
   filterResults['figurativeUsage'] = {
-    passed: !figurativeUsage,
-    reason: figurativeUsage ? 'Figurative cult usage in entertainment context' : 'No figurative usage detected',
+    passed: !figurativeUsage || substantiveCultSubject,
+    reason: figurativeUsage
+      ? substantiveCultSubject
+        ? 'Figurative genre language but substantive cult subject matter'
+        : 'Figurative cult usage in entertainment context'
+      : 'No figurative usage detected',
   };
 
   return {
-    isCultRelated: !figurativeUsage,
+    isCultRelated: !figurativeUsage || substantiveCultSubject,
     audit: {
       matchedTerms,
       matchLocations,
       matchContexts,
-      classificationSource: figurativeUsage ? 'isCultTopicPrecise-rejected-figurative' : 'isCultTopicPrecise-passed',
+      classificationSource:
+        figurativeUsage && !substantiveCultSubject
+          ? 'isCultTopicPrecise-rejected-figurative'
+          : substantiveCultSubject
+            ? 'isCultTopicPrecise-passed-substantiveCultSubject'
+            : 'isCultTopicPrecise-passed',
       filtersChecked,
       filterResults,
       properNouns: [...properNouns],
