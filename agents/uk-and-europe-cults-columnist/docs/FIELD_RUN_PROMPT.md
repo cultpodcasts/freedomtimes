@@ -1,6 +1,8 @@
-# Field run — agent prompt
+# Field run — agent prompt (in-the-field production)
 
-Use this file when starting a **new agent session** for a weekly (or custom) discovery → digest → review run.
+Use this file when starting a **new agent session** for an **in-the-field weekly report** — discover, render, hand off for human review, produce the edition.
+
+**Not for development:** if the operator is iterating on cluster logic, lang files, or regression tests over multiple days, use **development mode** in [WEEKLY_RUN.md](WEEKLY_RUN.md) instead (`DISCOVERY_MAX_AGE_HOURS` = editorial span, **`CULT_NEWS_RENDER_MAX_AGE_HOURS=720`**).
 
 **How to invoke (operator says):**
 
@@ -22,9 +24,10 @@ c:\Users\jonbr\source\repos\freedomtimes\agents\uk-and-europe-cults-columnist
 
 1. Read [WEEKLY_RUN.md](WEEKLY_RUN.md) for the full operator runbook.
 2. Collect all [operator inputs](#operator-inputs-ask-before-running) — use `AskQuestion` or plain questions if a value is missing.
-3. Compute `DISCOVERY_MAX_AGE_HOURS` from the date range (see [Time window](#time-window)).
+3. Compute `EDITORIAL_HOURS` from the date range; set **both** env vars to that value (see [Time window](#time-window)).
 4. Confirm `.env` has `AGENT_ENV=staging` and `DRY_RUN=true`.
 5. Do **not** commit or push unless the operator explicitly requests it.
+6. Do **not** change clustering code, lang files, regression tests, or run `sync:cluster-regression` — this is a **production report run**, not cluster iteration.
 
 ### Goals
 
@@ -32,12 +35,13 @@ Run end-to-end for the operator’s time window:
 
 | Step | Output |
 |------|--------|
-| Pre-flight tests | Fixture regression green |
+| Optional pre-flight | Fixture regression green (skip if operator is in a hurry) |
 | Discovery + pipeline | `reports/last-run-drafts.json`, `reports/drafts-archive.json`, `last-run.log` |
 | Render | `reports/cult-news-latest.html`, `reports/cult-news-sources.json` |
-| Live tests | `test:digest-exclusion`, `test:clusters` |
-| **Automation stop point** | `reports/cult-news-latest.html` + `feedback:server` running — **operator takes over in browser** |
-| Agent final report | Stats, clusters, test failures, review queue, article outline — **then print [Human handoff checklist](#human-in-the-loop-handoff-operator-responsibilities)** |
+| **Automation stop point** | HTML + `feedback:server` running — **operator takes over in browser** |
+| Agent final report | Stats, clusters, review queue, article outline + **[Human handoff checklist](#human-in-the-loop-handoff-operator-responsibilities)** |
+
+**Out of scope for this prompt:** live integration tests (unless operator asks), `sync:cluster-regression`, clustering/lang-file fixes, fixture commits.
 
 ### Constraints
 
@@ -58,31 +62,31 @@ Ask for each item. Record answers in your session summary before step 1.
 | 1 | **Coverage start** (date + time + timezone) | Editorial lower bound, e.g. `2026-05-31 00:00 UTC` |
 | 2 | **Coverage end** (date + time + timezone) | Editorial upper bound, e.g. `2026-06-07 14:00 BST` |
 | 3 | **Run “now” time** (if end is “now”) | Used to compute hours; default = time when discovery starts |
-| 4 | **`CULT_NEWS_RENDER_MAX_AGE_HOURS`** | Default **`720`** (30 days) for multi-day review; use **`168`** only for same-day publish |
-| 5 | **Discovery cap** — `--max=N` or unbounded? | Default **`50`** on first field runs; omit `--max` for full run |
+| 4 | **`EDITORIAL_HOURS`** | Compute from Q1–Q3. Set **`DISCOVERY_MAX_AGE_HOURS`** and **`CULT_NEWS_RENDER_MAX_AGE_HOURS`** to **the same value**. In-the-field: **do not use 720**. |
+| 5 | **Discovery cap** — `--max=N` or unbounded? | Default **`50`**; omit `--max` for full run |
 | 6 | **`--concurrency`** | Default **`8`** |
-| 7 | **Backup before run?** | `npm run backup:before-run` — default **yes** if overwriting a good digest |
-| 8 | **Tor / SOCKS proxy** | Is Tor (or other SOCKS) running? Is `SOCKS_PROXY` set in `.env`? (e.g. `socks5://127.0.0.1:9150`) |
-| 9 | **NewsData.io** | `NEWSDATA_ENABLED` true/false? (default from `.env`) |
-| 10 | **Google News locale cap** | `GOOGLE_NEWS_LOCALE_IDS` empty (all locales) or restricted list? |
-| 11 | **Skip live integration tests?** | Default **no** — run after render |
-| 12 | **Refresh regression fixture after run?** | `npm run sync:cluster-regression` — default **only if** operator wants to update tests |
-| 13 | **May agent start `feedback:server`?** | Default **yes** — operator does browser review manually |
-| 14 | **Anything to exclude from this run?** | e.g. re-pipeline only, render-only, no discovery |
+| 7 | **Backup before run?** | Default **yes** if overwriting a good digest |
+| 8 | **Tor / SOCKS proxy** | Is Tor running? Is `SOCKS_PROXY` set in `.env`? |
+| 9 | **NewsData.io** | `NEWSDATA_ENABLED` true/false? |
+| 10 | **Google News locale cap** | `GOOGLE_NEWS_LOCALE_IDS` empty or restricted? |
+| 11 | **Run fixture tests first?** | Default **optional** for field runs |
+| 12 | **Run live integration tests after render?** | Default **no** — production run, not regression iteration |
+| 13 | **May agent start `feedback:server`?** | Default **yes** |
+| 14 | **Anything to exclude?** | e.g. render-only, re-pipeline only |
 
 ### Example answers (template)
 
 ```
 Start:  2026-05-31 00:00 UTC
 End:    2026-06-07 14:00 BST  (= 2026-06-07 13:00 UTC)
-Render: CULT_NEWS_RENDER_MAX_AGE_HOURS=720
+Hours:  181  (same for DISCOVERY_MAX_AGE_HOURS AND CULT_NEWS_RENDER_MAX_AGE_HOURS)
+Mode:   in-the-field production (not dev / cluster iteration)
 Discovery: --max=50 --concurrency=8
 Backup: yes
-Tor: no / yes on 9150
+Tor: no
 NewsData: false
-Locales: all
-Live tests: yes
-Sync fixture: no
+Fixture tests: skip
+Live tests: skip
 Feedback server: yes
 ```
 
@@ -98,19 +102,33 @@ DISCOVERY_MAX_AGE_HOURS = ceil(hours from start UTC to end UTC)
 
 Round **up** by 1–2 hours if discovery starts noticeably after the stated end time, so the start of the window is not clipped.
 
-**Example:** `2026-05-31 00:00 UTC` → `2026-06-07 13:00 UTC` = **181 hours** → set `DISCOVERY_MAX_AGE_HOURS=181`.
+**Example:** `2026-05-31 00:00 UTC` → `2026-06-07 13:00 UTC` = **181 hours**.
 
-Google News RSS uses `when:Nh` derived from this value (unless `GOOGLE_NEWS_WHEN` overrides in `.env`).
+Google News RSS uses `when:Nh` derived from `DISCOVERY_MAX_AGE_HOURS` (unless `GOOGLE_NEWS_WHEN` overrides in `.env`).
 
-**Article scope:** When drafting the weekly summary, only treat stories whose **published** timestamps fall between the operator’s start and end as in-scope for that edition (even if render window is wider).
+### In-the-field: one clock (this prompt)
+
+Both variables = **`EDITORIAL_HOURS`**. Complete discovery → render → browser review in one pass. Human work is **editorial** (false positives, layout, article) — not cluster-engineering.
+
+```text
+DISCOVERY_MAX_AGE_HOURS = EDITORIAL_HOURS
+CULT_NEWS_RENDER_MAX_AGE_HOURS = EDITORIAL_HOURS
+```
+
+### Development mode (not this prompt)
+
+When iterating on cluster logic pre-field, use **`CULT_NEWS_RENDER_MAX_AGE_HOURS=720`** so drafts that age day-by-day stay in the digest while you re-render and fix code. See [WEEKLY_RUN.md — Two modes](WEEKLY_RUN.md#two-modes-development-vs-in-the-field).
+
+**Article scope:** When writing, only cite stories whose **published** dates fall between the operator’s start and end.
 
 ### PowerShell env for the run
 
 ```powershell
 cd c:\Users\jonbr\source\repos\freedomtimes\agents\uk-and-europe-cults-columnist
 
-$env:DISCOVERY_MAX_AGE_HOURS = '<computed>'
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '<from operator, default 720>'
+$HOURS = '<computed>'   # e.g. 181
+$env:DISCOVERY_MAX_AGE_HOURS = $HOURS
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = $HOURS
 ```
 
 ---
@@ -131,17 +149,16 @@ See [SOAK_TEST_HANDOVER.md](../SOAK_TEST_HANDOVER.md) for cache reset if fetches
 
 ## Execution steps
 
-### 0. Pre-flight
+### 0. Pre-flight (optional)
+
+Skip unless the operator asked for fixture tests.
 
 ```powershell
-npm install   # if needed
 npm run test:digest-exclusion:fixture
 npm run test:clusters:fixture
 ```
 
-Stop if either fails unless the operator directs otherwise.
-
-Optional (if operator said yes):
+Optional backup:
 
 ```powershell
 npm run backup:before-run
@@ -151,6 +168,7 @@ npm run backup:before-run
 
 ```powershell
 $env:DISCOVERY_MAX_AGE_HOURS = '<computed>'
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '<same as discovery>'
 npm run dev -- --max=50 --concurrency=8 *>&1 | Tee-Object -FilePath .\last-run.log
 ```
 
@@ -161,32 +179,16 @@ Inspect: `reports/last-run-drafts.json`, `reports/drafts-archive.json`, `reports
 ### 2. Render digest
 
 ```powershell
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '<operator value>'
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '<same as discovery>'
 npm run render:html
 ```
 
 Note console exclusion counts and `[cluster]` labels.
 
-### 3. Live regression (unless operator skipped)
+### 3. Start feedback server — **automation stops here**
 
 ```powershell
-Remove-Item Env:CLUSTER_TEST_USE_FIXTURE -ErrorAction SilentlyContinue
-npm run test:digest-exclusion
-npm run test:clusters
-```
-
-Report failures. **Known acceptable live failure:** `konstantin-rudnev` when `europeantimes.news` is on excluded hosts.
-
-Optional (operator opt-in):
-
-```powershell
-npm run sync:cluster-regression
-```
-
-### 4. Start feedback server — **automation stops here**
-
-```powershell
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '<same as render>'
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '<same as discovery>'
 npm run feedback:server
 ```
 
@@ -218,7 +220,7 @@ Open the digest via the **server URL**, not `file://` — feedback buttons only 
 
 ### 👤 Your responsibilities (browser review)
 
-Work through these in order. Nothing is published until you write the article separately.
+Work through these in order. This is **editorial** review (curate the digest, write the article) — **not** cluster-logic engineering. Note patterns in `report-review-notes.md` for a **later** development session if needed; do not change code during this run.
 
 #### Phase 1 — False positives (`review` status)
 
@@ -229,7 +231,7 @@ Work through these in order. Nothing is published until you write the article se
    - Re-renders the digest (false positives removed, clusters updated)
    - Page reloads automatically
 
-**Prefer fixing systematic mistakes in code/config later** (`data/discovery/lang/*.json`, `data/excluded-source-hosts.json`, `data/subject-aliases.json`) — use **False positive** in the UI for this week’s blocklist and for one-offs. Log patterns in **`report-review-notes.md`** (type **A** / **B** / **C**).
+**Prefer fixing systematic mistakes in a later dev session** (`data/discovery/lang/*.json`, excluded hosts, subject aliases, clustering code) — use **False positive** in the UI for this week’s blocklist. Log patterns in **`report-review-notes.md`** for dev mode later.
 
 #### Phase 2 — Clusters (`verification` status)
 
@@ -256,14 +258,16 @@ Check especially: real group news **not** merged with fiction (e.g. PBCC vs Unch
     - Use **Copy citations** / `reports/cult-news-sources.json` for sources
     - Only cite stories whose **published dates** fall inside your agreed coverage window
 
-11. **Note code follow-ups** in `report-review-notes.md` for the next weekly run (see [WEEKLY_RUN.md — Refining the code](WEEKLY_RUN.md#refining-the-code-during-the-first-few-weekly-runs)).
+11. **Note code follow-ups** in `report-review-notes.md` for a **future development session** — do not fix clustering in this field run.
 
 ---
 
 ### ⛔ What the agent did *not* do
 
-- Did not **Init Report**, mark false positives, or **Finalize** for you
-- Did not publish to CMS (`DRY_RUN=true`)
+- Did not iterate on cluster logic, lang files, or regression tests  
+- Did not run `sync:cluster-regression` or live integration tests (unless operator asked)  
+- Did not **Init Report**, mark false positives, or **Finalize** for you  
+- Did not publish to CMS (`DRY_RUN=true`)  
 - Did not commit git changes (unless you asked)
 
 ---
@@ -272,16 +276,16 @@ Check especially: real group news **not** merged with fiction (e.g. PBCC vs Unch
 
 Deliver **before** the human handoff checklist:
 
-1. Time window used and computed hours  
+1. Time window used (`EDITORIAL_HOURS` on both env vars)  
 2. Discovery stats (candidates, drafts, top rejections)  
 3. Digest summary (clusters + counts, notable independents)  
 4. Exclusion breakdown from render  
-5. Test results (fixture + live)  
-6. Review queue — cards/clusters to inspect first in the browser  
-7. Config/test refinement suggestions (not one-off hacks)  
-8. Draft article outline (subsection per cluster + “also this week”)
+5. Review queue — cards/clusters to inspect first in the browser  
+6. Draft article outline (subsection per cluster + “also this week”)
 
-Then print the full **[Human-in-the-loop handoff](#human-in-the-loop-handoff-operator-responsibilities)** section above and confirm:
+Do **not** include regression-test failure analysis unless the operator ran live tests.
+
+Then print the full **[Human-in-the-loop handoff](#human-in-the-loop-handoff-operator-responsibilities)** and confirm:
 
 - Feedback server URL and that the terminal is still running  
 - Path to `reports/cult-news-latest.html`  

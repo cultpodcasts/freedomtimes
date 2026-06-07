@@ -34,63 +34,77 @@ MCP draft creation is still dry-run only (`DRY_RUN=true`). The digest + review l
 
 ---
 
-## First field run: past week (168 hours)
+## Two modes: development vs in-the-field
 
-Use this sequence for the **first production-style weekly run** (stories published in the last 7 days).
+| | **Development / cluster iteration** (pre-field) | **In-the-field weekly report** (production) |
+|---|------------------------------------------------|---------------------------------------------|
+| **Goal** | Fix clustering, exclusions, regression tests over **days** | Discover once → digest → **human review** → write article |
+| **`DISCOVERY_MAX_AGE_HOURS`** | Editorial span (e.g. `181`) | Same editorial span (e.g. `181`) |
+| **`CULT_NEWS_RENDER_MAX_AGE_HOURS`** | **`720`** (wider) | **Same as discovery** (e.g. `181`) |
+| **Why** | Drafts **age day by day** while you re-render and tune code; wide render keeps early-week stories visible | One pass for this edition; no multi-day cluster engineering |
+| **Code changes** | Yes — lang files, aliases, clustering, tests | **No** — editorial review only unless operator explicitly asks |
+| **Runbook** | [Refining the code](#refining-the-code-during-the-first-few-weekly-runs) + [CLUSTER_REGRESSION.md](../tests/CLUSTER_REGRESSION.md) | **[FIELD_RUN_PROMPT.md](FIELD_RUN_PROMPT.md)** |
 
-### Pre-flight (once per machine / after pulling code)
+**Pre-field (two clocks):**
+
+```powershell
+$env:DISCOVERY_MAX_AGE_HOURS = '181'
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'
+```
+
+**In-the-field (one clock):**
+
+```powershell
+$HOURS = '181'
+$env:DISCOVERY_MAX_AGE_HOURS = $HOURS
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = $HOURS
+```
+
+Use **`docs/FIELD_RUN_PROMPT.md`** in a new agent session for in-the-field runs.
+
+---
+
+## In-the-field weekly report
+
+Production run for one editorial edition — **not** cluster-logic iteration.
+
+### Pre-flight
 
 ```powershell
 npm install
-# Ensure .env exists — copy from .env.example if needed
 npm run test:digest-exclusion:fixture
 npm run test:clusters:fixture
 ```
 
-Recommended `.env` for weekly discovery + multi-day review:
+Optional: `npm run backup:before-run`
 
-```dotenv
-AGENT_ENV=staging
-DRY_RUN=true
-DISCOVERY_MAX_AGE_HOURS=168
-CULT_NEWS_RENDER_MAX_AGE_HOURS=720
-```
-
-`720` on render keeps stories visible while you review over several days; discovery still only searches the last `168` hours.
-
-**Do not** set `CLUSTER_TEST_USE_FIXTURE=1` in `.env` — that limits cluster tests to the frozen snapshot only.
-
-### Run the week
+### Run
 
 ```powershell
-npm run backup:before-run
-
-$env:DISCOVERY_MAX_AGE_HOURS = '168'
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'
+$HOURS = '181'   # from editorial start → end
+$env:DISCOVERY_MAX_AGE_HOURS = $HOURS
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = $HOURS
 
 npm run dev -- --max=50 --concurrency=8 *>&1 | Tee-Object -FilePath .\last-run.log
-
 npm run render:html
 npm run feedback:server
 ```
 
-Open **http://localhost:3000**, **Init Report**, review, **Close Report**, fix clusters in verification, **Finalize**.
+Open **http://localhost:3000** → **Init Report** → false positives → **Close Report** → cluster layout (editorial fixes only) → **Finalize** → write article.
 
-After the first digest looks reasonable:
-
-```powershell
-npm run sync:cluster-regression   # refresh tests/fixtures/cluster-stories-regression.json
-npm run test:clusters
-npm run test:digest-exclusion
-```
-
-Commit fixture + expectation updates when you intentionally change filtering or clustering behavior.
+**Do not** during this run: `sync:cluster-regression`, clustering code changes, or regression-test updates — unless you explicitly switch back to development mode.
 
 ---
 
-## Refining the code during the first few weekly runs
+## First field run: past week (168 hours)
 
-Expect to tune config and tests for **2–4 weekly cycles** before the digest is mostly clean without heavy manual layout. Use this order — **config and signals first**, human blocklist last.
+Legacy heading — see **[In-the-field weekly report](#in-the-field-weekly-report)** above. Use computed hours (e.g. **181** for 31 May – 7 June), not a fixed `168`.
+
+## Refining the code (development mode only)
+
+Use this when **iterating on cluster logic and tests pre-field** — not during an in-the-field weekly report.
+
+Expect **2–4 development cycles** with **two clocks** (`DISCOVERY_MAX_AGE_HOURS` = editorial span, `CULT_NEWS_RENDER_MAX_AGE_HOURS` = **`720`**) so the same draft corpus stays visible while stories age and you re-render over several days.
 
 ### 1. Capture issues while reviewing
 
@@ -182,47 +196,64 @@ Required in `.env`:
 ```dotenv
 AGENT_ENV=staging
 DRY_RUN=true
-DISCOVERY_MAX_AGE_HOURS=168
-CULT_NEWS_RENDER_MAX_AGE_HOURS=720
+DISCOVERY_MAX_AGE_HOURS=181
 ```
 
-`DISCOVERY_MAX_AGE_HOURS` is the **time window** for discovery (Google News `when:Nh`, feed freshness, etc.). Use `168` for a week, or another positive integer (e.g. `240` for ~10 days).
+Set `CULT_NEWS_RENDER_MAX_AGE_HOURS` only if you need an explicit value; otherwise render uses `DISCOVERY_MAX_AGE_HOURS`.
+
+`DISCOVERY_MAX_AGE_HOURS` is the **time window** for discovery (Google News `when:Nh`, feed freshness, etc.). Compute it from your editorial dates (see below), not a fixed `168`.
 
 ---
 
-## Set the timeframe (important)
+## Set the timeframe
 
-Use the **same** window for discovery and render when writing about a single week **on the day you publish**. When reviewing over several days, set a **wider render window** so Close Report does not drop older drafts:
+How you set the clocks depends on **mode** (see [Two modes](#two-modes-development-vs-in-the-field)).
 
-| Variable | Role |
-|----------|------|
-| `DISCOVERY_MAX_AGE_HOURS` | How far back discovery searches (required for `npm run dev`) |
-| `CULT_NEWS_RENDER_MAX_AGE_HOURS` | Drops stories older than this at render time (defaults to `DISCOVERY_MAX_AGE_HOURS` if unset). **Close Report re-render uses this** — use `720` (30 days) for multi-day review. |
+| Variable | When it applies | What it measures |
+|----------|-----------------|------------------|
+| **`DISCOVERY_MAX_AGE_HOURS`** | `npm run dev` | How far back to **search** for new URLs (Google News `when:Nh`). |
+| **`CULT_NEWS_RENDER_MAX_AGE_HOURS`** | `render:html`, **Close Report** | At **each render**, drop drafts whose **`publishedAt` is more than N hours before `Date.now()`**. |
 
-**Weekly example (7 days, same-day render and publish):**
+Neither variable is a “review session timer.” Render age is always measured from **when the HTML is built**.
 
-```powershell
-$env:DISCOVERY_MAX_AGE_HOURS = '168'
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '168'
+### Compute editorial hours
+
+```text
+EDITORIAL_HOURS = ceil(hours from editorial start UTC to editorial end UTC)
 ```
 
-**Multi-day review (recommended for first field runs):**
+**Example:** `2026-05-31 00:00 UTC` → `2026-06-07 13:00 UTC` = **181 hours**
+
+| Mode | `DISCOVERY_MAX_AGE_HOURS` | `CULT_NEWS_RENDER_MAX_AGE_HOURS` |
+|------|---------------------------|----------------------------------|
+| **Development / cluster iteration** | `EDITORIAL_HOURS` (e.g. `181`) | **`720`** — keeps aging drafts in digest while you work on code over days |
+| **In-the-field weekly report** | `EDITORIAL_HOURS` (e.g. `181`) | **`EDITORIAL_HOURS`** (same) — one edition, one pass |
+
+Before **Close Report** / **feedback:server**, the server must use the same `CULT_NEWS_RENDER_MAX_AGE_HOURS` as your last `render:html`.
+
+**Article scope:** When writing, only cite stories whose **published** dates fall inside your editorial start/end.
+
+### In-the-field example (31 May – 7 June)
 
 ```powershell
-$env:DISCOVERY_MAX_AGE_HOURS = '168'
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'
+$HOURS = '181'
+$env:DISCOVERY_MAX_AGE_HOURS = $HOURS
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = $HOURS
+npm run dev -- --max=50 --concurrency=8 *>&1 | Tee-Object -FilePath .\last-run.log
 npm run render:html
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'   # same value before starting server
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = $HOURS
 npm run feedback:server
 ```
 
-Put `CULT_NEWS_RENDER_MAX_AGE_HOURS=720` in `.env` so `npm run render:html` and the feedback server share the same window.
-
-**Custom window (e.g. 10 days):**
+### Development example (same editorial week, multi-day cluster work)
 
 ```powershell
-$env:DISCOVERY_MAX_AGE_HOURS = '240'
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '240'
+$env:DISCOVERY_MAX_AGE_HOURS = '181'
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'
+npm run render:html
+# … edit clustering / lang files …
+npm run test:clusters
+npm run sync:cluster-regression   # when corpus intentionally changes
 ```
 
 ---
@@ -286,7 +317,7 @@ Check outputs:
 ### 2. Render the digest
 
 ```powershell
-$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = '720'   # or '168' for same-day publish
+$env:CULT_NEWS_RENDER_MAX_AGE_HOURS = $env:DISCOVERY_MAX_AGE_HOURS   # same as discovery
 npm run render:html
 ```
 
@@ -319,7 +350,7 @@ The server serves `reports/cult-news-latest.html` and exposes the feedback API. 
 2. For each **non-cult** card, click **False positive**. Entries are stored in the active report (with URL, title, article text, classification audit when available).
 3. When finished, click **Close Report**.
    - Merges false positives into `data/feedback/false-positives.json`
-   - Re-runs `render-cult-news-html.tsx` using the feedback server’s environment (`CULT_NEWS_RENDER_MAX_AGE_HOURS` — set before starting the server, e.g. `720`)
+   - Re-runs `render-cult-news-html.tsx` using the feedback server’s environment — **`CULT_NEWS_RENDER_MAX_AGE_HOURS` must match discovery** (set before starting the server)
    - Reloads the page with **updated clusters** (false positives excluded)
 
 ### 5. Review: clusters (verification phase)
@@ -420,7 +451,7 @@ Config/data paths worth knowing:
 | Feedback buttons do nothing | Open via **http://localhost:3000**, not the file path; ensure server is running |
 | “Please initialize a report first” | Click **Init Report** |
 | Empty digest after a long run | Check `reports/pipeline-rejections-latest.json`; try smaller `--max` first; see SOAK_TEST_HANDOVER for cache issues |
-| Stories missing from window | Align `CULT_NEWS_RENDER_MAX_AGE_HOURS` with review span; check `publishedAt` on cards |
+| Stories missing from window | **Field:** discovery and render same hours; finish review soon after discovery. **Dev:** use render `720` while iterating |
 | Stale clusters after feedback | **Close Report** triggers re-render; or run `npm run render:html` manually |
 | Real cult doc excluded as “figurative” | Body may need more cult-subject signal; check substantive override; add `mustIncludeFromDigest` test |
 | Same subject not clustering | Add `subject-aliases.json` entry; run `test:clusters:fixture` |
@@ -428,27 +459,23 @@ Config/data paths worth knowing:
 
 ---
 
-## Suggested weekly checklist
+## Suggested checklists
 
-**Before discovery**
+### In-the-field weekly report
 
-- [ ] Set `DISCOVERY_MAX_AGE_HOURS=168` (or your window) and `CULT_NEWS_RENDER_MAX_AGE_HOURS=720` for review  
-- [ ] `npm run test:digest-exclusion:fixture` and `npm run test:clusters:fixture` green  
-- [ ] `npm run backup:before-run` or `snapshot:html` if keeping last week’s digest  
+- [ ] Compute `EDITORIAL_HOURS`; set **both** discovery and render to that value  
+- [ ] Optional: fixture tests green (`test:digest-exclusion:fixture`, `test:clusters:fixture`)  
+- [ ] `npm run backup:before-run` if keeping last digest  
+- [ ] `npm run dev` → `render:html` → `feedback:server`  
+- [ ] Browser: Init Report → false positives → Close Report → layout → Finalize  
+- [ ] Write article from clusters + `cult-news-sources.json`  
+- [ ] **No** cluster code changes or `sync:cluster-regression` unless switching to dev mode  
 
-**Discovery and review**
+### Development / cluster iteration (pre-field)
 
-- [ ] `npm run dev` with `Tee-Object` → `last-run.log`  
-- [ ] `npm run render:html` — note console exclusion summary and cluster labels  
-- [ ] `npm run feedback:server` → **Init Report** → mark false positives → **Close Report**  
-- [ ] Verification → fix clusters → **Save layout & refresh** → **Finalize**  
-- [ ] Draft article from cluster headings + **Copy citations**  
-
-**After first few weekly runs (code refinement)**
-
-- [ ] Log patterns in `report-review-notes.md` (type A / B / C)  
+- [ ] `DISCOVERY_MAX_AGE_HOURS` = editorial span; **`CULT_NEWS_RENDER_MAX_AGE_HOURS=720`**  
+- [ ] Log issues in `report-review-notes.md` (types A / B / C)  
 - [ ] Fix via lang files / excluded hosts / subject aliases — not one-off render hacks  
-- [ ] Add or update regression expectations + snippets  
-- [ ] `npm run sync:cluster-regression` when corpus changed intentionally  
-- [ ] `npm run test:clusters` and `npm run test:digest-exclusion` before calling the week “done”  
+- [ ] `npm run sync:cluster-regression` when corpus changes intentionally  
+- [ ] `npm run test:clusters` and `npm run test:digest-exclusion` before merging code  
 - [ ] Commit fixture + expectation updates with the code change  
