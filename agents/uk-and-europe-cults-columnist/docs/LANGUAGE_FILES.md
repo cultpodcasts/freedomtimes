@@ -161,6 +161,15 @@ Check:
 3. **Is the pattern complex or word-order dependent?**
    - **YES** → Add explicit `figurativeCultRegexPatterns`
 
+#### Case C: Figurative genre language but story *is* about cults
+**Problem:** Title says "cult thriller" or "cult documentary" but the piece covers cult dynamics (fiction or real groups). Removing the figurative phrase would let pure entertainment false positives through.
+
+**Solution:** Usually **no lang-file change**. `hasSubstantiveCultSubjectMatter()` in `src/pipeline.ts` keeps these in the digest when the body has repeated cult-term coverage, coercive-harm language near cult terms, or news-style preposition + cult patterns. Examples: *Unchosen* Netflix reviews, in-depth cult documentary write-ups.
+
+**Do not** add broad context terms (e.g. `netflix`, `binge`) to `figurativeCultContextTerms` — they suppress legitimate Netflix cult coverage.
+
+If regressions recur, add a **`mustIncludeFromDigest`** case in `tests/digest-exclusion-expectations.json` (see [WEEKLY_RUN.md](WEEKLY_RUN.md)).
+
 ### Step 3: Apply the Fix
 
 **Example 1:** Story about "Aston Villa has a cult following" (English)
