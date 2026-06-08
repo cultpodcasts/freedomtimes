@@ -198,9 +198,31 @@ async function _checkReportStatus() {
     const data = await res.json();
     currentReport = data;
     _updateStatusUI(data);
+    await _updateArticlePlanLink(data);
   } catch(e) {
     console.error('Failed to check report status:', e);
     document.getElementById('status-text').textContent = 'Error checking status';
+  }
+}
+
+async function _updateArticlePlanLink(reportStatus) {
+  var link = document.getElementById('article-plan-link');
+  if (!link) return;
+  if (reportStatus.status !== 'none') {
+    link.style.display = 'none';
+    return;
+  }
+  try {
+    var res = await fetch(API_BASE + '/api/report/result');
+    if (res.ok) {
+      var report = await res.json();
+      link.style.display = 'inline';
+      link.textContent = 'Article planning (' + report.visibleStoryCount + ' stories) →';
+    } else {
+      link.style.display = 'none';
+    }
+  } catch (_) {
+    link.style.display = 'none';
   }
 }
 
@@ -737,7 +759,7 @@ document.getElementById('finalize-report-btn').addEventListener('click', async f
     const res = await fetch(API_BASE + '/api/report/finalize', { method: 'POST' });
     const data = await res.json();
     if (data.success) {
-      alert('Report finalized: ' + data.archivedReportId);
+      alert('Report finalized: ' + data.archivedReportId + '\n\nNext: Article planning at /articles');
       _checkReportStatus();
     }
   } catch(e) {

@@ -68,6 +68,31 @@ export function saveApprovedLayout(layout: ClusterLayout): void {
   writeFileSync(APPROVED_LAYOUT_PATH, `${JSON.stringify(layout, null, 2)}\n`, 'utf-8');
 }
 
+/** Move story URLs from independent (or other clusters) into a new detected cluster. */
+export function mergeUrlsIntoCluster(
+  layout: ClusterLayout,
+  urls: string[],
+  label: string,
+  clusterId?: string,
+): ClusterLayout {
+  const keys = new Set(urls.map((url) => storyUrlKey(url)));
+  const clusters = layout.clusters.map((cluster) => ({
+    ...cluster,
+    urls: cluster.urls.filter((url) => !keys.has(storyUrlKey(url))),
+  }));
+  const independentUrls = layout.independentUrls.filter((url) => !keys.has(storyUrlKey(url)));
+  clusters.push({
+    id: clusterId ?? `manual-${Date.now()}`,
+    label: label.trim() || 'Cluster',
+    urls: [...urls],
+  });
+  return {
+    updatedAt: new Date().toISOString(),
+    clusters,
+    independentUrls,
+  };
+}
+
 export function seedLayoutFromGroups<TStory extends { url: string }>(
   groups: LayoutStoryGroup<TStory>[],
 ): ClusterLayout {

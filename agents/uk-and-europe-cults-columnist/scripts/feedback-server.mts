@@ -11,6 +11,14 @@ import {
 } from '../src/clusterLayout.ts';
 import { buildDigestView } from '../src/digestView.ts';
 import { writeReviewReport, loadReviewReportLatest } from '../src/reviewReport.ts';
+import {
+  buildArticlePlanState,
+  finalizeArticlePlan,
+  loadFinalizedArticlePlan,
+  mergeArticlePlanUnits,
+  saveArticlePlanDraft,
+  type ArticlePlanState,
+} from '../src/articlePlan.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -88,6 +96,9 @@ function sendError(res: ServerResponse, message: string, status = 400): void {
 const FEEDBACK_UI_HTML = join(__dirname, 'feedback-ui.html');
 const FEEDBACK_UI_JS = join(__dirname, 'feedback-ui.js');
 const FEEDBACK_UI_CSS = join(__dirname, 'feedback-ui.css');
+const ARTICLE_PLAN_UI_HTML = join(__dirname, 'article-plan-ui.html');
+const ARTICLE_PLAN_UI_JS = join(__dirname, 'article-plan-ui.js');
+const ARTICLE_PLAN_UI_CSS = join(__dirname, 'article-plan-ui.css');
 
 function serveStaticFile(res: ServerResponse, filePath: string, contentType: string, corsHeaders: Record<string, string>): void {
   if (!existsSync(filePath)) {
@@ -143,6 +154,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // Article planning UI (post-finalize)
+  if (path === '/articles' || path === '/article-plan') {
+    serveStaticFile(res, ARTICLE_PLAN_UI_HTML, 'text/html; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  if (path === '/article-plan-ui.js') {
+    serveStaticFile(res, ARTICLE_PLAN_UI_JS, 'application/javascript; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  if (path === '/article-plan-ui.css') {
+    serveStaticFile(res, ARTICLE_PLAN_UI_CSS, 'text/css; charset=utf-8', corsHeaders);
+    return;
+  }
+
   // Static HTML export (optional — same content as pre-refactor file:// flow)
   if (path === '/export' || path === '/export.html') {
     const reportPath = join(REPORTS_DIR, 'cult-news-latest.html');
@@ -184,6 +211,101 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       sendError(res, message, 404);
+    }
+    return;
+  }
+
+  // API: Article plan (post-finalize story → article assignments)
+  if (path === '/api/article-plan' && req.method === 'GET') {
+    try {
+      const plan = buildArticlePlanState();
+      sendJson(res, plan);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 404);
+    }
+    return;
+  }
+
+  if (path === '/api/article-plan' && req.method === 'PUT') {
+    try {
+      const data = await readJsonBody<{
+        articles?: ArticlePlanState['articles'];
+        assignments?: ArticlePlanState['assignments'];
+      }>(req);
+      const plan = buildArticlePlanState();
+      if (plan.status === 'finalized') {
+        sendError(res, 'Article plan is finalized. Reset reports/article-plan.json to edit.', 400);
+        return;
+      }
+      if (data.articles) {
+        plan.articles = data.articles;
+      }
+      if (data.assignments) {
+        plan.assignments = data.assignments;
+      }
+      saveArticlePlanDraft(plan);
+      sendJson(res, buildArticlePlanState());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 400);
+    }
+    return;
+  }
+
+  if (path === '/api/article-plan/finalize' && req.method === 'POST') {
+    try {
+      const report = loadReviewReportLatest();
+      if (!report) {
+        sendError(res, 'No review report found', 404);
+        return;
+      }
+      const plan = buildArticlePlanState(report);
+      if (plan.status === 'finalized') {
+        const existing = loadFinalizedArticlePlan();
+        sendJson(res, { success: true, alreadyFinalized: true, ...existing });
+        return;
+      }
+      const finalized = finalizeArticlePlan(plan, report);
+      sendJson(res, {
+        success: true,
+        articleCount: finalized.articleCount,
+        skippedCount: finalized.skippedCount,
+        finalizedAt: finalized.finalizedAt,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 400);
+    }
+    return;
+  }
+
+  if (path === '/api/article-plan/result' && req.method === 'GET') {
+    const finalized = loadFinalizedArticlePlan();
+    if (!finalized) {
+      sendError(res, 'No finalized article plan. Complete /articles first.', 404);
+      return;
+    }
+    sendJson(res, finalized);
+    return;
+  }
+
+  if (path === '/api/article-plan/merge-units' && req.method === 'POST') {
+    try {
+      const data = await readJsonBody<{ unitIds?: string[]; label?: string }>(req);
+      if (!data.unitIds || data.unitIds.length < 2) {
+        sendError(res, 'unitIds must include at least two units');
+        return;
+      }
+      if (!data.label?.trim()) {
+        sendError(res, 'label is required');
+        return;
+      }
+      const plan = await mergeArticlePlanUnits(data.unitIds, data.label.trim());
+      sendJson(res, plan);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 400);
     }
     return;
   }

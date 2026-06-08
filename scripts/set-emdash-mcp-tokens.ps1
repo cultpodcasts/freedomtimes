@@ -14,6 +14,21 @@ function Set-UserEnvVar {
     Set-Item -Path "Env:$Name" -Value $Value
 }
 
+function Read-SecretHost {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Prompt
+    )
+
+    $secure = Read-Host -Prompt $Prompt -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try {
+        return [Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
+}
+
 if ($UseCurrentLoginTokens) {
     $authPath = Join-Path $HOME ".config\emdash\auth.json"
 
@@ -37,8 +52,8 @@ if ($UseCurrentLoginTokens) {
     exit 0
 }
 
-$staging = Read-Host -Prompt "Enter staging token (ec_pat_... or ec_oat_...)"
-$production = Read-Host -Prompt "Enter production token (ec_pat_... or ec_oat_...)"
+$staging = Read-SecretHost -Prompt "Enter staging token (ec_pat_... or ec_oat_...)"
+$production = Read-SecretHost -Prompt "Enter production token (ec_pat_... or ec_oat_...)"
 
 if ([string]::IsNullOrWhiteSpace($staging) -or [string]::IsNullOrWhiteSpace($production)) {
     throw "Both staging and production tokens are required."

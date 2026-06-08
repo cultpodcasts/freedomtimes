@@ -38,7 +38,6 @@
     "build:cluster-modifiers:seeds": "tsx scripts/build-cluster-modifier-terms.mts --seeds-only --strip-lang-fields",
     "build:review-report": "tsx --env-file=.env scripts/build-review-report.mts",
     "refetch:review-report": "tsx --env-file=.env scripts/refetch-review-report.mts",
-    "sanitize:review-report": "tsx scripts/sanitize-review-report.mts",
     "test:article-extraction": "tsx scripts/article-extraction.test.mts",
     "test:report-proper-nouns": "tsx scripts/report-proper-nouns.test.mts",
     "cluster:print-expectations": "tsx scripts/cluster-print-expectations.mts"

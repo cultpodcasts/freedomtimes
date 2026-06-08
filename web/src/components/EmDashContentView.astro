@@ -398,12 +398,14 @@ const portableComponents = {
 type LegacyContentBlock =
 	| { type: 'heading'; level: 2 | 3 | 4; text: string }
 	| { type: 'paragraph'; text: string }
+	| { type: 'image'; alt: string; src: string }
 	| { type: 'video'; value: Record<string, unknown> };
 
 function parseLegacyTextContent(value: string): LegacyContentBlock[] {
 	const blocks: LegacyContentBlock[] = [];
 	const lines = value.split('\n');
 	const videoPattern = /^<!--ec:block\s+(\{.*\})\s+-->$/;
+	const imagePattern = /^!\[([^\]]*)\]\(([^)]+)\)$/;
 	let paragraphBuffer: string[] = [];
 
 	const flushParagraph = () => {
@@ -440,6 +442,13 @@ function parseLegacyTextContent(value: string): LegacyContentBlock[] {
 			flushParagraph();
 			const level = headingMatch[1].length as 2 | 3 | 4;
 			blocks.push({ type: 'heading', level, text: headingMatch[2].trim() });
+			continue;
+		}
+
+		const imageMatch = line.match(imagePattern);
+		if (imageMatch) {
+			flushParagraph();
+			blocks.push({ type: 'image', alt: imageMatch[1].trim(), src: imageMatch[2].trim() });
 			continue;
 		}
 
@@ -532,6 +541,10 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 					{legacyBlocks.map((block) => (
 						block.type === 'video' ? (
 							<PortableVideo value={block.value} />
+						) : block.type === 'image' ? (
+							<figure class="inline-figure">
+								<img src={block.src} alt={block.alt} loading="lazy" decoding="async" />
+							</figure>
 						) : block.type === 'heading' ? (
 							block.level === 2 ? <h2>{block.text}</h2> : block.level === 3 ? <h3>{block.text}</h3> : <h4>{block.text}</h4>
 						) : (
@@ -647,6 +660,17 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 	}
 
 	.hero img {
+		display: block;
+		width: 100%;
+		height: auto;
+		border: 1px solid #eeeeee;
+	}
+
+	.legacy-content .inline-figure {
+		margin: 0 0 2rem;
+	}
+
+	.legacy-content .inline-figure img {
 		display: block;
 		width: 100%;
 		height: auto;
