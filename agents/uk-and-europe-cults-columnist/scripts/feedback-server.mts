@@ -377,13 +377,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     res.writeHead(200, {
       ...corsHeaders,
       'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     });
+    res.write(': connected\n\n');
     const sendProgress = (event: CollectImageProgressEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
     try {
+      sendProgress({ level: 'info', message: 'Starting collect…', percent: 0 });
       if (!existsSync(DRAFTS_DIR)) {
         mkdirSync(DRAFTS_DIR, { recursive: true });
       }
@@ -461,16 +464,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     res.writeHead(200, {
       ...corsHeaders,
       'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     });
+    res.write(': connected\n\n');
     const sendProgress = (event: CollectImageProgressEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
     try {
+      sendProgress({ level: 'info', message: 'Starting quality probe…', percent: 0 });
       const existing = loadDraftImageCandidates(slug);
       if (!existing) {
-        sendProgress({ level: 'error', message: `No candidates for ${slug}` });
+        sendProgress({
+          level: 'error',
+          message: `No candidates for ${slug} — run Collect candidates first`,
+        });
         res.end();
         return;
       }
