@@ -1,0 +1,62 @@
+---
+import { PortableText } from 'astro-portabletext';
+import Video from '../Video.astro';
+import Audio from '../Audio.astro';
+import type { LegacyContentBlock, ProcessedPortableNode } from '../../lib/content/contentBlocks';
+
+const {
+	portableRenderNodes,
+	portableContent,
+	textContent,
+	legacyBlocks,
+	portableComponents,
+} = Astro.props as {
+	portableRenderNodes: ProcessedPortableNode[];
+	portableContent: unknown[] | null;
+	textContent: string | null;
+	legacyBlocks: LegacyContentBlock[];
+	portableComponents: Record<string, unknown>;
+};
+---
+
+{portableRenderNodes.length > 0 && (
+	<div class="portable-content">
+		{portableRenderNodes.map((node) => (
+			node.type === 'details' ? (
+				<details class="legacy-details translate">
+					<summary>{node.summary}</summary>
+					<PortableText value={node.value} components={portableComponents} />
+				</details>
+			) : (
+				<PortableText value={node.value} components={portableComponents} />
+			)
+		))}
+	</div>
+)}
+{!portableContent && textContent && legacyBlocks.length > 0 && (
+	<div class="legacy-content">
+		{legacyBlocks.map((block) => (
+			block.type === 'video' ? (
+				<Video value={block.value} />
+			) : block.type === 'audio' ? (
+				<Audio value={block.value} />
+			) : block.type === 'image' ? (
+				<figure class="inline-figure">
+					<img src={block.src} alt={block.alt} loading="lazy" decoding="async" />
+				</figure>
+			) : block.type === 'heading' ? (
+				block.level === 2 ? <h2>{block.text}</h2> : block.level === 3 ? <h3>{block.text}</h3> : <h4>{block.text}</h4>
+			) : block.type === 'details' ? (
+				<details class="legacy-details translate">
+					<summary>{block.summary}</summary>
+					<p>{block.text}</p>
+				</details>
+			) : (
+				<p>{block.text}</p>
+			)
+		))}
+	</div>
+)}
+{!portableContent && !textContent && (
+	<p class="empty-state">This entry is published but has no renderable body content yet.</p>
+)}

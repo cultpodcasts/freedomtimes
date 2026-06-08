@@ -29,6 +29,30 @@ function validatePathRules(rules: PathRule[]): void {
 
 validatePathRules(AUTH_BYPASS_RULES);
 
+/** Override EmDash default robots.txt so link-preview crawlers can fetch og:image URLs under /_emdash/api/media/file/. */
+function buildRobotsTxt(origin: string): string {
+	const sitemapUrl = `${origin}/sitemap.xml`;
+	return [
+		'# Social preview crawlers: allow public media (og:image, etc.) under /_emdash/api/media/file/',
+		'# while keeping the rest of /_emdash/ disallowed for these agents.',
+		'User-agent: Twitterbot',
+		'User-agent: facebookexternalhit',
+		'User-agent: Facebot',
+		'User-agent: LinkedInBot',
+		'Disallow: /_emdash/',
+		'Allow: /_emdash/api/media/file/',
+		'',
+		'User-agent: *',
+		'Allow: /',
+		'',
+		'# Disallow admin and API routes',
+		'Disallow: /_emdash/',
+		'',
+		`Sitemap: ${sitemapUrl}`,
+		'',
+	].join('\n');
+}
+
 function isAuthBypassPath(path: string): boolean {
   return AUTH_BYPASS_RULES.some((rule) => {
     if (rule.mode === PathMode.Exact) {
@@ -45,6 +69,17 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (env.DEBUG_MIDDLEWARE) {
     console.info('[middleware] onRequest called', { path: context.url.pathname, full: context.url.href });
+  }
+
+  if (context.request.method === 'GET' && normalizedPath === '/robots.txt') {
+    const body = buildRobotsTxt(context.url.origin);
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'public, max-age=86400',
+      },
+    });
   }
 
   // VS Code MCP clients may start with an unauthenticated initialize POST.

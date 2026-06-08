@@ -38,6 +38,7 @@ const collections = [
 let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let resolvedIsPreview = false;
 let resolvedLabel = 'Page';
+let resolvedCollectionKey: (typeof collections)[number]['key'] | null = null;
 let lastUnexpectedError: string | null = null;
 
 for (const collection of collections) {
@@ -71,6 +72,7 @@ for (const collection of collections) {
 		resolvedEntry = entry;
 		resolvedIsPreview = isPreview;
 		resolvedLabel = collection.label;
+		resolvedCollectionKey = collection.key;
 		break;
 	}
 }
@@ -87,6 +89,7 @@ if (!resolvedEntry) {
 <EmDashContentView
 	entry={resolvedEntry}
 	collectionLabel={resolvedLabel}
+	emdashCollection={resolvedCollectionKey ?? 'pages'}
 	displayName={displayName}
 	isPreview={resolvedIsPreview}
 	isEditor={isLocked}

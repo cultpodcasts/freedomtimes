@@ -23,6 +23,28 @@ This runbook documents the repeatable process for getting verified staging conte
 4. A Turso rollback branch has been created for production before any migration or production content promotion.
 5. The promotion path being used is scripted and UTF-8-safe. Do not use manual copy/paste or ad hoc terminal redirection for content payloads.
 
+## Turso backups before any mutating work
+
+**Rule:** create a **recoverable backup** of the **specific Turso database** you are about to change **before** migrations, seeds, manual SQL, content promotion, or bulk CMS updates. Do not skip this for small or “obvious” edits.
+
+**Option A — file export (any Turso DB you can access with the CLI)**  
+After `turso auth login` in **WSL** (required in this repo; see [Turso CLI introduction](https://docs.turso.tech/cli/introduction)):
+
+```bash
+turso db export freedomtimes-emdash-staging --output-file ./.release/backups/emdash-staging-$(date +%Y%m%d-%H%M%S).db
+```
+
+Use the real database name from `turso db list` (for example `freedomtimes-emdash-staging`, `freedomtimes-scheduler-staging`). Keep the file until the change is verified. Add `--overwrite` only when re-running the same command intentionally.
+
+**Option B — production rollback branch (EmDash production before risky work)**  
+Use `scripts/turso-create-rollback-branch.ps1` with `-AllowProduction` as already required in the prerequisites below; keep the emitted JSON under `.release/rollback-branches/`.
+
+Agents and operators should treat **scheduler** and **subscriptions** databases the same way whenever `web/scripts/apply-turso-sql.ts` or direct SQL is used against them.
+
+For **PR review** (EmDash version bumps, `content` / Portable Text refactors), use **`docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — includes a **canary `content get`** to verify whether `data.content` is PT (`array`) or a legacy string.
+
+For **English copy** that cites French media or institutions (glosses on *France Inter*, *France Info*, hoisting stakes in the lede), use **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`** — including the **canonical Portable Text pattern** for a **French `blockquote` + English `<details>`** translation fold (same section).
+
 Set local env vars before running commands:
 
 ```powershell
@@ -52,14 +74,15 @@ This step also requires that a production rollback branch already exists. Never 
 
 Release rule: if a PR contains code or content promotion that depends on EmDash schema, do not close the PR and do not allow the `main` deployment until this parity check passes or the missing schema has been applied to production.
 
-From `web/`, verify the collection exists and inspect it in both environments:
+From the **repo root**, verify the collection exists and inspect it in both environments using **EmDash MCP** (not `npx emdash schema …` — see **`AGENTS.md`**). `cd web` first; token comes from `~/.config/emdash/auth.json` or `EMDASH_*_TOKEN` env vars.
 
 ```powershell
-npx emdash schema list -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx emdash schema list -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+cd web
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL schema_list_collections '{}'
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_PRODUCTION_URL schema_list_collections '{}'
 
-npx emdash schema get archives -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx emdash schema get archives -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL schema_get_collection '{"slug":"archives"}'
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_PRODUCTION_URL schema_get_collection '{"slug":"archives"}'
 ```
 
 Do not promote content until collection fields and collection metadata match.
@@ -76,56 +99,69 @@ Listing published entries is not enough when draft/live pointers were previously
 Check both draft view and published view for each item:
 
 ```powershell
-# Example: post slug "example-post"
-npx emdash content get posts example-post -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx emdash content get posts example-post --published -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
+cd web
+# Example: post slug "example-post" — MCP content_get (raw JSON / PT-safe)
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL content_get '{"collection":"posts","id":"example-post"}'
 ```
 
 Expected outcome:
 
-- `--published` returns the current live version.
-- Non-published read does not show unexpected draft divergence.
+- `item.status` is `published` when the live version is published.
+- Inspect `item.data` (including `data.content` as an array when storage is Portable Text).
 
-If needed, publish explicitly:
+If needed, publish explicitly via MCP:
 
 ```powershell
-npx emdash content publish posts example-post -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL content_publish '{"collection":"posts","id":"example-post"}'
 ```
 
 ## 3. Promote Content to Production
 
 Recommended operational pattern:
 
-1. Read source item from staging (`content get ... --json`).
-2. Create or update same slug in production using JSON file input.
-3. Publish in production.
+1. Read source item from staging via **MCP `content_get`** (or the promote script below).
+2. Create or update the same slug in production via **MCP** (or the promote script — it uses `content_create` / `content_update` / `content_publish`).
+3. Do **not** use `npx emdash content …` for these steps when you need the real stored JSON (**`AGENTS.md`**).
 
 Hard rule:
 
 - Do not manually copy JSON between terminals, editors, clipboards, or shell redirection steps when promoting content.
-- Use a scripted UTF-8-safe export/import path only.
+- Use a scripted UTF-8-safe path only (promote script writes `.tmp` artifacts as UTF-8).
 - If the promotion path cannot prove UTF-8 preservation, do not use it for production.
 
-Example:
+Manual MCP verification (optional):
 
 ```powershell
-# 1) Export source JSON data using a scripted UTF-8-safe path
-npx emdash content get posts example-post -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-
-# 2) Create in production (or update existing item)
-npx emdash content create posts --slug example-post --file .\tmp\example-post.json -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
-
-# 3) Publish in production
-npx emdash content publish posts example-post -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
-
-# 4) Verify live output in production
-npx emdash content get posts example-post --published -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+cd web
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL content_get '{"collection":"posts","id":"example-post"}'
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_PRODUCTION_URL content_get '{"collection":"posts","id":"example-post"}'
 ```
 
 Notes:
 
 - `archives` usually include media references; ensure required files exist in production media storage.
-- If create fails because slug exists, use `content get` on production and then `content update ... --rev <token>`.
+- For updates, MCP `content_update` requires `_rev` from `content_get` (or REST `GET /_emdash/api/content/...`); the scripted promoter handles this.
+
+### Featured media and bylines (posts)
+
+Staging media IDs and R2 keys do **not** exist in production. Promoting only the `data` JSON without fixing `featured_image` leaves production pointing at missing media (broken hero images).
+
+Bylines are **not** set by copying `primaryBylineId` in a raw JSON file: the API expects a `bylines` array on create/update (see EmDash `contentUpdateBody`). Use `bylines: [{ "bylineId": "<id>" }]` in a follow-up `PUT` to `/_emdash/api/content/<collection>/<slug>`, or use the scripted promoter below.
+
+**Scripted path (recommended for `posts`):** from repo root, after `emdash login` for both URLs:
+
+```powershell
+node web/scripts/promote-post-staging-to-production.mjs posts <slug>
+```
+
+This script:
+
+1. Loads staging **`data` via MCP `content_get` only** (keeps **Portable Text** arrays in `data.content`). There is **no** CLI fallback.
+2. Writes production with **MCP** `content_create` / `content_update` / `content_publish` (not `npx emdash content …`).
+3. If `data.featured_image` references a media id that does not exist in production, downloads the file from the **public** staging URL `/_emdash/api/media/file/<storageKey>`, uploads it to production, and rewrites `featured_image` before create/update.
+4. If staging has `primaryBylineId`, applies **`content_update`** with `bylines: [{ bylineId }]`, then **`content_publish`**.
+
+Ensure the byline id already exists in production (for example list `GET /_emdash/api/admin/bylines` with a bearer token). If the guest author only exists on staging, create the matching byline in production first.
 
 Required content-integrity rule:
 
@@ -137,9 +173,9 @@ Required content-integrity rule:
 Minimum integrity verification after create/update and before sign-off:
 
 ```powershell
-# Read back the production item and compare text-bearing fields with staging
-npx emdash content get posts example-post -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
-npx emdash content get posts example-post --published -u $env:EMDASH_PRODUCTION_URL -t $env:EMDASH_PRODUCTION_TOKEN --json
+cd web
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL content_get '{"collection":"posts","id":"example-post"}' | Out-File -Encoding utf8 ..\.tmp\integrity-staging.json
+node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_PRODUCTION_URL content_get '{"collection":"posts","id":"example-post"}' | Out-File -Encoding utf8 ..\.tmp\integrity-production.json
 ```
 
 If production text is corrupted and staging is clean, use the guarded repair helper instead of manual edits:

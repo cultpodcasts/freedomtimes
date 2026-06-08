@@ -10,34 +10,48 @@
 		"head_sampling_rate": 1
 	},
 	"vars": {
-		"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+		"NOTIFICATION_DEFAULT_TITLE": "freedom times",
 		"NOTIFICATION_DEFAULT_URL": "/homepage",
 		"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
-		"PUSH_IOS_APNS_HOST": "api.push.apple.com"
+		"PUSH_IOS_APNS_HOST": "api.push.apple.com",
+		"PUBLISH_NOTIFICATION_DELAY_MINUTES": "120",
+		"SITE_ORIGIN": "https://freedomtimes.net"
 	},
 	"env": {
 		"production": {
 			"name": "freedomtimes-scheduler",
+			"queues": {
+				"producers": [{"queue": "freedomtimes-push-queue", "binding": "PUSH_QUEUE"}],
+				"consumers": [{"queue": "freedomtimes-push-queue", "max_batch_size": 100, "max_batch_timeout": 5, "max_retries": 3}]
+			},
 			"triggers": {
 				"crons": ["*/10 * * * *"]
 			},
 			"vars": {
-				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times",
+				"NOTIFICATION_DEFAULT_TITLE": "freedom times",
 				"NOTIFICATION_DEFAULT_URL": "/homepage",
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
-				"PUSH_IOS_APNS_HOST": "api.push.apple.com"
+				"PUSH_IOS_APNS_HOST": "api.push.apple.com",
+				"PUBLISH_NOTIFICATION_DELAY_MINUTES": "30",
+				"SITE_ORIGIN": "https://freedomtimes.news"
 			}
 		},
 		"staging": {
 			"name": "freedomtimes-scheduler-staging",
+			"queues": {
+				"producers": [{"queue": "freedomtimes-push-queue-staging", "binding": "PUSH_QUEUE"}],
+				"consumers": [{"queue": "freedomtimes-push-queue-staging", "max_batch_size": 100, "max_batch_timeout": 5, "max_retries": 3}]
+			},
 			"triggers": {
 				"crons": ["*/10 * * * *"]
 			},
 			"vars": {
-				"NOTIFICATION_DEFAULT_TITLE": "Freedom Times Staging",
+				"NOTIFICATION_DEFAULT_TITLE": "freedom times (staging)",
 				"NOTIFICATION_DEFAULT_URL": "/homepage",
 				"PUSH_ANDROID_FCM_CHANNEL_ID": "reader-alerts",
-				"PUSH_IOS_APNS_HOST": "api.sandbox.push.apple.com"
+				"PUSH_IOS_APNS_HOST": "api.sandbox.push.apple.com",
+				"PUBLISH_NOTIFICATION_DELAY_MINUTES": "0",
+				"SITE_ORIGIN": "https://staging.freedomtimes.news"
 			}
 		}
 	}

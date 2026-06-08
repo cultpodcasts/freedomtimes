@@ -1,17 +1,30 @@
 ---
-import { PortableText } from 'astro-portabletext';
-
-import Layout from '../layouts/Layout.astro';
-import Header from '../components/Header.astro';
-import PortableVideo from '../components/PortableVideo.astro';
-import PortableImage from '../components/PortableImage.astro';
-import PortableLink from '../components/PortableLink.astro';
-import PushNotificationsCallout from './PushNotificationsCallout.astro';
-import { readOptionalEnv } from '../lib/auth';
+import Layout from "../layouts/Layout.astro";
+import Header from "../components/Header.astro";
+import PushNotificationsCallout from "../components/PushNotificationsCallout.astro";
+import Video from "../components/Video.astro";
+import Audio from "../components/Audio.astro";
+import PortableImage from "../components/PortableImage.astro";
+import PortableLink from "../components/PortableLink.astro";
+import EntryHeader from "./content/EntryHeader.astro";
+import EntryMedia from "./content/EntryMedia.astro";
+import EntryBody from "./content/EntryBody.astro";
+import { readOptionalEnv } from "../lib/auth";
+import {
+	buildPortableRenderNodes,
+	parseLegacyTextContent,
+} from "../lib/content/contentBlocks";
+import {
+	buildContentEntryViewModel,
+	readEntrySeoRecord,
+	resolveSocialImageSrc,
+} from "../lib/content/contentEntry";
+import { SITE_DISPLAY_NAME } from "../lib/site-brand";
 
 const {
 	entry,
 	collectionLabel,
+	emdashCollection,
 	displayName,
 	isPreview = false,
 	isEditor = false,
@@ -19,377 +32,54 @@ const {
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
 	collectionLabel: string;
+	/** EmDash collection slug (`posts`, `pages`, `archives`, …) for `_emdash_seo` OG lookup */
+	emdashCollection: string;
 	displayName: string;
 	isPreview?: boolean;
 	isEditor?: boolean;
 	isSignedIn?: boolean;
 };
 
-const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
-const resolvedIsSignedIn = isSignedIn ?? siteAccessMode !== 'public';
-
-function readString(value: unknown): string | null {
-	return typeof value === 'string' && value.trim().length > 0 ? value : null;
-}
-
-function readNumber(value: unknown): number | null {
-	if (typeof value === 'number' && Number.isFinite(value)) {
-		return value;
-	}
-
-	if (typeof value === 'string') {
-		const parsed = Number.parseInt(value.trim(), 10);
-		return Number.isFinite(parsed) ? parsed : null;
-	}
-
-	return null;
-}
-
-function readDateCandidate(value: unknown): string | null {
-	if (typeof value === 'string' && value.trim().length > 0) {
-		return value.trim();
-	}
-	if (value instanceof Date && Number.isFinite(value.getTime())) {
-		return value.toISOString();
-	}
-	return null;
-}
-
-function tryParseJsonString(value: string): unknown {
-	const trimmed = value.trim();
-	if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
-		return null;
-	}
-
-	try {
-		return JSON.parse(trimmed);
-	} catch {
-		return null;
-	}
-}
-
-function readFeaturedImageSrc(value: unknown): string | null {
-	if (typeof value === 'string') {
-		const trimmed = value.trim();
-		return trimmed.length > 0 ? trimmed : null;
-	}
-
-	if (value && typeof value === 'object') {
-		const candidate = value as Record<string, unknown>;
-		const src = readString(candidate.src) ?? readString(candidate.url);
-		if (src) {
-			return src;
-		}
-
-		const meta =
-			candidate.meta && typeof candidate.meta === 'object'
-				? (candidate.meta as Record<string, unknown>)
-				: null;
-		const storageKey = readString(meta?.storageKey) ?? readString(candidate.storageKey);
-		if (storageKey) {
-			return `/_emdash/api/media/file/${storageKey}`;
-		}
-
-		const mediaId = readString(candidate.id);
-		if (mediaId) {
-			return `/_emdash/api/media/file/${mediaId}`;
-		}
-
-		return null;
-	}
-
-	return null;
-}
-
-function readMediaFileUrl(value: unknown): string | null {
-	if (typeof value === 'string') {
-		const trimmed = value.trim();
-		if (trimmed.length === 0) {
-			return null;
-		}
-
-		const parsed = tryParseJsonString(trimmed);
-		if (parsed && parsed !== value) {
-			return readMediaFileUrl(parsed);
-		}
-
-		return trimmed;
-	}
-
-	if (value && typeof value === 'object') {
-		const candidate = value as Record<string, unknown>;
-		const url =
-			readString(candidate.url) ??
-			readString(candidate.src) ??
-			readString(candidate.file) ??
-			readString(candidate.path) ??
-			readString(candidate.href);
-		if (url) {
-			return url;
-		}
-
-		const nestedValue =
-			readString(candidate.value) ??
-			readString(candidate.filename) ??
-			readString(candidate.key);
-		if (nestedValue) {
-			return nestedValue;
-		}
-
-		const meta =
-			candidate.meta && typeof candidate.meta === 'object'
-				? (candidate.meta as Record<string, unknown>)
-				: null;
-		const storageKey = readString(meta?.storageKey) ?? readString(candidate.storageKey);
-		if (storageKey) {
-			return `/_emdash/api/media/file/${storageKey}`;
-		}
-
-		const mediaId = readString(candidate.id);
-		if (mediaId) {
-			return `/_emdash/api/media/file/${mediaId}`;
-		}
-
-		const mediaRef = readString(candidate._ref);
-		if (mediaRef) {
-			return `/_emdash/api/media/file/${mediaRef}`;
-		}
-	}
-
-	return null;
-}
-
-function normalizeEmdashMediaFileUrl(value: string): string | null {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return null;
-	}
-
-	if (trimmed.startsWith('/_emdash/api/media/file/')) {
-		return trimmed;
-	}
-
-	if (trimmed.startsWith('/')) {
-		return null;
-	}
-
-	try {
-		const parsed = new URL(trimmed);
-		if (parsed.pathname.startsWith('/_emdash/api/media/file/')) {
-			return parsed.pathname;
-		}
-	} catch {
-		return null;
-	}
-
-	return null;
-}
-
-function normalizeImageUrl(value: string): string | null {
-	const trimmed = value.trim();
-	if (!trimmed) return null;
-	if (trimmed.startsWith('/')) return trimmed;
-
-	try {
-		const parsed = new URL(trimmed);
-		return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-	} catch {
-		return null;
-	}
-}
-
-function extractPageNumber(value: unknown): number | null {
-	const parse = (candidate: string | null): number | null => {
-		if (!candidate) return null;
-		const match = candidate.match(/--page-(\d+)\.(?:png|jpg|jpeg|webp)$/i);
-		if (!match) return null;
-		const parsed = Number.parseInt(match[1], 10);
-		return Number.isFinite(parsed) ? parsed : null;
-	};
-
-	if (typeof value === 'string') {
-		return parse(value.trim());
-	}
-
-	if (value && typeof value === 'object') {
-		const candidate = value as Record<string, unknown>;
-		return (
-			parse(readString(candidate.filename))
-			?? parse(readString(candidate.name))
-			?? parse(readString(candidate.src))
-			?? parse(readString(candidate.url))
-		);
-	}
-
-	return null;
-}
-
-type SlideImage = { src: string; pageNumber: number | null };
-
-function coerceImageList(value: unknown): SlideImage[] {
-	const add = (collector: SlideImage[], candidate: unknown) => {
-		const fromMedia = readMediaFileUrl(candidate);
-		const fromString = readString(candidate);
-		const resolved =
-			(fromMedia && normalizeImageUrl(fromMedia))
-			?? (fromString && normalizeImageUrl(fromString))
-			?? null;
-		if (resolved) {
-			collector.push({ src: resolved, pageNumber: extractPageNumber(candidate) });
-		}
-	};
-
-	if (Array.isArray(value)) {
-		const images: SlideImage[] = [];
-		for (const item of value) add(images, item);
-		return images;
-	}
-
-	if (typeof value === 'string') {
-		const parsed = tryParseJsonString(value);
-		if (Array.isArray(parsed)) {
-			const images: SlideImage[] = [];
-			for (const item of parsed) add(images, item);
-			return images;
-		}
-		const single = normalizeImageUrl(value);
-		return single ? [{ src: single, pageNumber: extractPageNumber(value) }] : [];
-	}
-
-	return [];
-}
-
-function readSubjects(value: unknown): string[] {
-	if (Array.isArray(value)) {
-		return value
-			.map((item) => (typeof item === 'string' ? item.trim() : ''))
-			.filter((item) => item.length > 0);
-	}
-
-	if (typeof value === 'string') {
-		const parsed = tryParseJsonString(value);
-		if (Array.isArray(parsed)) {
-			return parsed
-				.map((item) => (typeof item === 'string' ? item.trim() : ''))
-				.filter((item) => item.length > 0);
-		}
-
-		const trimmed = value.trim();
-		return trimmed.length > 0 ? [trimmed] : [];
-	}
-
-	return [];
-}
-
-function hashString(input: string): number {
-	let hash = 2166136261;
-	for (const char of input) {
-		hash ^= char.charCodeAt(0);
-		hash = Math.imul(hash, 16777619);
-	}
-	return hash >>> 0;
-}
-
-function subjectColorTokens(subject: string): { bg: string; border: string; text: string } {
-	const hash = hashString(subject.toLowerCase().trim());
-	const hue = hash % 360;
-	const saturation = 62 + (hash % 14); // 62-75
-	const lightness = 90 - (hash % 8); // 90-83
-	const borderLightness = 46 - (hash % 8); // 46-39
-	const textLightness = 28 - (hash % 6); // 28-23
-	return {
-		bg: `hsl(${hue} ${saturation}% ${lightness}%)`,
-		border: `hsl(${hue} ${Math.max(45, saturation - 12)}% ${borderLightness}%)`,
-		text: `hsl(${hue} ${Math.max(40, saturation - 18)}% ${textLightness}%)`,
-	};
-}
-
-const data = entry.data;
-const entryMeta = entry as Record<string, unknown>;
-const title =
-	readString(data.title) ??
-	readString(data.name) ??
-	readString(data.headline) ??
-	readString(entry.slug) ??
-	'Untitled';
-const summary =
-	readString(data.dek) ??
-	readString(data.abstract) ??
-	readString(data.description) ??
-	null;
-const summaryParagraphs = summary
-	? summary
-		.split(/\n\s*\n+/)
-		.map((paragraph) => paragraph.trim())
-		.filter((paragraph) => paragraph.length > 0)
-	: [];
-const portableContent = Array.isArray(data.content) ? data.content : null;
-const textContent = portableContent ? null : readString(data.content);
-const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
-const featuredImageAlt =
-	readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
-const volumeNumber =
-	readNumber(data.volume_number)
-	?? readNumber(data.volumeNumber)
-	?? readNumber(title.match(/Vol\.\s*(\d+)/i)?.[1] ?? null);
-const rawRegionalVariant = readString(data.regional_variant) ?? readString(data.regionalVariant);
-const regionalVariant =
-	rawRegionalVariant === 'Lancaster'
-	|| rawRegionalVariant === 'Newcastle'
-	|| rawRegionalVariant === 'Nottingham'
-		? rawRegionalVariant
-		: null;
-const pageImages = coerceImageList(data.page_images)
-	.concat(coerceImageList(data.pageImages))
-	.filter((value, index, all) => all.findIndex((item) => item.src === value.src) === index);
-const slidePageNumbers = pageImages.map((item, index) => item.pageNumber ?? index + 1);
-const slidePageTotal = slidePageNumbers.length > 0 ? Math.max(...slidePageNumbers) : 0;
-const pdfLink = normalizeEmdashMediaFileUrl(readMediaFileUrl(data.pdf_file) ?? '');
-const subjects = readSubjects(data.subjects);
-const issueDate = readString(data.date);
-const publishedAt =
-	readDateCandidate(entryMeta.publishedAt)
-	?? readDateCandidate(entryMeta.published_at)
-	?? readDateCandidate(data.publishedAt)
-	?? readDateCandidate(data.published_at)
-	?? readDateCandidate(entryMeta.createdAt)
-	?? readDateCandidate(entryMeta.created_at)
-	?? readDateCandidate(data.createdAt)
-	?? readDateCandidate(data.created_at);
-const updatedAt =
-	readDateCandidate(entryMeta.updatedAt)
-	?? readDateCandidate(entryMeta.updated_at)
-	?? readDateCandidate(data.updatedAt)
-	?? readDateCandidate(data.updated_at);
-const primaryByline = (() => {
-	const direct = (
-		(entryMeta.byline && typeof entryMeta.byline === 'object' ? entryMeta.byline : null)
-		?? (data.byline && typeof data.byline === 'object' ? data.byline : null)
-	) as Record<string, unknown> | null;
-	const bylinesArray = (
-		(Array.isArray(entryMeta.bylines) ? entryMeta.bylines : null)
-		?? (Array.isArray(data.bylines) ? data.bylines : null)
-	) as unknown[] | null;
-	const fromArray = bylinesArray && bylinesArray.length > 0
-		? (bylinesArray[0] as Record<string, unknown>)
-		: null;
-	const bylineRecord =
-		direct
-		?? (
-			fromArray && fromArray.byline && typeof fromArray.byline === 'object'
-				? (fromArray.byline as Record<string, unknown>)
-				: null
-		);
-	const name =
-		(bylineRecord ? readString(bylineRecord.displayName) : null)
-		?? (fromArray ? readString(fromArray.displayName) : null)
-		?? readString(data.author)
-		?? readString(data.bylineName);
-	return name;
-})();
+const siteAccessMode = readOptionalEnv("SITE_ACCESS_MODE").trim().toLowerCase();
+const resolvedIsSignedIn = isSignedIn ?? siteAccessMode !== "public";
+const {
+	title,
+	summaryParagraphs,
+	portableContent,
+	textContent,
+	featuredImageSrc,
+	featuredImageAlt,
+	volumeNumber,
+	regionalVariant,
+	pageImages,
+	slidePageNumbers,
+	slidePageTotal,
+	pdfLink,
+	subjectChips,
+	issueDate,
+	publishedAt,
+	updatedAt,
+	primaryByline,
+} = buildContentEntryViewModel(
+	entry as { slug?: string; data: Record<string, unknown> } & Record<
+		string,
+		unknown
+	>,
+);
+const entryRecord = entry as Record<string, unknown>;
+const seoRecord = readEntrySeoRecord(entryRecord);
+const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
+	origin: Astro.url.origin,
+	emdashSeoLookup: {
+		collection: emdashCollection,
+		contentId: String(entry.id ?? ""),
+		slug: typeof entry.slug === "string" ? entry.slug : undefined,
+	},
+});
 const portableComponents = {
 	type: {
-		video: PortableVideo,
+		video: Video,
+		audio: Audio,
 		image: PortableImage,
 	},
 	mark: {
@@ -397,226 +87,158 @@ const portableComponents = {
 	},
 };
 
-type LegacyContentBlock =
-	| { type: 'heading'; level: 2 | 3 | 4; text: string }
-	| { type: 'paragraph'; text: string }
-	| { type: 'image'; alt: string; src: string }
-	| { type: 'video'; value: Record<string, unknown> };
-
-function parseLegacyTextContent(value: string): LegacyContentBlock[] {
-	const blocks: LegacyContentBlock[] = [];
-	const lines = value.split('\n');
-	const videoPattern = /^<!--ec:block\s+(\{.*\})\s+-->$/;
-	const imagePattern = /^!\[([^\]]*)\]\(([^)]+)\)$/;
-	let paragraphBuffer: string[] = [];
-
-	const flushParagraph = () => {
-		const text = paragraphBuffer.join(' ').trim();
-		if (text.length > 0) {
-			blocks.push({ type: 'paragraph', text });
-		}
-		paragraphBuffer = [];
-	};
-
-	for (const rawLine of lines) {
-		const line = rawLine.trim();
-		if (!line) {
-			flushParagraph();
-			continue;
-		}
-
-		const videoMatch = line.match(videoPattern);
-		if (videoMatch) {
-			flushParagraph();
-			try {
-				const parsed = JSON.parse(videoMatch[1]);
-				if (parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>)._type === 'video') {
-					blocks.push({ type: 'video', value: parsed as Record<string, unknown> });
-					continue;
-				}
-			} catch {
-				// Fall through to paragraph mode if parsing fails.
-			}
-		}
-
-		const headingMatch = line.match(/^(#{2,4})\s+(.+)$/);
-		if (headingMatch) {
-			flushParagraph();
-			const level = headingMatch[1].length as 2 | 3 | 4;
-			blocks.push({ type: 'heading', level, text: headingMatch[2].trim() });
-			continue;
-		}
-
-		const imageMatch = line.match(imagePattern);
-		if (imageMatch) {
-			flushParagraph();
-			const rawSrc = imageMatch[2].trim();
-			const src =
-				normalizeEmdashMediaFileUrl(rawSrc)
-				?? normalizeImageUrl(rawSrc)
-				?? rawSrc;
-			blocks.push({ type: 'image', alt: imageMatch[1].trim(), src });
-			continue;
-		}
-
-		paragraphBuffer.push(line);
-	}
-
-	flushParagraph();
-	return blocks;
-}
-
 const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
+const portableRenderNodes = buildPortableRenderNodes(portableContent);
+const description =
+	summaryParagraphs[0] ?? `Read "${title}" on ${SITE_DISPLAY_NAME}.`;
+const canonicalPath =
+	collectionLabel === "Archive"
+		? `/archives/${entry.slug ?? entry.id}`
+		: `/posts/${entry.slug ?? entry.id}`;
+const publicationDate = publishedAt ? new Date(publishedAt) : null;
+const publicationDateLabel =
+	publicationDate && Number.isFinite(publicationDate.getTime())
+		? publicationDate.toLocaleDateString("en-GB", {
+				day: "2-digit",
+				month: "short",
+				year: "numeric",
+			})
+		: null;
+const socialTitle = publicationDateLabel
+	? `${title} - ${publicationDateLabel}`
+	: title;
 ---
 
-<Layout>
+<Layout
+	title={title}
+	socialTitle={socialTitle}
+	description={description}
+	canonicalUrl={canonicalPath}
+	ogType="article"
+	ogImage={socialImageSrc ?? null}
+	ogImageWidth={1200}
+	ogImageHeight={675}
+	ogImageAlt={socialImageSrc ? socialTitle : undefined}
+	publishedTime={publishedAt}
+	modifiedTime={updatedAt}
+	author={primaryByline}
+>
 	<article class="page-wrap">
-		<Header section={collectionLabel} sectionUrl={collectionLabel === 'Archive' ? '/archives' : '/homepage'} isEditor={isEditor} isSignedIn={resolvedIsSignedIn} />
+		<Header
+			section={collectionLabel}
+			sectionUrl={collectionLabel === "Archive"
+				? "/archives"
+				: "/homepage"}
+			isEditor={isEditor}
+			isSignedIn={resolvedIsSignedIn}
+		/>
 
-		<header class="article-header">
-			<h1>{title}</h1>
-			{issueDate && <p class="issue-date">Issue date {new Date(issueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>}
-			
-			<div class="article-meta">
-				{primaryByline && <p>By {primaryByline}</p>}
-				{publishedAt && <p>Published {new Date(publishedAt).toLocaleString()}</p>}
-				{!publishedAt && updatedAt && <p>Updated {new Date(updatedAt).toLocaleString()}</p>}
-				{isPreview && <p class="preview">Preview mode</p>}
-			</div>
-			{subjects.length > 0 && (
-				<ul class="subject-list" aria-label="Subjects">
-					{subjects.map((subject) => {
-						const colors = subjectColorTokens(subject);
-						const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
-						return <li style={style}>{subject}</li>;
-					})}
-				</ul>
-			)}
-		</header>
+		<div class="entry-shell">
+			<EntryHeader
+				title={title}
+				issueDate={issueDate}
+				primaryByline={primaryByline}
+				publishedAt={publishedAt}
+				updatedAt={updatedAt}
+				isPreview={isPreview}
+				subjectChips={subjectChips}
+			/>
 
-		<section class="content-card">
-			{summaryParagraphs.length > 0 && (
-				<div class="summary-wrap">
-					{summaryParagraphs.map((paragraph) => (
-						<p class="summary">{paragraph}</p>
-					))}
-				</div>
-			)}
-			{pageImages.length > 0 ? (
-				<section class="slideshow" data-slideshow>
-					<header class="slideshow-header">
-						<p class="slideshow-kicker">Issue Pages</p>
-						{(volumeNumber !== null || regionalVariant) && (
-							<p class="edition-meta">
-								{volumeNumber !== null && <span>Volume {volumeNumber}</span>}
-								{volumeNumber !== null && regionalVariant && <span> • </span>}
-								{regionalVariant && <span>Regional variant {regionalVariant}</span>}
-							</p>
-						)}
-					</header>
-					<div class="slideshow-frame-wrap">
-						<button type="button" class="slide-nav prev" aria-label="Previous page">Previous</button>
-						<div class="slideshow-frame">
-							{pageImages.map((image, index) => (
-								<figure class={`slide ${index === 0 ? 'is-active' : ''}`} data-slide data-index={index} data-page-number={slidePageNumbers[index]}>
-									<img src={image.src} alt={`${title} page ${slidePageNumbers[index]}`} loading={index === 0 ? 'eager' : 'lazy'} decoding="async" />
-								</figure>
-							))}
-						</div>
-						<button type="button" class="slide-nav next" aria-label="Next page">Next</button>
-					</div>
-					<p class="slide-status">
-						<span>Page </span>
-						<span data-slide-current>{slidePageNumbers[0]}</span>
-						<span> / </span>
-						<span>{slidePageTotal}</span>
-					</p>
-					{pdfLink && (
-						<p class="pdf-link-wrap">
-							<a href={pdfLink} target="_blank" rel="noopener noreferrer">Open original PDF</a>
-						</p>
-					)}
-				</section>
-			) : featuredImageSrc ? (
-				<figure class="hero">
-					<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
-				</figure>
-			) : null}
-			{portableContent && portableContent.length > 0 && <PortableText value={portableContent} components={portableComponents} />}
-			{!portableContent && textContent && legacyBlocks.length > 0 && (
-				<div class="legacy-content">
-					{legacyBlocks.map((block) => (
-						block.type === 'video' ? (
-							<PortableVideo value={block.value} />
-						) : block.type === 'image' ? (
-							<figure class="inline-figure">
-								<img src={block.src} alt={block.alt} loading="lazy" decoding="async" />
-							</figure>
-						) : block.type === 'heading' ? (
-							block.level === 2 ? <h2>{block.text}</h2> : block.level === 3 ? <h3>{block.text}</h3> : <h4>{block.text}</h4>
-						) : (
-							<p>{block.text}</p>
-						)
-					))}
-				</div>
-			)}
-			{!portableContent && !textContent && (
-				<p class="empty-state">This entry is published but has no renderable body content yet.</p>
-			)}
-			<PushNotificationsCallout />
-		</section>
+			<section class="content-card">
+				<EntryMedia
+					title={title}
+					pageImages={pageImages}
+					slidePageNumbers={slidePageNumbers}
+					slidePageTotal={slidePageTotal}
+					volumeNumber={volumeNumber}
+					regionalVariant={regionalVariant}
+					pdfLink={pdfLink}
+					featuredImageSrc={featuredImageSrc}
+					featuredImageAlt={featuredImageAlt}
+				/>
+				<EntryBody
+					portableRenderNodes={portableRenderNodes}
+					portableContent={portableContent}
+					textContent={textContent}
+					legacyBlocks={legacyBlocks}
+					portableComponents={portableComponents}
+				/>
+				<PushNotificationsCallout />
+			</section>
+		</div>
 	</article>
 </Layout>
 
 <style>
-
 	.page-wrap {
 		max-width: var(--max-width-article);
 		margin: 0 auto;
-		padding: 0 var(--page-padding-side) 5rem;
+		padding: 0 0 5rem;
 	}
 
+	:global(.legacy-details) {
+		margin: 1.25rem 0;
+		padding: 0.85rem 1rem;
+		border: 1px solid #d8d8d8;
+		border-radius: 8px;
+		background: #f7f7f7;
+	}
 
-	h1 {
+	:global(.legacy-details summary) {
+		cursor: pointer;
+		font-family: "Inter", sans-serif;
+		font-weight: 600;
+	}
+
+	:global(.legacy-details p) {
+		margin: 0.9rem 0 0;
+	}
+
+	/* Translation fold-out: not a blockquote (no left bar); keep distinct from body copy. */
+	:global(.legacy-details.translate),
+	:global(.legacy-details.translation) {
+		border-left: none;
+	}
+
+	:global(.article-header h1) {
 		margin: 0;
-		font-family: 'Playfair Display', serif;
+		font-family: "Playfair Display", serif;
 		font-size: clamp(2.5rem, 7vw, 4.5rem);
 		font-weight: 900;
 		line-height: 1;
 		letter-spacing: -0.01em;
 	}
 
-	.issue-date {
+	:global(.issue-date) {
 		margin: 1rem 0 0;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.85rem;
 		font-weight: 600;
 		letter-spacing: 0.05em;
 		color: #333333;
 	}
 
-
-	.article-header {
+	:global(.article-header) {
 		margin-bottom: 2.5rem;
 		border-bottom: 1px solid #eeeeee;
 		padding-bottom: 2rem;
 	}
 
-	.article-meta {
+	:global(.article-meta) {
 		display: flex;
 		gap: 1.5rem;
 		margin-top: 1rem;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.75rem;
 		color: #777777;
 		letter-spacing: 0.05em;
 	}
 
-	.article-meta p {
+	:global(.article-meta p) {
 		margin: 0;
 	}
 
-	.subject-list {
+	:global(.subject-list) {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
@@ -625,8 +247,8 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		margin: 1rem 0 0;
 	}
 
-	.subject-list li {
-		font-family: 'Inter', sans-serif;
+	:global(.subject-list li) {
+		font-family: "Inter", sans-serif;
 		font-size: 0.7rem;
 		letter-spacing: 0.05em;
 		text-transform: uppercase;
@@ -637,7 +259,7 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		color: var(--subject-chip-text, #333333);
 	}
 
-	.preview {
+	:global(.preview) {
 		color: #cc0000;
 		font-weight: 700;
 	}
@@ -647,81 +269,71 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		font-size: 1.15rem;
 	}
 
-	.summary-wrap {
-		margin-bottom: 3rem;
-		padding-bottom: 2rem;
-		border-bottom: 1px solid #eeeeee;
+	.entry-shell {
+		padding: 0 var(--page-padding-side);
 	}
 
-	.summary {
-		margin: 0 0 1.25rem;
-		font-size: 1.25rem;
-		font-weight: 500;
-		line-height: 1.5;
-		color: #222222;
-		max-width: 65ch;
-	}
-
-	.hero {
+	:global(.hero) {
 		margin: 0 0 3rem;
 	}
 
-	.hero img {
+	:global(.hero img) {
 		display: block;
 		width: 100%;
 		height: auto;
 		border: 1px solid #eeeeee;
 	}
 
-	.content-card .inline-figure {
+	:global(.inline-figure) {
 		margin: 0 0 2rem;
+		max-width: 65ch;
 	}
 
-	.content-card .inline-figure img {
+	:global(.inline-figure img) {
 		display: block;
 		width: 100%;
 		height: auto;
 		border: 1px solid #eeeeee;
 	}
 
-	.slideshow {
+	:global(.slideshow) {
 		margin: 0 0 4rem;
 		padding: 2rem;
 		background: #fcfcfc;
 		border: 1px solid #eeeeee;
 	}
 
-	.slideshow-header {
+	:global(.slideshow-header) {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 1rem;
 		margin-bottom: 1.5rem;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		letter-spacing: 0.1em;
 	}
 
-	.slideshow-kicker {
+	:global(.slideshow-kicker) {
 		margin: 0;
 		font-size: 0.8rem;
 		font-weight: 700;
 		color: #0044bb;
 	}
 
-	.edition-meta {
+	:global(.edition-meta) {
 		margin: 0;
 		font-size: 0.75rem;
 		color: #777777;
 	}
 
-	.slideshow-frame-wrap {
+	:global(.slideshow-frame-wrap) {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr) auto;
 		gap: 1.5rem;
 		align-items: center;
 	}
 
-	.slideshow-frame {
+	:global(.slideshow-frame) {
 		position: relative;
 		min-height: 400px;
 		background: #ffffff;
@@ -729,7 +341,7 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		border: 1px solid #eeeeee;
 	}
 
-	.slide {
+	:global(.slide) {
 		position: absolute;
 		inset: 0;
 		opacity: 0;
@@ -737,23 +349,23 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		margin: 0;
 	}
 
-	.slide.is-active {
+	:global(.slide.is-active) {
 		opacity: 1;
 		position: relative;
 	}
 
-	.slide img {
+	:global(.slide img) {
 		display: block;
 		width: 100%;
 		height: auto;
 	}
 
-	.slide-nav {
+	:global(.slide-nav) {
 		background: #ffffff;
 		border: 1px solid #dddddd;
 		color: #111111;
 		padding: 0.75rem 1rem;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-weight: 700;
 		font-size: 0.7rem;
 		letter-spacing: 0.1em;
@@ -761,28 +373,28 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		transition: all 0.2s ease;
 	}
 
-	.slide-nav:hover {
+	:global(.slide-nav:hover) {
 		background: #111111;
 		color: #ffffff;
 		border-color: #111111;
 	}
 
-	.slide-status {
+	:global(.slide-status) {
 		margin: 1.5rem 0 0;
 		text-align: center;
-		font-family: 'Inter', sans-serif;
+		font-family: "Inter", sans-serif;
 		font-size: 0.8rem;
 		font-weight: 700;
 		letter-spacing: 0.1em;
 	}
 
-	.pdf-link-wrap {
+	:global(.pdf-link-wrap) {
 		margin: 1.5rem 0 0;
 		text-align: center;
 	}
 
-	.pdf-link-wrap a {
-		font-family: 'Inter', sans-serif;
+	:global(.pdf-link-wrap a) {
+		font-family: "Inter", sans-serif;
 		font-size: 0.8rem;
 		font-weight: 700;
 		letter-spacing: 0.05em;
@@ -790,8 +402,14 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		text-decoration: none;
 	}
 
-	.pdf-link-wrap a:hover {
+	:global(.pdf-link-wrap a:hover) {
 		text-decoration: underline;
+	}
+
+	/* One column measure for PT + legacy body: headings, embeds, and paragraphs share the same edge. */
+	.content-card :global(.portable-content),
+	.content-card :global(.legacy-content) {
+		max-width: 65ch;
 	}
 
 	.content-card :global(p) {
@@ -802,7 +420,7 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 	.content-card :global(h2),
 	.content-card :global(h3),
 	.content-card :global(h4) {
-		font-family: 'Playfair Display', serif;
+		font-family: "Playfair Display", serif;
 		font-weight: 800;
 		line-height: 1.2;
 		margin: 3rem 0 1rem;
@@ -825,7 +443,7 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 
 	.content-card :global(blockquote p) {
 		margin: 0;
-		font-family: 'Source Serif 4', serif;
+		font-family: "Source Serif 4", serif;
 		font-style: italic;
 		color: #1f1f1f;
 	}
@@ -853,7 +471,7 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 
 	@media (max-width: 768px) {
 		.page-wrap {
-			padding: 2rem 1rem;
+			padding: 0 0 2.25rem;
 		}
 		.masthead {
 			grid-template-columns: 1fr;
@@ -866,60 +484,17 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		nav {
 			justify-content: flex-start;
 		}
-		.slideshow-frame-wrap {
+		:global(.slideshow-frame-wrap) {
 			grid-template-columns: 1fr;
 		}
-		.slide-nav {
+		:global(.slide-nav) {
 			width: 100%;
 		}
 	}
 </style>
 
 <script>
-	const contentLinks = document.querySelectorAll('.content-card a');
-	for (const link of contentLinks) {
-		const first = link.firstChild;
-		if (first && first.nodeType === Node.TEXT_NODE) {
-			first.textContent = (first.textContent ?? '').replace(/^\s+/, '');
-		}
-		const last = link.lastChild;
-		if (last && last.nodeType === Node.TEXT_NODE) {
-			last.textContent = (last.textContent ?? '').replace(/\s+$/, '');
-		}
-	}
+	import { initContentEnhancements } from "../lib/content/contentEnhancements";
 
-	const slideshows = document.querySelectorAll('[data-slideshow]');
-
-	for (const root of slideshows) {
-		const slides = Array.from(root.querySelectorAll<HTMLElement>('[data-slide]'));
-		const prev = root.querySelector<HTMLButtonElement>('.slide-nav.prev');
-		const next = root.querySelector<HTMLButtonElement>('.slide-nav.next');
-		const status = root.querySelector<HTMLElement>('[data-slide-current]');
-		let current = 0;
-
-		const render = () => {
-			slides.forEach((slide, index) => {
-				slide.classList.toggle('is-active', index === current);
-			});
-			if (status) {
-				const currentSlide = slides[current];
-				const pageNumber = currentSlide?.dataset.pageNumber;
-				status.textContent = pageNumber ?? String(current + 1);
-			}
-		};
-
-		prev?.addEventListener('click', (event) => {
-			event.preventDefault();
-			current = (current - 1 + slides.length) % slides.length;
-			render();
-		});
-
-		next?.addEventListener('click', (event) => {
-			event.preventDefault();
-			current = (current + 1) % slides.length;
-			render();
-		});
-
-		render();
-	}
+	initContentEnhancements();
 </script>

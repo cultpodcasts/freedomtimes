@@ -1,4 +1,5 @@
 ---
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 ---
 
 <footer class="site-footer">
@@ -8,7 +9,7 @@
 			<a href="/contact-us">Contact Us</a>
 			<a href="/privacy-policy">Privacy Policy</a>
 		</div>
-		<p class="copyright">&copy; {new Date().getFullYear()} Freedom Times. All rights reserved.</p>
+		<p class="copyright">&copy; {new Date().getFullYear()} {SITE_DISPLAY_NAME}. All rights reserved.</p>
 	</div>
 </footer>
 

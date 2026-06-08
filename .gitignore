@@ -35,6 +35,8 @@ infra/terraform/environments/production/tfplan
 .wrangler/cache/wrangler-account.json
 infra/terraform/environments/production/.wrangler/cache/wrangler-account.json
 .tmp/*
+.release/backups/*.db
+.release/backups/*.db-wal
 logs/*
 web/android/local.properties
 web/android/app/google-services.json
@@ -49,11 +51,18 @@ web/.generated/archive-import/*
 .cookie
 secrets/*
 agents/uk-and-europe-cults-columnist/reports/*.html
-agents/cult-columnist-cf-worker/.wrangler/*
-.release/rollback-branches/*
 agents/uk-and-europe-cults-columnist/reports/*
 agents/uk-and-europe-cults-columnist/tmp/*
+agents/uk-and-europe-cults-columnist/feedback/*
+agents/cult-columnist-cf-worker/.wrangler/*
 tmp/*
+.cursor/*
+web/.tmp/*
+web/.release/*
+.release/rollback-branches/*
+web/scripts/tmp/*
+freedomtimes-emdash-staging.db
+freedomtimes-emdash-staging.db-wal
 
 # Temporary debugging scripts
 add_*.py
@@ -63,4 +72,3 @@ remove_*.py
 revert_*.py
 cleanup.py
 temp_*.txt
-agents/uk-and-europe-cults-columnist/feedback/*

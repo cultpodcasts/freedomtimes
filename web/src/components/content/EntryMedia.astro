@@ -1,0 +1,66 @@
+---
+import type { SlideImage } from '../../lib/content/contentEntry';
+
+const {
+	title,
+	pageImages,
+	slidePageNumbers,
+	slidePageTotal,
+	volumeNumber,
+	regionalVariant,
+	pdfLink,
+	featuredImageSrc,
+	featuredImageAlt,
+} = Astro.props as {
+	title: string;
+	pageImages: SlideImage[];
+	slidePageNumbers: number[];
+	slidePageTotal: number;
+	volumeNumber: number | null;
+	regionalVariant: 'Lancaster' | 'Newcastle' | 'Nottingham' | null;
+	pdfLink: string | null;
+	featuredImageSrc: string | null;
+	featuredImageAlt: string;
+};
+---
+
+{pageImages.length > 0 ? (
+	<section class="slideshow" data-slideshow>
+		<header class="slideshow-header">
+			<p class="slideshow-kicker">Issue Pages</p>
+			{(volumeNumber !== null || regionalVariant) && (
+				<p class="edition-meta">
+					{volumeNumber !== null && <span>Volume {volumeNumber}</span>}
+					{volumeNumber !== null && regionalVariant && <span> • </span>}
+					{regionalVariant && <span>Regional variant {regionalVariant}</span>}
+				</p>
+			)}
+		</header>
+		<div class="slideshow-frame-wrap">
+			<button type="button" class="slide-nav prev" aria-label="Previous page">Previous</button>
+			<div class="slideshow-frame">
+				{pageImages.map((image, index) => (
+					<figure class={`slide ${index === 0 ? 'is-active' : ''}`} data-slide data-index={index} data-page-number={slidePageNumbers[index]}>
+						<img src={image.src} alt={`${title} page ${slidePageNumbers[index]}`} loading={index === 0 ? 'eager' : 'lazy'} decoding="async" />
+					</figure>
+				))}
+			</div>
+			<button type="button" class="slide-nav next" aria-label="Next page">Next</button>
+		</div>
+		<p class="slide-status">
+			<span>Page </span>
+			<span data-slide-current>{slidePageNumbers[0]}</span>
+			<span> / </span>
+			<span>{slidePageTotal}</span>
+		</p>
+		{pdfLink && (
+			<p class="pdf-link-wrap">
+				<a href={pdfLink} target="_blank" rel="noopener noreferrer">Open original PDF</a>
+			</p>
+		)}
+	</section>
+) : featuredImageSrc ? (
+	<figure class="hero">
+		<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
+	</figure>
+) : null}

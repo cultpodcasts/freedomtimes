@@ -3,8 +3,13 @@ import { getEmDashCollection } from 'emdash';
 
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
-import NotificationPermission from '../components/NotificationPermission';
 import { readOptionalEnv } from '../lib/auth';
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
+import {
+  readEmDashCreatedAt,
+  readEmDashPublishedAt,
+  readEmDashUpdatedAt,
+} from '../lib/content/emdashTimestamps';
 import { requireEditorialSession } from '../lib/editorial-session';
 
 type Story = {
@@ -16,11 +21,6 @@ type Story = {
   publishDate: string | null;
   updatedAt: string | null;
 };
-
-function isLikelyNativeShellRequest(request: Request): boolean {
-  const userAgent = request.headers.get('user-agent')?.toLowerCase() ?? '';
-  return userAgent.includes('freedomtimescapacitorapp');
-}
 
 function readImageSrc(value: unknown): string | null {
   if (typeof value === 'string') {
@@ -67,12 +67,6 @@ function formatPublicationDate(value: string | null): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return '';
   return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function readDateCandidate(value: unknown): string | null {
-  if (typeof value === 'string' && value.trim().length > 0) return value.trim();
-  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
-  return null;
 }
 
 function readSubjects(value: unknown): string[] {
@@ -146,8 +140,6 @@ if (isLocked) {
   isSignedIn = true;
 }
 
-const showWebNotificationPanel = !isLikelyNativeShellRequest(Astro.request);
-
 const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
   status: 'published',
   limit: 12,
@@ -176,25 +168,9 @@ const stories: Story[] = postEntries.map((entry) => {
 
   const imageSrc = readImageSrc(data.featured_image);
 
-  const entryRecord = entry as Record<string, unknown>;
-  const publishedAt =
-    readDateCandidate(entryRecord.publishedAt)
-    ?? readDateCandidate(entryRecord.published_at)
-    ?? readDateCandidate(data.publishedAt)
-    ?? readDateCandidate(data.published_at)
-    ?? null;
-  const updatedAt =
-    readDateCandidate(entryRecord.updatedAt)
-    ?? readDateCandidate(entryRecord.updated_at)
-    ?? readDateCandidate(data.updatedAt)
-    ?? readDateCandidate(data.updated_at)
-    ?? null;
-  const createdAt =
-    readDateCandidate(entryRecord.createdAt)
-    ?? readDateCandidate(entryRecord.created_at)
-    ?? readDateCandidate(data.createdAt)
-    ?? readDateCandidate(data.created_at)
-    ?? null;
+  const publishedAt = readEmDashPublishedAt(entry);
+  const updatedAt = readEmDashUpdatedAt(entry);
+  const createdAt = readEmDashCreatedAt(entry);
   const publishDate = publishedAt ?? updatedAt ?? createdAt;
 
   return {
@@ -211,13 +187,24 @@ const stories: Story[] = postEntries.map((entry) => {
 const lead = stories[0] ?? null;
 const secondLead = stories[1] ?? null;
 const rails = stories.slice(2);
+const socialTitle = SITE_DISPLAY_NAME;
+const socialDescription = 'Telling survivor truths. Protecting sources. Holding cults to account.';
+const socialImage = '/social/homepage-og.png';
+const showWebNotificationPanel = !isLikelyNativeShellRequest(Astro.request);
+const pushSubscribePublicKey = getPushSubscribePublicKey();
 ---
 
-<Layout>
+<Layout
+  title={socialTitle}
+  socialTitle={socialTitle}
+  description={socialDescription}
+  canonicalUrl={Astro.url.pathname}
+  ogType="website"
+  ogImage={socialImage}
+  ogImageAlt={`${SITE_DISPLAY_NAME} homepage`}
+>
   <div class="paper-wrap">
     <Header isEditor={isEditor} isSignedIn={isSignedIn} />
-
-    {showWebNotificationPanel && <NotificationPermission client:only="react" />}
 
     <main class="front-grid">
       {lead ? (

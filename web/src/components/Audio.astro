@@ -1,0 +1,136 @@
+---
+/**
+ * Portable Text block `_type: "audio"` — podcast / radio web players and native `<audio>`.
+ * Use `Video.astro` (`_type: "video"`) only for true video (YouTube, MP4, etc.).
+ */
+const props = Astro.props as Record<string, unknown>;
+const value =
+	(props.value as Record<string, unknown> | undefined)
+	?? (props.node as Record<string, unknown> | undefined)
+	?? props;
+
+function readString(input: unknown): string | null {
+	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+}
+
+function resolveAudioUrl(input: unknown): string | null {
+	if (!input || typeof input !== 'object') {
+		return null;
+	}
+	const candidate = input as Record<string, unknown>;
+	const directUrl =
+		readString(candidate.url)
+		?? readString(candidate.file)
+		?? readString((candidate.asset as Record<string, unknown> | undefined)?._ref)
+		?? readString((candidate.asset as Record<string, unknown> | undefined)?.id)
+		?? readString(candidate._ref)
+		?? readString(candidate.id);
+
+	if (!directUrl) {
+		return null;
+	}
+	if (directUrl.startsWith('/')) {
+		return directUrl;
+	}
+	if (directUrl.startsWith('http://') || directUrl.startsWith('https://')) {
+		try {
+			new URL(directUrl);
+			return directUrl;
+		} catch {
+			return null;
+		}
+	}
+	return null;
+}
+
+const src = resolveAudioUrl(value);
+const title = readString(value.alt) ?? readString(value.title) ?? 'Embedded audio';
+
+const isApplePodcasts = !!src && /embed\.podcasts\.apple\.com/i.test(src);
+const isSpotifyEmbed = !!src && /open\.spotify\.com\/embed/i.test(src);
+const isDirectAudio =
+	!!src &&
+	(/\.(mp3|m4a|aac|opus|wav|ogg)(\?.*)?$/i.test(src) || src.startsWith('/_emdash/api/media/file/'));
+const useIframe = !!src && !isDirectAudio;
+const figureClass = [
+	'audio-embed',
+	isApplePodcasts ? 'audio-embed--apple-podcasts' : '',
+	isSpotifyEmbed ? 'audio-embed--spotify' : '',
+	useIframe && !isApplePodcasts && !isSpotifyEmbed ? 'audio-embed--iframe' : '',
+]
+	.filter(Boolean)
+	.join(' ');
+---
+
+{
+	src && (
+		<figure class={figureClass}>
+			{isDirectAudio ? (
+				<audio controls preload="metadata" src={src} aria-label={title}>
+					<a href={src}>Download audio</a>
+				</audio>
+			) : (
+				<iframe
+					src={src}
+					title={title}
+					loading={isApplePodcasts ? 'eager' : 'lazy'}
+					allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+					allowfullscreen
+				/>
+			)}
+		</figure>
+	)
+}
+
+<style is:global>
+	.content-card .audio-embed {
+		display: block;
+		margin: 2rem 0;
+		margin-inline: 0;
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+	}
+
+	.content-card .audio-embed audio {
+		display: block;
+		width: 100%;
+		border: 1px solid #e0e0e0;
+		border-radius: 8px;
+		background: #fafafa;
+	}
+
+	/*
+	 * Apple Podcasts web player: full prose width. Episode UI grows with iframe width;
+	 * do not clip with overflow:hidden + short fixed height (that hid the whole player).
+	 * Fixed iframe height matches Apple’s episode embed; eager load avoids lazy quirks.
+	 */
+	.content-card .audio-embed--apple-podcasts {
+		width: 100%;
+		max-width: 100%;
+		height: auto;
+		overflow: visible;
+		border-radius: 12px;
+		border: 1px solid #e0e0e0;
+		background: #ffffff;
+		box-sizing: border-box;
+	}
+
+	.content-card .audio-embed--apple-podcasts iframe {
+		display: block;
+		width: 100%;
+		height: 232px;
+		border: 0;
+		background: #ffffff;
+	}
+
+	.content-card .audio-embed--spotify iframe,
+	.content-card .audio-embed--iframe iframe {
+		display: block;
+		width: 100%;
+		min-height: 152px;
+		border: 1px solid #e0e0e0;
+		border-radius: 12px;
+		background: #fafafa;
+	}
+</style>

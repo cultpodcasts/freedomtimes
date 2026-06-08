@@ -1,5 +1,6 @@
 ---
 import { readOptionalEnv } from '../lib/auth';
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 
 interface Props {
 	section?: string;
@@ -14,13 +15,24 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 ---
 
 <header class="masthead">
+	<button
+		id="mobile-nav-toggle"
+		class="mobile-nav-toggle"
+		type="button"
+		aria-controls="mobile-nav-content"
+		aria-expanded="false"
+		aria-label="Open navigation menu"
+	>
+		<span class="hamburger-icon" aria-hidden="true">☰</span>
+	</button>
 	<p class="edition">UK & Europe | Investigations & Public Interest</p>
 	<div class="brand-wrap">
-		<a href={homePath}><h1>Freedom Times</h1></a>
+		<a href={homePath}><h1>{SITE_DISPLAY_NAME}</h1></a>
 	</div>
 	<p class="tagline">Telling survivor truths. Protecting sources. Holding cults to account.</p>
 	
 	<nav class="main-nav">
+		<div id="mobile-nav-content" class="mobile-nav-content">
 		<div class="nav-links">
 			<a href={homePath} class={Astro.url.pathname === '/' || Astro.url.pathname === '/homepage' ? 'active' : ''}>Home</a>
 			<a href="/archives" class={Astro.url.pathname.startsWith('/archives') ? 'active' : ''}>Archives</a>
@@ -34,6 +46,7 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 				<a href={sectionUrl || '#'}>{section}</a>
 			</div>
 		)}
+		</div>
 	</nav>
 </header>
 
@@ -44,6 +57,7 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 		border-bottom: 1px solid #111111;
 		padding: var(--page-padding-top) var(--page-padding-side) 2rem;
 		text-align: left;
+		position: relative;
 	}
 
 	.edition {
@@ -93,6 +107,14 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 		letter-spacing: 0.02em;
 	}
 
+	.mobile-nav-toggle {
+		display: none;
+	}
+
+	.mobile-nav-content {
+		display: contents;
+	}
+
 	.nav-links {
 		display: flex;
 		gap: 2rem;
@@ -127,12 +149,105 @@ const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
 	}
 
 	@media (max-width: 768px) {
+		.masthead {
+			--mobile-toggle-top: 0.7rem;
+			--mobile-toggle-size: 2rem;
+			margin: 0 auto 0.6rem;
+			padding: 0.9rem var(--page-padding-side) 0.9rem;
+		}
+		.mobile-nav-toggle {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			position: absolute;
+			top: var(--mobile-toggle-top);
+			right: var(--page-padding-side);
+			width: var(--mobile-toggle-size);
+			height: var(--mobile-toggle-size);
+			font-family: 'Inter', sans-serif;
+			color: #111111;
+			background: #ffffff;
+			border: 1px solid #d8d8d8;
+			border-radius: 999px;
+			cursor: pointer;
+			z-index: 30;
+		}
+		.hamburger-icon {
+			font-size: 1rem;
+			line-height: 1;
+		}
+		.edition {
+			margin: 0 0 0.6rem;
+			font-size: 0.72rem;
+			padding-right: 2.3rem;
+		}
 		h1 {
-			font-size: 3.5rem;
+			margin: 0 0 0.35rem;
+			font-size: clamp(2.1rem, 12vw, 2.7rem);
+		}
+		.tagline {
+			margin: 0 0 0.8rem;
+			font-size: 0.95rem;
+			line-height: 1.3;
 		}
 		nav.main-nav {
-			flex-direction: column;
-			gap: 0.5rem;
+			padding: 0.35rem 0 0;
+			border-top: 1px solid #eeeeee;
+			border-bottom: none;
+			font-size: 0.84rem;
+			position: static;
+		}
+		.mobile-nav-content {
+			display: none;
+			position: absolute;
+			top: calc(var(--mobile-toggle-top) + var(--mobile-toggle-size) + 0.35rem);
+			right: var(--page-padding-side);
+			z-index: 25;
+			min-width: 12rem;
+			max-width: calc(100vw - (var(--page-padding-side) * 2));
+			padding: 0.6rem 0.75rem;
+			border: 1px solid #dddddd;
+			border-radius: 10px;
+			background: #ffffff;
+			box-shadow: 0 8px 26px rgba(0, 0, 0, 0.12);
+		}
+		nav.main-nav.mobile-open .mobile-nav-content {
+			display: block;
+		}
+		.nav-links {
+			display: grid;
+			gap: 0.45rem;
+			margin-bottom: 0.45rem;
+		}
+		.breadcrumbs {
+			gap: 0.4rem;
+			font-size: 0.82rem;
+			display: none;
 		}
 	}
 </style>
+
+<script>
+	const nav = document.querySelector('.main-nav');
+	const toggle = document.querySelector('#mobile-nav-toggle');
+	const content = document.querySelector('#mobile-nav-content');
+
+	if (nav instanceof HTMLElement && toggle instanceof HTMLButtonElement && content instanceof HTMLElement) {
+		const closeMenu = () => {
+			nav.classList.remove('mobile-open');
+			toggle.setAttribute('aria-expanded', 'false');
+		};
+		toggle.addEventListener('click', () => {
+			const isOpen = nav.classList.toggle('mobile-open');
+			toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+		});
+		document.addEventListener('click', (event) => {
+			const target = event.target;
+			if (!(target instanceof Node)) return;
+			if (!nav.contains(target) && !toggle.contains(target)) closeMenu();
+		});
+		window.addEventListener('resize', () => {
+			if (window.innerWidth > 768) closeMenu();
+		});
+	}
+</script>

@@ -1,9 +1,11 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
+import { SITE_DISPLAY_NAME } from './site-brand';
+
 const NATIVE_CHANNEL_ID = 'reader-alerts';
 const NATIVE_CHANNEL_NAME = 'Reader Alerts';
-const NATIVE_CHANNEL_DESCRIPTION = 'Breaking and important Freedom Times notifications';
+const NATIVE_CHANNEL_DESCRIPTION = `Breaking and important ${SITE_DISPLAY_NAME} notifications`;
 const REGISTRATION_TIMEOUT_MS = 30000;
 
 type NativePlatform = 'android' | 'ios';
@@ -91,7 +93,7 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
   return {
     supported: true,
     buttonDisabled: false,
-    message: 'Enable browser notifications on this device to receive published Freedom Times alerts.',
+    message: `Enable browser notifications on this device to receive published ${SITE_DISPLAY_NAME} alerts.`,
   };
 }
 
@@ -262,6 +264,9 @@ async function enableBrowserPushNotifications(publicKey: string): Promise<void> 
 }
 
 async function persistSubscription(payload: unknown): Promise<void> {
+  const summary = summarizeSubscriptionPayload(payload);
+  console.info('[notifications] persist subscription start', summary);
+
   const response = await fetch('/api/push-subscriptions', {
     method: 'POST',
     headers: {
@@ -271,8 +276,19 @@ async function persistSubscription(payload: unknown): Promise<void> {
   });
 
   if (!response.ok) {
+    const responseText = (await response.text()).slice(0, 300);
+    console.warn('[notifications] persist subscription failed', {
+      ...summary,
+      status: response.status,
+      responseText,
+    });
     throw new Error(`Subscription save failed with status ${response.status}`);
   }
+
+  console.info('[notifications] persist subscription ok', {
+    ...summary,
+    status: response.status,
+  });
 }
 
 function waitForRegistrationToken(): Promise<string> {
@@ -373,4 +389,31 @@ async function isAndroidFirebaseConfigured(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function summarizeSubscriptionPayload(payload: unknown): Record<string, string> {
+  if (!payload || typeof payload !== 'object') {
+    return { kind: 'unknown' };
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  const platform = typeof candidate.platform === 'string' ? candidate.platform : '';
+  const token = typeof candidate.token === 'string' ? candidate.token : '';
+  const endpoint = typeof candidate.endpoint === 'string' ? candidate.endpoint : '';
+
+  if ((platform === 'android' || platform === 'ios') && token.length > 0) {
+    return {
+      kind: platform,
+      tokenPrefix: token.slice(0, 16),
+    };
+  }
+
+  if (endpoint.length > 0) {
+    return {
+      kind: 'web',
+      endpointPrefix: endpoint.slice(0, 48),
+    };
+  }
+
+  return { kind: 'unknown' };
 }

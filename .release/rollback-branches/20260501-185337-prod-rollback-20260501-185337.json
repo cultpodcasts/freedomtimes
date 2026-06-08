@@ -1,0 +1,14 @@
+﻿{
+    "createdAtUtc":  "2026-05-01T18:53:51.3779965Z",
+    "sourceDatabase":  "freedomtimes-emdash-production",
+    "rollbackDatabase":  "prod-rollback-20260501-185337",
+    "notes":  "Turso rollback checkpoint before prod deploy / content migration (2026-05-01).",
+    "git":  {
+                "head":  "9faaefff5c4087d52d80dcb18452efd60e82f0ce",
+                "headShort":  "9faaeff",
+                "currentBranch":  "main",
+                "originMain":  "9faaefff5c4087d52d80dcb18452efd60e82f0ce",
+                "originRemote":  "https://cultpodcasts@github.com/cultpodcasts/freedomtimes.git",
+                "dirtyWorkingTree":  true
+            }
+}

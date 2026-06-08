@@ -31,9 +31,15 @@ export const pushSubscriptionsTable = sqliteTable('push_subscriptions', {
   active: integer('active').notNull(),
 });
 
+export const sentArticleNotificationsTable = sqliteTable('sent_article_notifications', {
+  articleId: text('article_id').primaryKey(),
+  sentAt: text('sent_at').notNull(),
+});
+
 const schema = {
   schedulerJobs: schedulerJobsTable,
   pushSubscriptions: pushSubscriptionsTable,
+  sentArticleNotifications: sentArticleNotificationsTable,
 };
 
 export type AppDb = ReturnType<typeof createDatabase>['db'];

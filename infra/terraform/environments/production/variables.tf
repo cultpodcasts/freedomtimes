@@ -44,6 +44,12 @@ variable "subscriptions_turso_database_name" {
   default     = "freedomtimes-subscriptions-production"
 }
 
+variable "scheduler_turso_database_name" {
+  description = "Turso database name for the production scheduler workload"
+  type        = string
+  default     = "freedomtimes-scheduler-production"
+}
+
 variable "turso_database_group" {
   description = "Optional Turso group for production EmDash database"
   type        = string
@@ -52,6 +58,12 @@ variable "turso_database_group" {
 
 variable "subscriptions_turso_database_group" {
   description = "Optional Turso group for the production subscriptions database. Defaults to the EmDash database group when empty."
+  type        = string
+  default     = ""
+}
+
+variable "scheduler_turso_database_group" {
+  description = "Optional Turso group for the production scheduler database. Defaults to the EmDash database group when empty."
   type        = string
   default     = ""
 }
@@ -68,6 +80,12 @@ variable "subscriptions_turso_database_token_expiration" {
   default     = ""
 }
 
+variable "scheduler_turso_database_token_expiration" {
+  description = "Optional expiration for the production scheduler database token. Defaults to the EmDash token expiration when empty."
+  type        = string
+  default     = ""
+}
+
 variable "turso_database_size_limit" {
   description = "Optional size limit for the production EmDash database"
   type        = string
@@ -76,6 +94,12 @@ variable "turso_database_size_limit" {
 
 variable "subscriptions_turso_database_size_limit" {
   description = "Optional size limit for the production subscriptions database. Defaults to the EmDash size limit when empty."
+  type        = string
+  default     = ""
+}
+
+variable "scheduler_turso_database_size_limit" {
+  description = "Optional size limit for the production scheduler database. Defaults to the EmDash size limit when empty."
   type        = string
   default     = ""
 }
@@ -92,6 +116,12 @@ variable "subscriptions_turso_database_delete_protection" {
   default     = false
 }
 
+variable "scheduler_turso_database_delete_protection" {
+  description = "Whether delete protection should be enabled for the production scheduler database"
+  type        = bool
+  default     = false
+}
+
 variable "turso_database_token_authorization" {
   description = "Authorization level for the production EmDash database token"
   type        = string
@@ -100,6 +130,12 @@ variable "turso_database_token_authorization" {
 
 variable "subscriptions_turso_database_token_authorization" {
   description = "Authorization level for the production subscriptions database token"
+  type        = string
+  default     = "full-access"
+}
+
+variable "scheduler_turso_database_token_authorization" {
+  description = "Authorization level for the production scheduler database token"
   type        = string
   default     = "full-access"
 }

@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "astro dev",
+    "check": "astro check",
     "build": "tsx scripts/build-service-worker.ts && astro build && tsx scripts/patch-cloudflare-bundle.ts",
     "scheduler:db:migrate": "tsx scripts/apply-turso-sql.ts scheduler migrate",
     "scheduler:db:seed": "tsx scripts/apply-turso-sql.ts scheduler seed",
@@ -14,10 +15,12 @@
     "subscriptions:db:migrate": "tsx scripts/apply-turso-sql.ts subscriptions migrate",
     "subscriptions:db:seed": "tsx scripts/apply-turso-sql.ts subscriptions seed",
     "subscriptions:db:deploy": "tsx scripts/apply-turso-sql.ts subscriptions migrate && tsx scripts/apply-turso-sql.ts subscriptions seed",
+    "subscriptions:db:backfill-sent-articles": "tsx scripts/backfill-sent-article-notifications.ts",
     "preview": "astro preview",
     "astro": "astro",
     "archive:prepare": "tsx scripts/prepare-archive-assets.ts",
     "archive:prepare:py": "c:/Users/jonbr/source/repos/freedomtimes-branch2/.venv/Scripts/python.exe scripts/prepare_archive_assets.py",
+    "android:launcher-icons": "node scripts/generate-android-launcher-icons.mjs",
     "build:service-worker": "tsx scripts/build-service-worker.ts",
     "cap:doctor": "cap doctor",
     "cap:add:android": "cap add android",
@@ -36,23 +39,27 @@
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.0",
     "@capacitor/push-notifications": "^8.0.3",
-    "@emdash-cms/cloudflare": "0.8.0",
+    "@emdash-cms/cloudflare": "^0.10.0",
     "@libsql/client": "^0.17.2",
     "@libsql/kysely-libsql": "^0.4.1",
     "astro": "^6.1.5",
     "drizzle-orm": "^0.45.2",
-    "emdash": "0.8.0",
+    "emdash": "^0.10.0",
     "jose": "^6.2.2",
     "react": "^19.2.5",
-    "react-dom": "^19.2.5"
+    "react-dom": "^19.2.5",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.9",
     "@capacitor/cli": "^8.3.0",
     "@napi-rs/canvas": "^0.1.80",
+    "@resvg/resvg-js": "^2.6.2",
     "esbuild": "^0.25.3",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.4.296",
+    "satori": "^0.26.0",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   }
 }

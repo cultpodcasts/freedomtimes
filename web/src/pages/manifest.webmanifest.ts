@@ -1,10 +1,12 @@
 import type { APIRoute } from 'astro';
 
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
+
 export const GET: APIRoute = async () => {
   const manifest = {
-    name: 'Freedom Times',
-    short_name: 'Freedom Times',
-    description: 'Freedom Times progressive web app for secure news delivery and editorial access.',
+    name: SITE_DISPLAY_NAME,
+    short_name: SITE_DISPLAY_NAME,
+    description: `${SITE_DISPLAY_NAME} progressive web app for secure news delivery and editorial access.`,
     start_url: '/',
     scope: '/',
     display: 'standalone',

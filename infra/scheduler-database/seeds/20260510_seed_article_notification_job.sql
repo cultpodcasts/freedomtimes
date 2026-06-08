@@ -1,9 +1,9 @@
--- Seed: Upsert a hardcoded notification job that runs every 10 minutes
+-- Seed: Upsert a job to poll for newly published articles and send notifications
 INSERT INTO scheduler_jobs (id, handler, payload, interval_minutes, next_run_at, active)
 VALUES (
-    'hardcoded-notification-every-10-minutes',
-    'send_hardcoded_notification',
-    '{"title":"Freedom Times","message":"This is a hardcoded notification from the scheduler."}',
+    'article-notifications-every-10-minutes',
+    'send_article_notifications',
+    '{}',
     10,
     DATETIME(CURRENT_TIMESTAMP, '+10 minutes'),
     1
