@@ -11,18 +11,25 @@ const agentRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const draftsDir = join(agentRoot, 'reports', 'drafts');
 mkdirSync(draftsDir, { recursive: true });
 
-const slug = process.argv[2] ?? 'weekly-summary-8-june-2026';
+const args = process.argv.slice(2);
+const skipProbe = args.includes('--skip-probe');
+const slug = args.find((a) => !a.startsWith('--')) ?? 'weekly-summary-8-june-2026';
 
-const result = await collectRoundupImageCandidates(slug);
+const result = await collectRoundupImageCandidates(slug, undefined, { skipProbe }, draftsDir);
 const outPath = join(draftsDir, `${slug}-image-candidates.json`);
 writeFileSync(outPath, JSON.stringify(result, null, 2));
 
 for (const u of result.units) {
+  const top = u.candidates[0];
+  const q = top?.quality;
+  const qualityHint = q ? `${q.tier} · ${q.recommendation}` : '(not probed)';
   console.log(
-    u.unitLabel.slice(0, 45).padEnd(46),
+    u.unitLabel.slice(0, 40).padEnd(41),
     u.candidates.length,
-    'candidates',
-    u.suggestedUrl ? `→ ${u.candidates[0]?.source}` : '(none)',
+    'cands',
+    top ? `→ ${top.source}` : '(none)',
+    qualityHint,
+    q?.label ?? '',
   );
 }
 console.log('wrote', outPath);

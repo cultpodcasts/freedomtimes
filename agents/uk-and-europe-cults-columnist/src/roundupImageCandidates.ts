@@ -2,12 +2,15 @@
  * Collect image candidates for roundup sections — prefer inline article photos over og:image crops.
  */
 
+import type { ImageQualityAssessment } from './imageQuality.ts';
+
 export type ImageCandidateSource =
   | 'inline-lead'
   | 'inline-article'
   | 'json-ld'
   | 'twitter:image'
-  | 'og:image';
+  | 'og:image'
+  | 'custom';
 
 export type ImageCandidate = {
   url: string;
@@ -18,6 +21,8 @@ export type ImageCandidate = {
   score: number;
   estimatedWidth?: number;
   altHint?: string;
+  /** Filled during collect after HTTP probe (dimensions, tier, reprocess hint). */
+  quality?: ImageQualityAssessment;
 };
 
 export type UnitImageCandidates = {
@@ -59,19 +64,23 @@ function estimateWidthFromUrl(url: string): number | undefined {
   return undefined;
 }
 
-function scoreForSource(source: ImageCandidateSource, width?: number): number {
+export function scoreForSource(source: ImageCandidateSource, width?: number): number {
   const base: Record<ImageCandidateSource, number> = {
     'inline-lead': 100,
     'inline-article': 85,
     'json-ld': 75,
     'twitter:image': 55,
     'og:image': 40,
+    custom: 110,
   };
   let score = base[source];
   if (width) {
-    if (width >= 1000) score += 15;
-    else if (width >= 600) score += 8;
+    if (width >= 1800) score += 20;
+    else if (width >= 1200) score += 15;
+    else if (width >= 900) score += 10;
+    else if (width >= 600) score += 4;
     else if (width < 200) score -= 30;
+    else score -= 10;
   }
   return score;
 }

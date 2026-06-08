@@ -43,7 +43,9 @@
     "cluster:print-expectations": "tsx scripts/cluster-print-expectations.mts",
     "draft:collect-images": "tsx scripts/collect-roundup-image-candidates.mts",
     "draft:upload-images": "tsx scripts/upload-roundup-images.mts",
-    "draft:inject-images": "tsx scripts/inject-roundup-images.mts"
+    "draft:inject-images": "tsx scripts/inject-roundup-images.mts",
+    "draft:probe-images": "tsx scripts/probe-roundup-image-candidates.mts",
+    "test:image-quality": "tsx scripts/image-quality.test.mts"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",

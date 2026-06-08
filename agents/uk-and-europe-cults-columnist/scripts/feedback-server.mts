@@ -20,11 +20,15 @@ import {
   type ArticlePlanState,
 } from '../src/articlePlan.ts';
 import {
+  addEditorImageCandidate,
   collectRoundupImageCandidates,
   mergeCandidatesWithSelections,
+  probeExistingRoundupImageCandidates,
+  type CollectImageProgressEvent,
   type RoundupImageCandidatesFile,
   type RoundupImageSelectionsFile,
 } from '../src/collectRoundupImageCandidates.ts';
+import { mimeForFilename } from '../src/draftImageStore.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -349,6 +353,61 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  const customImageMatch = path.match(/^\/api\/draft-images\/custom\/([^/]+)\/([^/]+)$/);
+  if (customImageMatch && req.method === 'GET') {
+    const slug = decodeURIComponent(customImageMatch[1]!);
+    const filename = decodeURIComponent(customImageMatch[2]!);
+    const filePath = join(DRAFTS_DIR, '_custom', slug, filename);
+    if (!existsSync(filePath)) {
+      sendError(res, 'Custom image not found', 404);
+      return;
+    }
+    const body = readFileSync(filePath);
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': mimeForFilename(filename) });
+    res.end(body);
+    return;
+  }
+
+  if (path === '/api/draft-images/collect-stream' && req.method === 'GET') {
+    const slug = url.searchParams.get('slug')?.trim();
+    if (!slug) {
+      sendError(res, 'slug query parameter required');
+      return;
+    }
+    res.writeHead(200, {
+      ...corsHeaders,
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const sendProgress = (event: CollectImageProgressEvent) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    try {
+      if (!existsSync(DRAFTS_DIR)) {
+        mkdirSync(DRAFTS_DIR, { recursive: true });
+      }
+      const result = await collectRoundupImageCandidates(
+        slug,
+        undefined,
+        { onProgress: sendProgress },
+        DRAFTS_DIR,
+      );
+      writeFileSync(draftImagesPath(slug, 'candidates'), JSON.stringify(result, null, 2), 'utf8');
+      sendProgress({
+        level: 'done',
+        message: `Saved ${result.units.length} units`,
+        percent: 100,
+        totalUnits: result.units.length,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendProgress({ level: 'error', message });
+    }
+    res.end();
+    return;
+  }
+
   if (path === '/api/draft-images/collect' && req.method === 'POST') {
     try {
       const data = await readJsonBody<{ slug?: string }>(req);
@@ -360,9 +419,108 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       if (!existsSync(DRAFTS_DIR)) {
         mkdirSync(DRAFTS_DIR, { recursive: true });
       }
-      const result = await collectRoundupImageCandidates(slug);
+      const result = await collectRoundupImageCandidates(slug, undefined, {}, DRAFTS_DIR);
       writeFileSync(draftImagesPath(slug, 'candidates'), JSON.stringify(result, null, 2), 'utf8');
       sendJson(res, { success: true, unitCount: result.units.length, path: draftImagesPath(slug, 'candidates') });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 400);
+    }
+    return;
+  }
+
+  if (path === '/api/draft-images/probe' && req.method === 'POST') {
+    try {
+      const data = await readJsonBody<{ slug?: string }>(req);
+      const slug = data.slug?.trim();
+      if (!slug) {
+        sendError(res, 'slug required');
+        return;
+      }
+      const existing = loadDraftImageCandidates(slug);
+      if (!existing) {
+        sendError(res, `No candidates for ${slug}`, 404);
+        return;
+      }
+      const result = await probeExistingRoundupImageCandidates(existing, {}, DRAFTS_DIR);
+      writeFileSync(draftImagesPath(slug, 'candidates'), JSON.stringify(result, null, 2), 'utf8');
+      sendJson(res, { success: true, unitCount: result.units.length, collectedAt: result.collectedAt });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 400);
+    }
+    return;
+  }
+
+  if (path === '/api/draft-images/probe-stream' && req.method === 'GET') {
+    const slug = url.searchParams.get('slug')?.trim();
+    if (!slug) {
+      sendError(res, 'slug query parameter required');
+      return;
+    }
+    res.writeHead(200, {
+      ...corsHeaders,
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    const sendProgress = (event: CollectImageProgressEvent) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    try {
+      const existing = loadDraftImageCandidates(slug);
+      if (!existing) {
+        sendProgress({ level: 'error', message: `No candidates for ${slug}` });
+        res.end();
+        return;
+      }
+      const result = await probeExistingRoundupImageCandidates(
+        existing,
+        { onProgress: sendProgress },
+        DRAFTS_DIR,
+      );
+      writeFileSync(draftImagesPath(slug, 'candidates'), JSON.stringify(result, null, 2), 'utf8');
+      sendProgress({
+        level: 'done',
+        message: `Quality updated for ${result.units.length} units`,
+        percent: 100,
+        totalUnits: result.units.length,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendProgress({ level: 'error', message });
+    }
+    res.end();
+    return;
+  }
+
+  if (path === '/api/draft-images/add' && req.method === 'POST') {
+    try {
+      const data = await readJsonBody<{
+        slug?: string;
+        unitId?: string;
+        url?: string;
+        imageBase64?: string;
+      }>(req);
+      const slug = data.slug?.trim();
+      const unitId = data.unitId?.trim();
+      if (!slug || !unitId) {
+        sendError(res, 'slug and unitId required');
+        return;
+      }
+      if (!data.url?.trim() && !data.imageBase64) {
+        sendError(res, 'url or imageBase64 required');
+        return;
+      }
+      const origin = `http://${req.headers.host ?? `localhost:${PORT}`}`;
+      const { candidate, selectedUrl } = await addEditorImageCandidate(
+        DRAFTS_DIR,
+        slug,
+        unitId,
+        { url: data.url, imageBase64: data.imageBase64 },
+        origin,
+      );
+      sendJson(res, { success: true, candidate, selectedUrl });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       sendError(res, message, 400);

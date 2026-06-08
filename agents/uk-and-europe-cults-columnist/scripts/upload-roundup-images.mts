@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { RoundupImageCandidatesFile, RoundupImageSelectionsFile } from '../src/collectRoundupImageCandidates.ts';
+import { localCustomImagePathFromUrl } from '../src/draftImageStore.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const agentRoot = join(__dirname, '..');
@@ -58,6 +59,7 @@ const uploads: Array<{
   sourceUrl: string;
   mediaId: string;
   fileUrl: string;
+  quality?: { tier: string; recommendation: string; label: string; warnings: string[] };
 }> = [];
 
 for (const unit of candidates.units) {
@@ -71,19 +73,33 @@ for (const unit of candidates.units) {
     continue;
   }
 
+  const candidate = unit.candidates.find((c) => c.url === url);
+  const quality = candidate?.quality;
+  if (quality?.recommendation === 'unsuitable' || quality?.recommendation === 'low-res') {
+    console.warn('quality', quality.tier, quality.recommendation, unit.unitLabel.slice(0, 50), quality.label);
+  }
+  if (quality?.recommendation === 'reprocess') {
+    console.warn('reprocess suggested', unit.unitLabel.slice(0, 50), quality.label, quality.warnings.join('; '));
+  }
+
   const alt = (sel?.alt ?? unit.suggestedAlt ?? unit.unitLabel).replace(/[|]/g, '-').slice(0, 120);
   const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : 'jpg';
   const localPath = join(tmpDir, `${unit.unitId.replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}.${ext}`);
 
-  const imgRes = await fetch(url, {
-    headers: { 'User-Agent': 'FreedomTimesBot/1.0' },
-    redirect: 'follow',
-  });
-  if (!imgRes.ok) {
-    console.warn('download failed', unit.unitLabel, imgRes.status);
-    continue;
+  const customPath = localCustomImagePathFromUrl(url, draftsDir);
+  if (customPath) {
+    writeFileSync(localPath, readFileSync(customPath));
+  } else {
+    const imgRes = await fetch(url, {
+      headers: { 'User-Agent': 'FreedomTimesBot/1.0' },
+      redirect: 'follow',
+    });
+    if (!imgRes.ok) {
+      console.warn('download failed', unit.unitLabel, imgRes.status);
+      continue;
+    }
+    writeFileSync(localPath, Buffer.from(await imgRes.arrayBuffer()));
   }
-  writeFileSync(localPath, Buffer.from(await imgRes.arrayBuffer()));
 
   const up = spawnSync(
     'npx',
@@ -102,6 +118,14 @@ for (const unit of candidates.units) {
     sourceUrl: url,
     mediaId: media.id,
     fileUrl: `https://staging.freedomtimes.news/_emdash/api/media/file/${media.id}`,
+    quality: quality
+      ? {
+          tier: quality.tier,
+          recommendation: quality.recommendation,
+          label: quality.label,
+          warnings: quality.warnings,
+        }
+      : undefined,
   });
   console.log('uploaded', unit.unitLabel.slice(0, 50), media.id);
   await new Promise((r) => setTimeout(r, 400));

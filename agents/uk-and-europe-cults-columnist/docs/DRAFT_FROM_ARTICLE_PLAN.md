@@ -14,8 +14,13 @@ After **article planning** is finalized (`/articles` → Finalize plan → `repo
 
 ## Images (approval workflow)
 
-1. `npx tsx scripts/collect-roundup-image-candidates.mts <slug>` — scans **all** story URLs in each unit (from article plan); inline photos preferred over `og:image`
-2. `http://localhost:3000/draft-images?slug=<slug>` — pick image, mark **Beyond Europe** if needed, Save selections
+1. `npm run feedback:server` then `http://localhost:3000/draft-images?slug=<slug>`
+2. **Collect candidates** — live progress bar; scans all story URLs and probes quality
+3. **Probe quality** — re-run quality metrics on an existing `{slug}-image-candidates.json` without re-fetching articles (`npm run draft:probe-images -- <slug>` or the UI button)
+4. Per section: pick a candidate, **paste an image** (Ctrl+V), **drop a file**, or **Add URL** for your own image
+5. Mark **Beyond Europe** if needed → **Save selections**
+
+CLI collect (no live UI): `npx tsx scripts/collect-roundup-image-candidates.mts <slug>` (`--skip-probe` optional)
 3. `npx tsx scripts/upload-roundup-images.mts <slug>` — requires `-image-selections.json`
 4. `npx tsx scripts/inject-roundup-images.mts <slug>` — inserts into draft markdown
 

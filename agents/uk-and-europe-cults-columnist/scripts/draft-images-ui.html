@@ -9,12 +9,17 @@
 <body>
   <header>
     <h1>Draft image approval</h1>
-    <p class="lede">Pick one image per story section. Inline article photos are listed first when available — they are usually sharper than social <code>og:image</code> crops.</p>
+    <p class="lede">Pick one image per story section. Inline article photos are listed first when available — they are usually sharper than social <code>og:image</code> crops. You can also paste an image or add your own URL per section.</p>
     <div class="toolbar">
       <label>Slug <input id="slug" type="text" value="weekly-summary-8-june-2026" /></label>
       <button type="button" id="collect">Collect candidates</button>
+      <button type="button" id="probe">Probe quality</button>
       <button type="button" id="save" class="primary">Save selections</button>
       <span id="status" role="status"></span>
+    </div>
+    <div id="progress-panel" class="progress-panel" hidden>
+      <progress id="progress-bar" max="100" value="0"></progress>
+      <pre id="progress-log" aria-live="polite"></pre>
     </div>
   </header>
   <main id="units"></main>

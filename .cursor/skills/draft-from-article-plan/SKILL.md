@@ -397,6 +397,30 @@ Do **not** use `og:image` alone. Rank candidates from:
 
 Implementation: `src/roundupImageCandidates.ts` (scoring + HTML parse). Skips logos, icons, tiny assets.
 
+### Image quality (probe on collect)
+
+During **collect**, each candidate is probed (partial download) for real **width × height**, file size, and format. Targets match the site:
+
+| Display use | Target |
+|-------------|--------|
+| In-article / post hero | ≥ **900px** long edge (article column) |
+| Homepage lead crop | ≥ **1200×675** (Cloudflare `fit=cover`) |
+| Retina-friendly | ≥ **1800px** long edge |
+
+**Tier** (`excellent` → `poor`): from probed long edge. **Recommendation**:
+
+| Value | Meaning |
+|-------|---------|
+| `use-as-is` | ≥1200px, reasonable size — upload directly |
+| `acceptable` | ≥900px — fine for article body |
+| `reprocess` | Source **>2.5 MB** — recompress/resize before CMS upload (CF delivery optimizes, but huge masters waste storage) |
+| `low-res` | 600–899px — usable but soft at full column width |
+| `unsuitable` | &lt;600px or tiny file — pick another candidate |
+
+Warnings flag OG/social **1.91:1 crops**, thumbnail-sized files, and unknown dimensions. Shown in `/draft-images` and stored on `{slug}-images-uploaded.json`.
+
+Fast collect without probes: `--skip-probe`.
+
 ### Image workflow (approval required)
 
 ```text
@@ -406,20 +430,25 @@ draft prose → collect candidates → editor approves → upload → inject →
 1. **Collect** candidates (all units in plan order):
    ```powershell
    cd agents/uk-and-europe-cults-columnist
-   npx tsx scripts/collect-roundup-image-candidates.mts weekly-summary-8-june-2026
+   npm run feedback:server
    ```
+   Open `http://localhost:3000/draft-images?slug=weekly-summary-8-june-2026` → **Collect candidates** (SSE progress log).  
+   Or CLI: `npx tsx scripts/collect-roundup-image-candidates.mts weekly-summary-8-june-2026`  
    Writes `reports/drafts/{slug}-image-candidates.json`.
 
-2. **Approve** in browser (feedback server must be running):
-   - Open `http://localhost:3000/draft-images?slug=weekly-summary-8-june-2026`
-   - Click **Collect candidates** if the file is missing or stale.
+2. **Probe quality** on an existing collection (no article re-fetch):
+   - UI: **Probe quality** button (live progress), or
+   - `npm run draft:probe-images -- weekly-summary-8-june-2026`
+
+3. **Approve** in browser:
    - Pick one image per unit (or **Skip**). Inline photos are listed first when found.
+   - **Your own image:** paste (Ctrl+V), drop a file, or **Add URL** per section (`source: custom`).
    - Tick **Beyond Europe** for units that belong in that closing section (editor choice each week — not hostname heuristics).
    - **Save selections** → `reports/drafts/{slug}-image-selections.json`
 
 Watchlist hosts (`watchlist-sites.json`) only add a small **score boost** to suggested defaults — they do not limit which URLs are fetched.
 
-3. **Upload** approved images to staging EmDash media:
+4. **Upload** approved images to staging EmDash media:
    ```powershell
    $env:EMDASH_STAGING_PAT = [Environment]::GetEnvironmentVariable('EMDASH_STAGING_PAT', 'User')
    npx tsx scripts/upload-roundup-images.mts weekly-summary-8-june-2026
@@ -427,13 +456,13 @@ Watchlist hosts (`watchlist-sites.json`) only add a small **score boost** to sug
    Writes `reports/drafts/{slug}-images-uploaded.json`.  
    Use `--use-suggestions` only for a quick agent pass **without** editor approval (not for publish).
 
-4. **Inject** into markdown:
+5. **Inject** into markdown:
    ```powershell
    npx tsx scripts/inject-roundup-images.mts weekly-summary-8-june-2026
    ```
    Maps sections to `unitIds` by plan order (`## Beyond Europe` → `###` subsections).
 
-5. Set post `featured_image` to the **first uploaded** section image.
+6. Set post `featured_image` to the **first uploaded** section image.
 
 **Alt text:** who/what/where; keep short; no `|` (breaks CLI on Windows).
 
