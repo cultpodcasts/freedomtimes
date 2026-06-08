@@ -153,6 +153,34 @@ function candidateMeta(c) {
   return `${c.source} · ${q?.label ?? 'quality not probed'}${rec ? ` · ${rec}` : ''} · ${c.storyHost}`;
 }
 
+/** URL shown as selected in the grid (empty when section has no image). */
+function effectiveSelectedUrl(unit) {
+  if (unit.skip) return '';
+  return unit.selectedUrl ?? unit.suggestedUrl ?? '';
+}
+
+function isCandidateSelected(unit, url) {
+  return Boolean(url) && url === effectiveSelectedUrl(unit);
+}
+
+function clearUnitImage(unit, unitEl) {
+  unit.skip = true;
+  unit.selectedUrl = null;
+  if (unitEl) {
+    const skipEl = unitEl.querySelector('[data-skip]');
+    if (skipEl) skipEl.checked = true;
+  }
+}
+
+function selectUnitImage(unit, url, unitEl) {
+  unit.selectedUrl = url;
+  unit.skip = false;
+  if (unitEl) {
+    const skipEl = unitEl.querySelector('[data-skip]');
+    if (skipEl) skipEl.checked = false;
+  }
+}
+
 function openLightbox(unit, startIndex, unitEl) {
   if (!unit.candidates.length) return;
   const index = Math.max(0, Math.min(startIndex, unit.candidates.length - 1));
@@ -169,7 +197,7 @@ function showLightboxSlide() {
   const c = unit.candidates[index];
   if (!c) return;
 
-  const selected = unit.selectedUrl ?? unit.suggestedUrl ?? '';
+  const selected = effectiveSelectedUrl(unit);
   const img = document.getElementById('lightbox-img');
   img.src = c.url;
   img.alt = unit.unitLabel;
@@ -187,9 +215,10 @@ function showLightboxSlide() {
   next.disabled = index >= unit.candidates.length - 1;
 
   const selectBtn = document.getElementById('lightbox-select');
-  const isSelected = c.url === selected && !unit.skip;
-  selectBtn.textContent = isSelected ? 'Selected' : 'Use this image';
+  const isSelected = isCandidateSelected(unit, c.url);
+  selectBtn.textContent = isSelected ? 'Clear selection' : 'Use this image';
   selectBtn.classList.toggle('is-selected', isSelected);
+  selectBtn.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
 }
 
 function lightboxStep(delta) {
@@ -205,11 +234,10 @@ function selectLightboxImage() {
   const { unit, unitEl, index } = lightboxState;
   const c = unit.candidates[index];
   if (!c) return;
-  unit.selectedUrl = c.url;
-  unit.skip = false;
-  if (unitEl) {
-    const skipEl = unitEl.querySelector('[data-skip]');
-    if (skipEl) skipEl.checked = false;
+  if (isCandidateSelected(unit, c.url)) {
+    clearUnitImage(unit, unitEl);
+  } else {
+    selectUnitImage(unit, c.url, unitEl);
   }
   showLightboxSlide();
   render();
@@ -222,9 +250,9 @@ function closeLightbox() {
   lightboxState = null;
 }
 
-function renderCandidateCard(c, unit, el, selected, skip) {
+function renderCandidateCard(c, unit, el) {
   const card = document.createElement('div');
-  card.className = 'candidate' + (c.url === selected && !skip ? ' selected' : '');
+  card.className = 'candidate' + (isCandidateSelected(unit, c.url) ? ' selected' : '');
   card.setAttribute('role', 'button');
   card.tabIndex = 0;
   const q = c.quality;
@@ -243,9 +271,11 @@ function renderCandidateCard(c, unit, el, selected, skip) {
     <div class="src">${escapeHtml(c.storyHost)}</div>
   `;
   const select = () => {
-    unit.selectedUrl = c.url;
-    unit.skip = false;
-    el.querySelector('[data-skip]').checked = false;
+    if (isCandidateSelected(unit, c.url)) {
+      clearUnitImage(unit, el);
+    } else {
+      selectUnitImage(unit, c.url, el);
+    }
     render();
   };
   card.addEventListener('click', select);
@@ -279,8 +309,7 @@ async function addCustomImage(unitId, payload) {
   const data = await r.json();
   const unit = state.units.find((u) => u.unitId === unitId);
   if (unit) {
-    unit.selectedUrl = data.selectedUrl;
-    unit.skip = false;
+    selectUnitImage(unit, data.selectedUrl, null);
   }
   setStatus('Custom image added');
   await load();
@@ -300,7 +329,6 @@ function render() {
   for (const unit of state.units) {
     const el = document.createElement('section');
     el.className = 'unit';
-    const selected = unit.selectedUrl ?? unit.suggestedUrl ?? '';
     const skip = Boolean(unit.skip);
     const storyCount = unit.stories?.length ?? 0;
     const kindLabel =
@@ -320,12 +348,15 @@ function render() {
         <button type="button" data-add-url>Add URL</button>
         <div class="paste-zone" data-paste tabindex="0">Paste image here (Ctrl+V) or drop a file</div>
       </div>
-      <label class="skip-row"><input type="checkbox" data-skip ${skip ? 'checked' : ''} /> Skip image for this section</label>
+      <div class="selection-actions">
+        <button type="button" class="no-image-btn${skip ? ' is-active' : ''}" data-no-image>No image for this section</button>
+        <label class="skip-row"><input type="checkbox" data-skip ${skip ? 'checked' : ''} /> Skip image (same as above)</label>
+      </div>
       <label class="skip-row"><input type="checkbox" data-beyond ${unit.beyondEurope ? 'checked' : ''} /> Place under <strong>Beyond Europe</strong> (not main UK/EU body)</label>
     `;
     const grid = el.querySelector('.candidates');
     for (const c of unit.candidates) {
-      grid.appendChild(renderCandidateCard(c, unit, el, selected, skip));
+      grid.appendChild(renderCandidateCard(c, unit, el));
     }
     if (unit.candidates.length === 0) {
       const empty = document.createElement('p');
@@ -362,8 +393,22 @@ function render() {
       if (file) uploadPastedFile(unit.unitId, file);
     });
 
+    el.querySelector('[data-no-image]').addEventListener('click', () => {
+      if (unit.skip) {
+        unit.skip = false;
+        if (!unit.selectedUrl && unit.suggestedUrl) unit.selectedUrl = unit.suggestedUrl;
+      } else {
+        clearUnitImage(unit, el);
+      }
+      render();
+    });
     el.querySelector('[data-skip]').addEventListener('change', (e) => {
-      unit.skip = e.target.checked;
+      if (e.target.checked) {
+        clearUnitImage(unit, el);
+      } else {
+        unit.skip = false;
+        if (!unit.selectedUrl && unit.suggestedUrl) unit.selectedUrl = unit.suggestedUrl;
+      }
       render();
     });
     el.querySelector('[data-beyond]').addEventListener('change', (e) => {

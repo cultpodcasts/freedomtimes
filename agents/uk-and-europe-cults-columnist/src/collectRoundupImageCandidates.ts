@@ -343,10 +343,11 @@ export function mergeCandidatesWithSelections(
   const selByUnit = new Map(selections?.units.map((u) => [u.unitId, u]) ?? []);
   return candidates.units.map((unit) => {
     const sel = selByUnit.get(unit.unitId);
+    const skip = sel?.skip ?? false;
     return {
       ...unit,
-      selectedUrl: sel?.selectedUrl ?? unit.suggestedUrl,
-      skip: sel?.skip ?? false,
+      selectedUrl: skip ? null : (sel?.selectedUrl ?? unit.suggestedUrl),
+      skip,
       alt: sel?.alt ?? unit.suggestedAlt,
       beyondEurope: sel?.beyondEurope ?? unit.beyondEurope ?? false,
     };
