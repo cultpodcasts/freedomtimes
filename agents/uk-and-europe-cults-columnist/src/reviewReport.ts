@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { cleanArticlePlainText } from './articleContent.ts';
 import { loadClusterLayout } from './clusterLayout.ts';
 import { buildDigestView, loadDigestCorpus, loadPersistedFalsePositiveUrlKeys } from './digestView.ts';
 import {
@@ -7,6 +8,7 @@ import {
   matchReportProperNounAliases,
 } from './reportProperNouns.ts';
 import type { EnrichedStory } from '../scripts/render-cult-news-html.helpers.ts';
+import { fetchStoryMeta } from '../scripts/render-cult-news-html.helpers.ts';
 
 export const REVIEW_REPORT_LATEST_PATH = fileURLToPath(
   new URL('../reports/review-report-latest.json', import.meta.url),
@@ -176,15 +178,64 @@ export function saveReviewReport(report: ReviewReportPayload): void {
   writeFileSync(reviewReportPathForId(report.reportId), `${JSON.stringify(report, null, 2)}\n`, 'utf-8');
 }
 
-/** Recompute cleaned properNouns on an existing report (no HTTP fetch). */
-export function sanitizeReviewReportProperNouns(report: ReviewReportPayload): ReviewReportPayload {
-  for (const cluster of report.clusters) {
-    for (const story of cluster.stories) {
-      const lang = (story.htmlLang || 'en').split('-')[0] || 'en';
-      const sourceText = `${story.title} ${story.articleText}`;
-      story.signals.properNouns = extractReportProperNouns(sourceText, lang);
-      story.signals.matchedAliases = matchReportProperNounAliases(story.signals.properNouns);
+function refreshStorySignals(story: ReviewReportStory): void {
+  const lang = (story.htmlLang || 'en').split('-')[0] || 'en';
+  const sourceText = `${story.title} ${story.articleText}`;
+  story.signals.properNouns = extractReportProperNouns(sourceText, lang);
+  story.signals.matchedAliases = matchReportProperNounAliases(story.signals.properNouns);
+}
+
+async function refetchReviewReportStory(story: ReviewReportStory): Promise<void> {
+  const meta = await fetchStoryMeta(story.url, { contentMirrorUrl: story.contentMirrorUrl });
+  if (meta.title?.trim()) {
+    story.title = meta.title.trim();
+  }
+  if (meta.description?.trim()) {
+    story.description = meta.description.trim();
+  }
+  if (meta.articleText?.trim()) {
+    story.articleText = cleanArticlePlainText(meta.articleText);
+  }
+  if (meta.publishedAt) {
+    story.publishedAt = meta.publishedAt;
+  }
+  if (meta.htmlLang) {
+    story.htmlLang = meta.htmlLang;
+  }
+  if (meta.contentMirrorUrl) {
+    story.contentMirrorUrl = meta.contentMirrorUrl;
+  }
+  refreshStorySignals(story);
+}
+
+/** Re-fetch article text for all stories in the latest review report. */
+export async function refetchReviewReport(options?: {
+  onProgress?: (index: number, total: number, story: ReviewReportStory) => void;
+  onStoryError?: (story: ReviewReportStory, error: unknown) => void;
+}): Promise<ReviewReportPayload> {
+  const report = loadReviewReportLatest();
+  if (!report) {
+    throw new Error('No reports/review-report-latest.json — run: npm run build:review-report');
+  }
+
+  const stories = report.clusters.flatMap((cluster) => cluster.stories);
+  let index = 0;
+  for (const story of stories) {
+    index += 1;
+    options?.onProgress?.(index, stories.length, story);
+    try {
+      await refetchReviewReportStory(story);
+    } catch (error) {
+      options?.onStoryError?.(story, error);
+      refreshStorySignals(story);
     }
   }
-  return report;
+
+  const updated: ReviewReportPayload = {
+    ...report,
+    generatedAt: new Date().toISOString(),
+    refetchedAt: new Date().toISOString(),
+  };
+  saveReviewReport(updated);
+  return updated;
 }
