@@ -110,8 +110,7 @@ for (const unit of candidates.units) {
     console.warn('reprocess suggested', unit.unitLabel.slice(0, 50), quality.label, quality.warnings.join('; '));
   }
 
-  const alt = sanitizeAlt(sel?.alt ?? unit.suggestedAlt ?? unit.unitLabel);
-  if (!alt) continue;
+  const alt = sanitizeAlt(sel?.alt ?? unit.suggestedAlt ?? unit.unitLabel) || unit.unitLabel.slice(0, 120);
   const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : 'jpg';
   const localPath = join(tmpDir, `${unit.unitId.replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}.${ext}`);
 
