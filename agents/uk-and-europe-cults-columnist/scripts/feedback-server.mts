@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { URL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
@@ -10,6 +9,8 @@ import {
   saveClusterLayout,
   type ClusterLayout,
 } from '../src/clusterLayout.ts';
+import { buildDigestView } from '../src/digestView.ts';
+import { writeReviewReport, loadReviewReportLatest } from '../src/reviewReport.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -84,14 +85,18 @@ function sendError(res: ServerResponse, message: string, status = 400): void {
   sendJson(res, { error: message }, status);
 }
 
-function runRender(): void {
-  const renderMaxAge = process.env.CULT_NEWS_RENDER_MAX_AGE_HOURS?.trim() || '(unset)';
-  console.log('[feedback-server] re-rendering digest; CULT_NEWS_RENDER_MAX_AGE_HOURS =', renderMaxAge);
-  execSync('npx tsx --env-file=.env scripts/render-cult-news-html.tsx', {
-    cwd: join(__dirname, '..'),
-    env: process.env,
-    stdio: 'inherit',
-  });
+const FEEDBACK_UI_HTML = join(__dirname, 'feedback-ui.html');
+const FEEDBACK_UI_JS = join(__dirname, 'feedback-ui.js');
+const FEEDBACK_UI_CSS = join(__dirname, 'feedback-ui.css');
+
+function serveStaticFile(res: ServerResponse, filePath: string, contentType: string, corsHeaders: Record<string, string>): void {
+  if (!existsSync(filePath)) {
+    sendError(res, `Missing ${filePath}`, 404);
+    return;
+  }
+  const body = readFileSync(filePath, 'utf-8');
+  res.writeHead(200, { ...corsHeaders, 'Content-Type': contentType });
+  res.end(body);
 }
 
 async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
@@ -122,17 +127,64 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const url = new URL(req.url || '', `http://${req.headers.host}`);
   const path = url.pathname;
 
-  // Serve the rendered HTML report
+  // Dynamic feedback shell (loads digest from /api/digest/view)
   if (path === '/' || path === '/index.html') {
+    serveStaticFile(res, FEEDBACK_UI_HTML, 'text/html; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  if (path === '/feedback-ui.js') {
+    serveStaticFile(res, FEEDBACK_UI_JS, 'application/javascript; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  if (path === '/feedback-ui.css') {
+    serveStaticFile(res, FEEDBACK_UI_CSS, 'text/css; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  // Static HTML export (optional — same content as pre-refactor file:// flow)
+  if (path === '/export' || path === '/export.html') {
     const reportPath = join(REPORTS_DIR, 'cult-news-latest.html');
     if (!existsSync(reportPath)) {
       res.writeHead(404, { ...corsHeaders, 'Content-Type': 'text/plain' });
-      res.end('Report not found. Run: npm run render:html');
+      res.end('Export not found. Run: npm run render:html');
       return;
     }
     const html = readFileSync(reportPath, 'utf-8');
-    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/html' });
+    res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
+    return;
+  }
+
+  // API: Review report for summariser (clusters, urls, article text, signals)
+  if (path === '/api/report/result' && req.method === 'GET') {
+    try {
+      const existing = loadReviewReportLatest();
+      if (existing) {
+        sendJson(res, existing);
+        return;
+      }
+      const report = await writeReviewReport();
+      sendJson(res, report);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 404);
+    }
+    return;
+  }
+
+  // API: Digest view (corpus + feedback state, no full re-render)
+  if (path === '/api/digest/view' && req.method === 'GET') {
+    try {
+      const report = loadActiveReport();
+      const excludePersistedFalsePositives = report?.status !== 'review';
+      const view = await buildDigestView({ excludePersistedFalsePositives });
+      sendJson(res, view);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 404);
+    }
     return;
   }
 
@@ -164,6 +216,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     };
     saveActiveReport(report);
     sendJson(res, { reportId, status: 'review' });
+    return;
+  }
+
+  // API: Reset active report (clear in-progress session only)
+  if (path === '/api/report/reset' && req.method === 'POST') {
+    if (!existsSync(FEEDBACK_FILE)) {
+      sendJson(res, { success: true, status: 'none' });
+      return;
+    }
+    const fs = await import('node:fs/promises');
+    await fs.unlink(FEEDBACK_FILE);
+    sendJson(res, { success: true, status: 'none' });
     return;
   }
 
@@ -275,18 +339,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
 
-    // Re-render HTML so clustering excludes the false-positives.
-    // Inherit CULT_NEWS_RENDER_MAX_AGE_HOURS from the server process (set it when
-    // starting feedback:server, or in .env). Never force a narrower window here.
-    try {
-      runRender();
-    } catch (err) {
-      console.error('[feedback-server] render failed:', err);
-    }
-
     report.status = 'verification';
     saveActiveReport(report);
-    sendJson(res, { success: true, status: 'verification' });
+    const reviewReport = await writeReviewReport({ archivedSessionId: report.reportId });
+    sendJson(res, {
+      success: true,
+      status: 'verification',
+      reviewReportId: reviewReport.reportId,
+      visibleStoryCount: reviewReport.visibleStoryCount,
+    });
     return;
   }
 
@@ -305,7 +366,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
     data.layout.updatedAt = new Date().toISOString();
     saveClusterLayout(data.layout);
-    sendJson(res, { success: true });
+    const reviewReport = await writeReviewReport();
+    sendJson(res, { success: true, reviewReportId: reviewReport.reportId });
     return;
   }
 
@@ -328,14 +390,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
     data.layout.updatedAt = new Date().toISOString();
     saveClusterLayout(data.layout);
-    try {
-      runRender();
-    } catch (err) {
-      console.error('[feedback-server] render failed:', err);
-      sendError(res, 'Render failed', 500);
-      return;
-    }
-    sendJson(res, { success: true });
+    const reviewReport = await writeReviewReport();
+    sendJson(res, { success: true, reviewReportId: reviewReport.reportId });
     return;
   }
 
@@ -402,7 +458,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     const fs = await import('node:fs/promises');
     await fs.unlink(FEEDBACK_FILE);
 
-    sendJson(res, { success: true, archivedReportId: report.reportId });
+    const reviewReport = await writeReviewReport({
+      reportId: report.reportId,
+      archivedSessionId: report.reportId,
+    });
+    console.log('[feedback-server] wrote review report to reports/review-report-latest.json');
+
+    sendJson(res, {
+      success: true,
+      archivedReportId: report.reportId,
+      reviewReportId: reviewReport.reportId,
+      visibleStoryCount: reviewReport.visibleStoryCount,
+      clusterCount: reviewReport.clusters.length,
+    });
     return;
   }
 

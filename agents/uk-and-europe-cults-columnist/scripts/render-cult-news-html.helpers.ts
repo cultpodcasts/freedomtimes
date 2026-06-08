@@ -81,6 +81,14 @@ export const SOURCES_OUTPUT_PATH = resolvePathFromEnv(
   'CULT_NEWS_SOURCES_PATH',
   '../reports/cult-news-sources.json',
 );
+export const CORPUS_OUTPUT_PATH = resolvePathFromEnv(
+  'CULT_NEWS_CORPUS_PATH',
+  '../reports/digest-corpus.json',
+);
+export const VIEW_SNAPSHOT_PATH = resolvePathFromEnv(
+  'CULT_NEWS_VIEW_SNAPSHOT_PATH',
+  '../reports/digest-view-snapshot.json',
+);
 
 function decodeLogText(value: string): string {
   return value

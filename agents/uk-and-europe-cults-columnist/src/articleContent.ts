@@ -50,6 +50,10 @@ const LEADING_PLAIN_CHROME_PATTERNS: RegExp[] = [
   /^Comments\s+News\s+/i,
   /^View \d+ Images\s+/i,
   /^Lead Stories\s+/i,
+  /^Site Menu\s+News\s+Reviews[\s\S]{0,400}?(?=\d{4}|[A-Z]{3,})/i,
+  /^\d+ days ago\s+Share\s+Save\s+Add[\s\S]{0,350}?(?=[A-Z][a-z]{3,})/i,
+  /^Share\s+Save\s+Add as preferred on Google\s+/i,
+  /^Site Menu[\s\S]*?\d{1,2}:\d{2}\s+[AP]M\s+/i,
 ];
 
 /** Cut article body before related-content / comment widgets. */
@@ -65,6 +69,13 @@ const TRAILING_PLAIN_CHROME_PATTERNS: RegExp[] = [
   /\bMore stories from[\s\S]*$/i,
   /\bAdvertisement[\s\S]*$/i,
   /\bSource:\s*\S+\s*\(https?:\/\/[^\s)]+\)\s*$/i,
+  /\bDo you feel this content is inappropriate[\s\S]*$/i,
+  /\bSubscribe to Screen Anarchy[\s\S]*$/i,
+  /\bBe Anarchist![\s\S]*$/i,
+  /\bRecent Posts[\s\S]*$/i,
+  /\bLeading Voices in Global Cinema[\s\S]*$/i,
+  /\bAbout ScreenAnarchy[\s\S]*$/i,
+  /\bAll content ©[\s\S]*$/i,
 ];
 
 const NON_ARTICLE_HTML_CLASS_FRAGMENT =
@@ -232,32 +243,109 @@ function htmlToPlainText(htmlFragment: string): string {
   );
 }
 
-function extractArticleBodyHtml(html: string): string {
-  const articleBodyMatch = html.match(
-    /<(?:div|section|article)[^>]+itemprop=["']articleBody["'][^>]*>([\s\S]*?)<\/(?:div|section|article)>/i,
-  );
-  if (articleBodyMatch?.[1] && htmlToPlainText(articleBodyMatch[1]).length >= 120) {
-    return articleBodyMatch[1];
+const NAV_LEAD_MARKERS = [
+  /^site menu\b/i,
+  /\bsite menu news reviews\b/i,
+  /^news reviews interviews videos\b/i,
+  /^\d+ days ago share save\b/i,
+  /^share save add as preferred\b/i,
+];
+
+function scoreArticleHtmlFragment(htmlFragment: string): number {
+  const stripped = removeNonArticleBlocksFromHtml(htmlFragment);
+  const plain = stripLeadingAndTrailingSiteChrome(htmlToPlainText(stripped));
+  if (plain.length < 120) {
+    return 0;
   }
 
-  const articleMatches = [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)];
-  if (articleMatches.length > 0) {
-    let best = articleMatches[0]![1]!;
-    let bestLen = 0;
-    for (const match of articleMatches) {
-      const fragment = match[1] ?? '';
-      const len = htmlToPlainText(fragment).length;
-      if (len > bestLen) {
-        bestLen = len;
-        best = fragment;
-      }
+  let score = plain.length;
+  const paragraphCount = (stripped.match(/<p\b[^>]*>/gi) ?? []).length;
+  score += paragraphCount * 50;
+
+  const lead = plain.slice(0, 220);
+  for (const marker of NAV_LEAD_MARKERS) {
+    if (marker.test(lead)) {
+      score -= 800;
     }
-    if (bestLen >= 120) return best;
+  }
+
+  const headWords = lead.split(/\s+/).filter(Boolean);
+  if (headWords.length >= 10) {
+    const shortWords = headWords.filter((word) => word.length <= 5).length;
+    if (shortWords / headWords.length > 0.8) {
+      score -= 400;
+    }
+  }
+
+  return score;
+}
+
+function pushHtmlCandidate(candidates: string[], fragment: string | undefined): void {
+  if (!fragment) {
+    return;
+  }
+  const trimmed = fragment.trim();
+  if (trimmed.length < 80) {
+    return;
+  }
+  if (!candidates.includes(trimmed)) {
+    candidates.push(trimmed);
+  }
+}
+
+function collectArticleHtmlCandidates(html: string): string[] {
+  const candidates: string[] = [];
+
+  for (const match of html.matchAll(
+    /<(?:div|section|article)[^>]+itemprop=["']articleBody["'][^>]*>([\s\S]*?)<\/(?:div|section|article)>/gi,
+  )) {
+    pushHtmlCandidate(candidates, match[1]);
+  }
+
+  for (const match of html.matchAll(
+    /<(?:div|section|article)[^>]+itemtype=["'][^"']*schema\.org\/(?:news)?article["'][^>]*>([\s\S]*?)<\/(?:div|section|article)>/gi,
+  )) {
+    pushHtmlCandidate(candidates, match[1]);
+  }
+
+  for (const match of html.matchAll(/<(?:div|section|main)[^>]+role=["']main["'][^>]*>([\s\S]*?)<\/(?:div|section|main)>/gi)) {
+    pushHtmlCandidate(candidates, match[1]);
+  }
+
+  for (const match of html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi)) {
+    pushHtmlCandidate(candidates, match[1]);
+  }
+
+  for (const match of html.matchAll(
+    /<(?:div|section)[^>]+class=["'][^"']*(?:article-body|article__body|post-content|entry-content|story-body|article-content)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|section)>/gi,
+  )) {
+    pushHtmlCandidate(candidates, match[1]);
   }
 
   const mainMatch = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
-  if (mainMatch?.[1] && htmlToPlainText(mainMatch[1]).length >= 120) {
-    return mainMatch[1];
+  pushHtmlCandidate(candidates, mainMatch?.[1]);
+
+  return candidates;
+}
+
+function extractArticleBodyHtml(html: string): string {
+  const candidates = collectArticleHtmlCandidates(html);
+  if (candidates.length === 0) {
+    return html;
+  }
+
+  let best = candidates[0]!;
+  let bestScore = scoreArticleHtmlFragment(best);
+  for (const candidate of candidates.slice(1)) {
+    const score = scoreArticleHtmlFragment(candidate);
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+
+  if (bestScore >= 120) {
+    return best;
   }
 
   return html;
@@ -282,10 +370,27 @@ export function stripLeadingAndTrailingSiteChrome(plainText: string): string {
   return text;
 }
 
+/** Drop duplicated title/nav blob before the real lede (e.g. ScreenAnarchy). */
+export function stripDuplicateHeadlineLead(plainText: string): string {
+  const text = plainText.replace(/\s+/g, ' ').trim();
+  const navCut = text.replace(/^[\s\S]*?\bSite Menu\b[\s\S]*?\d{1,2}:\d{2}\s+[AP]M\s+/i, '').trim();
+  if (navCut.length >= 200 && navCut.length < text.length) {
+    return navCut;
+  }
+  return text;
+}
+
+/** Post-process already-extracted plain article text. */
+export function cleanArticlePlainText(text: string, maxLen = 6000): string {
+  return stripDuplicateHeadlineLead(stripLeadingAndTrailingSiteChrome(text.replace(/\s+/g, ' ').trim())).slice(
+    0,
+    maxLen,
+  );
+}
+
 /** Plain article body for NLP / clustering (no site chrome). */
 export function htmlToPlainArticleText(html: string, maxLen = 6000): string {
   const articleHtml = extractArticleBodyHtml(html);
   const stripped = removeNonArticleBlocksFromHtml(articleHtml);
-  const plain = stripLeadingAndTrailingSiteChrome(htmlToPlainText(stripped));
-  return plain.slice(0, maxLen);
+  return cleanArticlePlainText(htmlToPlainText(stripped), maxLen);
 }

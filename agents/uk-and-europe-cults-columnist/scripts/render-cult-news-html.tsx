@@ -31,6 +31,8 @@ import {
 import {
   Fragment,
   DRAFTS_ARCHIVE_PATH,
+  CORPUS_OUTPUT_PATH,
+  VIEW_SNAPSHOT_PATH,
   DRAFTS_PATH,
   LOG_PATH,
   OUTPUT_PATH,
@@ -61,6 +63,8 @@ type StoryGroup = {
 
 export type { StoryGroup, ClusterDetectionResult, ClusterAuditReport, RenderStorySet };
 export {
+  buildDigestAutoGroupsFromStories,
+  buildDigestViewFromStories,
   classifyStories,
   detectStoryClusters,
   auditClusterGaps,
@@ -921,17 +925,14 @@ function buildPage(
           .fb-btn.copied { background: #d4edda; color: #1a5c38; border-color: #a3d3b0; }
           .fb-btn[data-fb-reason="false-positive"] { display: none; }
           body.review-phase .fb-btn[data-fb-reason="false-positive"] { display: inline-block; }
-          body.verification-phase .cluster-move-select,
-          body.verification-phase .cluster-move-btn,
-          body.verification-phase .cluster-label-input,
-          body.verification-phase .cluster-delete-btn { display: inline-block; }
-          body.verification-phase .group-label { display: none; }
+          .cluster-fp-btn { display: none; }
+          body.review-phase .cluster-fp-btn { display: inline-block; }
           .cluster-move-select,
           .cluster-move-btn,
           .cluster-label-input,
-          .cluster-delete-btn,
-          #cluster-editor { display: none; }
-          body.verification-phase #cluster-editor { display: flex; }
+          .cluster-delete-btn { display: inline-block; }
+          .group-label { display: none; }
+          #cluster-editor { display: flex; }
           .cluster-move-select {
             font-size: 0.72rem;
             font-family: system-ui, sans-serif;
@@ -1010,7 +1011,7 @@ function buildPage(
             border-color: #1a5c38;
           }
           #layout-status { color: #4a463d; }
-          body.verification-phase main.wrap { padding-bottom: 72px; }
+          main.wrap { padding-bottom: 72px; }
           .card.flagged-fp { opacity: 0.45; border-color: #e57373; }
           .card.flagged-wc { opacity: 0.55; border-color: #f9a825; }
           #fb-toast {
@@ -1077,6 +1078,11 @@ function buildPage(
                       onclick="window._copyGroupCitations(this)"
                     >Copy citations</button>
                     <button
+                      className="fb-btn cluster-fp-btn"
+                      type="button"
+                      onclick="window._fbClickCluster(this)"
+                    >🚫 False positive (all)</button>
+                    <button
                       className="cluster-delete-btn"
                       type="button"
                       data-cluster-id={group.id ?? `auto-${groupIndex}`}
@@ -1113,6 +1119,7 @@ function buildPage(
       <div id="report-status" style="position: fixed; top: 10px; right: 10px; background: white; padding: 10px 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: 0.85rem; z-index: 1000;">
         <span id="status-text">Loading...</span>
         <button id="init-report-btn" style="margin-left: 10px; padding: 4px 8px; cursor: pointer;">Init Report</button>
+        <button id="reset-report-btn" style="margin-left: 5px; padding: 4px 8px; cursor: pointer; display: none;">Reset session</button>
         <button id="close-report-btn" style="margin-left: 5px; padding: 4px 8px; cursor: pointer; display: none;">Close Report</button>
         <button id="finalize-report-btn" style="margin-left: 5px; padding: 4px 8px; cursor: pointer; display: none;">Finalize</button>
       </div>
@@ -1198,6 +1205,7 @@ async function _checkReportStatus() {
 function _updateStatusUI(data) {
   const statusText = document.getElementById('status-text');
   const initBtn = document.getElementById('init-report-btn');
+  const resetBtn = document.getElementById('reset-report-btn');
   const closeBtn = document.getElementById('close-report-btn');
   const finalizeBtn = document.getElementById('finalize-report-btn');
 
@@ -1206,22 +1214,25 @@ function _updateStatusUI(data) {
   if (data.status === 'none') {
     statusText.textContent = 'No active report';
     initBtn.style.display = 'inline';
+    resetBtn.style.display = 'none';
     closeBtn.style.display = 'none';
     finalizeBtn.style.display = 'none';
   } else if (data.status === 'review') {
     statusText.textContent = 'Review phase (' + data.entryCount + ' flagged)';
     initBtn.style.display = 'none';
+    resetBtn.style.display = 'inline';
     closeBtn.style.display = 'inline';
     finalizeBtn.style.display = 'none';
     document.body.classList.add('review-phase');
   } else if (data.status === 'verification') {
     statusText.textContent = 'Verification — pick a cluster, click Move, then Apply changes';
     initBtn.style.display = 'inline';
+    resetBtn.style.display = 'inline';
     closeBtn.style.display = 'none';
     finalizeBtn.style.display = 'inline';
     document.body.classList.add('verification-phase');
-    _loadClusterLayoutEditor();
   }
+  _loadClusterLayoutEditor();
   _updateButtonVisibility();
 }
 
@@ -1420,7 +1431,9 @@ async function _loadClusterLayoutEditor() {
   try {
     var res = await fetch(API_BASE + '/api/cluster-layout');
     var data = await res.json();
-    clusterLayoutState = data.layout && data.layout.clusters ? data.layout : _layoutFromDom();
+    clusterLayoutState = (data.layout && Array.isArray(data.layout.clusters) && (data.layout.clusters.length > 0 || (data.layout.independentUrls && data.layout.independentUrls.length > 0)))
+      ? data.layout
+      : _layoutFromDom();
     _populateMoveSelects();
   } catch (e) {
     console.error('Failed to load cluster layout:', e);
@@ -1444,20 +1457,53 @@ window._newCluster = function() {
 };
 
 window._dissolveCluster = function(btn) {
-  if (!clusterLayoutState) return;
+  if (!clusterLayoutState) clusterLayoutState = _layoutFromDom();
   var id = btn.getAttribute('data-cluster-id');
+  var groupEl = btn.closest('.story-group[data-group-type="detected"]');
+  if (!id || !groupEl) return;
+
+  var domUrls = [];
+  groupEl.querySelectorAll('.card[data-url]').forEach(function(card) {
+    var url = card.getAttribute('data-url');
+    if (url) domUrls.push(url);
+  });
+
   var cluster = clusterLayoutState.clusters.find(function(c) { return c.id === id; });
-  if (!cluster) return;
-  cluster.urls.forEach(function(url) {
+  if (!cluster) {
+    var labelInput = groupEl.querySelector('.cluster-label-input');
+    var labelEl = groupEl.querySelector('.group-label');
+    var label = (labelInput && labelInput.value.trim())
+      ? labelInput.value.trim()
+      : (labelEl ? labelEl.textContent.trim() : 'Cluster');
+    cluster = { id: id, label: label, urls: domUrls.slice() };
+    clusterLayoutState.clusters.push(cluster);
+  } else {
+    cluster.urls = domUrls.slice();
+  }
+
+  domUrls.forEach(function(url) {
+    _removeUrlFromLayout(clusterLayoutState, url);
     if (clusterLayoutState.independentUrls.indexOf(url) === -1) {
       clusterLayoutState.independentUrls.push(url);
     }
   });
   clusterLayoutState.clusters = clusterLayoutState.clusters.filter(function(c) { return c.id !== id; });
   clusterLayoutState.updatedAt = new Date().toISOString();
+
+  var independentGrid = _clusterGridForTarget('independent');
+  if (!independentGrid) {
+    alert('Could not find Independent section. Click Apply changes & refresh to sync.');
+    return;
+  }
+  Array.prototype.slice.call(groupEl.querySelectorAll('.card[data-url]')).forEach(function(card) {
+    _moveCardInDom(card, 'independent');
+  });
+  groupEl.remove();
+
   _populateMoveSelects();
   var status = document.getElementById('layout-status');
   if (status) status.textContent = 'Unsaved changes — click Apply changes & refresh';
+  _showToast('Cluster dissolved — stories moved to Independent');
 };
 
 window._saveLayout = async function() {
@@ -1471,8 +1517,8 @@ window._saveLayout = async function() {
   var status = document.getElementById('layout-status');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
-    var res = await fetch(API_BASE + '/api/report/apply-layout', {
-      method: 'POST',
+    var res = await fetch(API_BASE + '/api/cluster-layout', {
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ layout: clusterLayoutState })
     });
@@ -1511,6 +1557,46 @@ async function _loadFeedback() {
 }
 
 function _updateButtonVisibility() {}
+
+window._fbClickCluster = async function(btn) {
+  if (!currentReport || currentReport.status !== 'review') {
+    alert('False positive marking is only available during review phase (after Init Report)');
+    return;
+  }
+  var group = btn.closest('.story-group[data-group-type="detected"]');
+  if (!group) return;
+  var labelInput = group.querySelector('.cluster-label-input');
+  var labelEl = group.querySelector('.group-label');
+  var label = (labelInput && labelInput.value.trim())
+    ? labelInput.value.trim()
+    : (labelEl ? labelEl.textContent.trim() : 'this cluster');
+  var fpButtons = group.querySelectorAll('.fb-btn[data-fb-reason="false-positive"]');
+  var pending = [];
+  fpButtons.forEach(function(fpBtn) {
+    var card = fpBtn.closest('.card');
+    if (card && !card.classList.contains('flagged-fp')) pending.push(fpBtn);
+  });
+  if (pending.length === 0) {
+    alert('Every story in this cluster is already flagged.');
+    return;
+  }
+  if (!confirm('Mark all ' + pending.length + ' stories in "' + label + '" as false positives?')) return;
+  btn.disabled = true;
+  var marked = 0;
+  try {
+    for (var i = 0; i < pending.length; i++) {
+      await window._fbClick(pending[i]);
+      marked += 1;
+    }
+    _showToast('Flagged ' + marked + ' stories in cluster');
+    _checkReportStatus();
+  } catch(e) {
+    console.error('Failed to flag cluster:', e);
+    alert('Failed to flag entire cluster');
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 window._fbClick = async function(btn) {
   if (!currentReport || currentReport.status !== 'review') {
@@ -1594,6 +1680,34 @@ document.getElementById('init-report-btn').addEventListener('click', async funct
   } catch(e) {
     console.error('Failed to init report:', e);
     alert('Failed to initialize report');
+  }
+});
+
+document.getElementById('reset-report-btn').addEventListener('click', async function() {
+  if (!confirm('Reset this review session? In-progress flags will be cleared. Entries already saved via Close Report (false-positives.json) are not removed.')) return;
+  const btn = this;
+  btn.disabled = true;
+  try {
+    const res = await fetch(API_BASE + '/api/report/reset', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      document.querySelectorAll('.card.flagged-fp, .card.flagged-wc').forEach(function(card) {
+        card.classList.remove('flagged-fp', 'flagged-wc');
+      });
+      document.querySelectorAll('.fb-btn[data-fb-reason="false-positive"]').forEach(function(fpBtn) {
+        fpBtn.classList.remove('copied');
+        fpBtn.textContent = '🚫 False positive';
+      });
+      _checkReportStatus();
+      _showToast('Review session reset');
+    } else if (data.error) {
+      alert(data.error);
+    }
+  } catch(e) {
+    console.error('Failed to reset report:', e);
+    alert('Failed to reset session');
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -4279,12 +4393,68 @@ function loadWrongClusterSet(): Set<string> {
   }
 }
 
-/** Classify stories and write cult-news-latest.html. */
-function writeDigestFromStories(stories: EnrichedStory[], wrongClusterSet?: Set<string>): void {
+/** Classify only (pre-layout); used for digest view snapshot. */
+function buildDigestAutoGroupsFromStories(stories: EnrichedStory[], wrongClusterSet?: Set<string>) {
+  const citedStories = stories.map(attachSourceCitation);
+  const { groups: autoGroups } = classifyStories(citedStories, wrongClusterSet);
+  return { citedStories, autoGroups };
+}
+
+/** Classify + layout without writing HTML (used by feedback API fallback). */
+function buildDigestViewFromStories(stories: EnrichedStory[], wrongClusterSet?: Set<string>) {
+  const citedStories = stories.map(attachSourceCitation);
+  const { groups: autoGroups } = classifyStories(citedStories, wrongClusterSet);
+  const layout = loadClusterLayout();
+  const groups = applyClusterLayout(autoGroups, citedStories, layout) as StoryGroup[];
+  const generatedAt = new Date().toISOString();
+  const citationReport = buildCitationReport(
+    groups.map((group) => ({
+      label: group.label,
+      type: group.type,
+      stories: group.stories.map(storyCitationInput),
+    })),
+    generatedAt,
+  );
+  return {
+    generatedAt,
+    totalCount: citedStories.length,
+    groups,
+    citationReport,
+  };
+}
+
+/** Classify stories and write cult-news-latest.html + digest corpus. */
+function writeDigestFromStories(
+  stories: EnrichedStory[],
+  wrongClusterSet?: Set<string>,
+  meta?: { draftSource: string; draftCount: number; renderMaxAgeHours: number | undefined },
+): void {
   const citedStories = stories.map(attachSourceCitation);
   const { groups: autoGroups, detection } = classifyStories(citedStories, wrongClusterSet);
   const layout = loadClusterLayout();
   const groups = applyClusterLayout(autoGroups, citedStories, layout) as StoryGroup[];
+
+  const corpusGeneratedAt = new Date().toISOString();
+  const viewSnapshot = {
+    corpusGeneratedAt,
+    generatedAt: corpusGeneratedAt,
+    autoGroups,
+    citedStoryCount: citedStories.length,
+  };
+  writeFileSync(VIEW_SNAPSHOT_PATH, `${JSON.stringify(viewSnapshot, null, 2)}\n`, 'utf-8');
+  console.log(`[agent] wrote digest view snapshot to ${VIEW_SNAPSHOT_PATH.pathname}`);
+
+  const corpusPayload = {
+    generatedAt: corpusGeneratedAt,
+    renderMaxAgeHours: meta?.renderMaxAgeHours ?? null,
+    draftSource: meta?.draftSource ?? 'unknown',
+    draftCount: meta?.draftCount ?? stories.length,
+    storyCount: stories.length,
+    stories,
+  };
+  mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
+  writeFileSync(CORPUS_OUTPUT_PATH, `${JSON.stringify(corpusPayload, null, 2)}\n`, 'utf-8');
+  console.log(`[agent] wrote digest corpus to ${CORPUS_OUTPUT_PATH.pathname} (${stories.length} stories)`);
 
   const audit = auditClusterGaps(citedStories, groups, detection);
   const auditPath = new URL('../reports/cluster-audit-latest.json', import.meta.url);
@@ -4476,8 +4646,12 @@ async function loadEnrichedStoriesForClustering(): Promise<RenderStorySet> {
 async function main(): Promise<void> {
   const logText = readFileSync(LOG_PATH, 'utf-8');
   const summary = extractRunSummary(logText);
-  const { stories, wrongClusterSet } = await loadEnrichedStoriesForClustering();
-  writeDigestFromStories(stories, wrongClusterSet);
+  const loaded = await loadEnrichedStoriesForClustering();
+  writeDigestFromStories(loaded.stories, loaded.wrongClusterSet, {
+    draftSource: loaded.draftSource,
+    draftCount: loaded.draftCount,
+    renderMaxAgeHours: loaded.renderMaxAgeHours,
+  });
   if (summary) {
     console.log(`[agent] rendered from ${summary.processed ?? 0} processed candidates`);
   }
