@@ -14,21 +14,26 @@ After **article planning** is finalized (`/articles` → Finalize plan → `repo
 
 ## Images (approval workflow)
 
-1. `npm run feedback:server` then `http://localhost:3000/draft-images?slug=<slug>`
-2. **Collect candidates** — live progress bar; scans all story URLs and probes quality
-3. **Probe quality** — re-run quality metrics on an existing `{slug}-image-candidates.json` without re-fetching articles (`npm run draft:probe-images -- <slug>` or the UI button)
-4. Per section: pick a candidate, **paste an image** (Ctrl+V), **drop a file**, or **Add URL** for your own image
-5. Mark **Beyond Europe** if needed → **Save selections**
+Full script reference: [AGENT_NPM_SCRIPTS.md](AGENT_NPM_SCRIPTS.md) § Draft → images → staging.
 
-CLI collect (no live UI): `npx tsx scripts/collect-roundup-image-candidates.mts <slug>` (`--skip-probe` optional)
-3. `npx tsx scripts/upload-roundup-images.mts <slug>` — requires `-image-selections.json`
-4. `npx tsx scripts/inject-roundup-images.mts <slug>` — inserts into draft markdown
+1. `npm run feedback:server` then `http://localhost:3000/draft-images?slug=<slug>`
+2. **Collect** — `npm run draft:collect-images -- <slug>` (or UI **Collect candidates**; live progress)
+3. **Probe quality** (optional) — `npm run draft:probe-images -- <slug>` if candidates exist but tiers are missing
+4. Per section: pick a candidate, **paste** (Ctrl+V), **drop**, or **Add URL**; mark **Beyond Europe** only when that section is under `## Beyond Europe` in the draft
+5. **Save selections** → `{slug}-image-selections.json`
+6. `npm run draft:upload-images -- <slug>` — requires `EMDASH_STAGING_PAT`
+7. `npm run draft:inject-images -- <slug>` — updates `reports/drafts/<slug>.md`
+8. `npm run draft:push-staging -- <slug>` — staging CMS draft (unpublished)
 
 Files: `{slug}-image-candidates.json`, `{slug}-image-selections.json`, `{slug}-images-uploaded.json`
 
 ## Tone (summary)
 
-Freedom Times tells **survivors’ stories** with sympathy and rigour. Speaking out is **brave** and helps others leave — especially **adult-children** raised in high-control groups. Acknowledge **moral and epistemic injury** where relevant. Explain cult **psychology** plainly; cite **experts**. Advocate for **coercive-control legislation** as a survivor-justice issue. Full guidance: skill § Editorial tone and voice.
+**Roundups = journalism first.** Each section answers **who, what, where, when, why, how** from sources. Court stories need **names, charges, court, and dates** when outlets publish them. Report facts; attribute “sect” / “cult” language to sources.
+
+**Do not** state Freedom Times’s position inside story summaries — no “Freedom Times distinguishes…”, no essays on evangelicalism vs coercive groups, no generic survivor-psychology or policy paragraphs between news items.
+
+**Standalones** may carry deeper survivor context, expert framing, and optional `## Editorial note`. Full guidance: skill § Editorial tone and voice, § Roundup reporting standards, § Do not editorialize on stories.
 
 ## Citation format (from staging)
 

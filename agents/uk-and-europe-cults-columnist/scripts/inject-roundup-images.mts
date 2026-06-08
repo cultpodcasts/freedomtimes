@@ -44,6 +44,7 @@ const beyondSet = new Set(
     .filter((u) => selByUnit.get(u.unitId)?.beyondEurope ?? u.beyondEurope ?? false)
     .map((u) => u.unitId),
 );
+const beyondUnitIds = unitOrder.filter((id) => beyondSet.has(id));
 
 let lines = readFileSync(mdPath, 'utf8').split('\n');
 
@@ -65,6 +66,7 @@ lines = lines.filter((l, i, arr) => {
 // Map section headings to unitIds in plan order
 const sectionHeadings: Array<{ lineIndex: number; level: number; unitId: string }> = [];
 let unitIdx = 0;
+let beyondIdx = 0;
 let inBeyond = false;
 
 for (let i = 0; i < lines.length; i++) {
@@ -82,9 +84,8 @@ for (let i = 0; i < lines.length; i++) {
 
   let unitId: string | undefined;
   if (inBeyond && h3) {
-    while (unitIdx < unitOrder.length && !beyondSet.has(unitOrder[unitIdx]!)) unitIdx++;
-    unitId = unitOrder[unitIdx];
-    unitIdx++;
+    unitId = beyondUnitIds[beyondIdx];
+    beyondIdx++;
   } else if (!inBeyond && h2) {
     while (unitIdx < unitOrder.length && beyondSet.has(unitOrder[unitIdx]!)) unitIdx++;
     unitId = unitOrder[unitIdx];

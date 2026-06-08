@@ -45,6 +45,7 @@
     "draft:upload-images": "tsx scripts/upload-roundup-images.mts",
     "draft:inject-images": "tsx scripts/inject-roundup-images.mts",
     "draft:probe-images": "tsx scripts/probe-roundup-image-candidates.mts",
+    "draft:push-staging": "tsx scripts/push-draft-to-staging.mts",
     "test:image-quality": "tsx scripts/image-quality.test.mts"
   },
   "devDependencies": {

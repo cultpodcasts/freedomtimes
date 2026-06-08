@@ -10,6 +10,8 @@ cd c:\Users\jonbr\source\repos\freedomtimes\agents\uk-and-europe-cults-columnist
 
 Related docs:
 
+- [AGENT_NPM_SCRIPTS.md](AGENT_NPM_SCRIPTS.md) — **canonical index** of every `npm run` script in this package
+- [DRAFT_FROM_ARTICLE_PLAN.md](DRAFT_FROM_ARTICLE_PLAN.md) — article plan → draft → images → staging CMS
 - [FIELD_RUN_PROMPT.md](FIELD_RUN_PROMPT.md) — **paste into a new agent session**; agent asks for date range, Tor, caps, then runs this workflow
 - [README.md](../README.md) — agent purpose, discovery policy, env reference
 - [SOAK_TEST_HANDOVER.md](../SOAK_TEST_HANDOVER.md) — cache reset, soak-test cadence, diagnostics

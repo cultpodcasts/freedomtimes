@@ -1,0 +1,65 @@
+---
+const props = Astro.props as Record<string, unknown>;
+const node =
+	(props.node as Record<string, unknown> | undefined)
+	?? (props.value as Record<string, unknown> | undefined)
+	?? props;
+
+function readString(input: unknown): string | null {
+	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+}
+
+function resolvePortableImageSrc(input: Record<string, unknown>): string | null {
+	const asset =
+		input.asset && typeof input.asset === 'object'
+			? (input.asset as Record<string, unknown>)
+			: null;
+
+	const directUrl =
+		readString(asset?.url)
+		?? readString(input.url)
+		?? readString(input.src)
+		?? readString(input.file);
+
+	if (directUrl) {
+		if (directUrl.startsWith('/')) {
+			return directUrl;
+		}
+
+		try {
+			const parsed = new URL(directUrl);
+			if (parsed.pathname.startsWith('/_emdash/api/media/file/')) {
+				return parsed.pathname;
+			}
+			return parsed.toString();
+		} catch {
+			return null;
+		}
+	}
+
+	const storageKey = readString(asset?.storageKey) ?? readString(input.storageKey);
+	if (storageKey) {
+		return `/_emdash/api/media/file/${storageKey}`;
+	}
+
+	const mediaRef =
+		readString(asset?._ref)
+		?? readString(asset?.id)
+		?? readString(input._ref)
+		?? readString(input.id);
+	if (mediaRef) {
+		return `/_emdash/api/media/file/${mediaRef}`;
+	}
+
+	return null;
+}
+
+const src = resolvePortableImageSrc(node);
+const alt = readString(node.alt) ?? '';
+---
+
+{src && (
+	<figure class="inline-figure">
+		<img src={src} alt={alt} loading="lazy" decoding="async" />
+	</figure>
+)}

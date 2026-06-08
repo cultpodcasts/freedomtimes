@@ -65,6 +65,10 @@ Each generated draft should include:
 
 For discovery → HTML digest → browser review (port 3000) → writing a summary article, see **[docs/WEEKLY_RUN.md](docs/WEEKLY_RUN.md)**.
 
+For **every `npm run` script** in this package (discovery, draft images, staging push, tests), see **[docs/AGENT_NPM_SCRIPTS.md](docs/AGENT_NPM_SCRIPTS.md)**.
+
+For drafting from a finalized article plan, see **[docs/DRAFT_FROM_ARTICLE_PLAN.md](docs/DRAFT_FROM_ARTICLE_PLAN.md)**.
+
 For a **new Cursor agent session**, say: *Follow `docs/FIELD_RUN_PROMPT.md`* — the agent will ask for date range, Tor, and other run options first.
 
 ## Quick Start

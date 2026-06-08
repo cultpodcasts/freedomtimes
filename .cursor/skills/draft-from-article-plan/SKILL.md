@@ -172,8 +172,9 @@ Freedom Times exists to **tell the stories of cult survivors** and to support a 
 - **Survivor-centred reporting** — people harmed by coercive groups are the reason we publish, not a sidebar to the news.
 - **Space for truth without intimidation** — we take seriously harassment, shunning, and pressure to stay silent.
 - **Evidence-led journalism** — sympathetic does not mean credulous; claims are sourced and legal standards are respected.
-- **Policy clarity** — we want legislators to enact **coercive-control legislation** so abusive high-control groups can be recognised and prosecuted where the law allows. Frame this as a public-safety and survivor-justice issue, not party politics.
-- **Understanding + accountability** — explain how coercive groups work *and* name institutional failures (police, courts, regulators) when reporting supports it.
+- **Understanding + accountability** — explain how coercive groups work *and* name institutional failures (police, courts, regulators) when **sources** report them.
+
+**Roundups vs standalones:** Mission and advocacy belong in **standalone** pieces and rare `## Editorial note` sections — not in weekly roundup body copy. Roundups **report the news**; they do not restate Freedom Times’s institutional view of religion, sects, or policy.
 
 ### Survivors who speak out
 
@@ -208,20 +209,57 @@ Highlight **credible experts** when the story involves them — researchers, cli
 |----|--------|
 | Calm, precise, trauma-aware prose | Tabloid shock, gawking, “true crime” relish |
 | Short paragraphs; clear `##` sections | Walls of text, jargon without explanation |
-| “For survivors and former members…” when legal news is painful (Norway JW model) | Implying courts “endorsed” abuse when they ruled on a narrow legal test |
-| Presumption of innocence for criminal defendants | Victim-blaming, guilt by association for all members |
-| Plain sympathy: “this will feel familiar if you have been inside…” (Katie Simpson model) | Irony at survivors’ expense, dunking on people still in groups |
+| **Who / what / where / when** in roundup leads | “A person was charged…” when sources name the accused |
+| Attribute labels (“sect”, “terror organisation”) to sources | Freedom Times lecturing on faith traditions or our editorial taxonomy |
+| Presumption of innocence for criminal defendants (one clause) | Victim-blaming, guilt by association for all members |
+| Plain sympathy tied to **named** people in the story | Generic paragraphs on bravery, epistemic injury, or “systems failure” |
+| Standalone: “this will feel familiar if you have been inside…” (Katie Simpson model) | Roundup essays on policy, legislators, or “what survivors will recognise” |
 
 ### Legal and criminal stories
 
 - Attribute **allegations** to prosecutors, police, or complainants until conviction.
-- Include **presumption of innocence** and editorial notes where charges are live.
+- Include **presumption of innocence** where charges are live (briefly — one clause, not a lecture).
+- **Name people in court stories when sources name them** — accused, charged, convicted, complainant, judge, prosecutor. Include **charge(s), court, date, place**. If Swedish or other law limits naming, say so explicitly (e.g. “charged a man prosecutors did not name”).
+- For judgments, report **what the court decided** in plain language; attribute claims to parties.
 - For survivors reading painful outcomes (e.g. a state subsidy ruling), explain **what the judgment did and did not decide** — legal clarity is not moral endorsement of harm.
+
+### Roundup reporting standards (journalism first)
+
+Each roundup section is a **news summary**, not an essay. Lead with **who, what, where, when, why, how** — drawn from Tier A/B sources.
+
+| Include in the first paragraph(s) | Examples |
+|-----------------------------------|----------|
+| **Who** | Named defendant, survivor, MEP, organisation, leader |
+| **What** | Charge filed, documentary aired, stickers removed, conference held |
+| **Where** | City, court, institution, country |
+| **When** | Date of hearing, broadcast, arrest, publication |
+| **Why / how** | Only when sources state motive, method, or alleged conduct |
+
+- **2–4 short paragraphs per unit** — mostly facts and attributed quotes/summaries.
+- **One closing sentence of context is fine** if sourced (e.g. “*Le Figaro* notes this is the first MKY prosecution in Sweden”).
+- Do **not** pad sections with generic survivor-psychology or policy paragraphs unrelated to the named story.
+
+### Do not editorialize on stories (especially roundups)
+
+**Never** state Freedom Times’s position inside a story summary:
+
+| Avoid | Instead |
+|-------|---------|
+| “Freedom Times distinguishes coercive groups from ordinary faith…” | Report what **Fath**, **Charente Libre**, or the church said |
+| “This is not a cult story in the narrow sense, but…” | Omit — if it is in the plan, report the facts |
+| “Expert framing helps that distinction…” | Quote the expert or outlet |
+| “Legislators still underfund…” / “Coercive-control legislation exists precisely so…” | Omit in roundups; report the bill, case, or service cited in sources |
+| “Survivors of high-control groups will recognise…” | Omit generic reader address |
+| “For second-generation members… questions are rarely abstract” | Keep only when a **named** second-gen source said it |
+
+**Religion and broad traditions:** evangelicalism, Catholicism, Pentecostalism, etc. can contain abuse and cover-ups — we know that. **Do not** use roundup space to lecture readers on which communities are “ordinary faith” vs “coercive”. Report **this week’s event** (conference, book, court case, ordination) on its own terms. Attribute “sect”, “cult”, or “high-control” language to prosecutors, survivors, or outlets — do not add Freedom Times taxonomy.
+
+**Survivor sympathy** in roundups: brief and **tied to a named person** in that section (e.g. Hadjara outside the courthouse) — not a standalone paragraph on bravery, epistemic injury, or “systems failure” unless the **source story** is about that system.
 
 ### Roundup vs standalone tone
 
-- **Roundup:** brisk but not glib; each unit deserves dignity — no punchline summaries of abuse.
-- **Standalone:** room for context, survivor relevance, expert framing, and optional `## Editorial note` for legal or psychological nuance.
+- **Roundup:** brisk, factual, attributed; each unit = mini news story; no institutional commentary; no thematic essays between sections.
+- **Standalone:** room for context, survivor relevance, expert framing, policy stakes, and optional `## Editorial note` for legal or psychological nuance.
 
 ---
 
@@ -255,9 +293,10 @@ Narrative paragraphs. Short paragraphs. UK/EU reader in mind.
 
 - Follow **`unitIds` order** — each unit becomes at least one `##` section (or a clearly labelled subsection).
 - Cluster units: synthesise all stories in the unit; do not treat each URL as a separate article.
-- Independent units: shorter sections (2–4 paragraphs) unless the story warrants more.
+- Independent units: **2–4 paragraphs** of sourced news summary (see **Roundup reporting standards**).
 - **No opening intro paragraph** — after the post title, go straight to the first story `##` section. Do not write a thematic week-ahead essay.
 - Opening `##` should name the first story, not frame the whole week.
+- **Per section:** who / what / where / when first; charges and court names for criminal stories; no Freedom Times commentary (see **Do not editorialize on stories**).
 
 **Geography — `## Beyond Europe` (end of article, before citations):**
 
@@ -451,18 +490,24 @@ Watchlist hosts (`watchlist-sites.json`) only add a small **score boost** to sug
 4. **Upload** approved images to staging EmDash media:
    ```powershell
    $env:EMDASH_STAGING_PAT = [Environment]::GetEnvironmentVariable('EMDASH_STAGING_PAT', 'User')
-   npx tsx scripts/upload-roundup-images.mts weekly-summary-8-june-2026
+   npm run draft:upload-images -- weekly-summary-8-june-2026
    ```
    Writes `reports/drafts/{slug}-images-uploaded.json`.  
    Use `--use-suggestions` only for a quick agent pass **without** editor approval (not for publish).
 
 5. **Inject** into markdown:
    ```powershell
-   npx tsx scripts/inject-roundup-images.mts weekly-summary-8-june-2026
+   npm run draft:inject-images -- weekly-summary-8-june-2026
    ```
    Maps sections to `unitIds` by plan order (`## Beyond Europe` → `###` subsections).
 
-6. Set post `featured_image` to the **first uploaded** section image.
+6. **Push** to staging CMS (draft, unpublished):
+   ```powershell
+   npm run draft:push-staging -- weekly-summary-8-june-2026
+   ```
+   Sets `featured_image` to the **first uploaded** section image. Requires an existing staging post with the same slug.
+
+All agent npm scripts: `agents/uk-and-europe-cults-columnist/docs/AGENT_NPM_SCRIPTS.md`.
 
 **Alt text:** who/what/where; keep short; no `|` (breaks CLI on Windows).
 

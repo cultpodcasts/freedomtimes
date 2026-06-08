@@ -257,6 +257,8 @@ Check especially: real group news **not** merged with fiction (e.g. PBCC vs Unch
     - Short mentions from **Latest Stories**
     - Use **Copy citations** / `reports/cult-news-sources.json` for sources
     - Only cite stories whose **published dates** fall inside your agreed coverage window
+    - **Journalism first:** each section = who / what / where / when / why / how from sources; name defendants and charges in court stories when outlets do
+    - **No Freedom Times commentary** in roundup body — report the story; do not state our position on sects, evangelicalism, Catholicism, or policy (see draft skill § Do not editorialize on stories)
 
 11. **Note code follow-ups** in `report-review-notes.md` for a **future development session** — do not fix clustering in this field run.
 

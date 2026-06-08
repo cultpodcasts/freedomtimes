@@ -21,6 +21,21 @@ mkdirSync(tmpDir, { recursive: true });
 
 const slug = process.argv[2] ?? 'weekly-summary-8-june-2026';
 const useSuggestions = process.argv.includes('--use-suggestions');
+const forceReupload = process.argv.includes('--force');
+
+function sanitizeAlt(raw: string): string {
+  return raw
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/[|&<>%^]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
 
 const token = process.env.EMDASH_STAGING_PAT;
 if (!token) throw new Error('Set EMDASH_STAGING_PAT');
@@ -52,6 +67,14 @@ if (exists(selectionsPath)) {
 }
 
 const selByUnit = new Map(selections?.units.map((u) => [u.unitId, u]) ?? []);
+const uploadsPath = join(draftsDir, `${slug}-images-uploaded.json`);
+let existingUploads: Array<{ unitId: string }> = [];
+try {
+  existingUploads = JSON.parse(readFileSync(uploadsPath, 'utf8'));
+} catch {
+  // fresh run
+}
+const existingByUnit = new Map(existingUploads.map((u) => [u.unitId, u]));
 const uploads: Array<{
   unitId: string;
   label: string;
@@ -66,6 +89,11 @@ for (const unit of candidates.units) {
   const sel = selByUnit.get(unit.unitId);
   const skip = sel?.skip ?? false;
   if (skip) continue;
+
+  if (!forceReupload && existingByUnit.has(unit.unitId)) {
+    uploads.push(existingByUnit.get(unit.unitId) as (typeof uploads)[0]);
+    continue;
+  }
 
   const url = sel?.selectedUrl ?? (useSuggestions ? unit.suggestedUrl : null);
   if (!url) {
@@ -82,7 +110,8 @@ for (const unit of candidates.units) {
     console.warn('reprocess suggested', unit.unitLabel.slice(0, 50), quality.label, quality.warnings.join('; '));
   }
 
-  const alt = (sel?.alt ?? unit.suggestedAlt ?? unit.unitLabel).replace(/[|]/g, '-').slice(0, 120);
+  const alt = sanitizeAlt(sel?.alt ?? unit.suggestedAlt ?? unit.unitLabel);
+  if (!alt) continue;
   const ext = url.includes('.png') ? 'png' : url.includes('.webp') ? 'webp' : 'jpg';
   const localPath = join(tmpDir, `${unit.unitId.replace(/[^a-z0-9]+/gi, '-').slice(0, 40)}.${ext}`);
 
@@ -110,14 +139,20 @@ for (const unit of candidates.units) {
     console.warn('upload failed', unit.unitLabel, up.stderr || up.stdout);
     continue;
   }
-  const media = JSON.parse(up.stdout);
+  const media = JSON.parse(up.stdout) as { id: string; storageKey?: string };
+  const storageKey = media.storageKey?.trim();
+  if (!storageKey) {
+    console.warn('upload missing storageKey', unit.unitLabel, media.id);
+    continue;
+  }
   uploads.push({
     unitId: unit.unitId,
     label: unit.unitLabel,
     alt,
     sourceUrl: url,
     mediaId: media.id,
-    fileUrl: `https://staging.freedomtimes.news/_emdash/api/media/file/${media.id}`,
+    storageKey,
+    fileUrl: `https://staging.freedomtimes.news/_emdash/api/media/file/${storageKey}`,
     quality: quality
       ? {
           tier: quality.tier,
@@ -131,5 +166,5 @@ for (const unit of candidates.units) {
   await new Promise((r) => setTimeout(r, 400));
 }
 
-writeFileSync(join(draftsDir, `${slug}-images-uploaded.json`), JSON.stringify(uploads, null, 2));
+writeFileSync(uploadsPath, JSON.stringify(uploads, null, 2));
 console.log('wrote', uploads.length, 'uploads');

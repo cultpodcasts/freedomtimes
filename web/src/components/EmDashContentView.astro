@@ -4,6 +4,7 @@ import { PortableText } from 'astro-portabletext';
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import PortableVideo from '../components/PortableVideo.astro';
+import PortableImage from '../components/PortableImage.astro';
 import PortableLink from '../components/PortableLink.astro';
 import PushNotificationsCallout from './PushNotificationsCallout.astro';
 import { readOptionalEnv } from '../lib/auth';
@@ -389,6 +390,7 @@ const primaryByline = (() => {
 const portableComponents = {
 	type: {
 		video: PortableVideo,
+		image: PortableImage,
 	},
 	mark: {
 		link: PortableLink,
@@ -448,7 +450,12 @@ function parseLegacyTextContent(value: string): LegacyContentBlock[] {
 		const imageMatch = line.match(imagePattern);
 		if (imageMatch) {
 			flushParagraph();
-			blocks.push({ type: 'image', alt: imageMatch[1].trim(), src: imageMatch[2].trim() });
+			const rawSrc = imageMatch[2].trim();
+			const src =
+				normalizeEmdashMediaFileUrl(rawSrc)
+				?? normalizeImageUrl(rawSrc)
+				?? rawSrc;
+			blocks.push({ type: 'image', alt: imageMatch[1].trim(), src });
 			continue;
 		}
 
@@ -666,11 +673,11 @@ const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 		border: 1px solid #eeeeee;
 	}
 
-	.legacy-content .inline-figure {
+	.content-card .inline-figure {
 		margin: 0 0 2rem;
 	}
 
-	.legacy-content .inline-figure img {
+	.content-card .inline-figure img {
 		display: block;
 		width: 100%;
 		height: auto;
