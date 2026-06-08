@@ -40,7 +40,10 @@
     "refetch:review-report": "tsx --env-file=.env scripts/refetch-review-report.mts",
     "test:article-extraction": "tsx scripts/article-extraction.test.mts",
     "test:report-proper-nouns": "tsx scripts/report-proper-nouns.test.mts",
-    "cluster:print-expectations": "tsx scripts/cluster-print-expectations.mts"
+    "cluster:print-expectations": "tsx scripts/cluster-print-expectations.mts",
+    "draft:collect-images": "tsx scripts/collect-roundup-image-candidates.mts",
+    "draft:upload-images": "tsx scripts/upload-roundup-images.mts",
+    "draft:inject-images": "tsx scripts/inject-roundup-images.mts"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",

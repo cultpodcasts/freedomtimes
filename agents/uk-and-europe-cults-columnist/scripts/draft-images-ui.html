@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Draft images — Freedom Times</title>
+  <link rel="stylesheet" href="/draft-images-ui.css" />
+</head>
+<body>
+  <header>
+    <h1>Draft image approval</h1>
+    <p class="lede">Pick one image per story section. Inline article photos are listed first when available — they are usually sharper than social <code>og:image</code> crops.</p>
+    <div class="toolbar">
+      <label>Slug <input id="slug" type="text" value="weekly-summary-8-june-2026" /></label>
+      <button type="button" id="collect">Collect candidates</button>
+      <button type="button" id="save" class="primary">Save selections</button>
+      <span id="status" role="status"></span>
+    </div>
+  </header>
+  <main id="units"></main>
+  <script src="/draft-images-ui.js"></script>
+</body>
+</html>

@@ -61,10 +61,10 @@ Cluster units arrive with multiple stories sharing `unitLabel`. Independent unit
 1. **Load plan** — confirm `articleCount`, list articles to draft.
 2. **For each article** (in plan order):
    1. Walk `unitIds` in order; for each unit, process its stories (cluster: all URLs in unit; story: single URL).
-   2. Draft markdown (see structure below).
-   3. Write draft to `agents/uk-and-europe-cults-columnist/reports/drafts/<slug>.md`.
-   4. Human review.
-   5. Create/update staging post via EmDash MCP (`content_create` / `content_update`, then `content_publish`).
+   2. Draft markdown (see structure below) → `reports/drafts/<slug>.md`.
+   3. **Images (human-in-the-loop)** — see [Images](#images) below; do not skip approval.
+   4. Editor review of prose + images.
+   5. Create/update **staging** post via EmDash (`content_create` / `content_update`, `--draft`).
 3. **Do not publish to production** unless explicitly asked.
 
 ---
@@ -371,7 +371,7 @@ For a key broadcast clip, embed via EmDash block (Ahmadi roundup). Cite the YouT
 
 ## Images
 
-**Roundups:** one image per story section, placed on the line **immediately after** each `##` or `###` heading:
+**Roundups:** one image per story section, on the line **immediately after** each `##` / `###` heading:
 
 ```markdown
 ## Story heading
@@ -381,11 +381,63 @@ For a key broadcast clip, embed via EmDash block (Ahmadi roundup). Cite the YouT
 Opening paragraph…
 ```
 
-1. Prefer `og:image` from a **Tier A** source in the unit; else best available sibling URL.
-2. Download, upload to staging (`scripts/upload-roundup-images.mjs`), inject via `scripts/inject-roundup-images.mjs`.
-3. Alt text: who/what/where — keep short; avoid `|` in alt (breaks Windows CLI upload).
-4. Set post `featured_image` to the lead story’s uploaded media (usually first section).
-5. Markdown `![alt](url)` renders on the public site (legacy content parser).
+### Candidate sources (prefer inline over og:image)
+
+Do **not** maintain a fixed outlet list in scripts (no hardcoded `tierA` arrays). Each week’s corpus comes from **`article-plan.json`** only — collect from **every story URL in every unit** (all cluster siblings included).
+
+Do **not** use `og:image` alone. Rank candidates from:
+
+| Source | Priority | Notes |
+|--------|----------|--------|
+| `inline-lead` | Highest | First `<img>` in `<article>` / `<main>` — usually the photo editor chose |
+| `inline-article` | High | Other in-body images |
+| `json-ld` | Medium | Structured data image |
+| `twitter:image` | Lower | Social card |
+| `og:image` | Lowest | Often a 1200×630 crop — usable fallback only |
+
+Implementation: `src/roundupImageCandidates.ts` (scoring + HTML parse). Skips logos, icons, tiny assets.
+
+### Image workflow (approval required)
+
+```text
+draft prose → collect candidates → editor approves → upload → inject → staging
+```
+
+1. **Collect** candidates (all units in plan order):
+   ```powershell
+   cd agents/uk-and-europe-cults-columnist
+   npx tsx scripts/collect-roundup-image-candidates.mts weekly-summary-8-june-2026
+   ```
+   Writes `reports/drafts/{slug}-image-candidates.json`.
+
+2. **Approve** in browser (feedback server must be running):
+   - Open `http://localhost:3000/draft-images?slug=weekly-summary-8-june-2026`
+   - Click **Collect candidates** if the file is missing or stale.
+   - Pick one image per unit (or **Skip**). Inline photos are listed first when found.
+   - Tick **Beyond Europe** for units that belong in that closing section (editor choice each week — not hostname heuristics).
+   - **Save selections** → `reports/drafts/{slug}-image-selections.json`
+
+Watchlist hosts (`watchlist-sites.json`) only add a small **score boost** to suggested defaults — they do not limit which URLs are fetched.
+
+3. **Upload** approved images to staging EmDash media:
+   ```powershell
+   $env:EMDASH_STAGING_PAT = [Environment]::GetEnvironmentVariable('EMDASH_STAGING_PAT', 'User')
+   npx tsx scripts/upload-roundup-images.mts weekly-summary-8-june-2026
+   ```
+   Writes `reports/drafts/{slug}-images-uploaded.json`.  
+   Use `--use-suggestions` only for a quick agent pass **without** editor approval (not for publish).
+
+4. **Inject** into markdown:
+   ```powershell
+   npx tsx scripts/inject-roundup-images.mts weekly-summary-8-june-2026
+   ```
+   Maps sections to `unitIds` by plan order (`## Beyond Europe` → `###` subsections).
+
+5. Set post `featured_image` to the **first uploaded** section image.
+
+**Alt text:** who/what/where; keep short; no `|` (breaks CLI on Windows).
+
+Markdown `![alt](url)` renders on the public site (`EmDashContentView` legacy parser).
 
 ---
 
@@ -461,6 +513,7 @@ Before handing to editor:
 - [ ] Paywalled sources labelled `(paywalled)`; archive.ph / archive.org links verified (no `/newest/` or `/web/*/` templates)
 - [ ] Criminal allegations attributed; presumption of innocence where needed
 - [ ] Featured image set (or explicit note why none)
+- [ ] Images: candidates collected, **selections saved** via `/draft-images`, uploaded and injected
 - [ ] Slug matches type: `weekly-summary-8-june-2026` (roundup) or `{topic}-{dd-mm-yyyy}` (standalone)
 - [ ] Draft saved under `reports/drafts/<slug>.md`
 - [ ] Staging post created as **draft/unpublished** until editor approves publish

@@ -12,6 +12,15 @@ After **article planning** is finalized (`/articles` → Finalize plan → `repo
 - **Image per section** — `![alt](staging-media-url)` immediately after each `##` / `###` heading.
 - **Beyond Europe** — last section before citations for stories reported in Europe but occurring outside UK/EU.
 
+## Images (approval workflow)
+
+1. `npx tsx scripts/collect-roundup-image-candidates.mts <slug>` — scans **all** story URLs in each unit (from article plan); inline photos preferred over `og:image`
+2. `http://localhost:3000/draft-images?slug=<slug>` — pick image, mark **Beyond Europe** if needed, Save selections
+3. `npx tsx scripts/upload-roundup-images.mts <slug>` — requires `-image-selections.json`
+4. `npx tsx scripts/inject-roundup-images.mts <slug>` — inserts into draft markdown
+
+Files: `{slug}-image-candidates.json`, `{slug}-image-selections.json`, `{slug}-images-uploaded.json`
+
 ## Tone (summary)
 
 Freedom Times tells **survivors’ stories** with sympathy and rigour. Speaking out is **brave** and helps others leave — especially **adult-children** raised in high-control groups. Acknowledge **moral and epistemic injury** where relevant. Explain cult **psychology** plainly; cite **experts**. Advocate for **coercive-control legislation** as a survivor-justice issue. Full guidance: skill § Editorial tone and voice.

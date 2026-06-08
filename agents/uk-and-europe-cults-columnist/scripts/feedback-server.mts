@@ -19,12 +19,19 @@ import {
   saveArticlePlanDraft,
   type ArticlePlanState,
 } from '../src/articlePlan.ts';
+import {
+  collectRoundupImageCandidates,
+  mergeCandidatesWithSelections,
+  type RoundupImageCandidatesFile,
+  type RoundupImageSelectionsFile,
+} from '../src/collectRoundupImageCandidates.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORT = Number.parseInt(process.env.FEEDBACK_SERVER_PORT || '3000', 10);
 const REPORTS_DIR = join(__dirname, '../reports');
+const DRAFTS_DIR = join(REPORTS_DIR, 'drafts');
 const DATA_DIR = join(__dirname, '../data');
 const FEEDBACK_DIR = join(DATA_DIR, 'feedback');
 const FEEDBACK_FILE = join(FEEDBACK_DIR, 'active-report.json');
@@ -99,6 +106,25 @@ const FEEDBACK_UI_CSS = join(__dirname, 'feedback-ui.css');
 const ARTICLE_PLAN_UI_HTML = join(__dirname, 'article-plan-ui.html');
 const ARTICLE_PLAN_UI_JS = join(__dirname, 'article-plan-ui.js');
 const ARTICLE_PLAN_UI_CSS = join(__dirname, 'article-plan-ui.css');
+const DRAFT_IMAGES_UI_HTML = join(__dirname, 'draft-images-ui.html');
+const DRAFT_IMAGES_UI_JS = join(__dirname, 'draft-images-ui.js');
+const DRAFT_IMAGES_UI_CSS = join(__dirname, 'draft-images-ui.css');
+
+function draftImagesPath(slug: string, kind: 'candidates' | 'selections'): string {
+  return join(DRAFTS_DIR, `${slug}-image-${kind}.json`);
+}
+
+function loadDraftImageCandidates(slug: string): RoundupImageCandidatesFile | null {
+  const p = draftImagesPath(slug, 'candidates');
+  if (!existsSync(p)) return null;
+  return JSON.parse(readFileSync(p, 'utf8')) as RoundupImageCandidatesFile;
+}
+
+function loadDraftImageSelections(slug: string): RoundupImageSelectionsFile | null {
+  const p = draftImagesPath(slug, 'selections');
+  if (!existsSync(p)) return null;
+  return JSON.parse(readFileSync(p, 'utf8')) as RoundupImageSelectionsFile;
+}
 
 function serveStaticFile(res: ServerResponse, filePath: string, contentType: string, corsHeaders: Record<string, string>): void {
   if (!existsSync(filePath)) {
@@ -167,6 +193,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (path === '/article-plan-ui.css') {
     serveStaticFile(res, ARTICLE_PLAN_UI_CSS, 'text/css; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  if (path === '/draft-images') {
+    serveStaticFile(res, DRAFT_IMAGES_UI_HTML, 'text/html; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  if (path === '/draft-images-ui.js') {
+    serveStaticFile(res, DRAFT_IMAGES_UI_JS, 'application/javascript; charset=utf-8', corsHeaders);
+    return;
+  }
+
+  if (path === '/draft-images-ui.css') {
+    serveStaticFile(res, DRAFT_IMAGES_UI_CSS, 'text/css; charset=utf-8', corsHeaders);
     return;
   }
 
@@ -287,6 +328,69 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
     sendJson(res, finalized);
+    return;
+  }
+
+  // Draft roundup images — collect, review, save selections
+  if (path === '/api/draft-images' && req.method === 'GET') {
+    const slug = new URL(req.url ?? '', `http://localhost:${PORT}`).searchParams.get('slug');
+    if (!slug) {
+      sendError(res, 'slug query parameter required');
+      return;
+    }
+    const candidates = loadDraftImageCandidates(slug);
+    if (!candidates) {
+      sendError(res, `No candidates for ${slug}. POST /api/draft-images/collect first.`, 404);
+      return;
+    }
+    const selections = loadDraftImageSelections(slug);
+    const units = mergeCandidatesWithSelections(candidates, selections);
+    sendJson(res, { slug, units });
+    return;
+  }
+
+  if (path === '/api/draft-images/collect' && req.method === 'POST') {
+    try {
+      const data = await readJsonBody<{ slug?: string }>(req);
+      const slug = data.slug?.trim();
+      if (!slug) {
+        sendError(res, 'slug required');
+        return;
+      }
+      if (!existsSync(DRAFTS_DIR)) {
+        mkdirSync(DRAFTS_DIR, { recursive: true });
+      }
+      const result = await collectRoundupImageCandidates(slug);
+      writeFileSync(draftImagesPath(slug, 'candidates'), JSON.stringify(result, null, 2), 'utf8');
+      sendJson(res, { success: true, unitCount: result.units.length, path: draftImagesPath(slug, 'candidates') });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 400);
+    }
+    return;
+  }
+
+  if (path === '/api/draft-images' && req.method === 'PUT') {
+    try {
+      const data = await readJsonBody<RoundupImageSelectionsFile>(req);
+      if (!data.slug?.trim() || !data.units) {
+        sendError(res, 'slug and units required');
+        return;
+      }
+      if (!existsSync(DRAFTS_DIR)) {
+        mkdirSync(DRAFTS_DIR, { recursive: true });
+      }
+      const payload: RoundupImageSelectionsFile = {
+        slug: data.slug.trim(),
+        savedAt: new Date().toISOString(),
+        units: data.units,
+      };
+      writeFileSync(draftImagesPath(payload.slug, 'selections'), JSON.stringify(payload, null, 2), 'utf8');
+      sendJson(res, { success: true, savedAt: payload.savedAt });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      sendError(res, message, 400);
+    }
     return;
   }
 
@@ -605,4 +709,6 @@ const server = createServer(handleRequest);
 server.listen(PORT, () => {
   console.log(`[feedback-server] Running on http://localhost:${PORT}`);
   console.log(`[feedback-server] Open http://localhost:${PORT} to view the report`);
+  console.log(`[feedback-server] Article plan: http://localhost:${PORT}/articles`);
+  console.log(`[feedback-server] Draft images: http://localhost:${PORT}/draft-images`);
 });
