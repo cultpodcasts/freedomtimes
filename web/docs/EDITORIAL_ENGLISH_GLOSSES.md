@@ -51,7 +51,7 @@ Use **name + role** on **first substantive mention** in the body (excerpt counts
 
 ## PT pattern: French `blockquote` + English translation expander (canonical)
 
-This is the **only supported shape** for “show the source-language line, hide the English gloss behind a disclosure”. Use for **any** non-English quote (French, Swedish, Norwegian, Dutch, German, etc.) — including **Europe & UK Cult News** weekly roundups (see the private **freedomtimes-agents** repo, `docs/WEEKLY_REPORT_WRITING_GUIDE.md` § Translation blocks). Draft markdown: `>` blockquote + `<details class="translate">` … `</details>`; agent push via `markdown-to-portable-text.mts` in that repo. It matches the **Norway Supreme Court flagship** posts and `buildPortableRenderNodes` in **`web/src/lib/content/contentBlocks.ts`** (patterns in **`web/src/lib/content/translateDetails.ts`**). A legacy client-side upgrade exists in **`web/src/lib/content/contentEnhancements.ts`** for old imports that stuffed the tags into a single paragraph; **new authoring should not rely on that.**
+This is the **only supported shape** for “show the source-language line, hide the English gloss behind a disclosure”. Use for **any** non-English quote (French, Swedish, Norwegian, Dutch, German, etc.). Draft markdown: `>` blockquote + `<details class="translate">` … `</details>`. It matches the **Norway Supreme Court flagship** posts and `buildPortableRenderNodes` in **`web/src/lib/content/contentBlocks.ts`** (patterns in **`web/src/lib/content/translateDetails.ts`**). A legacy client-side upgrade exists in **`web/src/lib/content/contentEnhancements.ts`** for old imports that stuffed the tags into a single paragraph; **new authoring should not rely on that.**
 
 ### Block order in the `content` array (strict)
 

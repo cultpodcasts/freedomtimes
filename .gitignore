@@ -50,7 +50,6 @@ request-headers
 web/.generated/archive-import/*
 .cookie
 secrets/*
-agents/cult-columnist-cf-worker/.wrangler/*
 tmp/*
 .cursor/*
 web/.tmp/*
