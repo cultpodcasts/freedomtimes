@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet("staging", "production", "auth0-shared", "local")]
+    [ValidateSet("staging", "production", "auth0-shared")]
     [string]$Environment,
     [Parameter(Mandatory = $true)]
     [ValidateSet("init", "validate", "plan", "apply", "destroy", "import", "output")]
@@ -160,15 +160,6 @@ function Build-TerraformVarArgs {
             auth0_api_identifier                = @("TF_VAR_auth0_api_identifier", "AUTH0_API_AUDIENCE")
             editorial_roles_claim               = @("TF_VAR_editorial_roles_claim", "AUTH0_ROLES_CLAIM_NAMESPACE")
             workspace_url                       = @("TF_VAR_workspace_url", "TF_VAR_WORKSPACE_URL_PRODUCTION")
-        }
-    }
-    elseif ($Env -eq "local") {
-        $map = [ordered]@{
-            auth0_domain                   = @("TF_VAR_auth0_domain", "TF_VAR_AUTH0_DOMAIN")
-            auth0_management_client_id     = @("TF_VAR_auth0_management_client_id", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID")
-            auth0_management_client_secret = @("TF_VAR_auth0_management_client_secret", "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET")
-            auth0_api_identifier           = @("TF_VAR_auth0_api_identifier", "AUTH0_API_AUDIENCE")
-            editorial_roles_claim          = @("TF_VAR_editorial_roles_claim", "AUTH0_ROLES_CLAIM_NAMESPACE")
         }
     }
     else {
