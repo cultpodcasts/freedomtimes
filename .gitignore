@@ -32,7 +32,7 @@ infra/terraform/environments/staging/.wrangler/cache/wrangler-account.json
 infra/terraform/environments/staging/tfplan
 infra/terraform/environments/production/tfplan
 infra/terraform/environments/production/tfplan
-.wrangler/cache/wrangler-account.json
+.wrangler/*
 infra/terraform/environments/production/.wrangler/cache/wrangler-account.json
 .tmp/*
 .release/backups/*.db
