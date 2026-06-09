@@ -50,10 +50,6 @@ request-headers
 web/.generated/archive-import/*
 .cookie
 secrets/*
-agents/uk-and-europe-cults-columnist/reports/*.html
-agents/uk-and-europe-cults-columnist/reports/*
-agents/uk-and-europe-cults-columnist/tmp/*
-agents/uk-and-europe-cults-columnist/feedback/*
 agents/cult-columnist-cf-worker/.wrangler/*
 tmp/*
 .cursor/*

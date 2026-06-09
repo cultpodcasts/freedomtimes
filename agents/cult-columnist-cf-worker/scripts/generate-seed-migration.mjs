@@ -1,7 +1,10 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const legacyBase = resolve('agents/uk-and-europe-cults-columnist');
+const legacyBase = resolve(
+  process.env.FREEDOMTIMES_AGENTS_DIR?.trim() ||
+    join(resolve(import.meta.dirname, '../../..'), '..', 'freedomtimes-agents'),
+);
 const targetSql = resolve('agents/cult-columnist-cf-worker/migrations/0002_seed_config.sql');
 
 const readJson = (relativePath) => JSON.parse(readFileSync(resolve(legacyBase, relativePath), 'utf-8'));

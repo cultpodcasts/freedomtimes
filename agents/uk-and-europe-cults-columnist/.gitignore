@@ -1,6 +1,0 @@
-.env
-.cache/
-reports/
-node_modules/
-dist/
-data/discovery/_cache/

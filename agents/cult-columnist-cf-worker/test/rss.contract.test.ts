@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
  * Feed Config Contract Tests
  *
  * Both agents are seeded from the same feed definitions:
- *   - Node.js agent:  agents/uk-and-europe-cults-columnist/feeds.json
+ *   - Node.js agent:  freedomtimes-agents/feeds.json (sibling repo or FREEDOMTIMES_AGENTS_DIR)
  *   - CF worker:      agents/cult-columnist-cf-worker/migrations/0002_seed_config.sql
  *
  * These tests assert both sources stay in sync as feeds are added/removed/modified.
@@ -14,6 +14,9 @@ import { describe, expect, it } from 'vitest';
  */
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
+const AGENTS_ROOT = resolve(
+  process.env.FREEDOMTIMES_AGENTS_DIR?.trim() || join(REPO_ROOT, '..', 'freedomtimes-agents'),
+);
 
 type NodeFeed = {
   id: string;
@@ -35,7 +38,7 @@ type SqlFeed = {
 
 function loadNodeAgentFeeds(): NodeFeed[] {
   const raw = readFileSync(
-    join(REPO_ROOT, 'agents/uk-and-europe-cults-columnist/feeds.json'),
+    join(AGENTS_ROOT, 'feeds.json'),
     'utf-8',
   );
   return (JSON.parse(raw) as { feeds: NodeFeed[] }).feeds;

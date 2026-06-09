@@ -21,7 +21,7 @@ Focus on durable orchestration hardening and pipeline completion for the Cloudfl
 
 ## Priority 2A: Node.js Agent Port Track
 
-- Inventory current Node.js pipeline modules in agents/uk-and-europe-cults-columnist and map each to a Cloudflare worker/stage target.
+- Inventory current Node.js pipeline modules in **freedomtimes-agents** (sibling repo) and map each to a Cloudflare worker/stage target.
 - Port feed discovery and URL normalization logic with behavior parity tests against Node.js fixture inputs.
 - Port article retrieval fallback chain (direct, archive fallback, browser-render fallback) with host-level retry/backoff parity.
 - Port scoring stack (relevance, cult precision, figurative checks) and validate score deltas against sampled Node.js outputs.

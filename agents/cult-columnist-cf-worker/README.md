@@ -2,6 +2,8 @@
 
 Standalone Cloudflare worker for the UK/EU cult-news pipeline.
 
+**Node.js agent source** lives in the private sibling repo **freedomtimes-agents** (`../freedomtimes-agents` or `FREEDOMTIMES_AGENTS_DIR`). Regenerate D1 seeds from that repo’s JSON via `node scripts/generate-seed-migration.mjs` (run from this package).
+
 ## Objectives
 
 - Run the cult-news pipeline as durable server-side infrastructure, not a local-only process.
