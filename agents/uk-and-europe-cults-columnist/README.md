@@ -67,6 +67,10 @@ For discovery → HTML digest → browser review (port 3000) → writing a summa
 
 For **every `npm run` script** in this package (discovery, draft images, staging push, tests), see **[docs/AGENT_NPM_SCRIPTS.md](docs/AGENT_NPM_SCRIPTS.md)**.
 
+For **weekly roundup prose standards**, see **[docs/WEEKLY_REPORT_WRITING_GUIDE.md](docs/WEEKLY_REPORT_WRITING_GUIDE.md)**.
+
+For **using *cult* vs *sect*** in weekly reports (translation folds, source languages, checklist), see **[docs/CULT_WORDING.md](docs/CULT_WORDING.md)**.
+
 For drafting from a finalized article plan, see **[docs/DRAFT_FROM_ARTICLE_PLAN.md](docs/DRAFT_FROM_ARTICLE_PLAN.md)**.
 
 For a **new Cursor agent session**, say: *Follow `docs/FIELD_RUN_PROMPT.md`* — the agent will ask for date range, Tor, and other run options first.

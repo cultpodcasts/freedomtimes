@@ -45,6 +45,16 @@ export function readOptionalEnv(key: string): string {
   return runtimeEnv[key] ?? (import.meta.env as Record<string, string | undefined>)[key] ?? '';
 }
 
+/** Staging (`SITE_ACCESS_MODE=locked`) — `/` is the login wall; newsroom lives at `/homepage`. */
+export function isLockedSiteAccess(): boolean {
+  return readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase() !== 'public';
+}
+
+/** Editorial home URL: `/homepage` on locked staging, `/` on public production. */
+export function getHomePath(): '/' | '/homepage' {
+  return isLockedSiteAccess() ? '/homepage' : '/';
+}
+
 export function getAuthConfig(): AuthConfig {
   return {
     domain: readEnv('AUTH0_DOMAIN'),

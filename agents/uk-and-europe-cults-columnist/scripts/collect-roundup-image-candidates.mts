@@ -13,7 +13,7 @@ mkdirSync(draftsDir, { recursive: true });
 
 const args = process.argv.slice(2);
 const skipProbe = args.includes('--skip-probe');
-const slug = args.find((a) => !a.startsWith('--')) ?? 'weekly-summary-8-june-2026';
+const slug = args.find((a) => !a.startsWith('--')) ?? 'weekly-summary-7-june-2026';
 
 const result = await collectRoundupImageCandidates(slug, undefined, { skipProbe }, draftsDir);
 const outPath = join(draftsDir, `${slug}-image-candidates.json`);

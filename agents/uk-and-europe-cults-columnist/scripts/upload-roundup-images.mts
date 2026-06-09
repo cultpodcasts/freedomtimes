@@ -19,7 +19,7 @@ const draftsDir = join(agentRoot, 'reports', 'drafts');
 const tmpDir = join(draftsDir, '_images');
 mkdirSync(tmpDir, { recursive: true });
 
-const slug = process.argv[2] ?? 'weekly-summary-8-june-2026';
+const slug = process.argv[2] ?? 'weekly-summary-7-june-2026';
 const useSuggestions = process.argv.includes('--use-suggestions');
 const forceReupload = process.argv.includes('--force');
 

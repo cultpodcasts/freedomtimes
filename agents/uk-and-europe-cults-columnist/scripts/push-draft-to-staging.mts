@@ -1,30 +1,33 @@
 /**
  * Push reports/drafts/{slug}.md to staging EmDash (draft update).
- * Usage: npx tsx scripts/push-draft-to-staging.mts [slug]
+ * Usage: npx tsx scripts/push-draft-to-staging.mts [draft-slug] [cms-slug]
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { markdownToPortableText } from './markdown-to-portable-text.mts';
 
 const agentRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = join(agentRoot, '..', '..');
 const webDir = join(repoRoot, 'web');
 const draftsDir = join(agentRoot, 'reports', 'drafts');
-const slug = process.argv[2] ?? 'weekly-summary-8-june-2026';
+const draftSlug = process.argv[2] ?? 'weekly-summary-7-june-2026';
+const cmsSlug = process.argv[3] ?? draftSlug;
 
 const token = process.env.EMDASH_STAGING_PAT;
 if (!token) throw new Error('Set EMDASH_STAGING_PAT');
 
 const stagingUrl = 'https://staging.freedomtimes.news';
-const mdPath = join(draftsDir, `${slug}.md`);
-const uploadsPath = join(draftsDir, `${slug}-images-uploaded.json`);
+const mdPath = join(draftsDir, `${draftSlug}.md`);
+const uploadsPath = join(draftsDir, `${draftSlug}-images-uploaded.json`);
 
-const md = readFileSync(mdPath, 'utf8');
+const md = readFileSync(mdPath, 'utf8').replace(/\r\n/g, '\n');
 const titleMatch = md.match(/^#\s+(.+)$/m);
 if (!titleMatch) throw new Error('Draft must start with # title');
 const title = titleMatch[1]!.trim();
-const content = md.replace(/^#\s+.+\n+/, '').trim();
+const markdownBody = md.replace(/^#\s+.+\r?\n+/, '').trim();
+const content = markdownToPortableText(markdownBody);
 
 const uploads = JSON.parse(readFileSync(uploadsPath, 'utf8')) as Array<{
   mediaId: string;
@@ -50,7 +53,7 @@ const existing = emdashJson([
   'content',
   'get',
   'posts',
-  slug,
+  cmsSlug,
   '-u',
   stagingUrl,
   '-t',
@@ -81,29 +84,39 @@ const media = emdashJson([
 };
 
 const excerpt =
-  content
+  markdownBody
     .split('\n')
     .map((l) => l.trim())
-    .find((l) => l && !l.startsWith('#') && !l.startsWith('![')) ?? existing.data?.excerpt ?? '';
+    .find((l) => l && !l.startsWith('#') && !l.startsWith('![') && !l.startsWith('<!--')) ??
+  existing.data?.excerpt ??
+  '';
+
+const subjectsPath = join(draftsDir, `${draftSlug}-subjects.json`);
+const subjects = existsSync(subjectsPath)
+  ? (JSON.parse(readFileSync(subjectsPath, 'utf8')) as string[])
+  : (existing.data?.subjects ?? ['Europe & UK Cult News', 'UK', 'Europe']);
 
 const payload = {
   title,
   content,
   excerpt: excerpt.slice(0, 300),
-  subjects: existing.data?.subjects ?? ['UK', 'Europe', 'Weekly summary'],
+  subjects,
   featured_image: {
     id: media.id,
     provider: 'local',
     filename: media.filename,
     mimeType: media.mimeType,
     alt: featured.alt || media.alt || title,
+    ...(media.storageKey
+      ? { url: `/_emdash/api/media/file/${media.storageKey}` }
+      : {}),
     meta: media.storageKey ? { storageKey: media.storageKey } : {},
   },
 };
 
 const tmpDir = join(draftsDir, '_tmp');
 mkdirSync(tmpDir, { recursive: true });
-const payloadPath = join(tmpDir, `${slug}.post.json`);
+const payloadPath = join(tmpDir, `${draftSlug}.post.json`);
 writeFileSync(payloadPath, JSON.stringify(payload, null, 2), 'utf8');
 
 const up = spawnSync(
@@ -113,7 +126,7 @@ const up = spawnSync(
     'content',
     'update',
     'posts',
-    slug,
+    cmsSlug,
     '--rev',
     rev,
     '--file',
@@ -132,5 +145,5 @@ if (up.status !== 0) {
 }
 
 const result = JSON.parse(up.stdout);
-console.log('updated staging draft', slug, 'version', result.version ?? result.item?.version);
-console.log('review:', `${stagingUrl}/posts/${slug}`);
+console.log('updated staging draft', cmsSlug, 'version', result.version ?? result.item?.version);
+console.log('review:', `${stagingUrl}/posts/${cmsSlug}`);

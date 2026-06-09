@@ -30,8 +30,21 @@ function loadAuth() {
 }
 
 function tokenFor(auth, baseUrl) {
+	const isStaging = /staging\./i.test(baseUrl);
+	const envToken = (
+		isStaging
+			? process.env.EMDASH_STAGING_PAT ?? process.env.EMDASH_STAGING_TOKEN
+			: process.env.EMDASH_PRODUCTION_PAT
+				?? process.env.EMDASH_PRODUCTION_TOKEN
+				?? process.env.FREEDOMTIMES_PRODUCTION_EMDASH_PAT
+	)?.trim();
+	if (envToken) return envToken;
 	const t = auth[baseUrl]?.accessToken;
-	if (!t) throw new Error(`No accessToken in auth.json for ${baseUrl}`);
+	if (!t) {
+		throw new Error(
+			`No token for ${baseUrl}. Set EMDASH_${isStaging ? "STAGING" : "PRODUCTION"}_PAT or run emdash login.`,
+		);
+	}
 	return t;
 }
 
@@ -155,6 +168,70 @@ function isPortableTextShape(content) {
 	return content === null || content === undefined || Array.isArray(content);
 }
 
+const MEDIA_FILE_PATH_RE = /\/_emdash\/api\/media\/file\/([^/?#]+)/;
+
+function storageKeyFromMediaPath(value) {
+	if (typeof value !== "string") return null;
+	const m = value.trim().match(MEDIA_FILE_PATH_RE);
+	return m ? decodeURIComponent(m[1]) : null;
+}
+
+function mediaFilePath(storageKey) {
+	return `/_emdash/api/media/file/${storageKey}`;
+}
+
+/** Upload staging file by storageKey to production; cache by staging storageKey. */
+async function ensureProdMediaFile(stagingUrl, prodUrl, prodToken, storageKey, filename, alt, cache) {
+	if (cache.has(storageKey)) return cache.get(storageKey);
+	const buf = await downloadStagingMediaFile(stagingUrl, storageKey);
+	const uploaded = await uploadMediaProd(
+		prodUrl,
+		prodToken,
+		buf,
+		filename || storageKey.split("/").pop() || "promoted-media.jpg",
+		alt ?? "",
+	);
+	const prodPath = mediaFilePath(uploaded.storageKey);
+	cache.set(storageKey, { prodPath, item: uploaded });
+	return cache.get(storageKey);
+}
+
+async function remapPortableTextMedia(stagingUrl, prodUrl, prodToken, content, cache) {
+	if (!Array.isArray(content)) return;
+	for (const block of content) {
+		if (block?._type !== "image" || !block.asset || typeof block.asset !== "object") continue;
+		const sk = storageKeyFromMediaPath(block.asset.url);
+		if (!sk) continue;
+		const { prodPath } = await ensureProdMediaFile(
+			stagingUrl,
+			prodUrl,
+			prodToken,
+			sk,
+			`${sk.split(".")[0] || "inline"}.${sk.includes(".") ? sk.split(".").pop() : "jpg"}`,
+			block.alt ?? "",
+			cache,
+		);
+		block.asset.url = prodPath;
+	}
+}
+
+async function remapSeoImageString(stagingUrl, prodUrl, prodToken, payloadSeo, cache) {
+	const img = payloadSeo?.image;
+	if (typeof img !== "string") return;
+	const sk = storageKeyFromMediaPath(img);
+	if (!sk) return;
+	const { prodPath } = await ensureProdMediaFile(
+		stagingUrl,
+		prodUrl,
+		prodToken,
+		sk,
+		"promoted-og.png",
+		"",
+		cache,
+	);
+	payloadSeo.image = prodPath;
+}
+
 async function main() {
 	const collection = process.argv[2] || "posts";
 	const slug = process.argv[3];
@@ -206,6 +283,8 @@ async function main() {
 			? structuredClone(stagingDoc.seo)
 			: defaultSeoPayload();
 
+	const mediaCache = new Map();
+
 	// 2) Remap featured_image to production media *before* create/update (staging ids are not valid in prod)
 	const fi0 = payloadData.featured_image;
 	if (fi0 && typeof fi0 === "object" && fi0.id) {
@@ -252,6 +331,12 @@ async function main() {
 	if ((payloadSeo.image === null || payloadSeo.image === undefined) && payloadData.social_image != null) {
 		payloadSeo.image = structuredClone(payloadData.social_image);
 	}
+
+	// 2e) Inline Portable Text images (staging /file/ paths → production uploads)
+	await remapPortableTextMedia(stagingUrl, prodUrl, prodToken, payloadData.content, mediaCache);
+
+	// 2f) seo.image as admin file path string (not MediaReference object)
+	await remapSeoImageString(stagingUrl, prodUrl, prodToken, payloadSeo, mediaCache);
 
 	writeFileSync(dataPath, JSON.stringify(payloadData), "utf8");
 

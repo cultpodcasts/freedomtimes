@@ -4,11 +4,15 @@ description: >-
   Draft Freedom Times cult-news posts from reports/article-plan.json for editorial
   review and staging EmDash CMS. Use when article planning is finalized and the
   user wants roundup or standalone articles written from the review report corpus.
+  Weekly roundups: read agents/uk-and-europe-cults-columnist/docs/WEEKLY_REPORT_WRITING_GUIDE.md and docs/CULT_WORDING.md (using cult vs sect, translation folds).
 ---
 
 # Draft from article plan
 
 Turn a finalized `reports/article-plan.json` into a **staging CMS post** ready for human editorial approval.
+
+**Weekly roundup prose (canonical):** `agents/uk-and-europe-cults-columnist/docs/WEEKLY_REPORT_WRITING_GUIDE.md`  
+**Cult wording (canonical):** `agents/uk-and-europe-cults-columnist/docs/CULT_WORDING.md`
 
 Reference posts on staging (pull via EmDash MCP `content_get`):
 
@@ -62,9 +66,10 @@ Cluster units arrive with multiple stories sharing `unitLabel`. Independent unit
 2. **For each article** (in plan order):
    1. Walk `unitIds` in order; for each unit, process its stories (cluster: all URLs in unit; story: single URL).
    2. Draft markdown (see structure below) → `reports/drafts/<slug>.md`.
-   3. **Images (human-in-the-loop)** — see [Images](#images) below; do not skip approval.
-   4. Editor review of prose + images.
-   5. Create/update **staging** post via EmDash (`content_create` / `content_update`, `--draft`).
+   3. **Executive editor pass** on roundups — preamble maps the week; tighten each section; cut redundancy without losing sourced detail (see § Executive editor pass).
+   4. **Images (human-in-the-loop)** — see [Images](#images) below; do not skip approval.
+   5. Editor review of prose + images.
+   6. Create/update **staging** post via EmDash (`content_create` / `content_update`, `--draft`).
 3. **Do not publish to production** unless explicitly asked.
 
 ---
@@ -235,9 +240,10 @@ Each roundup section is a **news summary**, not an essay. Lead with **who, what,
 | **When** | Date of hearing, broadcast, arrest, publication |
 | **Why / how** | Only when sources state motive, method, or alleged conduct |
 
-- **2–4 short paragraphs per unit** — mostly facts and attributed quotes/summaries.
+- **2–3 short paragraphs per unit** — mostly facts and attributed quotes/summaries.
 - **One closing sentence of context is fine** if sourced (e.g. “*Le Figaro* notes this is the first MKY prosecution in Sweden”).
 - Do **not** pad sections with generic survivor-psychology or policy paragraphs unrelated to the named story.
+- **Cut redundancy:** do not repeat the same charge, date, or outlet attribution in consecutive paragraphs; drop procedural filler (which agency led the investigation, minimum sentence, anonymous-account inventory) unless it answers a reader question; avoid meta lines (“the paper does not report…”, “no response was given”).
 
 ### Do not editorialize on stories (especially roundups)
 
@@ -252,7 +258,9 @@ Each roundup section is a **news summary**, not an essay. Lead with **who, what,
 | “Survivors of high-control groups will recognise…” | Omit generic reader address |
 | “For second-generation members… questions are rarely abstract” | Keep only when a **named** second-gen source said it |
 
-**Religion and broad traditions:** evangelicalism, Catholicism, Pentecostalism, etc. can contain abuse and cover-ups — we know that. **Do not** use roundup space to lecture readers on which communities are “ordinary faith” vs “coercive”. Report **this week’s event** (conference, book, court case, ordination) on its own terms. Attribute “sect”, “cult”, or “high-control” language to prosecutors, survivors, or outlets — do not add Freedom Times taxonomy.
+**Religion and broad traditions:** evangelicalism, Catholicism, Pentecostalism, etc. can contain abuse and cover-ups — we know that. **Do not** use roundup space to lecture readers on which communities are “ordinary faith” vs “coercive”. Report **this week’s event** (conference, book, court case, ordination) on its own terms.
+
+**Cult vs sect:** Follow `agents/uk-and-europe-cults-columnist/docs/CULT_WORDING.md` — default *cult* in narration and English translation folds; *sect*/*sekt*/*secte* only in blockquotes, proper names, headlines, or italic source labels; SSPX/schism exceptions documented there.
 
 **Survivor sympathy** in roundups: brief and **tied to a named person** in that section (e.g. Hadjara outside the courthouse) — not a standalone paragraph on bravery, epistemic injury, or “systems failure” unless the **source story** is about that system.
 
@@ -260,6 +268,27 @@ Each roundup section is a **news summary**, not an essay. Lead with **who, what,
 
 - **Roundup:** brisk, factual, attributed; each unit = mini news story; no institutional commentary; no thematic essays between sections.
 - **Standalone:** room for context, survivor relevance, expert framing, policy stakes, and optional `## Editorial note` for legal or psychological nuance.
+
+### Executive editor pass (weekly roundups — required)
+
+After the first draft from `article-plan.json`, **proofread and restructure** as a seasoned broadsheet editor (think *The Times* foreign desk, not a blog recap). The roundup is an **executive intelligence brief** on cult and high-control-group news in Europe and the UK for the coverage week — discrete stories, one assortment of issues.
+
+**Reader:** informed professionals, researchers, policymakers, and survivors who want the week’s landscape without fluff.
+
+| Editor task | What to do |
+|-------------|------------|
+| **Preamble** | One paragraph that hooks cult-news readers: name the **group, movement, or service** in each thread (not vague “survivors”, “institutions”, “counsellors”). Geography: **Europe and the UK**; use **UK** not Britain/British in narration. Writing guide § Preamble. |
+| **Section leads** | Open each unit on the **news peg** (charge, broadcast, ruling, record figure, invitation to Brussels). Contrast and detail in sentence two where it earns its place. |
+| **Structure** | Each section = self-contained brief: who / what / where / when first; then mechanism, scale, or institutional stakes. One strong quote when the source provides it. |
+| **Connect without merging** | Related stories stay separate sections, but closing clauses may place a unit in the week’s wider picture (e.g. Southgate on influencers as counterpoint to Tate; AllatRa dispute and “who gets a platform in Brussels”). |
+| **Cut** | Repeated attributions, orphan procedural lines, meta filler, duplicate facts, list padding. |
+| **Keep** | Charges, courts, dates, named people, distinctive sourced detail (Article 32 vs 70, target lists, “pilot light” quote), first-of-kind context. |
+| **Prose** | Calm authority; short sentences; active verbs; no tabloid relish; no bold; no em dashes or AI filler in body copy (writing guide § No AI artefacts). Read aloud; if a paragraph restates the headline, tighten it. |
+| **Beyond Europe** | One framing sentence before `###` subheads (what these out-of-region stories are doing in a European-monitored roundup). |
+
+**Do not:** add facts from web search; editorialize Freedom Times policy; turn the preamble into an essay on cults in general.
+
+**Workflow:** plan → first draft → **executive editor pass** → image workflow → staging. Writing guide: `agents/uk-and-europe-cults-columnist/docs/WEEKLY_REPORT_WRITING_GUIDE.md` § Executive editor pass.
 
 ---
 
@@ -291,10 +320,14 @@ Narrative paragraphs. Short paragraphs. UK/EU reader in mind.
 
 ### Roundup (`type: roundup`)
 
+- **Post title:** `# Europe & UK Cult News: {start}–{end} {Month} {YYYY}` (e.g. `# Europe & UK Cult News: 1–7 June 2026`). CMS slug stays `weekly-summary-{publish-day}-{month}-{yyyy}`.
 - Follow **`unitIds` order** — each unit becomes at least one `##` section (or a clearly labelled subsection).
 - Cluster units: synthesise all stories in the unit; do not treat each URL as a separate article.
-- Independent units: **2–4 paragraphs** of sourced news summary (see **Roundup reporting standards**).
-- **No opening intro paragraph** — after the post title, go straight to the first story `##` section. Do not write a thematic week-ahead essay.
+- Independent units: **2–3 paragraphs** of sourced news summary (see **Roundup reporting standards** and writing guide § Cut redundancy).
+- **Executive preamble** — after the post title, one paragraph naming cult/high-control threads with specific groups (MKY, Raëlian movement, infoSekta, AllatRa, etc.); **Europe and the UK**; **UK** not Britain/British. Close: monitored **European and UK** outlets; citations below. Writing guide § Preamble.
+- **No bold in body text** — do not use `**…**` for emphasis; italics for titles/outlet names only where needed.
+- **No AI artefacts** — no em dashes in body copy; no filler connectives or vague demographic jargon (writing guide § No AI artefacts).
+- **Translation blocks (required for foreign direct quotes)** — see writing guide § Translation blocks and `web/docs/EDITORIAL_ENGLISH_GLOSSES.md`. Original wording in `blockquote` (`>` in markdown); English rendering in `<details class="translate">` with `<summary>Show English translation</summary>` and a closing `</details>` line. `markdown-to-portable-text.mts` emits the five-block PT sequence. **Never** inline an English paraphrase as a direct quote when the cited outlet published Swedish, French, Norwegian, Dutch, German, etc. English-source outlets (Guardian, BBC) may be quoted in English directly.
 - Opening `##` should name the first story, not frame the whole week.
 - **Per section:** who / what / where / when first; charges and court names for criminal stories; no Freedom Times commentary (see **Do not editorialize on stories**).
 
@@ -410,7 +443,7 @@ For a key broadcast clip, embed via EmDash block (Ahmadi roundup). Cite the YouT
 
 ## Images
 
-**Roundups:** one image per story section, on the line **immediately after** each `##` / `###` heading:
+**Roundups:** one image per story section, on the line **immediately after** each `##` / `###` heading — except the **first main-body story**, which uses the post `featured_image` only (no duplicate inline hero under that heading):
 
 ```markdown
 ## Story heading
@@ -505,7 +538,7 @@ Watchlist hosts (`watchlist-sites.json`) only add a small **score boost** to sug
    ```powershell
    npm run draft:push-staging -- weekly-summary-8-june-2026
    ```
-   Sets `featured_image` to the **first uploaded** section image. Requires an existing staging post with the same slug.
+   Sets `featured_image` to the **first uploaded** section image. `inject-roundup-images` skips inline insertion for that same unit so the hero is not repeated. Requires an existing staging post with the same slug.
 
 All agent npm scripts: `agents/uk-and-europe-cults-columnist/docs/AGENT_NPM_SCRIPTS.md`.
 
@@ -565,14 +598,15 @@ After editorial approval of the markdown draft:
 
 1. Choose `slug` per conventions above (roundup vs standalone).
 2. Set `title`, `excerpt` (first substantive paragraph, ≤ ~300 chars), `subjects` (tags/geography).
-3. `content` = full markdown body including `## Source citations`.
-4. MCP tools: `content_create` or `content_update` → `content_publish`.
-5. Verify: `content get posts <slug> --published`.
+3. `content` = Portable Text array from `markdown-to-portable-text.mts` (not raw markdown — breaks public rendering).
+4. `subjects` = `{slug}-subjects.json` with `"Europe & UK Cult News"` for roundups.
+5. MCP tools: `content_create` or `content_update` → `content_publish`.
+6. Verify: `content get posts <slug> --published`.
 
-Repo scripts for reference:
+Repo scripts:
 
+- `agents/uk-and-europe-cults-columnist/scripts/push-draft-to-staging.mts` — markdown draft → Portable Text → staging
 - `scripts/promote-staging-post-to-production.mjs` — MCP HTTP pattern
-- `tmp/mcp-update-treogan.mjs` — portable-text citation blocks (legacy); **prefer markdown** if API accepts it (current staging posts use markdown string in `data.content`).
 
 ---
 
@@ -590,19 +624,11 @@ Before handing to editor:
 - [ ] Images: candidates collected, **selections saved** via `/draft-images`, uploaded and injected
 - [ ] Slug matches type: `weekly-summary-8-june-2026` (roundup) or `{topic}-{dd-mm-yyyy}` (standalone)
 - [ ] Draft saved under `reports/drafts/<slug>.md`
+- [ ] Executive editor pass: preamble maps the week; sections self-contained; prose tight (§ Executive editor pass)
+- [ ] Foreign direct quotes use translation blocks (blockquote + `<details class="translate">`), not inline English paraphrase
+- [ ] [CULT_WORDING.md](agents/uk-and-europe-cults-columnist/docs/CULT_WORDING.md) checklist: *cult* in narration and English folds; *sect*/*sekt*/*secte* only where guide allows
+- [ ] Redundancy pass: no orphan procedural lines, duplicate facts, or meta filler (writing guide § Cut redundancy)
+- [ ] No em dashes or AI filler in body copy (writing guide § No AI artefacts)
+- [ ] Roundup title `Europe & UK Cult News: …`; subject chip `Europe & UK Cult News`
+- [ ] Content pushed as **Portable Text**; verified on staging
 - [ ] Staging post created as **draft/unpublished** until editor approves publish
-
----
-
-## Current run (2026-06-08)
-
-Plan: `reports/article-plan.json` — **1 roundup**, 24 stories, 14 units:
-
-1. Hoyt Richards (cluster, 5)
-2. Maniac Murder (cluster, 4)
-3. Marys (cluster, 2)
-4. Andrew Tate (cluster, 2)
-5. Allatra EU Parliament (cluster, 2)
-6. + 9 independent stories
-
-Suggested staging slug: `weekly-summary-8-june-2026`.

@@ -10,6 +10,7 @@ import {
   getCookieDomainForHost,
   getRoleClaimDebug,
   getAuthConfig,
+  getHomePath,
   makeState,
   getStateCookieName,
   hasEditorialRole,
@@ -112,7 +113,7 @@ export const GET: APIRoute = async (ctx) => {
 
     console.info('[auth.callback] login successful', { requestId });
 
-    return ctx.redirect('/homepage');
+    return ctx.redirect(getHomePath());
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[auth.callback] login failed during token exchange/verification', {

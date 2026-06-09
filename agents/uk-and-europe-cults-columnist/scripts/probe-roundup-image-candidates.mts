@@ -9,7 +9,7 @@ import { probeExistingRoundupImageCandidates } from '../src/collectRoundupImageC
 
 const agentRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const draftsDir = join(agentRoot, 'reports', 'drafts');
-const slug = process.argv[2] ?? 'weekly-summary-8-june-2026';
+const slug = process.argv[2] ?? 'weekly-summary-7-june-2026';
 
 const existing = loadCandidatesFile(draftsDir, slug);
 if (!existing) {

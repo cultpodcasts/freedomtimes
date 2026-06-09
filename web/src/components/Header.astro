@@ -1,5 +1,5 @@
 ---
-import { readOptionalEnv } from '../lib/auth';
+import { getHomePath } from '../lib/auth';
 import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 
 interface Props {
@@ -10,8 +10,7 @@ interface Props {
 }
 
 const { section, sectionUrl, isEditor, isSignedIn } = Astro.props;
-const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
-const homePath = siteAccessMode === 'public' ? '/' : '/homepage';
+const homePath = getHomePath();
 ---
 
 <header class="masthead">

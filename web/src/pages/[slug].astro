@@ -2,15 +2,51 @@
 import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../components/EmDashContentView.astro';
-import { readOptionalEnv } from '../lib/auth';
+import HomepageView from '../components/HomepageView.astro';
+import { isLockedSiteAccess, SESSION_COOKIE } from '../lib/auth';
 import { requireEditorialSession } from '../lib/editorial-session';
 
-const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
-const isLocked = siteAccessMode !== 'public';
+const slug = Astro.params.slug;
+if (!slug) {
+	return new Response('Missing slug', { status: 400 });
+}
+
+/** `/homepage` is a staging-only URL; production serves the newsroom at `/`. */
+const isHomepage = slug === 'homepage' && isLockedSiteAccess();
+
+const isLocked = isLockedSiteAccess();
 
 let displayName = 'Reader';
+let isEditor = false;
+let isSignedIn = false;
+let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
+let resolvedIsPreview = false;
+let resolvedLabel = 'Page';
+let resolvedCollectionKey: 'pages' | 'posts' | null = null;
 
-if (isLocked) {
+if (isHomepage) {
+	if (isLocked) {
+		const token = Astro.cookies.get(SESSION_COOKIE)?.value;
+
+		if (!token) {
+			return Astro.rewrite('/');
+		}
+
+		const session = await requireEditorialSession({
+			cookies: Astro.cookies,
+			url: Astro.url,
+			request: Astro.request,
+			redirect: Astro.redirect,
+		});
+
+		if (session instanceof Response) {
+			return Astro.rewrite('/?denied=1');
+		}
+
+		isEditor = session.isEditor;
+		isSignedIn = true;
+	}
+} else if (isLocked) {
 	const session = await requireEditorialSession({
 		cookies: Astro.cookies,
 		url: Astro.url,
@@ -25,73 +61,71 @@ if (isLocked) {
 	displayName = session.displayName;
 }
 
-const slug = Astro.params.slug;
-if (!slug) {
-	return new Response('Missing slug', { status: 400 });
-}
+if (!isHomepage) {
 
-const collections = [
-	{ key: 'pages', label: 'Page' },
-	{ key: 'posts', label: 'Post' },
-] as const;
+	const collections = [
+		{ key: 'pages', label: 'Page' },
+		{ key: 'posts', label: 'Post' },
+	] as const;
 
-let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
-let resolvedIsPreview = false;
-let resolvedLabel = 'Page';
-let resolvedCollectionKey: (typeof collections)[number]['key'] | null = null;
-let lastUnexpectedError: string | null = null;
+	let lastUnexpectedError: string | null = null;
 
-for (const collection of collections) {
-	const { entry, error, isPreview } = await getEmDashEntry(collection.key, slug);
+	for (const collection of collections) {
+		const { entry, error, isPreview } = await getEmDashEntry(collection.key, slug);
 
-	if (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		const lower = message.toLowerCase();
+		if (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const lower = message.toLowerCase();
 
-		const isExpectedLookupMiss =
-			lower.includes('not found')
-			|| lower.includes('no row')
-			|| lower.includes('missing')
-			|| lower.includes('no such table')
-			|| lower.includes('does not exist')
-			|| lower.includes('unknown collection');
+			const isExpectedLookupMiss =
+				lower.includes('not found')
+				|| lower.includes('no row')
+				|| lower.includes('missing')
+				|| lower.includes('no such table')
+				|| lower.includes('does not exist')
+				|| lower.includes('unknown collection');
 
-		if (!isExpectedLookupMiss) {
-			lastUnexpectedError = message;
-			console.error('[page.slug] failed to resolve entry', {
-				slug,
-				collection: collection.key,
-				message,
-			});
+			if (!isExpectedLookupMiss) {
+				lastUnexpectedError = message;
+				console.error('[page.slug] failed to resolve entry', {
+					slug,
+					collection: collection.key,
+					message,
+				});
+			}
+
+			continue;
 		}
 
-		continue;
+		if (entry) {
+			resolvedEntry = entry;
+			resolvedIsPreview = isPreview;
+			resolvedLabel = collection.label;
+			resolvedCollectionKey = collection.key;
+			break;
+		}
 	}
 
-	if (entry) {
-		resolvedEntry = entry;
-		resolvedIsPreview = isPreview;
-		resolvedLabel = collection.label;
-		resolvedCollectionKey = collection.key;
-		break;
-	}
-}
+	if (!resolvedEntry) {
+		if (lastUnexpectedError) {
+			return new Response('Unable to load page right now', { status: 500 });
+		}
 
-if (!resolvedEntry) {
-	if (lastUnexpectedError) {
-		return new Response('Unable to load page right now', { status: 500 });
+		return new Response('Page not found', { status: 404 });
 	}
-
-	return new Response('Page not found', { status: 404 });
 }
 ---
 
-<EmDashContentView
-	entry={resolvedEntry}
-	collectionLabel={resolvedLabel}
-	emdashCollection={resolvedCollectionKey ?? 'pages'}
-	displayName={displayName}
-	isPreview={resolvedIsPreview}
-	isEditor={isLocked}
-	isSignedIn={isLocked}
-/>
+{isHomepage ? (
+	<HomepageView isEditor={isEditor} isSignedIn={isSignedIn} />
+) : (
+	<EmDashContentView
+		entry={resolvedEntry!}
+		collectionLabel={resolvedLabel}
+		emdashCollection={resolvedCollectionKey ?? 'pages'}
+		displayName={displayName}
+		isPreview={resolvedIsPreview}
+		isEditor={isLocked}
+		isSignedIn={isLocked}
+	/>
+)}

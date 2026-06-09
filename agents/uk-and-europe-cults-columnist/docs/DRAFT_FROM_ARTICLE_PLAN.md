@@ -1,16 +1,28 @@
 # Draft from article plan
 
-Operator guide for the agent skill at [`.cursor/skills/draft-from-article-plan/SKILL.md`](../../.cursor/skills/draft-from-article-plan/SKILL.md).
+Operator guide for turning a finalized `reports/article-plan.json` into a staging CMS post.
+
+**Weekly roundup prose standards:** [WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md) — title, structure, journalism rules, redundancy cuts.
+
+**Using *cult* in roundups:** [CULT_WORDING.md](CULT_WORDING.md) — default voice, *sect*/*sekt*/*secte* exceptions, translation folds, checklist.
+
+**Full agent skill:** [`.cursor/skills/draft-from-article-plan/SKILL.md`](../../../.cursor/skills/draft-from-article-plan/SKILL.md) — tiers, paywall, citations, images, slugs.
 
 ## When to use
 
 After **article planning** is finalized (`/articles` → Finalize plan → `reports/article-plan.json`).
 
-## Roundup structure
+## Roundup structure (summary)
 
-- **No intro paragraph** — first `##` is the first story.
-- **Image per section** — `![alt](staging-media-url)` immediately after each `##` / `###` heading.
-- **Beyond Europe** — last section before citations for stories reported in Europe but occurring outside UK/EU.
+See [WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md) for full detail.
+
+- **Title:** `Europe & UK Cult News: {start}–{end} {Month} {YYYY}`
+- **Preamble:** one short paragraph after H1 (what the roundup is; citations at bottom)
+- **Sections:** one `##` per plan `unitId`, in order; **2–3 paragraphs** each
+- **Image per section** — `![alt](staging-media-url)` immediately after each `##` / `###` heading (first main story: featured image only, no duplicate inline)
+- **Beyond Europe** — last body section before citations
+- **No bold** in body; default to *cult* in our voice ([CULT_WORDING.md](CULT_WORDING.md))
+- **Translation blocks** — foreign-language direct quotes: original in `>` blockquote, English in `<details class="translate">` (see writing guide § Translation blocks)
 
 ## Images (approval workflow)
 
@@ -23,17 +35,21 @@ Full script reference: [AGENT_NPM_SCRIPTS.md](AGENT_NPM_SCRIPTS.md) § Draft →
 5. **Save selections** → `{slug}-image-selections.json`
 6. `npm run draft:upload-images -- <slug>` — requires `EMDASH_STAGING_PAT`
 7. `npm run draft:inject-images -- <slug>` — updates `reports/drafts/<slug>.md`
-8. `npm run draft:push-staging -- <slug>` — staging CMS draft (unpublished)
+8. `npm run draft:push-staging -- <slug>` [optional `cms-slug`] — staging CMS draft (Portable Text body)
 
-Files: `{slug}-image-candidates.json`, `{slug}-image-selections.json`, `{slug}-images-uploaded.json`
+Files: `{slug}-image-candidates.json`, `{slug}-image-selections.json`, `{slug}-images-uploaded.json`, `{slug}-subjects.json`
 
 ## Tone (summary)
 
-**Roundups = journalism first.** Each section answers **who, what, where, when, why, how** from sources. Court stories need **names, charges, court, and dates** when outlets publish them. Report facts; attribute “sect” / “cult” language to sources.
+**Roundups = journalism first.** Each section answers **who, what, where, when, why, how** from sources. Court stories need **names, charges, court, and dates** when outlets publish them.
 
-**Do not** state Freedom Times’s position inside story summaries — no “Freedom Times distinguishes…”, no essays on evangelicalism vs coercive groups, no generic survivor-psychology or policy paragraphs between news items.
+**Cut redundancy** after drafting — see writing guide § Cut redundancy (orphan procedural lines, repeated facts, meta “paper does not report”, sidebars, stacked attributions).
 
-**Standalones** may carry deeper survivor context, expert framing, and optional `## Editorial note`. Full guidance: skill § Editorial tone and voice, § Roundup reporting standards, § Do not editorialize on stories.
+**Do not** state Freedom Times’s position inside story summaries.
+
+**Foreign quotes:** never inline an English paraphrase as a direct quote when the source published another language. Use blockquote + translation fold (writing guide § Translation blocks; site contract in `web/docs/EDITORIAL_ENGLISH_GLOSSES.md`).
+
+**Standalones** may carry deeper survivor context, expert framing, and optional `## Editorial note`.
 
 ## Citation format (from staging)
 
@@ -98,16 +114,18 @@ Channel 4 News: ["Police raid religious group…"](https://www.channel4.com/news
 The Times (UK, paywalled): ["Headline"](https://archive.ph/Ab3CdE), 8 June 2026.
 ```
 
-## Slugs
+## Slugs and subjects
 
 | Article type | Pattern | Example |
 |--------------|---------|---------|
 | Roundup | `weekly-summary-{d}-{month}-{yyyy}` | `weekly-summary-8-june-2026` |
 | Standalone | `{seo-keywords}-{dd-mm-yyyy}` | `breton-mayor-treogan-sect-investigation-29-04-2026` |
 
+**Subjects (roundup):** `{slug}-subjects.json` with `"Europe & UK Cult News"` plus geography tags.
+
 **Geography:** UK/Europe events in main body. Reported in Europe but occurring outside → `## Beyond Europe` section at bottom (before citations), same article.
 
-Roundup date: spelled-out month, no zero-padded day. Standalone: SEO terms first, numeric `dd-mm-yyyy` suffix. Draft file matches slug: `reports/drafts/<slug>.md`.
+Roundup date: spelled-out month, no zero-padded day. Standalone: SEO terms first, numeric `dd-mm-yyyy` suffix. Draft file matches local slug: `reports/drafts/<slug>.md`.
 
 ## Source tiers
 
@@ -124,6 +142,7 @@ Roundup date: spelled-out month, no zero-padded day. Standalone: SEO terms first
 | `reports/article-plan.json` | What to write (finalized) |
 | `reports/review-report-latest.json` | Full story text + signals |
 | `reports/drafts/<slug>.md` | Agent output for review |
+| `reports/drafts/<slug>-subjects.json` | CMS subject chips |
 
 ## Auth
 

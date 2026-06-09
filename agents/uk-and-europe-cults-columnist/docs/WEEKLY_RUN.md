@@ -11,6 +11,8 @@ cd c:\Users\jonbr\source\repos\freedomtimes\agents\uk-and-europe-cults-columnist
 Related docs:
 
 - [AGENT_NPM_SCRIPTS.md](AGENT_NPM_SCRIPTS.md) — **canonical index** of every `npm run` script in this package
+- [WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md) — **prose standards** for Europe & UK Cult News roundups
+- [CULT_WORDING.md](CULT_WORDING.md) — **using *cult*** in weekly reports (*sect*/*sekt*/*secte*, translation folds)
 - [DRAFT_FROM_ARTICLE_PLAN.md](DRAFT_FROM_ARTICLE_PLAN.md) — article plan → draft → images → staging CMS
 - [FIELD_RUN_PROMPT.md](FIELD_RUN_PROMPT.md) — **paste into a new agent session**; agent asks for date range, Tor, caps, then runs this workflow
 - [README.md](../README.md) — agent purpose, discovery policy, env reference
@@ -378,25 +380,32 @@ npm run diff:html              # compares latest vs snapshot
 
 ### 7. Write your article
 
+**Prose standards:** [WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md) — title (`Europe & UK Cult News: …`), 2–3 paragraphs per unit, no bold, no em dashes or AI filler, redundancy cuts, Beyond Europe, citations. **Cult wording:** [CULT_WORDING.md](CULT_WORDING.md).
+
 Use the **final** `reports/cult-news-latest.html` (after close report / optional second render):
 
 | Digest section | Article use |
 |----------------|-------------|
-| **Cluster** blocks (label + multiple articles) | One subsection per theme, e.g. “Scientology in Germany”, “NXIVM follow-up” |
-| **Latest Stories** (ungrouped / independent) | Short mentions or “also this week” bullets |
+| **Cluster** blocks (label + multiple articles) | One `##` section per cluster — synthesise all URLs in the unit |
+| **Latest Stories** (ungrouped / independent) | One `##` section each (or grouped per article plan) |
 | Card links | Primary sources for attribution |
-| Published dates on cards | Confirm they fall inside your `DISCOVERY_MAX_AGE_HOURS` window |
+| Published dates on cards | Confirm they fall inside your editorial window |
 | **Copy citations** (header / per cluster / per card) | Markdown source list with publisher URL + archive mirrors for paywalled pieces |
 | `reports/cult-news-sources.json` | Same citation data as JSON (`markdown` field is ready to paste) |
 
 Practical approach:
 
-1. List cluster headings from the console `[cluster]` lines or the HTML group headers.
-2. For each cluster, click **Copy citations** on the group header (or use **Copy all source citations** in the digest header).
-3. For paywalled outlets, use **Accessible copy for citing** or the `Accessible copy:` line in the pasted markdown — not the publisher URL alone.
-4. Write a short narrative per cluster (what happened, who, jurisdiction UK/EU).
-5. Add 1–2 sentences on notable independent stories.
-6. Keep `report-review-notes.md` updated with systematic false positives to fix in code before the next weekly run.
+1. Finalize article plan at http://localhost:3000/articles → `reports/article-plan.json`.
+2. Walk `unitIds` in order; each unit → one roundup section (see writing guide).
+3. Lead each section with **who / what / where / when** from Tier A/B sources; name defendants and charges when outlets do.
+4. **2–3 short paragraphs** per unit — cut orphan procedural lines, repeated facts, and meta “paper does not report” filler (writing guide § Cut redundancy).
+5. **No Freedom Times commentary** in body — report sources; default to *cult* ([CULT_WORDING.md](CULT_WORDING.md)).
+6. One brief preamble after the title; `## Beyond Europe` for out-of-region events reported on European outlets.
+7. Foreign-language direct quotes: **translation blocks** (original `>` blockquote + `<details class="translate">`) — not inline English paraphrase (writing guide § Translation blocks).
+8. End with `## Source citations` in Freedom Times format; paywalled labels and verified archive links.
+8. Keep `report-review-notes.md` updated with systematic false positives to fix in code before the next weekly run.
+
+Draft → images → staging: [DRAFT_FROM_ARTICLE_PLAN.md](DRAFT_FROM_ARTICLE_PLAN.md).
 
 ---
 

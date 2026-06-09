@@ -279,7 +279,12 @@ async function optimizePngUnderLimit(
 
 type SocialFonts = { playfair: ArrayBuffer; noto900: ArrayBuffer };
 
-type GenerateSlugOptions = { noPublish?: boolean; omitSocialImageClear?: boolean };
+type GenerateSlugOptions = {
+	noPublish?: boolean;
+	omitSocialImageClear?: boolean;
+	/** Override featured_image for OG background only (absolute or /_emdash/api/media/file/…). */
+	bgUrlOverride?: string;
+};
 
 type PostListStatus = 'published' | 'draft';
 
@@ -947,7 +952,8 @@ async function generateSocialImageForSlug(
 		?? readString(postItem?.slug)
 		?? 'Untitled';
 	const featuredImageSrc =
-		normalizeMediaFileUrl(data.featured_image)
+		(options.bgUrlOverride ? normalizeMediaFileUrl(options.bgUrlOverride) : null)
+		?? normalizeMediaFileUrl(data.featured_image)
 		?? normalizeMediaFileUrl(data.cover_image);
 	const entryLike = {
 		...(postItem !== null && postItem !== undefined
@@ -1191,9 +1197,22 @@ function parseCliArgs(argv: string[]): {
 	noCleanupMedia: boolean;
 	repairSeoImageShape: boolean;
 	repairSeoImageForce: boolean;
+	bgUrl?: string;
 } {
 	const flags = new Set(argv.filter((a) => a.startsWith('--')));
-	const pos = argv.filter((a) => !a.startsWith('--'));
+	const bgUrlFlagIndex = argv.indexOf('--bg-url');
+	const bgUrlValueIndex = bgUrlFlagIndex >= 0 ? bgUrlFlagIndex + 1 : -1;
+	const bgUrl =
+		bgUrlValueIndex > 0
+		&& argv[bgUrlValueIndex]
+		&& !argv[bgUrlValueIndex]!.startsWith('--')
+			? argv[bgUrlValueIndex]!.trim()
+			: undefined;
+	const pos = argv.filter((a, i) => {
+		if (a.startsWith('--')) return false;
+		if (bgUrlValueIndex > 0 && i === bgUrlValueIndex) return false;
+		return true;
+	});
 	const all = flags.has('--all');
 	const publishedOnly = flags.has('--published-only');
 	const noPublish = flags.has('--no-publish');
@@ -1211,6 +1230,7 @@ function parseCliArgs(argv: string[]): {
 		noCleanupMedia,
 		repairSeoImageShape,
 		repairSeoImageForce,
+		bgUrl,
 	};
 }
 
@@ -1224,10 +1244,12 @@ async function main() {
 		noCleanupMedia,
 		repairSeoImageShape,
 		repairSeoImageForce,
+		bgUrl,
 	} = parseCliArgs(process.argv.slice(2));
 	const genOpts: GenerateSlugOptions = {
 		noPublish,
 		omitSocialImageClear: dropSocialImageField,
+		bgUrlOverride: bgUrl,
 	};
 
 	const { apiUrl, token } = await resolveApiAndToken();

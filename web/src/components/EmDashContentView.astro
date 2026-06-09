@@ -9,7 +9,7 @@ import PortableLink from "../components/PortableLink.astro";
 import EntryHeader from "./content/EntryHeader.astro";
 import EntryMedia from "./content/EntryMedia.astro";
 import EntryBody from "./content/EntryBody.astro";
-import { readOptionalEnv } from "../lib/auth";
+import { getHomePath, readOptionalEnv } from "../lib/auth";
 import {
 	buildPortableRenderNodes,
 	parseLegacyTextContent,
@@ -128,7 +128,7 @@ const socialTitle = publicationDateLabel
 			section={collectionLabel}
 			sectionUrl={collectionLabel === "Archive"
 				? "/archives"
-				: "/homepage"}
+				: getHomePath()}
 			isEditor={isEditor}
 			isSignedIn={resolvedIsSignedIn}
 		/>

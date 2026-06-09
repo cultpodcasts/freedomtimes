@@ -1,0 +1,467 @@
+---
+import { getEmDashCollection } from 'emdash';
+
+import Layout from '../layouts/Layout.astro';
+import Header from './Header.astro';
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
+import {
+  readEmDashCreatedAt,
+  readEmDashPublishedAt,
+  readEmDashUpdatedAt,
+} from '../lib/content/emdashTimestamps';
+type Props = {
+  isEditor?: boolean;
+  isSignedIn?: boolean;
+};
+
+const { isEditor = false, isSignedIn = false } = Astro.props;
+
+type Story = {
+  slug: string;
+  title: string;
+  dek: string | null;
+  subjects: string[];
+  imageSrc: string | null;
+  publishDate: string | null;
+  updatedAt: string | null;
+};
+
+function readImageSrc(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (value && typeof value === 'object') {
+    const candidate = value as Record<string, unknown>;
+    if (typeof candidate.src === 'string' && candidate.src.trim().length > 0) {
+      return candidate.src;
+    }
+    if (typeof candidate.url === 'string' && candidate.url.trim().length > 0) {
+      return candidate.url;
+    }
+
+    const meta = candidate.meta && typeof candidate.meta === 'object'
+      ? (candidate.meta as Record<string, unknown>)
+      : null;
+    const storageKey = typeof meta?.storageKey === 'string' ? meta.storageKey.trim() : '';
+    if (storageKey.length > 0) {
+      return `/_emdash/api/media/file/${storageKey}`;
+    }
+
+    const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+    if (id.length > 0) {
+      return `/_emdash/api/media/file/${id}`;
+    }
+  }
+
+  return null;
+}
+
+function toCfImageUrl(src: string, width: number, height: number): string {
+  const trimmed = src.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith('data:')) return trimmed;
+  if (trimmed.startsWith('/_emdash/api/media/file/')) return trimmed;
+  return `/cdn-cgi/image/width=${width},height=${height},fit=cover,quality=85,format=auto${trimmed}`;
+}
+
+function formatPublicationDate(value: string | null): string {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function readSubjects(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item) => item.length > 0);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => (typeof item === 'string' ? item.trim() : ''))
+          .filter((item) => item.length > 0);
+      }
+    } catch {
+      // Treat as plain text subject fallback.
+    }
+    return [trimmed];
+  }
+
+  return [];
+}
+
+function hashString(input: string): number {
+  let hash = 2166136261;
+  for (const char of input) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function subjectColorTokens(subject: string): { bg: string; border: string; text: string } {
+  const hash = hashString(subject.toLowerCase().trim());
+  const hue = hash % 360;
+  const saturation = 62 + (hash % 14);
+  const lightness = 90 - (hash % 8);
+  const borderLightness = 46 - (hash % 8);
+  const textLightness = 28 - (hash % 6);
+  return {
+    bg: `hsl(${hue} ${saturation}% ${lightness}%)`,
+    border: `hsl(${hue} ${Math.max(45, saturation - 12)}% ${borderLightness}%)`,
+    text: `hsl(${hue} ${Math.max(40, saturation - 18)}% ${textLightness}%)`,
+  };
+}
+
+const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
+  status: 'published',
+  limit: 12,
+  orderBy: { published_at: 'desc', updated_at: 'desc' },
+});
+
+if (postsError) {
+  throw postsError;
+}
+
+const stories: Story[] = postEntries.map((entry) => {
+  const data = entry.data as Record<string, unknown>;
+
+  const slug = typeof data.slug === 'string' && data.slug.length > 0
+    ? data.slug
+    : entry.id;
+
+  const title = typeof data.title === 'string' && data.title.length > 0
+    ? data.title
+    : 'Untitled post';
+
+  const dek = typeof data.excerpt === 'string' && data.excerpt.length > 0
+    ? data.excerpt
+    : null;
+  const subjects = readSubjects(data.subjects);
+
+  const imageSrc = readImageSrc(data.featured_image);
+
+  const publishedAt = readEmDashPublishedAt(entry);
+  const updatedAt = readEmDashUpdatedAt(entry);
+  const createdAt = readEmDashCreatedAt(entry);
+  const publishDate = publishedAt ?? updatedAt ?? createdAt;
+
+  return {
+    slug,
+    title,
+    dek,
+    subjects,
+    imageSrc,
+    publishDate,
+    updatedAt,
+  };
+});
+
+const lead = stories[0] ?? null;
+const secondLead = stories[1] ?? null;
+const rails = stories.slice(2);
+const socialTitle = SITE_DISPLAY_NAME;
+const socialDescription = 'Telling survivor truths. Protecting sources. Holding cults to account.';
+const socialImage = '/social/homepage-og.png';
+---
+
+<Layout
+  title={socialTitle}
+  socialTitle={socialTitle}
+  description={socialDescription}
+  canonicalUrl={Astro.url.pathname}
+  ogType="website"
+  ogImage={socialImage}
+  ogImageAlt={`${SITE_DISPLAY_NAME} homepage`}
+>
+  <div class="paper-wrap">
+    <Header isEditor={isEditor} isSignedIn={isSignedIn} />
+
+    <main class="front-grid">
+      {lead ? (
+        <>
+          <article class="lead story-card">
+            <a class="story-card-link" href={`/posts/${lead.slug}`} aria-label={`Read: ${lead.title}`}>
+              {lead.imageSrc && (
+                <div class="story-image-wrap lead-ratio">
+                  <img class="story-image" src={toCfImageUrl(lead.imageSrc, 1200, 675)} alt={lead.title} loading="lazy" decoding="async" />
+                </div>
+              )}
+              {formatPublicationDate(lead.publishDate) && <p class="kicker">{formatPublicationDate(lead.publishDate)}</p>}
+              <h2>{lead.title}</h2>
+              {lead.subjects.length > 0 && (
+                <ul class="subject-list" aria-label="Subjects">
+                  {lead.subjects.map((subject) => {
+                    const colors = subjectColorTokens(subject);
+                    const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
+                    return <li style={style}>{subject}</li>;
+                  })}
+                </ul>
+              )}
+              {lead.dek && <p>{lead.dek}</p>}
+              {lead.updatedAt && <p class="meta">Updated {new Date(lead.updatedAt).toLocaleString()}</p>}
+            </a>
+          </article>
+
+          <article class="secondary story-card">
+            {secondLead ? (
+              <a class="story-card-link" href={`/posts/${secondLead.slug}`} aria-label={`Read: ${secondLead.title}`}>
+                {secondLead.imageSrc && (
+                  <div class="story-image-wrap secondary-ratio">
+                    <img class="story-image" src={toCfImageUrl(secondLead.imageSrc, 960, 540)} alt={secondLead.title} loading="lazy" decoding="async" />
+                  </div>
+                )}
+                {formatPublicationDate(secondLead.publishDate) && <p class="kicker">{formatPublicationDate(secondLead.publishDate)}</p>}
+                <h3>{secondLead.title}</h3>
+                {secondLead.subjects.length > 0 && (
+                  <ul class="subject-list" aria-label="Subjects">
+                    {secondLead.subjects.map((subject) => {
+                      const colors = subjectColorTokens(subject);
+                      const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
+                      return <li style={style}>{subject}</li>;
+                    })}
+                  </ul>
+                )}
+                {secondLead.dek && <p>{secondLead.dek}</p>}
+                {secondLead.updatedAt && <p class="meta">Updated {new Date(secondLead.updatedAt).toLocaleString()}</p>}
+              </a>
+            ) : (
+              <>
+                <p class="kicker">Newsroom</p>
+                <h3>Only one published post is available right now.</h3>
+                <p>Publish another post in EmDash to populate this slot.</p>
+              </>
+            )}
+          </article>
+
+          <section class="rail">
+            {rails.length > 0 ? (
+              rails.map((story) => (
+                <article class="story-card">
+                  <a class="story-card-link" href={`/posts/${story.slug}`} aria-label={`Read: ${story.title}`}>
+                    {story.imageSrc && (
+                      <div class="story-image-wrap rail-ratio">
+                        <img class="story-image" src={toCfImageUrl(story.imageSrc, 720, 405)} alt={story.title} loading="lazy" decoding="async" />
+                      </div>
+                    )}
+                    {formatPublicationDate(story.publishDate) && <p class="kicker">{formatPublicationDate(story.publishDate)}</p>}
+                    <h4>{story.title}</h4>
+                    {story.subjects.length > 0 && (
+                      <ul class="subject-list" aria-label="Subjects">
+                        {story.subjects.map((subject) => {
+                          const colors = subjectColorTokens(subject);
+                          const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
+                          return <li style={style}>{subject}</li>;
+                        })}
+                      </ul>
+                    )}
+                    {story.dek && <p>{story.dek}</p>}
+                  </a>
+                </article>
+              ))
+            ) : (
+              <article>
+                <p class="kicker">Newsroom</p>
+                <h4>No additional published posts yet.</h4>
+              </article>
+            )}
+          </section>
+        </>
+      ) : (
+        <article class="lead" style="grid-column: 1 / -1;">
+          <p class="kicker">Newsroom</p>
+          <h2>No published posts yet.</h2>
+          <p>Publish posts in EmDash and they will appear here automatically.</p>
+        </article>
+      )}
+    </main>
+  </div>
+</Layout>
+
+<style>
+
+  .paper-wrap {
+    max-width: var(--max-width-main);
+    margin: 0 auto;
+  }
+
+  .front-grid {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 3rem;
+    padding: 0 var(--page-padding-side) 4rem;
+  }
+
+  article {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .story-card {
+    position: relative;
+  }
+
+  .story-card-link {
+    display: flex;
+    flex-direction: column;
+    color: inherit;
+    text-decoration: none;
+    height: 100%;
+  }
+
+  .story-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+    filter: grayscale(10%) contrast(105%);
+    transition: filter 0.3s ease;
+  }
+
+  .story-image-wrap {
+    width: 100%;
+    overflow: hidden;
+    margin-bottom: 1rem;
+    background: #f5f5f5;
+  }
+
+  .lead-ratio,
+  .secondary-ratio,
+  .rail-ratio {
+    aspect-ratio: 16 / 9;
+  }
+
+  article:hover .story-image {
+    filter: grayscale(0%) contrast(100%);
+  }
+
+  .kicker {
+    margin: 0 0 0.5rem;
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    color: #0044bb;
+  }
+
+  .lead h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2rem, 4vw, 3.2rem);
+    font-weight: 900;
+    line-height: 1.1;
+    margin: 0 0 1rem;
+    letter-spacing: -0.01em;
+  }
+
+  .secondary h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.8rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0 0 0.8rem;
+    letter-spacing: -0.01em;
+  }
+
+  .rail h4 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-weight: 900;
+    line-height: 1.25;
+    margin: 0 0 0.6rem;
+    letter-spacing: -0.01em;
+  }
+
+  .front-grid a {
+    color: #111111;
+    text-decoration: none;
+  }
+
+  .story-card-link:hover {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .front-grid p {
+    margin: 0 0 1rem;
+    font-family: 'Source Serif 4', serif;
+    font-size: 1.1rem;
+    color: #333333;
+    line-height: 1.5;
+  }
+
+  .meta {
+    margin-top: auto;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.7rem;
+    color: #888888;
+    letter-spacing: 0.05em;
+  }
+
+  .subject-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 0.8rem;
+  }
+
+  .subject-list li {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 0.25rem 0.45rem;
+    border: 1px solid var(--subject-chip-border, #dddddd);
+    background: var(--subject-chip-bg, #fafafa);
+    color: var(--subject-chip-text, #333333);
+  }
+
+  .rail {
+    display: grid;
+    gap: 2rem;
+    padding-left: 2rem;
+    border-left: 1px solid #eeeeee;
+  }
+
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 1024px) {
+    .front-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .rail {
+      grid-column: 1 / -1;
+      grid-template-columns: repeat(2, 1fr);
+      padding-left: 0;
+      border-left: none;
+      border-top: 1px solid #eeeeee;
+      padding-top: 2rem;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .front-grid {
+      grid-template-columns: 1fr;
+    }
+    .rail {
+      grid-template-columns: 1fr;
+    }
+    h1 {
+      font-size: 3.5rem;
+    }
+  }
+</style>

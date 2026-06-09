@@ -41,10 +41,11 @@ export default defineConfig({
       },
     },
     ssr: {
+      external: ['cloudflare:workers'],
       noExternal: ['@libsql/kysely-libsql', '@libsql/client', '@libsql/client/web'],
     },
     optimizeDeps: {
-      include: ['@libsql/kysely-libsql', '@libsql/client', '@libsql/client/web'],
+      include: ['@libsql/client', '@libsql/client/web'],
     },
   },
   integrations: [

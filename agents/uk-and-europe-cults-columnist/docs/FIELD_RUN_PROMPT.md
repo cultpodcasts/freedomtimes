@@ -252,13 +252,16 @@ Check especially: real group news **not** merged with fiction (e.g. PBCC vs Unch
    - Writes `reports/approved-layout.json` for the writing phase
    - Exports training lines to `data/training-data.jsonl`
 
-10. **Write the weekly article** (CMS / Freedom Times):
-    - One subsection per **cluster** heading
-    - Short mentions from **Latest Stories**
-    - Use **Copy citations** / `reports/cult-news-sources.json` for sources
-    - Only cite stories whose **published dates** fall inside your agreed coverage window
-    - **Journalism first:** each section = who / what / where / when / why / how from sources; name defendants and charges in court stories when outlets do
-    - **No Freedom Times commentary** in roundup body — report the story; do not state our position on sects, evangelicalism, Catholicism, or policy (see draft skill § Do not editorialize on stories)
+10. **Write the weekly article** (CMS / Freedom Times) — follow **[WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md)**:
+    - Title: `Europe & UK Cult News: {dates}`; slug `weekly-summary-{publish-day}-{month}-{yyyy}`
+    - One `##` per article-plan unit (cluster = synthesise all URLs in unit)
+    - **2–3 paragraphs** per section; one brief preamble after H1
+    - Use **Copy citations** / `reports/cult-news-sources.json`; only stories inside coverage window
+    - **Journalism first:** who / what / where / when from sources; name defendants and charges when outlets do
+    - **Cut redundancy:** no orphan procedural lines, repeated facts, meta “paper does not report” (writing guide § Cut redundancy)
+    - **No Freedom Times commentary**; no bold; default to *cult* ([CULT_WORDING.md](CULT_WORDING.md))
+    - **Translation blocks** for foreign-language direct quotes (blockquote + `<details class="translate">` — writing guide § Translation blocks)
+    - `## Beyond Europe` before citations where applicable; push as Portable Text via `draft:push-staging`
 
 11. **Note code follow-ups** in `report-review-notes.md` for a **future development session** — do not fix clustering in this field run.
 
@@ -300,6 +303,8 @@ Then print the full **[Human-in-the-loop handoff](#human-in-the-loop-handoff-ope
 | File | Purpose |
 |------|---------|
 | [WEEKLY_RUN.md](WEEKLY_RUN.md) | Full weekly operator runbook |
+| [WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md) | Roundup prose standards |
+| [CULT_WORDING.md](CULT_WORDING.md) | Using *cult* vs *sect* in roundups |
 | [CLUSTER_REGRESSION.md](../tests/CLUSTER_REGRESSION.md) | Issue types A/B/C, test commands |
 | [LANGUAGE_FILES.md](LANGUAGE_FILES.md) | Tuning figurative / cult signals |
 | [README.md](../README.md) | Discovery policy, env reference |

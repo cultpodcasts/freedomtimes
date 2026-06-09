@@ -35,7 +35,7 @@ This agent is designed to be **self-contained** — it has its own `package.json
 | Images | `draft:collect-images` → `/draft-images` → `draft:upload-images` → `draft:inject-images` |
 | Staging CMS | `draft:push-staging` |
 
-Detail: [WEEKLY_RUN.md](WEEKLY_RUN.md), [DRAFT_FROM_ARTICLE_PLAN.md](DRAFT_FROM_ARTICLE_PLAN.md).
+Detail: [WEEKLY_RUN.md](WEEKLY_RUN.md), [WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md), [CULT_WORDING.md](CULT_WORDING.md), [DRAFT_FROM_ARTICLE_PLAN.md](DRAFT_FROM_ARTICLE_PLAN.md).
 
 ---
 
@@ -96,7 +96,7 @@ Slug example: `weekly-summary-8-june-2026`. Pass slug after `--` for all `draft:
 | `npm run draft:probe-images -- <slug>` | Re-probe quality on existing candidates (no HTML re-fetch) | Updates candidates file |
 | `npm run draft:upload-images -- <slug>` | Upload **saved selections** to staging EmDash media | `{slug}-image-selections.json` → `{slug}-images-uploaded.json` |
 | `npm run draft:inject-images -- <slug>` | Insert `![alt](staging-url)` after each `##` / `###` in draft markdown | `reports/drafts/<slug>.md` |
-| `npm run draft:push-staging -- <slug>` | Push markdown draft to staging CMS (draft update, unpublished) | `EMDASH_STAGING_PAT`, uploads file, existing staging post |
+| `npm run draft:push-staging -- <slug>` [cms-slug] | Push draft to staging CMS as **Portable Text** (draft update, unpublished) | `EMDASH_STAGING_PAT`, uploads file, existing staging post |
 
 **Image workflow (UI):** `feedback:server` → `/draft-images` → Collect → pick images → **Beyond Europe** flags → Save selections.
 
@@ -109,12 +109,13 @@ Slug example: `weekly-summary-8-june-2026`. Pass slug after `--` for all `draft:
 **Files** (`reports/drafts/`):
 
 - `<slug>.md` — prose draft
+- `<slug>-subjects.json` — CMS subject chips (roundup: include `Europe & UK Cult News`)
 - `<slug>-image-candidates.json`
 - `<slug>-image-selections.json`
 - `<slug>-images-uploaded.json`
 - `_custom/<slug>/` — pasted images from draft-images UI
 
-Operator guide: [DRAFT_FROM_ARTICLE_PLAN.md](DRAFT_FROM_ARTICLE_PLAN.md). Cursor skill: `.cursor/skills/draft-from-article-plan/SKILL.md` (in monorepo today).
+Writing guide: [WEEKLY_REPORT_WRITING_GUIDE.md](WEEKLY_REPORT_WRITING_GUIDE.md). Operator guide: [DRAFT_FROM_ARTICLE_PLAN.md](DRAFT_FROM_ARTICLE_PLAN.md). Cursor skill: `.cursor/skills/draft-from-article-plan/SKILL.md` (in monorepo today).
 
 ---
 

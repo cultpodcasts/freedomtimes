@@ -3,7 +3,7 @@ import { getEmDashCollection, getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../../components/EmDashContentView.astro';
 import Layout from '../../layouts/Layout.astro';
-import { readOptionalEnv } from '../../lib/auth';
+import { getHomePath, readOptionalEnv } from '../../lib/auth';
 import { requireEditorialSession } from '../../lib/editorial-session';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
@@ -105,7 +105,7 @@ if (!slug) {
 				<p class="summary">The requested archive issue may have been unpublished, moved, or removed.</p>
 			</header>
 			<nav>
-				<a href="/homepage">Back to homepage</a>
+				<a href={getHomePath()}>Back to homepage</a>
 				<a href="/_emdash/admin">Open CMS</a>
 			</nav>
 		</article>

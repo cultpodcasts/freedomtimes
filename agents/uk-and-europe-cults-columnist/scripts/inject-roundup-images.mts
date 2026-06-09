@@ -18,7 +18,7 @@ import type {
 
 const agentRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const draftsDir = join(agentRoot, 'reports', 'drafts');
-const slug = process.argv[2] ?? 'weekly-summary-8-june-2026';
+const slug = process.argv[2] ?? 'weekly-summary-7-june-2026';
 
 const mdPath = join(draftsDir, `${slug}.md`);
 const uploads = JSON.parse(
@@ -45,15 +45,11 @@ const beyondSet = new Set(
     .map((u) => u.unitId),
 );
 const beyondUnitIds = unitOrder.filter((id) => beyondSet.has(id));
+const firstMainUnitId = unitOrder.find((id) => !beyondSet.has(id));
 
 let lines = readFileSync(mdPath, 'utf8').split('\n');
 
-// Strip intro: keep title, drop paragraphs before first ##
 const title = lines[0] ?? '# Draft';
-const firstH2 = lines.findIndex((l) => l.startsWith('## '));
-if (firstH2 > 0) {
-  lines = [title, '', ...lines.slice(firstH2)];
-}
 
 // Remove existing image lines after headings
 lines = lines.filter((l, i, arr) => {
@@ -99,6 +95,8 @@ for (let i = 0; i < lines.length; i++) {
 // Insert images (reverse order to preserve indices)
 const insertions: Array<{ after: number; markdown: string }> = [];
 for (const { lineIndex, unitId } of sectionHeadings) {
+  // First story uses featured_image on the post — skip duplicate in-body hero.
+  if (unitId === firstMainUnitId) continue;
   const up = uploadByUnit.get(unitId);
   if (!up) continue;
   const alt = up.alt.replace(/[\[\]]/g, '');
