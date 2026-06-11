@@ -25,9 +25,15 @@ export async function initializePwa(): Promise<void> {
 
   window.__ftPwaInitialized = true;
 
-  window.addEventListener('load', () => {
+  const registerServiceWorker = () => {
     void navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch((error) => {
       console.error('[pwa] service worker registration failed', error);
     });
-  }, { once: true });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', registerServiceWorker, { once: true });
+  } else {
+    registerServiceWorker();
+  }
 }

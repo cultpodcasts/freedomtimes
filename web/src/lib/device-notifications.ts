@@ -7,6 +7,8 @@ const NATIVE_CHANNEL_ID = 'reader-alerts';
 const NATIVE_CHANNEL_NAME = 'Reader Alerts';
 const NATIVE_CHANNEL_DESCRIPTION = `Breaking and important ${SITE_DISPLAY_NAME} notifications`;
 const REGISTRATION_TIMEOUT_MS = 30000;
+const BROWSER_NOTIFICATIONS_BLOCKED_MESSAGE =
+  'Notifications are blocked in this browser. Open site settings (lock or tune icon in the address bar), set Notifications to Allow, then reload this page.';
 
 type NativePlatform = 'android' | 'ios';
 
@@ -90,6 +92,14 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
     };
   }
 
+  if (Notification.permission === 'denied') {
+    return {
+      supported: true,
+      buttonDisabled: true,
+      message: BROWSER_NOTIFICATIONS_BLOCKED_MESSAGE,
+    };
+  }
+
   return {
     supported: true,
     buttonDisabled: false,
@@ -97,13 +107,24 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
   };
 }
 
-export async function enableNotificationsForCurrentDevice(publicKey: string): Promise<string> {
+export function requestBrowserNotificationPermission(): Promise<NotificationPermission> {
+  if (!('Notification' in window)) {
+    return Promise.reject(new Error('This browser does not support web push notifications.'));
+  }
+
+  return Notification.requestPermission();
+}
+
+export async function enableNotificationsForCurrentDevice(
+  publicKey: string,
+  permission?: NotificationPermission,
+): Promise<string> {
   if (isNativeNotificationPlatform()) {
     await enableNativePushNotifications();
     return 'Notifications enabled for this app.';
   }
 
-  await enableBrowserPushNotifications(publicKey);
+  await enableBrowserPushNotifications(publicKey, permission);
   return 'Notifications enabled for this browser.';
 }
 
@@ -245,15 +266,29 @@ async function ensureNativePushRegistration(): Promise<void> {
   return nativeAutoRegistrationPromise;
 }
 
-async function enableBrowserPushNotifications(publicKey: string): Promise<void> {
-  const permission = await Notification.requestPermission();
+async function ensureBrowserServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
+  const existingRegistration = await navigator.serviceWorker.getRegistration('/');
+  if (existingRegistration) {
+    return existingRegistration;
+  }
+
+  return navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+}
+
+async function enableBrowserPushNotifications(
+  publicKey: string,
+  requestedPermission?: NotificationPermission,
+): Promise<void> {
+  const permission = requestedPermission ?? await Notification.requestPermission();
   if (permission !== 'granted') {
     throw new Error(permission === 'denied'
-      ? 'Notifications were blocked in the browser.'
+      ? BROWSER_NOTIFICATIONS_BLOCKED_MESSAGE
       : 'Notification permission was dismissed.');
   }
 
-  const registration = await navigator.serviceWorker.ready;
+  const registration = await ensureBrowserServiceWorkerRegistration();
+  await registration.update().catch(() => undefined);
+
   const existingSubscription = await registration.pushManager.getSubscription();
   const subscription = existingSubscription ?? await registration.pushManager.subscribe({
     userVisibleOnly: true,

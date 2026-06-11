@@ -1,8 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { getNotificationSupportState, enableNotificationsForCurrentDevice } from '../lib/device-notifications';
+import {
+  enableNotificationsForCurrentDevice,
+  getNotificationSupportState,
+  requestBrowserNotificationPermission,
+} from '../lib/device-notifications';
 
-type NotificationPermissionState = 'loading' | 'unsupported' | 'enabled' | 'prompt';
+type NotificationPermissionState = 'loading' | 'unsupported' | 'enabled' | 'blocked' | 'prompt';
 
 type NotificationPermissionProps = {
   publicKey: string;
@@ -30,7 +34,7 @@ export default function NotificationPermission({ publicKey }: NotificationPermis
         }
 
         if (supportState.buttonDisabled) {
-          setState('enabled');
+          setState(Notification.permission === 'denied' ? 'blocked' : 'enabled');
           setMessage(supportState.message);
           return;
         }
@@ -48,16 +52,19 @@ export default function NotificationPermission({ publicKey }: NotificationPermis
   }, []);
 
   const handleEnable = async () => {
+    const permissionPromise = requestBrowserNotificationPermission();
     setIsEnabling(true);
+
     try {
-      const result = await enableNotificationsForCurrentDevice(publicKey);
+      const permission = await permissionPromise;
+      const result = await enableNotificationsForCurrentDevice(publicKey, permission);
       setState('enabled');
       setMessage(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       console.error('[NotificationPermission] failed to enable', error);
-      setMessage(`Failed to enable notifications: ${message}`);
-      setState('prompt');
+      setMessage(message);
+      setState(Notification.permission === 'denied' ? 'blocked' : 'prompt');
     } finally {
       setIsEnabling(false);
     }
@@ -75,6 +82,14 @@ export default function NotificationPermission({ publicKey }: NotificationPermis
     return (
       <div className="notification-permission-enabled">
         <p className="success-message">✓ {message}</p>
+      </div>
+    );
+  }
+
+  if (state === 'blocked') {
+    return (
+      <div className="notification-permission-prompt">
+        <p className="notification-message">{message}</p>
       </div>
     );
   }
