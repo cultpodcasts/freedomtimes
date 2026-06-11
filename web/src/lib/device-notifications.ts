@@ -8,12 +8,68 @@ const NATIVE_CHANNEL_NAME = 'Reader Alerts';
 const NATIVE_CHANNEL_DESCRIPTION = `Breaking and important ${SITE_DISPLAY_NAME} notifications`;
 const REGISTRATION_TIMEOUT_MS = 30000;
 const BROWSER_PUSH_TIMEOUT_MS = 30000;
-const BROWSER_PERMISSION_PROMPT_MESSAGE =
-  'In Microsoft Edge, click the bell icon at the right end of the address bar (not the lock menu) and choose Allow. Then click Enable notifications again if needed.';
-const BROWSER_PERMISSION_TIMEOUT_MESSAGE =
-  'Edge did not show a notification prompt. Open Settings → Cookies and site permissions → Notifications, add this site under Allow, reload, then try again.';
-const BROWSER_NOTIFICATIONS_BLOCKED_MESSAGE =
-  'Notifications are blocked in this browser. Open site settings (lock or tune icon in the address bar), set Notifications to Allow, then reload this page.';
+
+type BrowserKind = 'chrome' | 'edge' | 'firefox' | 'safari' | 'other';
+
+type BrowserNotificationMessages = {
+  permissionPrompt: string;
+  permissionTimeout: string;
+  blocked: string;
+  dismissed: string;
+};
+
+const BROWSER_NOTIFICATION_MESSAGES: Record<BrowserKind, BrowserNotificationMessages> = {
+  edge: {
+    permissionPrompt:
+      'In Microsoft Edge, look for a bell icon at the right end of the address bar (not the lock menu), choose Allow, then click Enable notifications again if needed.',
+    permissionTimeout:
+      'Edge did not show a notification prompt. Open Settings → Cookies and site permissions → Notifications, add this site under Allow, reload, then try again.',
+    blocked:
+      'Notifications are blocked in Edge. Open Settings → Cookies and site permissions → Notifications, allow this site, reload, then try again.',
+    dismissed:
+      'Notification permission was dismissed. Click Enable notifications to try again.',
+  },
+  chrome: {
+    permissionPrompt:
+      'Choose Allow in the Chrome prompt near the address bar. If you do not see it, check for a notifications icon at the right end of the address bar.',
+    permissionTimeout:
+      'Chrome did not show a notification prompt. Open the lock icon → Site settings → Notifications, set this site to Allow, reload, then try again.',
+    blocked:
+      'Notifications are blocked in Chrome. Open the lock icon → Site settings → Notifications, set this site to Allow, reload, then try again.',
+    dismissed:
+      'Notification permission was dismissed. Click Enable notifications to try again.',
+  },
+  firefox: {
+    permissionPrompt:
+      'Choose Allow in the Firefox prompt that appears from the address bar.',
+    permissionTimeout:
+      'Firefox did not show a notification prompt. Open the lock icon → Permissions, set Notifications to Allow, reload, then try again.',
+    blocked:
+      'Notifications are blocked in Firefox. Open the lock icon → Permissions, set Notifications to Allow, reload, then try again.',
+    dismissed:
+      'Notification permission was dismissed. Click Enable notifications to try again.',
+  },
+  safari: {
+    permissionPrompt:
+      'Choose Allow in the Safari prompt when it appears.',
+    permissionTimeout:
+      'Safari did not show a notification prompt. Open Safari → Settings → Websites → Notifications, allow this site, reload, then try again.',
+    blocked:
+      'Notifications are blocked in Safari. Open Safari → Settings → Websites → Notifications, allow this site, reload, then try again.',
+    dismissed:
+      'Notification permission was dismissed. Click Enable notifications to try again.',
+  },
+  other: {
+    permissionPrompt:
+      'Choose Allow when your browser asks for notification permission.',
+    permissionTimeout:
+      'Your browser did not show a notification prompt. Open this site\'s settings from the address bar, set Notifications to Allow, reload, then try again.',
+    blocked:
+      'Notifications are blocked in this browser. Open site settings from the address bar, set Notifications to Allow, reload, then try again.',
+    dismissed:
+      'Notification permission was dismissed. Click Enable notifications to try again.',
+  },
+};
 
 type NativePlatform = 'android' | 'ios';
 
@@ -101,7 +157,7 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
     return {
       supported: true,
       buttonDisabled: true,
-      message: BROWSER_NOTIFICATIONS_BLOCKED_MESSAGE,
+      message: getBrowserNotificationsBlockedMessage(),
     };
   }
 
@@ -124,12 +180,36 @@ export function requestBrowserNotificationPermission(): Promise<NotificationPerm
   return withTimeout(
     Notification.requestPermission(),
     BROWSER_PUSH_TIMEOUT_MS,
-    BROWSER_PERMISSION_TIMEOUT_MESSAGE,
+    getBrowserPermissionTimeoutMessage(),
   );
 }
 
 export function getBrowserPermissionPromptMessage(): string {
-  return BROWSER_PERMISSION_PROMPT_MESSAGE;
+  return browserNotificationMessages().permissionPrompt;
+}
+
+export function getBrowserPermissionTimeoutMessage(): string {
+  return browserNotificationMessages().permissionTimeout;
+}
+
+export function getBrowserNotificationsBlockedMessage(): string {
+  return browserNotificationMessages().blocked;
+}
+
+export function getBrowserPermissionDismissedMessage(): string {
+  return browserNotificationMessages().dismissed;
+}
+
+export function browserNotificationPermissionError(permission: NotificationPermission): Error | null {
+  if (permission === 'granted') {
+    return null;
+  }
+
+  if (permission === 'denied') {
+    return new Error(getBrowserNotificationsBlockedMessage());
+  }
+
+  return new Error(getBrowserPermissionDismissedMessage());
 }
 
 export async function prepareBrowserPushInfrastructure(): Promise<void> {
@@ -314,9 +394,8 @@ async function enableBrowserPushNotifications(
 ): Promise<void> {
   const permission = requestedPermission ?? await Notification.requestPermission();
   if (permission !== 'granted') {
-    throw new Error(permission === 'denied'
-      ? BROWSER_NOTIFICATIONS_BLOCKED_MESSAGE
-      : 'Notification permission was dismissed.');
+    throw browserNotificationPermissionError(permission)
+      ?? new Error(getBrowserPermissionDismissedMessage());
   }
 
   const registration = await withTimeout(
@@ -340,6 +419,36 @@ async function enableBrowserPushNotifications(
     BROWSER_PUSH_TIMEOUT_MS,
     'Timed out saving this device for notifications. Try again in a moment.',
   );
+}
+
+function detectBrowserKind(): BrowserKind {
+  if (typeof navigator === 'undefined') {
+    return 'other';
+  }
+
+  const userAgent = navigator.userAgent;
+
+  if (/\bEdg\//.test(userAgent)) {
+    return 'edge';
+  }
+
+  if (/\bFirefox\//.test(userAgent)) {
+    return 'firefox';
+  }
+
+  if (/\bSafari\//.test(userAgent) && !/\b(Chromium|Chrome|Edg)\//.test(userAgent)) {
+    return 'safari';
+  }
+
+  if (/\bChrome\//.test(userAgent)) {
+    return 'chrome';
+  }
+
+  return 'other';
+}
+
+function browserNotificationMessages(): BrowserNotificationMessages {
+  return BROWSER_NOTIFICATION_MESSAGES[detectBrowserKind()];
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {

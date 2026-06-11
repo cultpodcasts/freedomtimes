@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import {
+  browserNotificationPermissionError,
   enableNotificationsForCurrentDevice,
   getBrowserPermissionPromptMessage,
   getNotificationSupportState,
@@ -63,10 +64,9 @@ export default function NotificationPermission({ publicKey }: NotificationPermis
 
     try {
       const permission = await permissionPromise;
-      if (permission !== 'granted') {
-        throw new Error(permission === 'denied'
-          ? 'Notifications are blocked in this browser. Open site settings and set Notifications to Allow, then reload this page.'
-          : 'Notification permission was dismissed.');
+      const permissionError = browserNotificationPermissionError(permission);
+      if (permissionError) {
+        throw permissionError;
       }
 
       setMessage('Registering this device for notifications...');
