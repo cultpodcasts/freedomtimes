@@ -143,13 +143,13 @@ jobs:
             --url "https://${TF_VAR_auth0_domain}/oauth/token" \
             --header 'content-type: application/json' \
             --data "{\"grant_type\":\"client_credentials\",\"client_id\":\"${TF_VAR_auth0_management_client_id}\",\"client_secret\":\"${TF_VAR_auth0_management_client_secret}\",\"audience\":\"https://${TF_VAR_auth0_domain}/api/v2/\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+            | jq -r '.access_token')
 
           # Query for existing admin_ui client
           CLIENT_ID=$(curl -sS --fail \
             --url "https://${TF_VAR_auth0_domain}/api/v2/clients?name=admin_ui" \
             --header "authorization: Bearer ${TOKEN}" \
-            | python3 -c "import json,sys; clients = json.load(sys.stdin); print(clients[0]['client_id'] if clients else '')")
+            | jq -r '.[0].client_id // empty')
 
           if [ -z "$CLIENT_ID" ]; then
             echo "No Auth0 admin_ui client found; Terraform will create it"
@@ -294,12 +294,12 @@ jobs:
             --url "https://${AUTH0_DOMAIN}/oauth/token" \
             --header 'content-type: application/json' \
             --data "{\"grant_type\":\"client_credentials\",\"client_id\":\"${AUTH0_MANAGEMENT_CLIENT_ID}\",\"client_secret\":\"${AUTH0_MANAGEMENT_CLIENT_SECRET}\",\"audience\":\"https://${AUTH0_DOMAIN}/api/v2/\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+            | jq -r '.access_token')
 
           AUTH0_APP_CLIENT_SECRET=$(curl -sS --fail \
             --url "https://${AUTH0_DOMAIN}/api/v2/clients/${AUTH0_APP_CLIENT_ID}" \
             --header "authorization: Bearer ${TOKEN}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['client_secret'])")
+            | jq -r '.client_secret')
 
           echo "::add-mask::$AUTH0_APP_CLIENT_SECRET"
           echo "auth0_app_client_secret=$AUTH0_APP_CLIENT_SECRET" >> "$GITHUB_OUTPUT"

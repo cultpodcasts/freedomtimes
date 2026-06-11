@@ -44,31 +44,27 @@ CREATED_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 export CREATED_UTC PROD_DB BRANCH_NAME GROUP NOTES META_FILE HEAD SHORT CURRENT_BRANCH ORIGIN_MAIN ORIGIN_URL DIRTY
 
-python3 <<'PY'
-import json
-import os
-
-m = {
-    "createdAtUtc": os.environ["CREATED_UTC"],
-    "sourceDatabase": os.environ["PROD_DB"],
-    "rollbackDatabase": os.environ["BRANCH_NAME"],
-    "tursoGroup": os.environ["GROUP"],
-    "notes": os.environ.get("NOTES") or None,
-    "git": {
-        "head": os.environ["HEAD"],
-        "headShort": os.environ["SHORT"],
-        "currentBranch": os.environ["CURRENT_BRANCH"],
-        "originMain": os.environ["ORIGIN_MAIN"],
-        "originRemote": os.environ["ORIGIN_URL"],
-        "dirtyWorkingTree": os.environ["DIRTY"] == "true",
-    },
-}
-path = os.environ["META_FILE"]
-with open(path, "w", encoding="utf-8") as f:
-    json.dump(m, f, indent=2)
-    f.write("\n")
-print(path)
-PY
+node -e "
+const fs = require('node:fs');
+const m = {
+  createdAtUtc: process.env.CREATED_UTC,
+  sourceDatabase: process.env.PROD_DB,
+  rollbackDatabase: process.env.BRANCH_NAME,
+  tursoGroup: process.env.GROUP,
+  notes: process.env.NOTES || null,
+  git: {
+    head: process.env.HEAD,
+    headShort: process.env.SHORT,
+    currentBranch: process.env.CURRENT_BRANCH,
+    originMain: process.env.ORIGIN_MAIN,
+    originRemote: process.env.ORIGIN_URL,
+    dirtyWorkingTree: process.env.DIRTY === 'true',
+  },
+};
+const path = process.env.META_FILE;
+fs.writeFileSync(path, JSON.stringify(m, null, 2) + '\n');
+console.log(path);
+"
 
 echo "Rollback metadata: ${META_FILE}"
 echo "Next (if needed): turso db tokens create '${BRANCH_NAME}' for emergency failback."

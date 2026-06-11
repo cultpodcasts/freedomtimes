@@ -288,12 +288,12 @@ jobs:
             --url "https://${AUTH0_DOMAIN}/oauth/token" \
             --header 'content-type: application/json' \
             --data "{\"grant_type\":\"client_credentials\",\"client_id\":\"${AUTH0_MANAGEMENT_CLIENT_ID}\",\"client_secret\":\"${AUTH0_MANAGEMENT_CLIENT_SECRET}\",\"audience\":\"https://${AUTH0_DOMAIN}/api/v2/\"}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+            | jq -r '.access_token')
 
           AUTH0_APP_CLIENT_SECRET=$(curl -sS --fail \
             --url "https://${AUTH0_DOMAIN}/api/v2/clients/${AUTH0_APP_CLIENT_ID}" \
             --header "authorization: Bearer ${TOKEN}" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['client_secret'])")
+            | jq -r '.client_secret')
 
           echo "::add-mask::$AUTH0_APP_CLIENT_SECRET"
           echo "auth0_app_client_secret=$AUTH0_APP_CLIENT_SECRET" >> "$GITHUB_OUTPUT"

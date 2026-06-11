@@ -50,22 +50,20 @@ fi
 HEAD="$(git -C "${REPO_ROOT}" rev-parse HEAD)"
 CREATED_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-python3 - "${META_FILE}" "${CREATED_UTC}" "${OUT_FILE}" "${METHOD}" "${HEAD}" <<'PY'
-import json, sys
-meta, created, out_file, method, head = sys.argv[1:6]
-payload = {
-    "createdAtUtc": created,
-    "sourceDatabase": "freedomtimes-emdash-staging",
-    "backupFile": out_file,
-    "method": method,
-    "purpose": "pre-staging-worker-deploy",
-    "git": {"head": head},
-}
-with open(meta, "w", encoding="utf-8") as f:
-    json.dump(payload, f, indent=2)
-    f.write("\n")
-print(meta)
-PY
+node -e "
+const fs = require('node:fs');
+const [meta, created, outFile, method, head] = process.argv.slice(1);
+const payload = {
+  createdAtUtc: created,
+  sourceDatabase: 'freedomtimes-emdash-staging',
+  backupFile: outFile,
+  method,
+  purpose: 'pre-staging-worker-deploy',
+  git: { head },
+};
+fs.writeFileSync(meta, JSON.stringify(payload, null, 2) + '\n');
+console.log(meta);
+" "${META_FILE}" "${CREATED_UTC}" "${OUT_FILE}" "${METHOD}" "${HEAD}"
 
 ls -lh "${OUT_FILE}"
 echo "Backup complete (${METHOD})."

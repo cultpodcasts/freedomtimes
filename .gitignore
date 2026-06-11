@@ -59,11 +59,4 @@ web/scripts/tmp/*
 freedomtimes-emdash-staging.db
 freedomtimes-emdash-staging.db-wal
 
-# Temporary debugging scripts
-add_*.py
-fix_*.py
-lower_*.py
-remove_*.py
-revert_*.py
-cleanup.py
 temp_*.txt
