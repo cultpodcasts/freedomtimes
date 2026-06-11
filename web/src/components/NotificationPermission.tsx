@@ -2,7 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import {
   enableNotificationsForCurrentDevice,
+  getBrowserPermissionPromptMessage,
   getNotificationSupportState,
+  prepareBrowserPushInfrastructure,
   requestBrowserNotificationPermission,
 } from '../lib/device-notifications';
 
@@ -49,14 +51,25 @@ export default function NotificationPermission({ publicKey }: NotificationPermis
     };
 
     initialize();
+    void prepareBrowserPushInfrastructure();
   }, []);
 
   const handleEnable = async () => {
     const permissionPromise = requestBrowserNotificationPermission();
     setIsEnabling(true);
+    if (Notification.permission === 'default') {
+      setMessage(getBrowserPermissionPromptMessage());
+    }
 
     try {
       const permission = await permissionPromise;
+      if (permission !== 'granted') {
+        throw new Error(permission === 'denied'
+          ? 'Notifications are blocked in this browser. Open site settings and set Notifications to Allow, then reload this page.'
+          : 'Notification permission was dismissed.');
+      }
+
+      setMessage('Registering this device for notifications...');
       const result = await enableNotificationsForCurrentDevice(publicKey, permission);
       setState('enabled');
       setMessage(result);

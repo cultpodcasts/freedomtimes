@@ -31,8 +31,10 @@ const pushSubscribePublicKey = getPushSubscribePublicKey();
 
 	import {
 		enableNotificationsForCurrentDevice,
+		getBrowserPermissionPromptMessage,
 		getNotificationSupportState,
 		initializeNativePushBridge,
+		prepareBrowserPushInfrastructure,
 		requestBrowserNotificationPermission,
 	} from '../lib/device-notifications';
 
@@ -43,6 +45,7 @@ const isNativeShell = isLikelyNativeShellClient();
 
 	if (!isNativeShell && button instanceof HTMLButtonElement && status instanceof HTMLParagraphElement) {
 		void initializeNativePushBridge();
+		void prepareBrowserPushInfrastructure();
 		void applyInitialState(button, status);
 
 		button.addEventListener('click', () => {
@@ -60,14 +63,24 @@ const isNativeShell = isLikelyNativeShellClient();
 		const permissionPromise = requestBrowserNotificationPermission();
 
 		button.disabled = true;
-		status.textContent = 'Registering this device for notifications...';
+		status.textContent = Notification.permission === 'default'
+			? getBrowserPermissionPromptMessage()
+			: 'Registering this device for notifications...';
 
 		try {
 			const permission = await permissionPromise;
+			if (permission !== 'granted') {
+				throw new Error(permission === 'denied'
+					? 'Notifications are blocked in this browser. Open site settings (lock or tune icon in the address bar), set Notifications to Allow, then reload this page.'
+					: 'Notification permission was dismissed.');
+			}
+
+			status.textContent = 'Registering this device for notifications...';
 			status.textContent = await enableNotificationsForCurrentDevice(
 				button.dataset.publicKey || '',
 				permission,
 			);
+			button.disabled = true;
 		} catch (error) {
 			console.error('[notifications] subscribe failed', error);
 			status.textContent = error instanceof Error

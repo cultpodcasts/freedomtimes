@@ -7,6 +7,11 @@ const NATIVE_CHANNEL_ID = 'reader-alerts';
 const NATIVE_CHANNEL_NAME = 'Reader Alerts';
 const NATIVE_CHANNEL_DESCRIPTION = `Breaking and important ${SITE_DISPLAY_NAME} notifications`;
 const REGISTRATION_TIMEOUT_MS = 30000;
+const BROWSER_PUSH_TIMEOUT_MS = 30000;
+const BROWSER_PERMISSION_PROMPT_MESSAGE =
+  'In Microsoft Edge, click the bell icon at the right end of the address bar (not the lock menu) and choose Allow. Then click Enable notifications again if needed.';
+const BROWSER_PERMISSION_TIMEOUT_MESSAGE =
+  'Edge did not show a notification prompt. Open Settings → Cookies and site permissions → Notifications, add this site under Allow, reload, then try again.';
 const BROWSER_NOTIFICATIONS_BLOCKED_MESSAGE =
   'Notifications are blocked in this browser. Open site settings (lock or tune icon in the address bar), set Notifications to Allow, then reload this page.';
 
@@ -112,7 +117,31 @@ export function requestBrowserNotificationPermission(): Promise<NotificationPerm
     return Promise.reject(new Error('This browser does not support web push notifications.'));
   }
 
-  return Notification.requestPermission();
+  if (Notification.permission !== 'default') {
+    return Promise.resolve(Notification.permission);
+  }
+
+  return withTimeout(
+    Notification.requestPermission(),
+    BROWSER_PUSH_TIMEOUT_MS,
+    BROWSER_PERMISSION_TIMEOUT_MESSAGE,
+  );
+}
+
+export function getBrowserPermissionPromptMessage(): string {
+  return BROWSER_PERMISSION_PROMPT_MESSAGE;
+}
+
+export async function prepareBrowserPushInfrastructure(): Promise<void> {
+  if (isNativeNotificationPlatform() || !('serviceWorker' in navigator)) {
+    return;
+  }
+
+  try {
+    await ensureBrowserServiceWorkerRegistration();
+  } catch (error) {
+    console.warn('[notifications] service worker pre-registration failed', error);
+  }
 }
 
 export async function enableNotificationsForCurrentDevice(
@@ -267,12 +296,16 @@ async function ensureNativePushRegistration(): Promise<void> {
 }
 
 async function ensureBrowserServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
-  const existingRegistration = await navigator.serviceWorker.getRegistration('/');
-  if (existingRegistration) {
-    return existingRegistration;
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('Service workers are not supported in this browser.');
   }
 
-  return navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+  const existingRegistration = await navigator.serviceWorker.getRegistration('/');
+  if (!existingRegistration?.active) {
+    await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+  }
+
+  return navigator.serviceWorker.ready;
 }
 
 async function enableBrowserPushNotifications(
@@ -286,16 +319,41 @@ async function enableBrowserPushNotifications(
       : 'Notification permission was dismissed.');
   }
 
-  const registration = await ensureBrowserServiceWorkerRegistration();
-  await registration.update().catch(() => undefined);
+  const registration = await withTimeout(
+    ensureBrowserServiceWorkerRegistration(),
+    BROWSER_PUSH_TIMEOUT_MS,
+    'Timed out waiting for the notification service worker. Reload the page and try again.',
+  );
 
   const existingSubscription = await registration.pushManager.getSubscription();
-  const subscription = existingSubscription ?? await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: decodeBase64Url(publicKey),
+  const subscription = existingSubscription ?? await withTimeout(
+    registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: decodeBase64Url(publicKey),
+    }),
+    BROWSER_PUSH_TIMEOUT_MS,
+    'Timed out subscribing this browser for push notifications. Reload the page and try again.',
+  );
+
+  await withTimeout(
+    persistSubscription(subscription.toJSON()),
+    BROWSER_PUSH_TIMEOUT_MS,
+    'Timed out saving this device for notifications. Try again in a moment.',
+  );
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId = 0;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
   });
 
-  await persistSubscription(subscription.toJSON());
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 async function persistSubscription(payload: unknown): Promise<void> {
