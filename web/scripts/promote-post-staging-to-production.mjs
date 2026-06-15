@@ -3,12 +3,17 @@
  * - Staging snapshot: **MCP `content_get` only** so `data.content` stays Portable Text arrays
  *   (never `npx emdash content get`, which can stringify PT in JSON).
  * - Production: **MCP** `content_create` / `content_update` / `content_publish` (not CLI).
+ * - **Same slug on staging and production** — this script never renames; `<slug>` must match staging.
  * - featured_image / social_image: if production lacks staging media id, download from
  *   staging public file URL, upload to production, patch `data`.
  * - bylines: staging `primaryBylineId` → MCP `content_update` with `bylines: [{ bylineId }]`.
  *
+ * SAFETY: production `content_publish` sends push notifications to subscribers.
+ * Requires `--i-understand-production` — pass only when the operator explicitly requested
+ * production publish in the current session.
+ *
  * Usage (from repo root):
- *   node web/scripts/promote-post-staging-to-production.mjs posts my-slug
+ *   node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production
  *
  * Requires ~/.config/emdash/auth.json with accessToken for both URLs.
  */
@@ -22,6 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const STAGING_DEFAULT = "https://staging.freedomtimes.news";
 const PROD_DEFAULT = "https://freedomtimes.news";
+const PRODUCTION_FLAG = "--i-understand-production";
 
 function loadAuth() {
 	const p = join(homedir(), ".config", "emdash", "auth.json");
@@ -87,9 +93,12 @@ function featuredFromUploadItem(item, prev) {
 		alt: prev?.alt ?? item.alt ?? "",
 		meta: {
 			storageKey: item.storageKey,
-			caption: item.caption ?? null,
-			blurhash: item.blurhash ?? null,
-			dominantColor: item.dominantColor ?? null,
+			caption:
+				(prev?.meta && typeof prev.meta === "object" ? prev.meta.caption : null)
+				?? item.caption
+				?? null,
+			blurhash: item.blurhash ?? prev?.meta?.blurhash ?? null,
+			dominantColor: item.dominantColor ?? prev?.meta?.dominantColor ?? null,
 		},
 	};
 }
@@ -233,10 +242,22 @@ async function remapSeoImageString(stagingUrl, prodUrl, prodToken, payloadSeo, c
 }
 
 async function main() {
-	const collection = process.argv[2] || "posts";
-	const slug = process.argv[3];
+	const rawArgs = process.argv.slice(2);
+	if (!rawArgs.includes(PRODUCTION_FLAG)) {
+		console.error(
+			`REFUSED: production promote publishes to ${PROD_DEFAULT} and sends push notifications.\n` +
+				`Pass ${PRODUCTION_FLAG} only when the operator explicitly requested production publish.\n` +
+				`Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug> ${PRODUCTION_FLAG}`,
+		);
+		process.exit(1);
+	}
+	const positional = rawArgs.filter((a) => a !== PRODUCTION_FLAG);
+	const collection = positional[0] || "posts";
+	const slug = positional[1];
 	if (!slug) {
-		console.error("Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug>");
+		console.error(
+			`Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug> ${PRODUCTION_FLAG}`,
+		);
 		process.exit(1);
 	}
 
@@ -260,6 +281,12 @@ async function main() {
 	try {
 		const { item } = await emdashMcpContentGet(stagingUrl, stagingToken, { collection, id: slug });
 		stagingDoc = stagingDocFromMcpItem(collection, item);
+		if (stagingDoc.slug && stagingDoc.slug !== slug) {
+			throw new Error(
+				`Slug mismatch: argument "${slug}" but staging post slug is "${stagingDoc.slug}". ` +
+					`Promote uses identical slug on staging and production — do not rename.`,
+			);
+		}
 		const c = stagingDoc.data?.content;
 		if (!isPortableTextShape(c)) {
 			throw new Error(`MCP returned non-array data.content (${typeof c})`);

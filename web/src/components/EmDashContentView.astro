@@ -49,6 +49,7 @@ const {
 	textContent,
 	featuredImageSrc,
 	featuredImageAlt,
+	featuredImageCaption,
 	volumeNumber,
 	regionalVariant,
 	pageImages,
@@ -155,6 +156,7 @@ const socialTitle = publicationDateLabel
 					pdfLink={pdfLink}
 					featuredImageSrc={featuredImageSrc}
 					featuredImageAlt={featuredImageAlt}
+					featuredImageCaption={featuredImageCaption}
 				/>
 				<EntryBody
 					portableRenderNodes={portableRenderNodes}
@@ -282,6 +284,14 @@ const socialTitle = publicationDateLabel
 		width: 100%;
 		height: auto;
 		border: 1px solid #eeeeee;
+	}
+
+	:global(.fig-caption) {
+		margin: 0.75rem 0 0;
+		font-family: "Inter", sans-serif;
+		font-size: 0.85rem;
+		line-height: 1.45;
+		color: #555555;
 	}
 
 	:global(.inline-figure) {

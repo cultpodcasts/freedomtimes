@@ -1,12 +1,16 @@
 /**
  * Promote a published post from staging to production via EmDash MCP (HTTP JSON-RPC).
+ *
+ * SAFETY: production publish sends push notifications. Requires --i-understand-production.
+ * Slug on production matches staging exactly — no rename.
+ *
  * Requires:
  *   - Staging token in ~/.config/emdash/auth.json (or EMDASH_STAGING_TOKEN)
  *   - Production token: ~/.config/emdash/auth.json entry https://freedomtimes.news, or
  *     FREEDOMTIMES_PRODUCTION_EMDASH_PAT / EMDASH_PRODUCTION_TOKEN (PAT or OAuth access token)
  *
  * Usage (repo root):
- *   node scripts/promote-staging-post-to-production.mjs breton-mayor-treogan-investigation-review
+ *   node scripts/promote-staging-post-to-production.mjs <slug> --i-understand-production
  *
  * Featured image: downloads from staging media URL, then runs `npx emdash media upload` against production
  * (MCP has no binary upload). Requires `npx` + web/ emdash on PATH from repo root.
@@ -23,8 +27,25 @@ const WEB = path.join(REPO_ROOT, "web");
 const STAGING_MCP = "https://staging.freedomtimes.news/_emdash/api/mcp";
 const STAGING_ORIGIN = "https://staging.freedomtimes.news";
 const PRODUCTION_MCP = "https://freedomtimes.news/_emdash/api/mcp";
+const PRODUCTION_FLAG = "--i-understand-production";
 
-const SLUG = process.argv[2] || "breton-mayor-treogan-investigation-review";
+const rawArgv = process.argv.slice(2);
+if (!rawArgv.includes(PRODUCTION_FLAG)) {
+	console.error(
+		`REFUSED: production promote sends push notifications to subscribers.\n` +
+			`Pass ${PRODUCTION_FLAG} only when the operator explicitly requested production publish.\n` +
+			`Usage: node scripts/promote-staging-post-to-production.mjs <slug> ${PRODUCTION_FLAG}`,
+	);
+	process.exit(1);
+}
+const positional = rawArgv.filter((a) => a !== PRODUCTION_FLAG);
+const SLUG = positional[0];
+if (!SLUG) {
+	console.error(
+		`Usage: node scripts/promote-staging-post-to-production.mjs <slug> ${PRODUCTION_FLAG}`,
+	);
+	process.exit(1);
+}
 
 function parseSse(text) {
   for (const line of text.split(/\r?\n/)) {

@@ -11,6 +11,7 @@ const {
 	pdfLink,
 	featuredImageSrc,
 	featuredImageAlt,
+	featuredImageCaption,
 } = Astro.props as {
 	title: string;
 	pageImages: SlideImage[];
@@ -21,6 +22,7 @@ const {
 	pdfLink: string | null;
 	featuredImageSrc: string | null;
 	featuredImageAlt: string;
+	featuredImageCaption: string | null;
 };
 ---
 
@@ -62,5 +64,8 @@ const {
 ) : featuredImageSrc ? (
 	<figure class="hero">
 		<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
+		{featuredImageCaption && (
+			<figcaption class="fig-caption">{featuredImageCaption}</figcaption>
+		)}
 	</figure>
 ) : null}
