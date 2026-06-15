@@ -21,6 +21,7 @@ export type ContentEntryViewModel = {
 	textContent: string | null;
 	featuredImageSrc: string | null;
 	featuredImageAlt: string;
+	featuredImageCaption: string | null;
 	socialImageSrc: string | null;
 	volumeNumber: number | null;
 	regionalVariant: 'Lancaster' | 'Newcastle' | 'Nottingham' | null;
@@ -134,6 +135,22 @@ function readFeaturedImageSrc(value: unknown): string | null {
 	}
 
 	return null;
+}
+
+function readFeaturedImageCaption(value: unknown): string | null {
+	if (!value || typeof value !== 'object') {
+		return null;
+	}
+	const candidate = value as Record<string, unknown>;
+	const direct = readString(candidate.caption);
+	if (direct) {
+		return direct;
+	}
+	const meta =
+		candidate.meta && typeof candidate.meta === 'object'
+			? (candidate.meta as Record<string, unknown>)
+			: null;
+	return readString(meta?.caption);
 }
 
 function readMediaFileUrl(value: unknown): string | null {
@@ -664,6 +681,8 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
 	const featuredImageAlt =
 		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
+	const featuredImageCaption =
+		readFeaturedImageCaption(data.featured_image) ?? readFeaturedImageCaption(data.cover_image);
 	const socialImageSrc =
 		readFeaturedImageSrc(seo?.image)
 		?? readFeaturedImageSrc(data.social_image)
@@ -706,6 +725,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 		textContent,
 		featuredImageSrc,
 		featuredImageAlt,
+		featuredImageCaption,
 		socialImageSrc,
 		volumeNumber,
 		regionalVariant,
