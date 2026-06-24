@@ -369,15 +369,24 @@ For browser subscription capture, the web worker also needs:
 
 - `TURSO_SUBSCRIPTIONS_DATABASE_URL`
 - `TURSO_SUBSCRIPTIONS_AUTH_TOKEN`
-- local development: `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`
-- deployed worker secret: `PUSH_SUBSCRIBE_PUBLIC_KEY`
+- local development / operator scripts: `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`
+- deployed web worker secret: `PUSH_SUBSCRIBE_PUBLIC_KEY` (must be the **same** public key value)
 
 The first two are synced from Terraform outputs in CI. The public key is safe to expose to the browser, but it still needs to be set on the worker separately until VAPID key management is wired into deployment.
 
-The scheduler worker needs the matching VAPID delivery keys:
+The scheduler worker and `subscriptions:send-test` must sign with the **matching** private key for that same public key:
 
 - staging: `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`, `PUSH_STAGING_VAPID_PRIVATE_KEY`, `PUSH_STAGING_VAPID_SUBJECT`
 - production: `PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY`, `PUSH_PRODUCTION_VAPID_PRIVATE_KEY`, `PUSH_PRODUCTION_VAPID_SUBJECT`
+
+On the scheduler worker these map to `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY`, and `PUSH_VAPID_SUBJECT`. A subscribe/send key mismatch typically yields **401** from the push service, not 410.
+
+Compare fingerprints (prefix/suffix only) without printing secrets:
+
+```powershell
+cd web
+npm run subscriptions:compare-vapid-keys -- staging --origin https://staging.freedomtimes.news/posts/<slug>
+```
 
 Generate a compatible keypair with:
 

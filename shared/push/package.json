@@ -1,0 +1,9 @@
+{
+  "name": "freedomtimes-push-shared",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "jose": "^6.2.3",
+    "webpush-webcrypto": "^1.0.5"
+  }
+}

@@ -146,10 +146,24 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
   }
 
   if (Notification.permission === 'granted') {
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    const existingSubscription = registration
+      ? await registration.pushManager.getSubscription()
+      : null;
+
+    if (existingSubscription) {
+      void ensureBrowserPushSubscriptionSynced(publicKey);
+      return {
+        supported: true,
+        buttonDisabled: true,
+        message: 'Notifications are already enabled in this browser.',
+      };
+    }
+
     return {
       supported: true,
-      buttonDisabled: true,
-      message: 'Notifications are already enabled in this browser.',
+      buttonDisabled: false,
+      message: 'Notification permission is on, but this browser is not registered yet. Click Enable to finish setup.',
     };
   }
 
@@ -224,6 +238,21 @@ export async function prepareBrowserPushInfrastructure(): Promise<void> {
   }
 }
 
+/** Re-persist an existing PushManager subscription after permission was granted earlier. */
+export async function ensureBrowserPushSubscriptionSynced(publicKey: string): Promise<void> {
+  if (publicKey.trim().length === 0 || !('Notification' in window) || Notification.permission !== 'granted') {
+    return;
+  }
+
+  try {
+    const registration = await ensureBrowserServiceWorkerRegistration();
+    const subscription = await subscribeBrowserPushWithCurrentVapidKey(registration, publicKey);
+    await persistSubscription(subscription.toJSON());
+  } catch (error) {
+    console.warn('[notifications] subscription sync failed', error);
+  }
+}
+
 export async function enableNotificationsForCurrentDevice(
   publicKey: string,
   permission?: NotificationPermission,
@@ -267,9 +296,11 @@ export async function initializeNativePushBridge(): Promise<void> {
   await PushNotifications.addListener('pushNotificationActionPerformed', (event) => {
     const targetUrl = readNotificationTargetUrl(event.notification);
     if (!targetUrl) {
+      console.warn('[notifications] native notification tap ignored: no url in payload', event.notification);
       return;
     }
 
+    console.info('[notifications] native notification tap →', targetUrl);
     window.location.assign(targetUrl);
   });
 
@@ -375,6 +406,31 @@ async function ensureNativePushRegistration(): Promise<void> {
   return nativeAutoRegistrationPromise;
 }
 
+async function subscribeBrowserPushWithCurrentVapidKey(
+  registration: ServiceWorkerRegistration,
+  publicKey: string,
+): Promise<PushSubscription> {
+  const applicationServerKey = decodeBase64Url(publicKey);
+  const existingSubscription = await registration.pushManager.getSubscription();
+
+  if (existingSubscription) {
+    try {
+      return await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+    } catch {
+      // Stale subscription (e.g. VAPID key rotation): drop and subscribe again.
+      await existingSubscription.unsubscribe();
+    }
+  }
+
+  return registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey,
+  });
+}
+
 async function ensureBrowserServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
   if (!('serviceWorker' in navigator)) {
     throw new Error('Service workers are not supported in this browser.');
@@ -404,12 +460,8 @@ async function enableBrowserPushNotifications(
     'Timed out waiting for the notification service worker. Reload the page and try again.',
   );
 
-  const existingSubscription = await registration.pushManager.getSubscription();
-  const subscription = existingSubscription ?? await withTimeout(
-    registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: decodeBase64Url(publicKey),
-    }),
+  const subscription = await withTimeout(
+    subscribeBrowserPushWithCurrentVapidKey(registration, publicKey),
     BROWSER_PUSH_TIMEOUT_MS,
     'Timed out subscribing this browser for push notifications. Reload the page and try again.',
   );

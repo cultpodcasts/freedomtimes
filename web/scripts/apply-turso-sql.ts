@@ -10,6 +10,8 @@
 import { createClient } from '@libsql/client';
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { loadEnvDev } from './lib/load-env-dev.mjs';
+loadEnvDev();
 import { fileURLToPath } from 'node:url';
 
 type DatabaseTarget = 'scheduler' | 'subscriptions';
@@ -71,14 +73,14 @@ function isDatabaseTarget(value: string | undefined): value is DatabaseTarget {
 
 function getUrlEnvNames(databaseTarget: DatabaseTarget): string[] {
   return databaseTarget === 'scheduler'
-    ? ['TURSO_SCHEDULER_DATABASE_URL', 'TURSO_STAGING_SCHEDULER_DB_URL']
-    : ['TURSO_SUBSCRIPTIONS_DATABASE_URL', 'TURSO_STAGING_SUBSCRIPTIONS_DB_URL'];
+    ? ['TURSO_SCHEDULER_DATABASE_URL', 'TURSO_PRODUCTION_SCHEDULER_DB_URL', 'TURSO_STAGING_SCHEDULER_DB_URL']
+    : ['TURSO_SUBSCRIPTIONS_DATABASE_URL', 'TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL', 'TURSO_STAGING_SUBSCRIPTIONS_DB_URL'];
 }
 
 function getAuthTokenEnvNames(databaseTarget: DatabaseTarget): string[] {
   return databaseTarget === 'scheduler'
-    ? ['TURSO_SCHEDULER_AUTH_TOKEN', 'TURSO_STAGING_SCHEDULER_DB_TOKEN']
-    : ['TURSO_SUBSCRIPTIONS_AUTH_TOKEN', 'TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN'];
+    ? ['TURSO_SCHEDULER_AUTH_TOKEN', 'TURSO_PRODUCTION_SCHEDULER_DB_TOKEN', 'TURSO_STAGING_SCHEDULER_DB_TOKEN']
+    : ['TURSO_SUBSCRIPTIONS_AUTH_TOKEN', 'TURSO_PRODUCTION_SUBSCRIPTIONS_DB_TOKEN', 'TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN'];
 }
 
 function pickFirstEnv(names: string[]): { name: string; value: string } {

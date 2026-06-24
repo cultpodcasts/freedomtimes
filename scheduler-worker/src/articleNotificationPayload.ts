@@ -5,7 +5,7 @@
 export type PushNotificationPayload = {
 	title: string;
 	body: string;
-	/** In-app path (e.g. /posts/slug). */
+	/** Absolute article URL (e.g. https://freedomtimes.news/posts/slug). */
 	url: string;
 	icon: string;
 	badge: string;
@@ -30,40 +30,4 @@ export type RecentPostForPush = {
 	image?: string | null;
 };
 
-function normalizeSiteOrigin(raw: string): string {
-	return raw.trim().replace(/\/$/, '');
-}
-
-/**
- * Turn a recent-post row into the JSON body sent through web-push and mobile pipelines.
- * Icons use absolute URLs so FCM/APNs clients resolve them reliably.
- */
-export function buildArticlePushPayload(siteOrigin: string, post: RecentPostForPush): PushNotificationPayload {
-	const origin = normalizeSiteOrigin(siteOrigin);
-	const imageRaw = typeof post.image === 'string' ? post.image.trim() : '';
-	let image: string | undefined;
-	if (imageRaw.length > 0) {
-		image =
-			imageRaw.startsWith('https://') || imageRaw.startsWith('http://')
-				? imageRaw
-				: `${origin}${imageRaw.startsWith('/') ? imageRaw : `/${imageRaw}`}`;
-		if (!image.startsWith('https://')) {
-			image = undefined;
-		}
-	}
-
-	const payload: PushNotificationPayload = {
-		title: post.title,
-		body: post.excerpt?.trim() || 'Read the latest story on freedom times.',
-		url: `/posts/${post.slug}`,
-		icon: `${origin}/favicon.svg`,
-		badge: `${origin}/favicon.svg`,
-		tag: `article-${post.id}`,
-		ttl: 86_400,
-		urgency: 'high',
-	};
-	if (image) {
-		payload.image = image;
-	}
-	return payload;
-}
+export { buildArticlePushPayload } from '../../shared/push/articleNotificationPayload.mjs';
