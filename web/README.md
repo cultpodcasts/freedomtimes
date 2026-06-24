@@ -281,6 +281,20 @@ Current implementation note:
 
 - The signed-in API test page now calls APIM with `credentials: include` and does not read or attach bearer tokens in browser JavaScript.
 
+
+### One-command staging workers deploy (no Terraform)
+
+From repo root:
+
+```powershell
+.\scripts\deploy-staging-workers-only.ps1
+```
+
+Or from `web/`: `npm run deploy:staging:workers`
+
+Requires `.env.dev` with `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` (loaded automatically for `npm run build`).
+
+
 ## Staging Deployment Command (Cloudflare Worker)
 
 To deploy the staging Cloudflare Worker with all required runtime variables (matching CI):

@@ -11,9 +11,9 @@
     "deploy:production": "wrangler deploy --config wrangler.jsonc --env production"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.2",
+    "@libsql/client": "^0.17.4",
     "drizzle-orm": "^0.45.2",
-    "jose": "^6.2.2",
+    "jose": "^6.2.3",
     "webpush-webcrypto": "^1.0.5"
   }
 }

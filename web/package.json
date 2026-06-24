@@ -27,26 +27,27 @@
     "cap:sync:android": "cap sync android",
     "cap:sync:ios": "cap sync ios",
     "cap:open:android": "cap open android",
-    "cap:open:ios": "cap open ios"
+    "cap:open:ios": "cap open ios",
+    "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-workers-only.ps1"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.1.8",
-    "@astrojs/react": "^5.0.3",
-    "@capacitor/android": "^8.3.0",
+    "@astrojs/cloudflare": "^13.7.0",
+    "@astrojs/react": "^5.0.7",
+    "@capacitor/android": "^8.4.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/browser": "^8.0.3",
-    "@capacitor/core": "^8.3.0",
-    "@capacitor/ios": "^8.3.0",
-    "@capacitor/push-notifications": "^8.0.3",
-    "@emdash-cms/cloudflare": "^0.18.0",
-    "@libsql/client": "^0.17.2",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
+    "@capacitor/push-notifications": "^8.1.1",
+    "@emdash-cms/cloudflare": "^0.22.0",
+    "@libsql/client": "^0.17.4",
     "@libsql/kysely-libsql": "^0.4.1",
     "astro": "^6.1.5",
     "drizzle-orm": "^0.45.2",
-    "emdash": "^0.18.0",
-    "jose": "^6.2.2",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
+    "emdash": "^0.22.0",
+    "jose": "^6.2.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "sharp": "^0.34.5"
   },
   "overrides": {
@@ -54,14 +55,14 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
-    "@capacitor/cli": "^8.3.0",
+    "@capacitor/cli": "^8.4.1",
     "@napi-rs/canvas": "^0.1.80",
     "@resvg/resvg-js": "^2.6.2",
     "esbuild": "^0.25.3",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.4.296",
     "satori": "^0.26.0",
-    "tsx": "^4.20.6",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
 }
