@@ -4,6 +4,81 @@ Use this runbook to verify **production** push delivery across desktop and mobil
 
 For staging-only pre-promotion checks, see [PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md).
 
+**Test article (pinned):** `weekly-summary-15-june-2026` — *Europe & UK Cult News: 8–14 June 2026* (in production recent feed as of June 2026).
+
+---
+
+## Live session guide (incremental, one browser at a time)
+
+Work through browsers **one at a time**. Subscribe → capture ID → dry-run → send → verify tap **before** moving to the next browser. That keeps Turso rows unambiguous (`user_agent` + `created_at` match the browser you just used).
+
+All commands run from `web/` unless noted. Production origin for subscribe: **`https://freedomtimes.news`** only (not staging).
+
+### Per-browser loop
+
+| # | Action | Command / check |
+|---|--------|-----------------|
+| 1 | **Subscribe** | Private/incognito → `https://freedomtimes.news` → **Reader Alerts** → **Enable notifications** → **Allow** |
+| 2 | **List** | `npm run subscriptions:list -- production --web --active` |
+| 3 | **Copy ID** | Newest row matching this browser’s `user_agent` / `endpoint_prefix` → copy `id` (UUID) |
+| 4 | **Dry-run** | `npm run subscriptions:send-test -- --target production --subscription-id <uuid> --slug weekly-summary-15-june-2026 --dry-run` |
+| 5 | **Send** | Same command **without** `--dry-run` |
+| 6 | **Verify tap** | OS notification appears; tap opens `https://freedomtimes.news/posts/weekly-summary-15-june-2026` |
+| 7 | **Record** | Fill one row in the session checklist below |
+
+**VAPID reminder:** `.env.dev` production VAPID pair (`PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY` + `PUSH_PRODUCTION_VAPID_PRIVATE_KEY`) must match the worker keys on `freedomtimes.news`. Run `npm run subscriptions:compare-vapid-keys -- production` once before the session.
+
+### Session checklist
+
+Copy and complete as you go:
+
+| Browser | `subscription-id` | sent? | received? | tap OK? |
+|---------|-------------------|-------|-----------|---------|
+| Chrome (Windows) | | ☐ | ☐ | ☐ |
+| Edge (Windows) | | ☐ | ☐ | ☐ |
+| Firefox (Windows) | | ☐ | ☐ | ☐ |
+| Chrome (Android) | | ☐ | ☐ | ☐ |
+| Firefox (Android) | | ☐ | ☐ | ☐ |
+| Safari (iOS PWA) | | ☐ | ☐ | ☐ |
+
+### Pre-filled commands (replace `<uuid>` each time)
+
+```powershell
+cd web
+
+# After subscribe — find your new row:
+npm run subscriptions:list -- production --web --active
+
+# Dry-run (prints payload, no delivery):
+npm run subscriptions:send-test -- --target production --subscription-id <uuid> --slug weekly-summary-15-june-2026 --dry-run
+
+# Send to this browser only:
+npm run subscriptions:send-test -- --target production --subscription-id <uuid> --slug weekly-summary-15-june-2026
+```
+
+---
+
+## Like-for-like payload guarantee (article mode)
+
+With `--slug weekly-summary-15-june-2026` (or `--article` / `--article-id`), **send-test builds the same notification packet as the production scheduler**:
+
+| Step | Scheduler (cron) | send-test (operator) |
+|------|------------------|----------------------|
+| Feed | `GET {siteOrigin}/api/recent-published-posts.json` | Same URL for `--target production` → `https://freedomtimes.news/api/recent-published-posts.json` |
+| Post lookup | Iterates feed posts (scheduler sends all eligible; send-test picks one slug/id) | `fetchRecentPost()` finds slug in feed |
+| Payload builder | `buildArticlePushPayload(siteOrigin, post)` | **Same import** from `shared/push/articleNotificationPayload.mjs` |
+| Delivery | `deliverPushNotification` via queue consumer | **Same** `deliverToStoredTarget()` in `shared/push/deliverPushNotification.mjs` |
+
+Code paths:
+
+- Shared builder: `shared/push/articleNotificationPayload.mjs` (`buildArticlePushPayload`)
+- Scheduler re-export: `scheduler-worker/src/articleNotificationPayload.ts` → same module; used in `scheduler-worker/src/scheduler.ts` after feed fetch
+- send-test: `web/scripts/send-test-push-notification.mjs` imports builder + `fetchRecentPost()` → `resolvePayload()` → `buildArticlePushPayload(siteOrigin, post)`
+
+**What differs (by design):** send-test targets **one** `--subscription-id`; scheduler fans out to all active subscriptions after the 30-minute publish delay. Generic mode (no `--slug`) uses a test payload — **not** like-for-like; always pass `--slug` for article tests.
+
+---
+
 ## Quick reference
 
 | Step | Command / action |
@@ -137,7 +212,7 @@ Re-run `npm run subscriptions:list -- production --web --active`: your row’s `
 
 ## Step 4 — Fill in the browser matrix
 
-Copy this table and complete as you test:
+Use the **session checklist** at the top of this doc (Browser | subscription-id | sent? | received? | tap OK?). For extra debugging columns, expand with this table:
 
 | Browser | Device | Subscribed? | `subscription-id` (uuid) | `endpoint_prefix` (first 40 chars) | send-test OK? | Tap opens post? | Notes |
 |---------|--------|-------------|--------------------------|-------------------------------------|---------------|-----------------|-------|
