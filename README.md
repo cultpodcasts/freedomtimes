@@ -95,7 +95,7 @@ Deeper design: [ARCHITECTURE.md](ARCHITECTURE.md).
 |---|---|
 | [web/docs/ANDROID_CAPACITOR_BUILD.md](web/docs/ANDROID_CAPACITOR_BUILD.md) | Android debug/release builds |
 | [web/README.md](web/README.md) § Scheduler Worker | Push subscriptions, VAPID keys, Turso migrations |
-| [ARCHITECTURE.md](ARCHITECTURE.md) § 4.10 | Push notification architecture |
+| [ARCHITECTURE.md](ARCHITECTURE.md) § 4.9 | Push notification architecture |
 
 ### Process
 
