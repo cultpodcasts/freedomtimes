@@ -26,7 +26,7 @@ Freedom Times is a UK/Europe-focused news platform for cult survivors. It vets s
 | **PWA / App** | Web-first delivery with optional Android/iOS packaging via Capacitor; requires HTTPS, Web App Manifest, and Service Worker support |
 | **Push notifications** | Browser Web Push (VAPID) plus native Android (FCM) and iOS (APNs) via Capacitor; no email newsletter |
 | **Infrastructure as Code** | All cloud resources (Cloudflare, Auth0, Turso) are defined in source-controlled declarative files and deployed via CI/CD; no manual portal drift |
-| **Privacy / GDPR** | Protect survivor and reader privacy by design; collect the minimum data required for journalism operations only; no secondary profiling/advertising use |
+| **Privacy / GDPR** | Protect reader privacy by design; collect the minimum data required for journalism operations only; no secondary profiling/advertising use |
 
 ---
 
@@ -285,7 +285,8 @@ sequenceDiagram
 
 - **Web:** `PushManager.subscribe` with the public VAPID key (`PUSH_SUBSCRIBE_PUBLIC_KEY` on the Worker).
 - **Android / iOS:** Capacitor registers a native device token; the same API stores `{ platform, token }` payloads.
-- Only delivery metadata is stored server-side (endpoint or token, locale, user-agent). No email addresses.
+- Only pseudonymous delivery metadata is stored server-side: a server-generated random UUID (`id`), opaque browser push endpoint or native device token, optional locale, and user-agent. No names, email addresses, or other personally identifiable data — subscriptions cannot be traced back to an individual reader.
+- **Consent:** Opt-in is the browser or OS notification permission prompt; see [web/docs/PUSH_NOTIFICATIONS_TEST_PLAN.md](web/docs/PUSH_NOTIFICATIONS_TEST_PLAN.md) and [web/docs/PUSH_NOTIFICATIONS_OPERATOR.md](web/docs/PUSH_NOTIFICATIONS_OPERATOR.md).
 
 #### Publish → notification pipeline
 
@@ -459,16 +460,14 @@ Privacy is a primary architectural value for Freedom Times. The platform serves 
 
 **Core privacy principles:**
 
-- Collect personal data only when it is required for journalism operations, editorial workflow, push subscription administration, security, or legal compliance.
-- Do not collect reader or survivor data for advertising, profiling, behavioural targeting, or unrelated analytics.
+- Collect personal data only when it is required for journalism operations, editorial workflow, security, or legal compliance.
+- Do not collect reader data for advertising, profiling, behavioural targeting, or unrelated analytics.
 - Do not collect user-identifiable telemetry for readers; no per-reader behavioural tracking, persistent identifiers, or session replay.
-- Keep sensitive identity data separated from public editorial content and accessible only to tightly restricted roles.
-- Prefer pseudonyms and aliases in public-facing content and routine editorial tooling.
 
 **GDPR / UK-GDPR posture:**
 
 - Define and document a lawful basis for each category of data collected.
-- Provide clear privacy notices for readers, contributors, notification subscribers, and editors.
+- Provide clear privacy notices for readers, contributors, and editors.
 - Support subject rights workflows: access, rectification, erasure where applicable, and data export.
 - Store data in UK/EU-aligned regions unless a justified exception is documented.
 - Apply retention schedules so personal data is not retained indefinitely by default.
@@ -479,9 +478,8 @@ Privacy is a primary architectural value for Freedom Times. The platform serves 
 - Use privacy-preserving operational telemetry focused on service health and threat awareness rather than reader profiling.
 - Allowed request-context telemetry is limited to coarse, non-identifying signals such as country, ASN/network, high-level user-agent family, and similar non-fingerprinting request characteristics that help identify organised monitoring or hostile traffic patterns.
 - Do not retain raw IP addresses, user-level identifiers, full user-agent strings where avoidable, cross-session identifiers, or derived browser fingerprints for ordinary readership telemetry.
-- Keep push subscription data limited to what is needed for consent, delivery, and deactivation of invalid endpoints or tokens.
+- **Push subscriptions (settled):** Records are pseudonymous — random UUID plus opaque endpoint or native token only. No PII is stored and the platform cannot link a subscription to a person. Reader consent is the browser/OS notification permission prompt (§4.9; [PUSH_NOTIFICATIONS_TEST_PLAN.md](web/docs/PUSH_NOTIFICATIONS_TEST_PLAN.md)).
 - Keep app notification preferences on-device wherever possible; do not centralise reader preference profiles unless a clearly justified operational need is documented.
-- If source or survivor identity must ever be stored, keep it in a separate highly restricted store with stricter access controls and audit logging.
 - Search indexes, caches, and projections must not expand the scope of personal data beyond the journalism purpose of the canonical record.
 
 **Data collection rule:**
@@ -572,9 +570,8 @@ Architectural choices for framework (Astro), body format (Portable Text via EmDa
 | # | Topic | What remains |
 |---|---|---|
 | 1 | **EmDash publish reliability** | Temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) stay until upstream publish-time schema drift is resolved; remove once staging consistently publishes without them. |
-| 2 | **Privacy & GDPR operations** | Principles are in §4.13; still needed: privacy notice, retention schedules, push-subscriber consent capture, and subject-rights runbooks (deliverable §9.15). |
-| 3 | **Source / survivor identity** | Public fields use aliases only; if real identities are stored, they belong in a separate restricted store with stricter access and audit logging — not yet implemented. |
-| 4 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §9.12). |
+| 2 | **Privacy notice & retention** | Privacy principles and pseudonymous push handling are settled in §4.13 and §4.9; still needed: published privacy notice page and documented retention schedules / subject-rights runbooks for editorial and operational data (deliverable §9.15). |
+| 3 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §9.12). |
 
 ---
 
@@ -596,7 +593,7 @@ The following items are listed in priority order. Many are complete; remaining w
 12. Metadata taxonomy: managed lists for people, groups, and institutions with suggestion/prefill on submission.
 13. Push notifications: subscribe API, `scheduler-worker` cron + queue, VAPID/FCM/APNs delivery via `shared/push`. ✓
 14. Harden EmDash publish reliability in Workers and remove temporary compatibility patches once upstream fixes are no longer required.
-15. Define privacy controls: privacy notice, retention rules, consent capture, telemetry boundaries, and role-restricted handling of sensitive identity data.
+15. Define privacy controls: privacy notice, retention rules, and telemetry boundaries (push subscription pseudonymity and browser/OS permission consent are settled — §4.9, §4.13).
 16. End-to-end smoke test; Lighthouse audit; MVP sign-off.
 
 ---
@@ -613,7 +610,7 @@ The following items are listed in priority order. Many are complete; remaining w
 | Metadata Taxonomy | Managed canonical lists in CMS-backed content and supporting app logic | Normalises people, groups, and institutions across stories/media and improves prefill, search, and editorial consistency |
 | Auth | Auth0 | Managed OIDC/JWT, RBAC, SPA + API support |
 | Infrastructure as Code | Terraform | Source-controlled, repeatable, auditable deployments across Cloudflare + Auth0 + Turso |
-| Privacy / Compliance | Privacy-by-design controls + GDPR / UK-GDPR operating procedures | Minimises data collection, constrains access to sensitive information, and keeps processing limited to journalism and operational necessity |
+| Privacy / Compliance | Privacy-by-design controls + GDPR / UK-GDPR operating procedures | Minimises data collection, pseudonymous push subscriptions with no reader PII, and keeps processing limited to journalism and operational necessity |
 | Push Notifications | `scheduler-worker` cron + Cloudflare Queue + `shared/push` (Web Push VAPID, FCM, APNs) | Async delivery after publish; browser and native paths share one subscription store |
 | App Packaging | Capacitor | Packages the existing web app for Android/iOS without introducing a separate native application stack |
 | CI/CD | GitHub Actions + Wrangler | Automated lint/build/deploy on push |
