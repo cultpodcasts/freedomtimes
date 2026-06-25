@@ -1,6 +1,8 @@
 # Push notifications — operator reference (`.env.dev` + scripts)
 
-Companion to **[PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md)** (cross-browser staging/production test workflows). This document is the **source of truth for repo-root `.env.dev` keys and operator scripts** — values are read from actual script sources, not guessed.
+**Start here for workflows:** **[PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md)** — doc map, running notification code locally, delivery paths, staging/production checklists, troubleshooting.
+
+This document is the **source of truth for repo-root `.env.dev` keys and operator scripts** — values are read from actual script sources, not guessed.
 
 All operator scripts run from **`web/`** unless noted. They load repo-root **`.env.dev`** via `web/scripts/lib/load-env-dev.mjs` (then **`.env.production`** overrides on top). Canonical Turso key names live in `web/scripts/lib/turso-env-bindings.mjs`, which mirrors the PowerShell sync scripts exactly.
 
@@ -30,6 +32,9 @@ All operator scripts run from **`web/`** unless noted. They load repo-root **`.e
   - [Auxiliary scripts (no npm alias)](#auxiliary-scripts-no-npm-alias)
   - [shared/push module](#sharedpush-module)
   - [Typical workflows](#typical-workflows)
+- [Section C — Local vs Cloudflare Workers](#section-c--local-vs-cloudflare-workers)
+  - [Delivery paths by platform](#delivery-paths-by-platform)
+  - [Web Crypto / nodejs_compat](#web-crypto--nodejs_compat)
 - [Related docs](#related-docs)
 
 ---
@@ -489,10 +494,61 @@ Look for `article notification scan`, `push delivered ok`, `delivery failed`.
 
 ---
 
+## Section C — Local vs Cloudflare Workers
+
+Operator scripts and the scheduler worker share **`shared/push/`** delivery logic. You test locally with Node; production cron runs on Cloudflare Workers with `nodejs_compat`.
+
+### Architecture
+
+```
+push_subscriptions (Turso)
+       │
+       ├─ subscriptions:send-test (Node, web/scripts/)
+       │     load .env.dev → map PUSH_STAGING_* / PUSH_PRODUCTION_* to worker secret names
+       │     → deliverToStoredTarget() in shared/push/deliverPushNotification.mjs
+       │
+       └─ scheduler queue consumer (Cloudflare Worker, scheduler-worker/)
+             env PUSH_VAPID_* / PUSH_ANDROID_FCM_* / PUSH_IOS_APNS_* from Wrangler secrets
+             → same deliverToStoredTarget() (TypeScript mirror in scheduler-worker/src/)
+```
+
+| Component | Config source | Outbound push? |
+|-----------|---------------|----------------|
+| Web worker (`web/wrangler.jsonc`, `nodejs_compat`) | `PUSH_SUBSCRIBE_PUBLIC_KEY`, Turso subscriptions URL/token | No — subscribe API only |
+| Scheduler worker (`scheduler-worker/wrangler.jsonc`, `nodejs_compat`) | `PUSH_VAPID_*`, FCM, APNs, Turso | Yes — cron + queue |
+| `subscriptions:send-test` | Repo-root `.env.dev` only | Yes — one subscription |
+
+**send-test does not call Wrangler** at send time. Keep `.env.dev` aligned with worker secrets via `scripts/set-github-secrets.ps1` and sync scripts.
+
+### Delivery paths by platform
+
+`parseStoredTarget()` in `shared/push/deliverPushNotification.mjs` reads `subscription_json`:
+
+| `platform` | Turso JSON | Send path | `.env.dev` keys (staging example) |
+|------------|------------|-----------|-------------------------------------|
+| `web` (default) | `endpoint`, `keys.p256dh`, `keys.auth` | VAPID via `webpush-webcrypto` | `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY` + `PUSH_STAGING_VAPID_PRIVATE_KEY` + subject |
+| `android` | `token` | FCM HTTP v1 | `PUSH_PRODUCTION_ANDROID_FCM_*` (production DB only) |
+| `ios` | `token` | APNs HTTP/2 | `PUSH_STAGING_IOS_APNS_*` or `PUSH_PRODUCTION_IOS_APNS_*` |
+
+Article payload (`title`, `body`, absolute `url`, icon, featured image, tag `article-{id}`) is built by `buildArticlePushPayload()` — imported by send-test and scheduler.
+
+**Android tap fix:** FCM messages omit `clickAction` so Capacitor routes taps through `MainActivity` → `pushNotificationActionPerformed` using absolute `data.url`. Server-side fix in `shared/push/deliverPushNotification.mjs`; re-run send-test without rebuilding the app.
+
+### Web Crypto / nodejs_compat
+
+Web Push encryption uses `webpush-webcrypto`. On module load, `deliverPushNotification.mjs` calls `setWebCrypto()` with:
+
+1. `globalThis.crypto` (Workers with `nodejs_compat`, modern Node)
+2. Else dynamic `import('node:crypto').webcrypto` (local send-test on Node)
+
+Workers must declare `"compatibility_flags": ["nodejs_compat"]` in `scheduler-worker/wrangler.jsonc` and `web/wrangler.jsonc`. If delivery throws `Web Crypto API not available`, check Node version (18+) or worker compatibility flags.
+
+---
+
 ## Related docs
 
-- **[PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md)** — cross-browser checklist, endpoint prefixes, troubleshooting table
-- **[MULTI_BROWSER_PRODUCTION_PUSH_TEST.md](./MULTI_BROWSER_PRODUCTION_PUSH_TEST.md)** — production browser matrix
+- **[PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md)** — **entry point**: local testing, doc map, staging checklist, consolidated troubleshooting
+- **[MULTI_BROWSER_PRODUCTION_PUSH_TEST.md](./MULTI_BROWSER_PRODUCTION_PUSH_TEST.md)** — production browser matrix, like-for-like payload guarantee
 - **[CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md)** — Turso backups before mutating subscriptions DB
 - **`.env.dev.example`** — template with comments for Platform API vs DB tokens
 - **`AGENTS.md`** (repo root) — EmDash MCP rules (not for Turso push scripts)

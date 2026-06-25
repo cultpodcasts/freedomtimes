@@ -3,6 +3,7 @@
 ## Operations Runbooks
 
 - Content promotion (staging -> production): [CONTENT_PROMOTION_RUNBOOK.md](CONTENT_PROMOTION_RUNBOOK.md)
+- Push notifications (local testing, scripts, `.env.dev`): [docs/PUSH_NOTIFICATIONS_TEST_PLAN.md](docs/PUSH_NOTIFICATIONS_TEST_PLAN.md) — entry point; see also [docs/PUSH_NOTIFICATIONS_OPERATOR.md](docs/PUSH_NOTIFICATIONS_OPERATOR.md) and [docs/MULTI_BROWSER_PRODUCTION_PUSH_TEST.md](docs/MULTI_BROWSER_PRODUCTION_PUSH_TEST.md)
 - Social images and favicons: [docs/SOCIAL_IMAGES_AND_FAVICONS.md](docs/SOCIAL_IMAGES_AND_FAVICONS.md)
 
 This app implements the current staging auth gate flow:
@@ -387,6 +388,8 @@ Compare fingerprints (prefix/suffix only) without printing secrets:
 cd web
 npm run subscriptions:compare-vapid-keys -- staging --origin https://staging.freedomtimes.news/posts/<slug>
 ```
+
+Full operator guide (local `send-test`, all `subscriptions:*` scripts, troubleshooting): [docs/PUSH_NOTIFICATIONS_TEST_PLAN.md](docs/PUSH_NOTIFICATIONS_TEST_PLAN.md).
 
 Generate a compatible keypair with:
 

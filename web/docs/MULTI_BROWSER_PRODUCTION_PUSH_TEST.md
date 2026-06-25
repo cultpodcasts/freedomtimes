@@ -2,7 +2,9 @@
 
 Use this runbook to verify **production** push delivery across desktop and mobile browsers on `https://freedomtimes.news`. It uses the same Turso rows and delivery path as the live scheduler (`subscriptions:send-test` → shared `deliverPushNotification`).
 
-For staging-only pre-promotion checks, see [PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md).
+**Doc map:** [PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md) (start here) · [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) (`.env.dev` + all scripts)
+
+For staging-only pre-promotion checks, see [PUSH_NOTIFICATIONS_TEST_PLAN.md#staging-cross-browser-test-plan](./PUSH_NOTIFICATIONS_TEST_PLAN.md#staging-cross-browser-test-plan).
 
 **Test article (pinned):** `weekly-summary-15-june-2026` — *Europe & UK Cult News: 8–14 June 2026* (in production recent feed as of June 2026).
 
@@ -265,16 +267,14 @@ If send-test reports `401` or VAPID mismatch:
 
 ## Troubleshooting (production)
 
+Full symptom table (VAPID, 410, FCM, Android tap, Web Crypto): [PUSH_NOTIFICATIONS_TEST_PLAN.md#troubleshooting](./PUSH_NOTIFICATIONS_TEST_PLAN.md#troubleshooting).
+
 | Symptom | Action |
 |---------|--------|
 | No row after subscribe | Wrong origin (staging vs production); hard-refresh; check browser blocked notifications |
 | `active=0` on send-test | Stale endpoint — re-subscribe; pick newest `active=1` row |
-| `410 Gone` / `No such subscription` | Dead endpoint; do not `--force` — subscribe again |
-| `401` from push service | VAPID mismatch — compare keys; sync `.env.dev` with worker secrets |
 | Post not found in article mode | Slug not in latest 25 published posts — pick another slug |
-| Notification arrives, tap does nothing | Update service worker (hard refresh); confirm same origin |
-| Cron works but send-test fails | Usually credentials in `.env.dev`; cron uses Cloudflare secrets |
-| `LibsqlError` 404 on inspect | Stale Turso token — re-run `sync-production-turso-env-dev.ps1` |
+| Notification arrives, web tap does nothing | Update service worker (hard refresh); confirm same origin |
 
 Scheduler logs:
 
@@ -303,6 +303,5 @@ npm run subscriptions:reset-sent-article -- --article-id <emdash-id> --target pr
 
 ## Related docs
 
-- [PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md) — staging workflow, flag reference, shared troubleshooting
-- `web/scripts/inspect-push-notifications.mjs` — read-only Turso state
-- `web/scripts/send-test-push-notification.mjs` — one-shot delivery test
+- [PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md) — entry point, local testing, staging checklist, troubleshooting
+- [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) — `.env.dev` keys, every `subscriptions:*` script, `shared/push` module
