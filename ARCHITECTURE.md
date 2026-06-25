@@ -490,37 +490,7 @@ Privacy is a primary architectural value for Freedom Times. Reader-facing commit
 
 ---
 
-## 5. Story Data Model
-
-The application does not rely on a hard-coded backend story model defined in application code.
-
-With EmDash, the content model is managed by the CMS itself:
-
-- collections and fields are defined in EmDash rather than in a custom API contract layer
-- the Worker reads entries by collection name and field keys at runtime
-- editorial schema can evolve inside the CMS without requiring every content-type change to begin as a code-level model change
-
-For the current site, the important contract is therefore behavioral rather than strongly typed:
-
-- there is a `posts` collection used for homepage and article rendering
-- entries have a stable identifier plus a slug-like public lookup field
-- the rendered post shape includes title, summary or excerpt, main content, publish or update timestamps, and optional featured media
-- media assets are stored through EmDash in R2 and referenced from entry data
-- draft and published state are governed by EmDash revisions and live publication status
-
-The frontend should treat EmDash entry data as CMS-owned content, then normalize only the fields it needs for rendering. That is how the current Astro routes behave: they read published entries from EmDash and defensively extract values such as slug, title, excerpt, featured image, `publishedAt`, and `updatedAt`.
-
-This gives the project a better separation of concerns:
-
-- EmDash owns content-type definition, editorial workflow, and revision semantics
-- the Astro app owns presentation and minimal field normalization for pages
-- infrastructure owns database, media storage, auth, and deployment concerns
-
-Where stronger guarantees are needed, they should be expressed as CMS schema rules, editorial validation, or small route-level normalization helpers, not as a large handwritten application-wide content model that drifts from the CMS.
-
----
-
-## 6. Look & Feel — Broadsheet / Times-Inspired
+## 5. Look & Feel — Broadsheet / Times-Inspired
 
 | Element | Approach |
 |---|---|
@@ -533,7 +503,7 @@ Where stronger guarantees are needed, they should be expressed as CMS schema rul
 
 ---
 
-## 7. Deployment Pipeline
+## 6. Deployment Pipeline
 
 ```mermaid
 flowchart TB
@@ -563,19 +533,19 @@ Content publishing does not depend on a separate cache purge stage. Push deliver
 
 ---
 
-## 8. Remaining decisions
+## 7. Remaining decisions
 
-Architectural choices for framework (Astro), body format (Portable Text via EmDash), schema ownership (EmDash collections), same-origin admin auth, slug resolution, IaC (Terraform), and MCP vs browser admin are settled in sections 4–5 and 10.
+Architectural choices for framework (Astro), body format (Portable Text via EmDash), schema ownership (EmDash collections), same-origin admin auth, slug resolution, IaC (Terraform), and MCP vs browser admin are settled in sections 4 and 9.
 
 | # | Topic | What remains |
 |---|---|---|
 | 1 | **EmDash publish reliability** | Temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) stay until upstream publish-time schema drift is resolved; remove once staging consistently publishes without them. |
-| 2 | **Privacy operations** | Reader [Privacy Policy](https://freedomtimes.news/privacy-policy) is published (EmDash, May 2026); pseudonymous push handling is settled in §4.9 and §4.13. Still needed: internal retention schedules and subject-rights runbooks for **editorial** data (Auth0 accounts, CMS content) — deliverable §9.15 partial. |
-| 3 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §9.12). |
+| 2 | **Privacy operations** | Reader [Privacy Policy](https://freedomtimes.news/privacy-policy) is published (EmDash, May 2026); pseudonymous push handling is settled in §4.9 and §4.13. Still needed: internal retention schedules and subject-rights runbooks for **editorial** data (Auth0 accounts, CMS content) — deliverable §8.15 partial. |
+| 3 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §8.12). |
 
 ---
 
-## 9. Deliverables
+## 8. Deliverables
 
 The following items are listed in priority order. Many are complete; remaining work focuses on hardening, privacy controls, and operational runbooks.
 
@@ -598,7 +568,7 @@ The following items are listed in priority order. Many are complete; remaining w
 
 ---
 
-## 10. Technology Summary
+## 9. Technology Summary
 
 | Layer | Technology | Rationale |
 |---|---|---|
