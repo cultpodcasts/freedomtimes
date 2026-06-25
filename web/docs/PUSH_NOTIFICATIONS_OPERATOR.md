@@ -509,7 +509,7 @@ push_subscriptions (Turso)
        │
        └─ scheduler queue consumer (Cloudflare Worker, scheduler-worker/)
              env PUSH_VAPID_* / PUSH_ANDROID_FCM_* / PUSH_IOS_APNS_* from Wrangler secrets
-             → same deliverToStoredTarget() (TypeScript mirror in scheduler-worker/src/)
+             → same deliverToStoredTarget() (re-exported from shared/push/deliverPushNotification.mjs)
 ```
 
 | Component | Config source | Outbound push? |

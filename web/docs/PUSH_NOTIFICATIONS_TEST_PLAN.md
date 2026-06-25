@@ -65,12 +65,12 @@ Operator send-test (Node on your machine)
 | Runtime | Entry | Shared module | Crypto for Web Push |
 |---------|-------|---------------|-------------------|
 | **Local send-test** | `web/scripts/send-test-push-notification.mjs` | `shared/push/deliverPushNotification.mjs` | `globalThis.crypto` or `node:crypto` fallback |
-| **Scheduler worker** | `scheduler-worker/src/scheduler.ts` queue consumer | TypeScript copy of same module | Worker `globalThis.crypto` (`nodejs_compat` in `scheduler-worker/wrangler.jsonc`) |
+| **Scheduler worker** | `scheduler-worker/src/scheduler.ts` queue consumer | Re-exports `shared/push/deliverPushNotification.mjs` | Worker `globalThis.crypto` (`nodejs_compat` in `scheduler-worker/wrangler.jsonc`) |
 | **Web worker** | Subscribe API only — no outbound push | — | Browser `PushManager` |
 
 **Key point:** `subscriptions:send-test` signs and delivers with credentials from **`.env.dev` only** — it does not read Cloudflare secrets at runtime. If cron works but send-test fails, compare `.env.dev` with worker secrets (`subscriptions:compare-vapid-keys`, `set-github-secrets.ps1`).
 
-Install `shared/push` deps before first send-test (`cd shared/push && npm install`). The scheduler worker keeps a TypeScript mirror of the shared module; after changing `shared/push/`, sync the worker copy.
+Install `shared/push` deps before first send-test (`cd shared/push && npm install`). The scheduler worker imports the shared module via a thin TypeScript wrapper; after changing `shared/push/articleNotificationPayload.mjs`, keep `scheduler-worker/src/articleNotificationPayload.ts` types in sync.
 
 ### Typical local test loop
 
