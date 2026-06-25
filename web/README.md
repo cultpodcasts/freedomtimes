@@ -10,6 +10,7 @@ Astro SSR app on Cloudflare Workers with EmDash CMS, Auth0 editorial auth, and o
 
 | Topic | Doc |
 |---|---|
+| Post-build Worker bundle patches (`patch-cloudflare-bundle.ts`) | [docs/PATCH_CLOUDFLARE_BUNDLE.md](docs/PATCH_CLOUDFLARE_BUNDLE.md) |
 | Content promotion (staging → production) | [CONTENT_PROMOTION_RUNBOOK.md](CONTENT_PROMOTION_RUNBOOK.md) |
 | Push notifications (local testing, scripts, `.env.dev`) | [docs/PUSH_NOTIFICATIONS_TEST_PLAN.md](docs/PUSH_NOTIFICATIONS_TEST_PLAN.md) — also [docs/PUSH_NOTIFICATIONS_OPERATOR.md](docs/PUSH_NOTIFICATIONS_OPERATOR.md), [docs/MULTI_BROWSER_PRODUCTION_PUSH_TEST.md](docs/MULTI_BROWSER_PRODUCTION_PUSH_TEST.md) |
 | Auth routes, cookies, staging login tests | [docs/AUTH.md](docs/AUTH.md) |
