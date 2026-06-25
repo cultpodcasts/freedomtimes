@@ -565,22 +565,16 @@ Content publishing does not depend on a separate cache purge stage. Push deliver
 
 ---
 
-## 8. Open Questions & Discussion Points
+## 8. Remaining decisions
 
-| # | Question | Options |
+Architectural choices for framework (Astro), body format (Portable Text via EmDash), schema ownership (EmDash collections), same-origin admin auth, slug resolution, IaC (Terraform), and MCP vs browser admin are settled in sections 4–5 and 10.
+
+| # | Topic | What remains |
 |---|---|---|
-| 1 | **Astro vs SvelteKit** for the Worker? | Astro = less JS by default, simpler for content sites. SvelteKit = richer reactive admin UI. Can we use Astro + islands to get both? |
-| 2 | **Rich text format** for story body: HTML or Markdown? | Markdown is easier to diff/store; HTML gives editors more control. Markdown-to-HTML at render time adds minimal CPU. |
-| 3 | **EmDash schema governance**: how much of the content model should remain inside EmDash collections versus custom app code? | Keep core editorial structure in EmDash collections and only move app-specific derived behavior into custom code when the CMS model cannot express it cleanly. |
-| 4 | **Admin UI same-origin vs subdomain?** | Same-origin simplifies auth; subdomain gives a clean separation of concerns. |
-| 5 | **EmDash publish reliability**: should temporary Worker bundle patches remain in-repo until upstream fixes land? | Keep the patch while staging proves the publish path, but document each patch clearly and remove it once upstream behavior is reliable. |
-| 6 | **GDPR / UK-GDPR compliance**: push subscription consent, right to erasure, data residency? | Keep editorial content and notification subscriber workflows aligned with UK/EU privacy expectations and document retention/export/delete procedures explicitly. |
-| 7 | **Source protection**: stories about cult survivors require careful handling of author/source metadata in the DB. | Author aliases only in public-facing fields; real identities (if stored at all) in a separate, highly restricted store with narrower access than the editorial CMS itself. |
-| 8 | **Slug and revision semantics**: how should the app behave when EmDash direct entry lookup misses but legacy or draft metadata still exists? | Prefer explicit published-entry behavior first, with narrowly scoped fallbacks only where routing or recovery workflows still require them. |
-| 9 | **IaC toolchain strategy**: Terraform-only vs mixed Terraform + specialist definitions? | Prefer Terraform-only for a single cross-platform graph. If provider gaps block delivery, keep Terraform as orchestrator and invoke provider-specific scripts from CI while preserving full source-controlled declarative deployment. |
-| 10 | **MCP editorial workflow**: how much operational publishing should happen via MCP clients versus inside the EmDash admin UI? | Use MCP for automation and assisted workflows, but keep the browser admin flow as the baseline path for editing, publishing, and troubleshooting. |
-| 11 | **Metadata taxonomy governance**: how are canonical people, groups, and institutions curated? | Maintain managed taxonomy lists with editor/admin approval, entity-match suggestions during submission, and audit history for merges/renames to preserve search consistency. |
-| 12 | **Privacy operating model**: what telemetry, analytics, and retention are acceptable? | Recommended: privacy-first defaults, minimal operational analytics only, explicit retention schedules, and no collection for advertising/profiling or unrelated secondary purposes. |
+| 1 | **EmDash publish reliability** | Temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) stay until upstream publish-time schema drift is resolved; remove once staging consistently publishes without them. |
+| 2 | **Privacy & GDPR operations** | Principles are in §4.13; still needed: privacy notice, retention schedules, push-subscriber consent capture, and subject-rights runbooks (deliverable §9.15). |
+| 3 | **Source / survivor identity** | Public fields use aliases only; if real identities are stored, they belong in a separate restricted store with stricter access and audit logging — not yet implemented. |
+| 4 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §9.12). |
 
 ---
 
