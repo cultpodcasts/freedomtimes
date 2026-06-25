@@ -77,7 +77,7 @@ Freedom Times is a UK/Europe-focused news platform for cult survivors. It vets s
 **Recommended framework:** [Astro](https://astro.build/) with the [`@astrojs/cloudflare` adapter](https://docs.astro.build/en/guides/integrations-guide/cloudflare/).
 
 - Astro's **Islands architecture** ships zero JS to the browser by default — still a good fit for a content-heavy publication.
-- The live site and CMS now share one deployment artifact rather than maintaining a separate public render path and custom editorial API.
+- The live site and CMS share one deployment artifact rather than maintaining separate public and editorial backends.
 - Astro runs natively on the Cloudflare Workers runtime, and the current app integrates EmDash directly through the `emdash/astro` integration.
 - Public pages query EmDash collections directly at request time using helpers such as `getEmDashCollection('posts', { status: 'published' })` and `getEmDashEntry('posts', slug)`.
 
@@ -207,7 +207,7 @@ Admin surfaces needed for MVP:
 
 1. **Web App Manifest** (`manifest.webmanifest`): name, icons, `display: standalone`, `theme_color` matching the Times-inspired palette.
 2. **Service Worker**: pre-cache the shell (header, footer, fonts, CSS). Use a Stale-While-Revalidate strategy for story pages so they remain readable offline.
-3. **Web Push**: subscribe visitors to push notifications via the [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). Store only the technical subscription objects needed for message delivery in a minimal server-side subscriber store. Notification preferences for Android/iOS app experiences should be stored locally on the device, not as a server-side behavioural profile. When a story is published, a background delivery job can send push messages via VAPID or a native push provider.
+3. **Web Push**: subscribe visitors to push notifications via the [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). Store only the technical subscription objects needed for message delivery in a minimal server-side subscriber store (Turso, provisioned via Terraform). Notification preferences for Android/iOS app experiences should be stored locally on the device, not as a server-side behavioural profile. When a story is published, the `scheduler-worker` Cloudflare Worker (cron-triggered) sends push messages via the shared `shared/push` delivery module (Web Push VAPID, FCM, APNs).
   - ⚠️ **iOS caveat**: Web Push is only available in iOS 16.4+ when the site is added to the Home Screen as a PWA. Where the packaged app needs broader notification support or tighter native lifecycle control, use Capacitor-native plugins rather than relying on Home Screen PWA behavior.
 4. **Capacitor**: packages the existing web app for Android and iOS while preserving a single web-first codebase. Native plugins can be introduced selectively for push notifications, deep linking, splash screens, and other device capabilities that are awkward or unavailable in the browser alone.
 
@@ -226,9 +226,7 @@ For app notifications specifically, any category preferences, mute settings, or 
 
 ### 4.10 Infrastructure as Code, Secrets, and Environment Promotion
 
-All infrastructure must be declared in files committed to this repository and applied by deployment pipelines. Manual edits in the Cloudflare Dashboard or Auth0 Dashboard are treated as break-glass only and must be reconciled back into IaC immediately.
-
-> **Historical note:** Earlier drafts of this document described an Azure editorial API stack (Function App, API Management, Easy Auth, Cosmos DB). That plan was superseded. Freedom Times has **no Azure resources** — editorial and public traffic run on Cloudflare Workers with EmDash, Turso, and R2. See `NON_TERRAFORM_RESOURCES.md` for bootstrap-only manual steps.
+All infrastructure must be declared in files committed to this repository and applied by deployment pipelines. Manual edits in the Cloudflare Dashboard or Auth0 Dashboard are treated as break-glass only and must be reconciled back into IaC immediately. One-time bootstrap steps that Terraform cannot create are documented in `NON_TERRAFORM_RESOURCES.md`.
 
 **Preferred approach: Terraform as the single control plane**
 
@@ -273,7 +271,7 @@ Each environment composes shared modules with environment-specific variables onl
 
 ### 4.11 Auth Pattern (Current)
 
-Editorial authentication is **same-origin** on the Cloudflare Worker. There is no separate API gateway, no Azure API Management (APIM), and no Easy Auth layer.
+Editorial authentication is **same-origin** on the Cloudflare Worker — Auth0 session cookies on the site domain, with no separate API gateway.
 
 1. Editor visits `/auth/login` → Auth0 Authorization Code flow.
 2. `/auth/callback` exchanges the code, verifies `admin` or `editor` role claims, and sets HttpOnly cookies (`ft_session`, `ft_access_token`, `ft_csrf`) scoped to the site domain.
@@ -281,7 +279,7 @@ Editorial authentication is **same-origin** on the Cloudflare Worker. There is n
 4. EmDash admin (`/_emdash/admin`) and MCP (`/_emdash/api/mcp`) run on the same Worker origin; EmDash handles its own OAuth and MCP token flows alongside the outer Auth0 gate.
 5. Browser JavaScript does not read bearer tokens; auth is cookie-based with CSRF protection on state-changing requests.
 
-The Auth0 API audience identifier (for example `https://api.freedomtimes.news`) is a **resource-server identifier** for access tokens and RBAC — not a live Azure or APIM hostname.
+The Auth0 API audience identifier (for example `https://api.freedomtimes.news`) is a **resource-server identifier** for access tokens and RBAC.
 
 #### Implementation checklist (status)
 

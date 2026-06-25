@@ -60,6 +60,8 @@ web/scripts/tmp/*
 freedomtimes-emdash-staging.db
 freedomtimes-emdash-staging.db-wal
 
+web/auth
+web/auth-wal
+
 temp_*.txt
 scheduler-worker/.wrangler/
-
