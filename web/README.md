@@ -23,18 +23,23 @@ Astro SSR app on Cloudflare Workers with EmDash CMS, Auth0 editorial auth, and o
 
 ### Environment variables
 
-Copy `.env.example` to `.env` and set values:
+Two local files — see **[docs/ENV_DEV.md](docs/ENV_DEV.md)** for the full setup (templates, Turso sync scripts, where each value comes from).
 
-```sh
-AUTH0_DOMAIN=your-tenant.example-auth0.com
-AUTH0_CLIENT_ID=...
-AUTH0_CLIENT_SECRET=...
-AUTH0_API_AUDIENCE=...
-COOKIE_BASE_DOMAIN=example.com
-AUTH0_ROLES_CLAIM_NAMESPACE=https://example.com
+| File | Template | Purpose |
+|------|----------|---------|
+| Repo-root **`.env.dev`** | [`.env.dev.example`](../.env.dev.example) | Turso, Terraform, push operator scripts, Worker/GitHub secret sync |
+| **`web/.env`** | [`.env.example`](.env.example) | Auth0 runtime vars for `npm run dev` |
+
+```powershell
+# From repo root
+Copy-Item .env.dev.example .env.dev
+pwsh ./scripts/sync-staging-turso-env-dev.ps1   # optional: refresh TURSO_STAGING_*
+
+# From web/
+Copy-Item .env.example .env
 ```
 
-`wrangler dev` / Astro reads local env files directly — use pure runtime names (for example `AUTH0_DOMAIN`, not prefixed aliases). Role claim details: [docs/AUTH.md](docs/AUTH.md).
+`npm run dev` reads **`web/.env`** only. EmDash also needs `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` (usually in `.env.dev` after sync) — copy into `web/.env` or use `npx dotenv-cli -e ..\.env.dev -- npm run dev`. Use pure runtime names in `web/.env` (for example `AUTH0_DOMAIN`, not `AUTH0_LOGIN_APP_CLIENT_ID_STAGING`). Role claim details: [docs/AUTH.md](docs/AUTH.md).
 
 ### Commands
 

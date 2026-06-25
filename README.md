@@ -63,6 +63,7 @@ Deeper design: [ARCHITECTURE.md](ARCHITECTURE.md).
 | Doc | What you'll find |
 |---|---|
 | [web/README.md](web/README.md) | Astro app — local dev, Wrangler configs, deploy, scheduler |
+| [web/docs/ENV_DEV.md](web/docs/ENV_DEV.md) | `.env.dev` + `web/.env` setup, sync scripts, where values come from |
 | [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md) | Tooling checklist (Git, Terraform, Android SDK, etc.) |
 | [web/docs/AUTH.md](web/docs/AUTH.md) | Auth0 routes, cookies, staging login runbook |
 | [web/DESIGN_GUIDE.md](web/DESIGN_GUIDE.md) | Visual and layout conventions |
@@ -108,10 +109,13 @@ Deeper design: [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Quick start (local web app)
 
 ```powershell
+# Repo root — operator secrets (Turso, Terraform, push scripts)
+Copy-Item .env.dev.example .env.dev
+
 cd web
 npm install
-cp .env.example .env   # fill in Auth0 and Turso values
+Copy-Item .env.example .env   # Auth0 runtime vars for the dev server
 npm run dev
 ```
 
-For the full tooling picture, start with [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md).
+`astro.config.ts` needs `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` (from `.env.dev` after Turso sync). Copy them into `web/.env` or run `npx dotenv-cli -e ..\.env.dev -- npm run dev`. Full setup: [web/docs/ENV_DEV.md](web/docs/ENV_DEV.md). Tooling checklist: [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md).

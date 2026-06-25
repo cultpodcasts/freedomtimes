@@ -2,6 +2,10 @@
 
 This is a living checklist for setting up and validating local development for Freedom Times.
 
+## Local environment files
+
+Copy [`.env.dev.example`](.env.dev.example) → `.env.dev` (repo root) and [`web/.env.example`](web/.env.example) → `web/.env`. Turso sync scripts, variable sources, and dev-server Turso requirements: **[web/docs/ENV_DEV.md](web/docs/ENV_DEV.md)**.
+
 ## Core Tools
 
 - Git
