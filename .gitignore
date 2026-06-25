@@ -55,8 +55,11 @@ tmp/*
 web/.tmp/*
 web/.release/*
 .release/rollback-branches/*
+.release/backups/
 web/scripts/tmp/*
 freedomtimes-emdash-staging.db
 freedomtimes-emdash-staging.db-wal
 
 temp_*.txt
+scheduler-worker/.wrangler/
+

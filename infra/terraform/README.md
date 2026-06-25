@@ -130,9 +130,13 @@ Recommended route examples:
 - This is intentionally minimal for first deployment of a holding page.
 - Next steps can add remote state backend, staging/prod environments, and additional Cloudflare resources under IaC.
 
+## Azure editorial API runbooks (not in active use)
+
+> **Status:** Archived reference only. Freedom Times **does not deploy or use** Azure resources, APIM, Easy Auth, or the Function App editorial API described below. The live stack is Cloudflare Workers + EmDash + Turso + R2 with same-origin Auth0 cookies (`ARCHITECTURE.md` §4.11). These runbooks remain in-repo for historical Terraform/module context and incident archaeology — do not follow them for current deployments. See `NON_TERRAFORM_RESOURCES.md` for active bootstrap rules.
+
 ## Runbook: Cookie To APIM To EasyAuth
 
-This runbook captures the target flow where browser requests carry an HttpOnly cookie, APIM converts cookie token to bearer header, APIM validates roles, and EasyAuth performs a second validation at the Function boundary.
+This runbook captures the **former** target flow where browser requests carry an HttpOnly cookie, APIM converts cookie token to bearer header, APIM validates roles, and EasyAuth performs a second validation at the Function boundary.
 
 ### 1. APIM policy skeleton
 
@@ -298,9 +302,9 @@ Certificate handling safety rules:
 - Keep certificate material only in GitHub Secrets (or equivalent secret store).
 - Terraform plan files (`tfplan`) may contain sensitive values; CI should delete them after use.
 
-## Observability: Application Insights + Correlation ID
+## Observability: Application Insights + Correlation ID (not in active use)
 
-Editorial API infrastructure now includes:
+The following described **former** Azure editorial API infrastructure:
 
 - Log Analytics workspace
 - Workspace-based Application Insights
