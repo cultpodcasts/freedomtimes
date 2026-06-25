@@ -271,6 +271,8 @@ Each environment composes shared modules with environment-specific variables onl
 
 ### 4.11 Auth Pattern (Current)
 
+> **Runbook:** Staging login verification, cookie reference, and env vars — [web/docs/AUTH.md](web/docs/AUTH.md).
+
 Editorial authentication is **same-origin** on the Cloudflare Worker — Auth0 session cookies on the site domain, with no separate API gateway.
 
 1. Editor visits `/auth/login` → Auth0 Authorization Code flow.
