@@ -540,31 +540,20 @@ Architectural choices for framework (Astro), body format (Portable Text via EmDa
 | # | Topic | What remains |
 |---|---|---|
 | 1 | **EmDash publish reliability** | Temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) stay until upstream publish-time schema drift is resolved; remove once staging consistently publishes without them. |
-| 2 | **Privacy operations** | Reader [Privacy Policy](https://freedomtimes.news/privacy-policy) is published (EmDash, May 2026); pseudonymous push handling is settled in §4.9 and §4.13. Still needed: internal retention schedules and subject-rights runbooks for **editorial** data (Auth0 accounts, CMS content) — deliverable §8.15 partial. |
-| 3 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §8.12). |
+| 2 | **Privacy operations** | Reader [Privacy Policy](https://freedomtimes.news/privacy-policy) is published (EmDash, May 2026); pseudonymous push handling is settled in §4.9 and §4.13. Still needed: internal retention schedules and subject-rights runbooks for **editorial** data (Auth0 accounts, CMS content) — deliverable §8.4. |
+| 3 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §8.2). |
 
 ---
 
 ## 8. Deliverables
 
-The following items are listed in priority order. Many are complete; remaining work focuses on hardening, privacy controls, and operational runbooks.
+Open work only, in priority order. Completed foundation (Astro Worker deploy, Terraform IaC, secrets sync, design shell, EmDash + R2 integration, homepage/article rendering, EmDash admin/OAuth/MCP, Auth0, editorial workflow via `/_emdash/admin`, media library via EmDash admin, push notifications) is described in §§4–6 and no longer tracked here.
 
-1. Scaffold Astro project; configure Cloudflare Workers with `wrangler`; deploy to production URL. ✓
-2. Create IaC foundation (`/infra`): Terraform providers/backends/modules for Cloudflare, Auth0, and Turso; configure remote state + environment separation. ✓
-3. Implement secrets model: Wrangler secrets + GitHub Actions secret sync + least-privilege API tokens. ✓
-4. Design system: typography, colour palette, CSS Grid layout; homepage shell. ✓
-5. Integrate EmDash into the Astro Worker with Turso/libSQL and R2 bindings. ✓
-6. Implement homepage + article page rendering against published EmDash entries; establish Core Web Vitals baseline. ✓
-7. PWA: Web App Manifest + Service Worker; Lighthouse PWA audit.
-8. Configure EmDash admin, OAuth, and MCP access inside the Worker deployment. ✓
-9. Auth0 tenant setup via IaC; login flow in Astro Worker; JWT validation middleware. ✓
-10. Editorial UI: story list, create/edit form, publish action through EmDash.
-11. Canonical media library: create/search/reuse media records, upload to R2, and support canonical name-based embeds.
-12. Metadata taxonomy: managed lists for people, groups, and institutions with suggestion/prefill on submission.
-13. Push notifications: subscribe API, `scheduler-worker` cron + queue, VAPID/FCM/APNs delivery via `shared/push`. ✓
-14. Harden EmDash publish reliability in Workers and remove temporary compatibility patches once upstream fixes are no longer required.
-15. Define privacy controls: reader [privacy notice](https://freedomtimes.news/privacy-policy) ✓; retention rules and subject-rights runbooks for editorial/operational data; telemetry boundaries aligned with policy (push pseudonymity and browser/OS consent settled — §4.9, §4.13).
-16. End-to-end smoke test; Lighthouse audit; MVP sign-off.
+1. **PWA hardening:** Web App Manifest and service worker already ship (`manifest.webmanifest.ts`, `src/service-worker.ts`, `src/lib/pwa.ts`; shell precache and push `notificationclick` handlers). Remaining: stale-while-revalidate offline caching for article pages (§4.8); formal Lighthouse PWA audit.
+2. **Metadata taxonomy:** Managed canonical lists for people, groups, and institutions with editor approval, merge history, and submission prefill — outlined in §4.7 progressive admin scope; no app-side taxonomy module yet.
+3. **EmDash publish hardening:** Remove temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) once upstream publish-time schema drift is resolved; validate staging publishes cleanly without guards.
+4. **Privacy operations:** Reader [privacy notice](https://freedomtimes.news/privacy-policy) is live; push pseudonymity and browser/OS consent are settled (§4.9, §4.13). Still needed: internal retention schedules and subject-rights runbooks for editorial/operational data (Auth0 accounts, CMS revisions).
+5. **MVP sign-off:** Automated end-to-end smoke test; Lighthouse performance / Core Web Vitals baseline; formal MVP sign-off checklist.
 
 ---
 
