@@ -95,6 +95,38 @@ function Assert-RequiredBuildEnv {
     }
 }
 
+function Assert-FreshWebBuild {
+    param(
+        [string]$DistDir,
+        [datetime]$BuildStartedAt
+    )
+
+    if (-not (Test-Path $DistDir)) {
+        throw "Web build output missing at $DistDir. Deploy aborted."
+    }
+
+    $serverDir = Join-Path $DistDir "server"
+    if (-not (Test-Path $serverDir)) {
+        throw "Web build incomplete: missing $serverDir. Deploy aborted."
+    }
+
+    $newestFile = Get-ChildItem -Path $DistDir -Recurse -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+
+    if ($null -eq $newestFile) {
+        throw "Web build output directory is empty at $DistDir. Deploy aborted."
+    }
+
+    $staleMargin = [TimeSpan]::FromSeconds(2)
+    if ($newestFile.LastWriteTime -lt ($BuildStartedAt - $staleMargin)) {
+        throw @(
+            "Web build output appears stale (newest file $($newestFile.FullName) at $($newestFile.LastWriteTime) predates build started at $BuildStartedAt).",
+            "Deploy aborted; fix the build before deploying the web worker."
+        ) -join " "
+    }
+}
+
 function Get-StagingWebWranglerVarArgs {
     $audience = Get-FirstNonEmpty -Values @(
         ([Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE_STAGING", "Process")),
@@ -155,16 +187,20 @@ if ($SyncCloudflareWorkerSecrets) {
 }
 
 Write-Step "Building web (npm run build)"
+$buildStartedAt = Get-Date
 Push-Location (Join-Path $repoRoot "web")
 try {
     & npm run build
     if ($LASTEXITCODE -ne 0) {
-        throw "npm run build failed."
+        throw "npm run build failed (exit $LASTEXITCODE). Web worker deploy aborted."
     }
 }
 finally {
     Pop-Location
 }
+
+$webDistDir = Join-Path $repoRoot "web\dist"
+Assert-FreshWebBuild -DistDir $webDistDir -BuildStartedAt $buildStartedAt
 
 $webVarArgs = Get-StagingWebWranglerVarArgs
 
