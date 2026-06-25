@@ -38,9 +38,9 @@ The platform runs on Cloudflare Workers with three Turso databases (content, sub
 flowchart TB
   subgraph clients [Clients]
     Reader[Public reader]
-    Editor[Editor / admin]
+    Editor["Editor / admin"]
     MCP[MCP clients]
-    Mobile[Android / iOS app]
+    Mobile["Android / iOS app"]
   end
 
   subgraph cf [Cloudflare]
@@ -57,7 +57,7 @@ flowchart TB
     APNs[Apple APNs]
   end
 
-  subgraph turso [Turso / libSQL]
+  subgraph turso ["Turso / libSQL"]
     ContentDB[(Content DB)]
     SubsDB[(Subscriptions DB)]
     SchedulerDB[(Scheduler DB)]
@@ -168,11 +168,11 @@ EmDash is not just a data library in this app; it is the editorial control plane
 
 ```mermaid
 flowchart LR
-  A[Editor signs in via Auth0] --> B[/_emdash/admin or MCP]
-  B --> C[Create or edit draft revision]
-  C --> D[Publish promotes live revision]
-  D --> E[Homepage and post routes query EmDash]
-  E --> F[Readers see updated content]
+  A["Editor signs in via Auth0"] --> B["/_emdash/admin or MCP"]
+  B --> C["Create or edit draft revision"]
+  C --> D["Publish promotes live revision"]
+  D --> E["Homepage and post routes query EmDash"]
+  E --> F["Readers see updated content"]
 ```
 
 Important current details:
@@ -300,7 +300,7 @@ flowchart LR
     Editor --> EmDash --> TursoContent
   end
 
-  subgraph cron [scheduler-worker — cron every 10 min]
+  subgraph cron ["scheduler-worker — cron every 10 min"]
     Job[send_article_notifications]
     Feed["GET /api/recent-published-posts.json"]
     Filter[Delay gate + sent_article_notifications dedupe]
