@@ -26,7 +26,7 @@ Freedom Times is a UK/Europe-focused news platform for cult survivors. It vets s
 | **PWA / App** | Web-first delivery with optional Android/iOS packaging via Capacitor; requires HTTPS, Web App Manifest, and Service Worker support |
 | **Push notifications** | Browser Web Push (VAPID) plus native Android (FCM) and iOS (APNs) via Capacitor; no email newsletter |
 | **Infrastructure as Code** | All cloud resources (Cloudflare, Auth0, Turso) are defined in source-controlled declarative files and deployed via CI/CD; no manual portal drift |
-| **Privacy / GDPR** | Reader commitments in [/privacy-policy](/privacy-policy); minimum data collection; no reader profiling or advertising use |
+| **Privacy / GDPR** | Reader commitments in [/privacy-policy](https://freedomtimes.news/privacy-policy); minimum data collection; no reader profiling or advertising use |
 
 ---
 
@@ -285,7 +285,7 @@ sequenceDiagram
 
 - **Web:** `PushManager.subscribe` with the public VAPID key (`PUSH_SUBSCRIBE_PUBLIC_KEY` on the Worker).
 - **Android / iOS:** Capacitor registers a native device token; the same API stores `{ platform, token }` payloads.
-- Only pseudonymous delivery metadata is stored server-side: a server-generated random UUID (`id`), opaque browser push endpoint or native device token, optional locale, and user-agent. No names, email addresses, or other personally identifiable data — subscriptions cannot be traced back to an individual reader. See [/privacy-policy](/privacy-policy) and §4.13.
+- Only pseudonymous delivery metadata is stored server-side: a server-generated random UUID (`id`), opaque browser push endpoint or native device token, optional locale, and user-agent. No names, email addresses, or other personally identifiable data — subscriptions cannot be traced back to an individual reader. See [/privacy-policy](https://freedomtimes.news/privacy-policy) and §4.13.
 - **Consent:** Opt-in is the browser or OS notification permission prompt; see [web/docs/PUSH_NOTIFICATIONS_TEST_PLAN.md](web/docs/PUSH_NOTIFICATIONS_TEST_PLAN.md) and [web/docs/PUSH_NOTIFICATIONS_OPERATOR.md](web/docs/PUSH_NOTIFICATIONS_OPERATOR.md).
 
 #### Publish → notification pipeline
@@ -456,7 +456,7 @@ Editor action in EmDash admin or MCP client
 
 ### 4.13 Privacy, GDPR, and Data Minimisation
 
-Privacy is a primary architectural value for Freedom Times. Reader-facing commitments are published in the [Privacy Policy](/privacy-policy) (EmDash page, updated May 2026). The architecture implements those commitments as follows.
+Privacy is a primary architectural value for Freedom Times. Reader-facing commitments are published in the [Privacy Policy](https://freedomtimes.news/privacy-policy) (EmDash page, updated May 2026). The architecture implements those commitments as follows.
 
 **Core privacy principles (aligned with the privacy policy):**
 
@@ -466,7 +466,7 @@ Privacy is a primary architectural value for Freedom Times. Reader-facing commit
 
 **GDPR / UK-GDPR posture:**
 
-- Published privacy notice for readers at [/privacy-policy](/privacy-policy).
+- Published privacy notice for readers at [/privacy-policy](https://freedomtimes.news/privacy-policy).
 - Subject-rights requests: contact [privacy@freedomtimes.news](mailto:privacy@freedomtimes.news); volunteered personal data is removed within 30 days of a valid deletion request (per the privacy policy).
 - Lawful basis and retention schedules for **editorial** data (Auth0 accounts, CMS revisions) still require internal runbooks (§8).
 - Store data in UK/EU-aligned regions unless a justified exception is documented.
@@ -570,7 +570,7 @@ Architectural choices for framework (Astro), body format (Portable Text via EmDa
 | # | Topic | What remains |
 |---|---|---|
 | 1 | **EmDash publish reliability** | Temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) stay until upstream publish-time schema drift is resolved; remove once staging consistently publishes without them. |
-| 2 | **Privacy operations** | Reader [Privacy Policy](/privacy-policy) is published (EmDash, May 2026); pseudonymous push handling is settled in §4.9 and §4.13. Still needed: internal retention schedules and subject-rights runbooks for **editorial** data (Auth0 accounts, CMS content) — deliverable §9.15 partial. |
+| 2 | **Privacy operations** | Reader [Privacy Policy](https://freedomtimes.news/privacy-policy) is published (EmDash, May 2026); pseudonymous push handling is settled in §4.9 and §4.13. Still needed: internal retention schedules and subject-rights runbooks for **editorial** data (Auth0 accounts, CMS content) — deliverable §9.15 partial. |
 | 3 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §9.12). |
 
 ---
@@ -593,7 +593,7 @@ The following items are listed in priority order. Many are complete; remaining w
 12. Metadata taxonomy: managed lists for people, groups, and institutions with suggestion/prefill on submission.
 13. Push notifications: subscribe API, `scheduler-worker` cron + queue, VAPID/FCM/APNs delivery via `shared/push`. ✓
 14. Harden EmDash publish reliability in Workers and remove temporary compatibility patches once upstream fixes are no longer required.
-15. Define privacy controls: reader [privacy notice](/privacy-policy) ✓; retention rules and subject-rights runbooks for editorial/operational data; telemetry boundaries aligned with policy (push pseudonymity and browser/OS consent settled — §4.9, §4.13).
+15. Define privacy controls: reader [privacy notice](https://freedomtimes.news/privacy-policy) ✓; retention rules and subject-rights runbooks for editorial/operational data; telemetry boundaries aligned with policy (push pseudonymity and browser/OS consent settled — §4.9, §4.13).
 16. End-to-end smoke test; Lighthouse audit; MVP sign-off.
 
 ---
@@ -610,7 +610,7 @@ The following items are listed in priority order. Many are complete; remaining w
 | Metadata Taxonomy | Managed canonical lists in CMS-backed content and supporting app logic | Normalises people, groups, and institutions across stories/media and improves prefill, search, and editorial consistency |
 | Auth | Auth0 | Managed OIDC/JWT, RBAC, SPA + API support |
 | Infrastructure as Code | Terraform | Source-controlled, repeatable, auditable deployments across Cloudflare + Auth0 + Turso |
-| Privacy / Compliance | Published [/privacy-policy](/privacy-policy) + privacy-by-design controls | No reader IP or profiling; pseudonymous push subscriptions; editorial data governed by internal retention runbooks (§4.13) |
+| Privacy / Compliance | Published [/privacy-policy](https://freedomtimes.news/privacy-policy) + privacy-by-design controls | No reader IP or profiling; pseudonymous push subscriptions; editorial data governed by internal retention runbooks (§4.13) |
 | Push Notifications | `scheduler-worker` cron + Cloudflare Queue + `shared/push` (Web Push VAPID, FCM, APNs) | Async delivery after publish; browser and native paths share one subscription store |
 | App Packaging | Capacitor | Packages the existing web app for Android/iOS without introducing a separate native application stack |
 | CI/CD | GitHub Actions + Wrangler | Automated lint/build/deploy on push |
