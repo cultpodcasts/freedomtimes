@@ -1,4 +1,5 @@
 import { defineConfig } from 'astro/config';
+import type { Plugin } from 'vite';
 import { fileURLToPath } from 'node:url';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
@@ -28,6 +29,31 @@ const libsqlClientWebPath = fileURLToPath(
 const sqliteShimPath = fileURLToPath(new URL('./src/shims/better-sqlite3.ts', import.meta.url));
 const bindingsShimPath = fileURLToPath(new URL('./src/shims/bindings.ts', import.meta.url));
 
+const isAstroBuild = process.argv.includes('build');
+
+/**
+ * @astrojs/cloudflare 14 prebundles astro/assets/fonts/runtime.js during SSR optimizeDeps.
+ * On Astro 7 (Vite 8) that pulls in virtual:astro:* modules esbuild cannot resolve at build time.
+ * Restrict SSR dep discovery during `astro build` only; dev keeps the adapter defaults.
+ */
+function cloudflareOptimizeDepsBuildFix(): Plugin {
+  const serverEnvs = ['astro', 'ssr', 'prerender'];
+  return {
+    name: 'freedomtimes:cloudflare-optimize-deps-build-fix',
+    enforce: 'post',
+    configEnvironment(environmentName) {
+      if (!isAstroBuild || !serverEnvs.includes(environmentName)) return;
+      return {
+        optimizeDeps: {
+          noDiscovery: true,
+          include: ['@libsql/client', '@libsql/client/web'],
+          exclude: ['astro:*', 'virtual:astro:*', 'virtual:astro-cloudflare:*'],
+        },
+      };
+    },
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   output: 'server',
@@ -44,9 +70,7 @@ export default defineConfig({
       external: ['cloudflare:workers'],
       noExternal: ['@libsql/kysely-libsql', '@libsql/client', '@libsql/client/web'],
     },
-    optimizeDeps: {
-      include: ['@libsql/client', '@libsql/client/web'],
-    },
+    plugins: [cloudflareOptimizeDepsBuildFix()],
   },
   integrations: [
     react(),
