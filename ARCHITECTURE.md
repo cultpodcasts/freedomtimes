@@ -26,7 +26,7 @@ Freedom Times is a UK/Europe-focused news platform for cult survivors. It vets s
 | **PWA / App** | Web-first delivery with optional Android/iOS packaging via Capacitor; requires HTTPS, Web App Manifest, and Service Worker support |
 | **Push notifications** | Web Push API for the web experience, with native push integration available through Capacitor when app packaging requires it |
 | **Newsletter** | Email subscription + periodic digest |
-| **Infrastructure as Code** | All cloud resources (Azure, Cloudflare, Auth0) are defined in source-controlled declarative files and deployed via CI/CD; no manual portal drift |
+| **Infrastructure as Code** | All cloud resources (Cloudflare, Auth0, Turso) are defined in source-controlled declarative files and deployed via CI/CD; no manual portal drift |
 | **Privacy / GDPR** | Protect survivor and reader privacy by design; collect the minimum data required for journalism operations only; no secondary profiling/advertising use |
 
 ---
@@ -77,7 +77,7 @@ Freedom Times is a UK/Europe-focused news platform for cult survivors. It vets s
 **Recommended framework:** [Astro](https://astro.build/) with the [`@astrojs/cloudflare` adapter](https://docs.astro.build/en/guides/integrations-guide/cloudflare/).
 
 - Astro's **Islands architecture** ships zero JS to the browser by default — still a good fit for a content-heavy publication.
-- The live site and CMS now share one deployment artifact rather than maintaining a separate public render path and custom editorial API.
+- The live site and CMS share one deployment artifact rather than maintaining separate public and editorial backends.
 - Astro runs natively on the Cloudflare Workers runtime, and the current app integrates EmDash directly through the `emdash/astro` integration.
 - Public pages query EmDash collections directly at request time using helpers such as `getEmDashCollection('posts', { status: 'published' })` and `getEmDashEntry('posts', slug)`.
 
@@ -207,7 +207,7 @@ Admin surfaces needed for MVP:
 
 1. **Web App Manifest** (`manifest.webmanifest`): name, icons, `display: standalone`, `theme_color` matching the Times-inspired palette.
 2. **Service Worker**: pre-cache the shell (header, footer, fonts, CSS). Use a Stale-While-Revalidate strategy for story pages so they remain readable offline.
-3. **Web Push**: subscribe visitors to push notifications via the [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). Store only the technical subscription objects needed for message delivery in a minimal server-side subscriber store. Notification preferences for Android/iOS app experiences should be stored locally on the device, not as a server-side behavioural profile. When a story is published, a background delivery job can send push messages via VAPID or a native push provider.
+3. **Web Push**: subscribe visitors to push notifications via the [Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API). Store only the technical subscription objects needed for message delivery in a minimal server-side subscriber store (Turso, provisioned via Terraform). Notification preferences for Android/iOS app experiences should be stored locally on the device, not as a server-side behavioural profile. When a story is published, the `scheduler-worker` Cloudflare Worker (cron-triggered) sends push messages via the shared `shared/push` delivery module (Web Push VAPID, FCM, APNs).
   - ⚠️ **iOS caveat**: Web Push is only available in iOS 16.4+ when the site is added to the Home Screen as a PWA. Where the packaged app needs broader notification support or tighter native lifecycle control, use Capacitor-native plugins rather than relying on Home Screen PWA behavior.
 4. **Capacitor**: packages the existing web app for Android and iOS while preserving a single web-first codebase. Native plugins can be introduced selectively for push notifications, deep linking, splash screens, and other device capabilities that are awkward or unavailable in the browser alone.
 
@@ -226,80 +226,30 @@ For app notifications specifically, any category preferences, mute settings, or 
 
 ### 4.10 Infrastructure as Code, Secrets, and Environment Promotion
 
-All infrastructure must be declared in files committed to this repository and applied by deployment pipelines. Manual edits in Azure Portal, Cloudflare Dashboard, or Auth0 Dashboard are treated as break-glass only and must be reconciled back into IaC immediately.
+All infrastructure must be declared in files committed to this repository and applied by deployment pipelines. Manual edits in the Cloudflare Dashboard or Auth0 Dashboard are treated as break-glass only and must be reconciled back into IaC immediately. One-time bootstrap steps that Terraform cannot create are documented in `NON_TERRAFORM_RESOURCES.md`.
 
 **Preferred approach: Terraform as the single control plane**
 
-Use Terraform as the default because it can manage all three providers in one graph:
-- Azure: resource group, storage, Functions, Cosmos DB, App Insights, Key Vault, role assignments.
-- Cloudflare: Workers routes, KV namespace bindings, R2 buckets, DNS, cache-related zone settings.
-- Auth0: tenant resources, applications, APIs, RBAC roles, role-to-permission mappings.
-
----
-
-### 4.11 API Auth Pattern (Agreed)
-
-The agreed direction for editorial API authentication is:
-
-1. Astro issues an API access token into an HttpOnly cookie on the parent domain (for example `.freedomtimes.news`).
-2. Browser calls the API host on a subdomain (for example `api-staging.freedomtimes.news`) with `credentials: include`.
-3. APIM reads token from the cookie, sets `Authorization: Bearer <token>` for upstream, and enforces JWT + role policy.
-4. EasyAuth on Azure Function validates the upstream authorization header as a second gate.
-5. Function executes business logic only after gateway + EasyAuth checks pass.
-
-This keeps API tokens out of browser JavaScript while preserving gateway-level RBAC and Function-level token verification.
-
-#### Implementation checklist (status)
-
-Status is tracked for the agreed pattern above.
-
-- [x] APIM JWT validation and role claim enforcement.
-- [x] EasyAuth enabled on Azure Function.
-- [x] Astro issues API token as `HttpOnly` cookie (domain-scoped for subdomain API host).
-- [x] Browser calls API host with cookie credentials (`credentials: include`) and no JS bearer token.
-- [x] APIM policy extracts token from cookie and sets upstream `Authorization` header.
-- [x] APIM policy drops/overrides inbound client `Authorization` header.
-- [x] APIM credentialed CORS (`allow-credentials=true`, explicit origins, no wildcard).
-- [x] CSRF protection for state-changing endpoints in cookie-auth model.
-- [x] Custom API hostname on Freedom Times domain (for example `api-staging.freedomtimes.news`).
-
-Current state:
-
-- Cookie -> APIM header bridge -> EasyAuth path is now implemented in application and APIM policy code.
-- APIM custom hostnames are wired for staging (`api-staging.freedomtimes.news`) and production (`api.freedomtimes.news`), with certificate inputs required at deploy time.
-
-#### Required controls for this pattern
-
-- Cookie settings: `HttpOnly`, `Secure`, explicit `Domain`, explicit `Path`, short `Max-Age`.
-- CORS with credentials on APIM: explicit allowed origins (no wildcard), `Access-Control-Allow-Credentials: true`.
-- CSRF controls for cookie-authenticated API calls.
-- APIM should overwrite or drop any inbound client `Authorization` header before setting upstream auth header from cookie token.
-- Function direct hostname access should be treated as non-public and restricted over time.
-
-This gives one plan/apply workflow, explicit dependencies, and auditable change history for the whole platform.
-
-**Fallback approach when provider gaps exist:**
-
-If a required resource is not reliably supported by a Terraform provider:
-- Keep Terraform as orchestrator.
-- Call specialist definitions as controlled steps, e.g., Bicep/ARM for Azure edge cases or provider-specific scripts.
-- Keep these definitions in source control and run them from CI so deployment remains fully declarative.
+Use Terraform as the default because it manages the active providers in one graph:
+- **Cloudflare**: Worker routes, KV namespace bindings, R2 buckets, DNS, cache-related zone settings.
+- **Auth0**: tenant resources, applications, APIs, RBAC roles, role-to-permission mappings.
+- **Turso**: EmDash database resources per environment.
 
 **Secrets policy (no credential leakage):**
 
 - Never store secrets in source code, tfvars files, or checked-in configuration.
-- Store runtime secrets in Azure Key Vault (Function app settings reference Key Vault values).
-- Store CI deploy secrets in GitHub Actions environments or OIDC-based federation where possible.
+- Store runtime Worker secrets via Wrangler (`wrangler secret put`) and keep them in sync from `.env.dev` using `scripts/set-github-secrets.ps1`.
+- Store CI deploy secrets in GitHub Actions environments.
 - Use least-privilege API tokens:
-  - Cloudflare token scoped to required resources only (for example, Cache Purge or specific Worker/KV operations).
+  - Cloudflare token scoped to required resources only.
   - Auth0 management credentials scoped to required APIs only.
-  - Azure identities scoped with minimal RBAC roles.
+  - Turso API token scoped to required databases only.
 
 **Environment model:**
 
-- Separate IaC workspaces/states for `dev`, `staging`, `prod`.
-- Promotion path: `dev` -> `staging` -> `prod`, with plan review at each stage.
-- Remote state with locking and encryption (for example, Azure Storage backend + blob lease locking).
+- Separate Terraform Cloud workspaces for `staging` and `production`.
+- Promotion path: `staging` -> `production`, with plan review at each stage.
+- Remote state with locking via Terraform Cloud.
 
 **Recommended repository layout (high level):**
 
@@ -307,20 +257,50 @@ If a required resource is not reliably supported by a Terraform provider:
 /infra
   /terraform
     /modules
-      /azure-core
-      /cloudflare-edge
-      /auth0-core
+      /cloudflare_holding_page
+      /auth0_app
     /environments
-      /dev
+      /auth0-shared
       /staging
-      /prod
+      /production
 ```
 
 Each environment composes shared modules with environment-specific variables only; secrets are injected at deploy time.
 
 ---
 
-### 4.11 EmDash Data Contracts, Revision State, and Publish Consistency
+### 4.11 Auth Pattern (Current)
+
+> **Runbook:** Staging login verification, cookie reference, and env vars — [web/docs/AUTH.md](web/docs/AUTH.md).
+
+Editorial authentication is **same-origin** on the Cloudflare Worker — Auth0 session cookies on the site domain, with no separate API gateway.
+
+1. Editor visits `/auth/login` → Auth0 Authorization Code flow.
+2. `/auth/callback` exchanges the code, verifies `admin` or `editor` role claims, and sets HttpOnly cookies (`ft_session`, `ft_access_token`, `ft_csrf`) scoped to the site domain.
+3. Protected Astro routes (for example `/homepage`, `/signed-in`) validate the session JWT in Worker middleware.
+4. EmDash admin (`/_emdash/admin`) and MCP (`/_emdash/api/mcp`) run on the same Worker origin; EmDash handles its own OAuth and MCP token flows alongside the outer Auth0 gate.
+5. Browser JavaScript does not read bearer tokens; auth is cookie-based with CSRF protection on state-changing requests.
+
+The Auth0 API audience identifier (for example `https://api.freedomtimes.news`) is a **resource-server identifier** for access tokens and RBAC.
+
+#### Implementation checklist (status)
+
+- [x] Auth0 login/callback/logout routes in the Worker.
+- [x] HttpOnly session and access-token cookies with domain scoping and stale-cookie cleanup.
+- [x] Role claim enforcement (`admin`, `editor`) at callback and protected routes.
+- [x] CSRF cookie (`ft_csrf`) for cookie-authenticated requests.
+- [x] EmDash admin and MCP on the same Worker deployment.
+- [x] First-party Auth0 consent skipped for normal login.
+
+#### Required controls
+
+- Cookie settings: `HttpOnly`, `Secure`, explicit `Domain`, explicit `Path`, appropriate `Max-Age`.
+- CSRF controls for cookie-authenticated state-changing requests.
+- Middleware keeps `/_emdash/*` and OAuth discovery paths available for EmDash's own auth flows.
+
+---
+
+### 4.12 EmDash Data Contracts, Revision State, and Publish Consistency
 
 To avoid stale or contradictory public content, the architecture should now describe the contracts that matter in the current EmDash-backed system:
 
@@ -355,7 +335,7 @@ This keeps the document aligned with the actual system: one CMS-backed source of
 
 ---
 
-### 4.12 Privacy, GDPR, and Data Minimisation
+### 4.13 Privacy, GDPR, and Data Minimisation
 
 Privacy is a primary architectural value for Freedom Times. The platform serves cult survivors and sensitive readers, so every system should default toward data minimisation, constrained access, and limited retention.
 
@@ -481,7 +461,7 @@ The current content-management path is contained within the Worker deployment pl
 | 7 | **GDPR / UK-GDPR compliance**: subscriber double opt-in, right to erasure, data residency? | Keep editorial content and subscriber workflows aligned with UK/EU privacy expectations and document retention/export/delete procedures explicitly. |
 | 8 | **Source protection**: stories about cult survivors require careful handling of author/source metadata in the DB. | Author aliases only in public-facing fields; real identities (if stored at all) in a separate, highly restricted store with narrower access than the editorial CMS itself. |
 | 9 | **Slug and revision semantics**: how should the app behave when EmDash direct entry lookup misses but legacy or draft metadata still exists? | Prefer explicit published-entry behavior first, with narrowly scoped fallbacks only where routing or recovery workflows still require them. |
-| 10 | **IaC toolchain strategy**: Terraform-only vs mixed Terraform + specialist definitions? | Prefer Terraform-only for a single cross-platform graph. If provider gaps block delivery, keep Terraform as orchestrator and invoke specialist definitions (for example, Bicep) from CI while preserving full source-controlled declarative deployment. |
+| 10 | **IaC toolchain strategy**: Terraform-only vs mixed Terraform + specialist definitions? | Prefer Terraform-only for a single cross-platform graph. If provider gaps block delivery, keep Terraform as orchestrator and invoke provider-specific scripts from CI while preserving full source-controlled declarative deployment. |
 | 11 | **MCP editorial workflow**: how much operational publishing should happen via MCP clients versus inside the EmDash admin UI? | Use MCP for automation and assisted workflows, but keep the browser admin flow as the baseline path for editing, publishing, and troubleshooting. |
 | 12 | **Metadata taxonomy governance**: how are canonical people, groups, and institutions curated? | Maintain managed taxonomy lists with editor/admin approval, entity-match suggestions during submission, and audit history for merges/renames to preserve search consistency. |
 | 13 | **Privacy operating model**: what telemetry, analytics, and retention are acceptable? | Recommended: privacy-first defaults, minimal operational analytics only, explicit retention schedules, and no collection for advertising/profiling or unrelated secondary purposes. |
@@ -493,8 +473,8 @@ The current content-management path is contained within the Worker deployment pl
 The following items are listed in priority order. Each should be completed and verified before moving to the next.
 
 1. Scaffold Astro project; configure Cloudflare Workers with `wrangler`; deploy "Hello World" to production URL.
-2. Create IaC foundation (`/infra`): Terraform providers/backends/modules for Azure, Cloudflare, Auth0; configure remote state + environment separation.
-3. Implement secrets model: Key Vault + CI secret/OIDC wiring + least-privilege service principals/tokens.
+2. Create IaC foundation (`/infra`): Terraform providers/backends/modules for Cloudflare, Auth0, and Turso; configure remote state + environment separation.
+3. Implement secrets model: Wrangler secrets + GitHub Actions secret sync + least-privilege API tokens.
 4. Design system: typography, colour palette, CSS Grid layout; homepage shell.
 5. Integrate EmDash into the Astro Worker with Turso/libSQL and R2 bindings.
 6. Implement homepage + article page rendering against published EmDash entries; establish Core Web Vitals baseline.
@@ -522,7 +502,7 @@ The following items are listed in priority order. Each should be completed and v
 | Media Storage | Cloudflare R2 | S3-compatible, zero egress fees |
 | Metadata Taxonomy | Managed canonical lists in CMS-backed content and supporting app logic | Normalises people, groups, and institutions across stories/media and improves prefill, search, and editorial consistency |
 | Auth | Auth0 | Managed OIDC/JWT, RBAC, SPA + API support |
-| Infrastructure as Code | Terraform (primary), Bicep/other specialist definitions (fallback) | Source-controlled, repeatable, auditable deployments across Azure + Cloudflare + Auth0 with a single preferred control plane |
+| Infrastructure as Code | Terraform | Source-controlled, repeatable, auditable deployments across Cloudflare + Auth0 + Turso |
 | Privacy / Compliance | Privacy-by-design controls + GDPR / UK-GDPR operating procedures | Minimises data collection, constrains access to sensitive information, and keeps processing limited to journalism and operational necessity |
 | Email | Resend (or SendGrid) | Simple API, TypeScript SDK, generous free tier |
 | Push Notifications | Web Push (VAPID) with optional native push via Capacitor plugins | Keeps web push for the browser while leaving room for packaged-app notification support |

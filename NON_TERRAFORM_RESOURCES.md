@@ -59,13 +59,3 @@ Once the Terraform provider M2M app is created and credentials are set:
 ## Why These Cannot Be in Terraform
 
 The Auth0 Terraform provider uses client credentials from `TF_VAR_auth0_management_client_id` / `TF_VAR_auth0_management_client_secret` to authenticate against the Management API. Those credentials must already exist and be authorized before Terraform can run — so they cannot be resources that Terraform itself creates.
-
----
-
-## Azure (Deprecated)
-
-Azure infrastructure and Azure credential bootstrap are no longer part of the active Terraform topology for this repository.
-
-- Do not add `ARM_CLIENT_ID`, `ARM_CLIENT_SECRET`, `ARM_SUBSCRIPTION_ID`, `ARM_TENANT_ID`, or `TF_VAR_AZURE_LOCATION` to `.env.dev`.
-- Do not sync Azure credentials via `scripts/set-github-secrets.ps1`.
-- Keep historical Azure details only in archival notes if needed for incident history.

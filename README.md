@@ -1,87 +1,117 @@
-# freedomtimes
+# Freedom Times
 
-Source for Freedom Times website and infrastructure.
+A UK/Europe-focused news platform for cult survivors — vetting stories and routing exclusives to established journalists. This repository holds the public site, editorial CMS, mobile shells, and infrastructure-as-code.
 
-## Infrastructure as Code
+**Staging:** [staging.freedomtimes.news](https://staging.freedomtimes.news) · **Production:** [freedomtimes.news](https://freedomtimes.news)
 
-Initial Terraform scaffolding for Cloudflare is available in [infra/terraform](infra/terraform).
+---
 
-Current first step:
-- deploy a Cloudflare Worker based holding page via Terraform
+## Stack at a glance
 
-Environment policy:
-- local development can run without Terraform
-- Terraform is used for managed infrastructure deployment (staging and production)
+| Layer | Technology |
+|---|---|
+| **Hosting & edge** | Cloudflare Workers (Astro SSR) |
+| **CMS & content** | [EmDash](https://emdash.dev) — collections, admin, MCP |
+| **Databases** | Turso / libSQL (content, scheduler, subscriptions) |
+| **Media** | Cloudflare R2 |
+| **Auth** | Auth0 (editor/admin RBAC, cookie sessions) |
+| **Mobile** | Capacitor (live-URL wrapper around the web app) |
+| **Push** | Web Push (VAPID) via `scheduler-worker` cron |
+| **IaC & CI** | Terraform, GitHub Actions, Wrangler |
 
-See [infra/terraform/README.md](infra/terraform/README.md) for setup and usage.
+---
 
-## Local Development Requirements
+## How it fits together
 
-See [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md). This is a living document and will be updated as tooling and project requirements evolve.
+```mermaid
+flowchart TB
+  subgraph clients [Clients]
+    Reader[Public reader]
+    Editor[Editor / admin]
+    MCP[MCP clients]
+  end
 
-## Content Operations
+  subgraph cf [Cloudflare]
+  Worker["Astro Worker\n+ EmDash runtime"]
+  R2[(R2 media)]
+  end
 
-Staging-to-production CMS promotion runbook is in [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md).
+  subgraph data [Data & auth]
+  Turso[(Turso / libSQL)]
+  Auth0[Auth0]
+  Scheduler[scheduler-worker]
+  end
 
-For Android local push setup and build troubleshooting, see [Android Local Build and Push Requirements](LOCAL_DEV_REQUIREMENTS.md#android-local-build-and-push-requirements).
+  Reader --> Worker
+  Editor --> Auth0 --> Worker
+  MCP --> Worker
+  Worker --> Turso
+  Worker --> R2
+  Scheduler --> Turso
+```
 
-## Development Guardrails
+Readers get server-rendered pages from the Worker. Editors sign in through Auth0; the Worker validates roles and serves EmDash admin and MCP on the same origin. Published content lives in Turso; media in R2. Push notifications are dispatched by a separate cron Worker.
 
-See [DEVELOPMENT_GUARDRAILS.md](DEVELOPMENT_GUARDRAILS.md) for branch policy, ticket flow, and PR rules.
+Deeper design: [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Production Releases
+---
 
-Unified production deployment path for Terraform, EmDash runtime updates, layout changes, schema promotion, and content promotion:
+## Where to go next
 
-- [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md)
+### Application development
 
-## Staging Auth Login Flow
+| Doc | What you'll find |
+|---|---|
+| [web/README.md](web/README.md) | Astro app — local dev, Wrangler configs, deploy, scheduler |
+| [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md) | Tooling checklist (Git, Terraform, Android SDK, etc.) |
+| [web/docs/AUTH.md](web/docs/AUTH.md) | Auth0 routes, cookies, staging login runbook |
+| [web/DESIGN_GUIDE.md](web/DESIGN_GUIDE.md) | Visual and layout conventions |
 
-Use this runbook when validating login behavior on staging at https://staging.freedomtimes.news.
+### Content & editorial
 
-Expected sequence:
+| Doc | What you'll find |
+|---|---|
+| [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md) | Staging → production CMS promotion, Turso backups |
+| [web/docs/EDITORIAL_ENGLISH_GLOSSES.md](web/docs/EDITORIAL_ENGLISH_GLOSSES.md) | English ledes, French glosses, Portable Text patterns |
+| [web/docs/PR_CHECKLIST_EMDASH_CONTENT.md](web/docs/PR_CHECKLIST_EMDASH_CONTENT.md) | Content PR checklist |
+| [web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md](web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md) | EmDash format, CLI vs MCP |
+| [AGENTS.md](AGENTS.md) | Agent/operator rules (MCP-only content access, backups) |
 
-1. GET /auth/login
-2. Redirect to Auth0 authorize endpoint (Authorization Code flow, scope `openid`, API audience requested)
-3. GET /auth/callback with code and state
-4. Role check allows admin/editor
-5. Redirect to GET /signed-in
-6. Token verifies and page renders
+### Infrastructure & operations
 
-Consent behavior:
+| Doc | What you'll find |
+|---|---|
+| [infra/terraform/README.md](infra/terraform/README.md) | Terraform layout, environments, apply workflow |
+| [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md) | Unified production promotion path |
+| [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md) | Environment teardown, secrets sync, CI/CD |
+| [SECRET_MANAGEMENT.md](SECRET_MANAGEMENT.md) | Secret handling policy |
+| [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md) | One-time bootstrap outside Terraform |
+| [STAGING_RECOVERY.md](STAGING_RECOVERY.md) | Staging environment recovery |
+| [scripts/set-github-secrets.md](scripts/set-github-secrets.md) | Syncing Worker secrets after deploy |
 
-- For first-party staging and production apps, Auth0 API consent is skipped by Terraform (`skip_consent_for_verifiable_first_party_clients = true`).
-- Users should not see an Auth0 consent screen during normal login unless tenant settings or app/API mappings are changed.
+### Mobile & push
 
-Cookie names used by web auth:
+| Doc | What you'll find |
+|---|---|
+| [web/docs/ANDROID_CAPACITOR_BUILD.md](web/docs/ANDROID_CAPACITOR_BUILD.md) | Android debug/release builds |
+| [web/README.md](web/README.md) § Scheduler Worker | Push subscriptions, VAPID keys, Turso migrations |
+| [ARCHITECTURE.md](ARCHITECTURE.md) § 4.10 | Push notification architecture |
 
-- ft_session (HttpOnly id token)
-- ft_access_token (HttpOnly API access token)
-- ft_csrf (JS-readable CSRF token)
+### Process
 
-Stale-cookie protections currently implemented:
+| Doc | What you'll find |
+|---|---|
+| [DEVELOPMENT_GUARDRAILS.md](DEVELOPMENT_GUARDRAILS.md) | Branch policy, ticket flow, PR rules |
 
-- Callback and logout clear both host-only and domain-scoped auth cookie variants.
-- Signed-in clears auth cookies and redirects to /auth/login when session token is expired.
-- Signed-in detects duplicate ft_session values in the Cookie header, clears auth cookies, and forces clean login.
+---
 
-Role denial behavior:
-
-- If callback token verifies but required role claim is missing, user is redirected to /?denied=1 and auth cookies are cleared.
-
-Live tail command for each test attempt:
+## Quick start (local web app)
 
 ```powershell
 cd web
-npx wrangler tail freedomtimes-holding-staging --format pretty
+npm install
+cp .env.example .env   # fill in Auth0 and Turso values
+npm run dev
 ```
 
-Report each attempt with:
-
-- auth/login outcome
-- auth/callback outcome
-- signed-in outcome
-- final redirect/result
-- any token verification or role-check errors
-
-Detailed web-auth documentation is in [web/README.md](web/README.md).
+For the full tooling picture, start with [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md).
