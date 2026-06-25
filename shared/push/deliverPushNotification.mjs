@@ -5,9 +5,23 @@
 import { importPKCS8, SignJWT } from 'jose';
 import { ApplicationServerKeys, generatePushHTTPRequest, setWebCrypto } from 'webpush-webcrypto';
 
-// webpush-webcrypto auto-wires self.crypto (browsers / Workers). Node only exposes globalThis.crypto.
-if (typeof self === 'undefined' && globalThis.crypto) {
-  setWebCrypto(globalThis.crypto);
+/**
+ * webpush-webcrypto wires self.crypto at import; duplicate package copies need setWebCrypto on
+ * the same instance that delivers. Workers: globalThis/self Web Crypto (no node:crypto). Node
+ * send-test: globalThis.crypto when present, else dynamic node:crypto (local scripts only).
+ */
+const webCrypto =
+  (typeof globalThis !== 'undefined' && globalThis.crypto?.subtle && globalThis.crypto)
+  || (typeof self !== 'undefined' && self.crypto?.subtle && self.crypto)
+  || null;
+
+if (webCrypto) {
+  setWebCrypto(webCrypto);
+} else if (typeof process !== 'undefined' && process.versions?.node) {
+  const { webcrypto } = await import('node:crypto');
+  setWebCrypto(webcrypto);
+} else {
+  throw new Error('Web Crypto API not available for web push delivery');
 }
 
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
