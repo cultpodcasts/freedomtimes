@@ -6,7 +6,6 @@
  *   buildArticlePushPayload + {siteOrigin}/api/recent-published-posts.json (same as scheduler)
  * - Generic (default): custom or default title/body/url; no featured image
  */
-import { webcrypto } from 'node:crypto';
 import { createClient } from '@libsql/client';
 import { buildArticlePushPayload } from '../../shared/push/articleNotificationPayload.mjs';
 import {
@@ -23,9 +22,6 @@ import {
 } from '../../shared/push/deliverPushNotification.mjs';
 import { loadEnvDev, pickFirstEnv, pickFirstEnvOptional } from './lib/load-env-dev.mjs';
 import { subscriptionsBindingsForTarget } from './lib/turso-env-bindings.mjs';
-import { setWebCrypto } from 'webpush-webcrypto';
-
-setWebCrypto(webcrypto);
 
 const STAGING_SITE_ORIGIN = 'https://staging.freedomtimes.news';
 const PRODUCTION_SITE_ORIGIN = 'https://freedomtimes.news';

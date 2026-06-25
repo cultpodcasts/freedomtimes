@@ -3,7 +3,12 @@
  * Keep in sync with scheduler-worker/src/deliverPushNotification.ts types.
  */
 import { importPKCS8, SignJWT } from 'jose';
-import { ApplicationServerKeys, generatePushHTTPRequest } from 'webpush-webcrypto';
+import { ApplicationServerKeys, generatePushHTTPRequest, setWebCrypto } from 'webpush-webcrypto';
+
+// webpush-webcrypto auto-wires self.crypto (browsers / Workers). Node only exposes globalThis.crypto.
+if (typeof self === 'undefined' && globalThis.crypto) {
+  setWebCrypto(globalThis.crypto);
+}
 
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
 const FCM_TOKEN_AUDIENCE = 'https://oauth2.googleapis.com/token';
