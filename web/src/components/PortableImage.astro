@@ -1,4 +1,6 @@
 ---
+import { readImageCaption } from '../lib/content/imageCaption';
+
 const props = Astro.props as Record<string, unknown>;
 const node =
 	(props.node as Record<string, unknown> | undefined)
@@ -56,10 +58,12 @@ function resolvePortableImageSrc(input: Record<string, unknown>): string | null 
 
 const src = resolvePortableImageSrc(node);
 const alt = readString(node.alt) ?? '';
+const caption = readImageCaption(node);
 ---
 
 {src && (
 	<figure class="inline-figure">
 		<img src={src} alt={alt} loading="lazy" decoding="async" />
+		{caption && <figcaption class="fig-caption">{caption}</figcaption>}
 	</figure>
 )}

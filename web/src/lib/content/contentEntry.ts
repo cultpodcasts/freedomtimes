@@ -2,6 +2,7 @@ import { createClient } from '@libsql/client/web';
 
 import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
+import { readImageCaption } from './imageCaption';
 import {
 	readEmDashPublishedOrCreatedAt,
 	readEmDashUpdatedAt,
@@ -135,22 +136,6 @@ function readFeaturedImageSrc(value: unknown): string | null {
 	}
 
 	return null;
-}
-
-function readFeaturedImageCaption(value: unknown): string | null {
-	if (!value || typeof value !== 'object') {
-		return null;
-	}
-	const candidate = value as Record<string, unknown>;
-	const direct = readString(candidate.caption);
-	if (direct) {
-		return direct;
-	}
-	const meta =
-		candidate.meta && typeof candidate.meta === 'object'
-			? (candidate.meta as Record<string, unknown>)
-			: null;
-	return readString(meta?.caption);
 }
 
 function readMediaFileUrl(value: unknown): string | null {
@@ -682,7 +667,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const featuredImageAlt =
 		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
 	const featuredImageCaption =
-		readFeaturedImageCaption(data.featured_image) ?? readFeaturedImageCaption(data.cover_image);
+		readImageCaption(data.featured_image) ?? readImageCaption(data.cover_image);
 	const socialImageSrc =
 		readFeaturedImageSrc(seo?.image)
 		?? readFeaturedImageSrc(data.social_image)

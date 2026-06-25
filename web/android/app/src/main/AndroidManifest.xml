@@ -44,6 +44,12 @@
                     android:scheme="@string/custom_url_scheme" />
             </intent-filter>
 
+            <!-- FCM notification tap when a payload sets click_action (legacy / third-party senders). -->
+            <intent-filter>
+                <action android:name="FCM_PLUGIN_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
         </activity>
 
         <provider

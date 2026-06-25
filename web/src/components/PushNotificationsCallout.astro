@@ -32,6 +32,7 @@ const pushSubscribePublicKey = getPushSubscribePublicKey();
 	import {
 		browserNotificationPermissionError,
 		enableNotificationsForCurrentDevice,
+		ensureBrowserPushSubscriptionSynced,
 		getBrowserPermissionPromptMessage,
 		getNotificationSupportState,
 		initializeNativePushBridge,
@@ -47,6 +48,7 @@ const isNativeShell = isLikelyNativeShellClient();
 	if (!isNativeShell && button instanceof HTMLButtonElement && status instanceof HTMLParagraphElement) {
 		void initializeNativePushBridge();
 		void prepareBrowserPushInfrastructure();
+		void ensureBrowserPushSubscriptionSynced(button.dataset.publicKey || '');
 		void applyInitialState(button, status);
 
 		button.addEventListener('click', () => {

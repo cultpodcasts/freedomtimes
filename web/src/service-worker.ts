@@ -112,16 +112,30 @@ function defaultPushPayload(payload: PushNotificationPayload): Required<Omit<Pus
 
 async function focusOrOpenClient(url: string): Promise<void> {
   const absoluteUrl = new URL(url, workerScope.location.origin).toString();
-  const clients = await workerScope.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const windowClients = await workerScope.clients.matchAll({ type: 'window', includeUncontrolled: true });
 
-  for (const client of clients) {
-    if (client.url === absoluteUrl) {
+  let sameOriginClient: WindowClient | undefined;
+  for (const client of windowClients) {
+    if (new URL(client.url).origin !== workerScope.location.origin) {
+      continue;
+    }
+
+    sameOriginClient = client;
+    if ('navigate' in client && typeof client.navigate === 'function') {
       await client.focus();
+      await client.navigate(absoluteUrl);
       return;
     }
   }
 
-  await workerScope.clients.openWindow(absoluteUrl);
+  if (sameOriginClient) {
+    await sameOriginClient.focus();
+  }
+
+  const opened = await workerScope.clients.openWindow(absoluteUrl);
+  if (!opened && !sameOriginClient) {
+    console.warn('[service-worker] notificationclick: clients.openWindow returned null', absoluteUrl);
+  }
 }
 
 export {};

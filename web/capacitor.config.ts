@@ -1,4 +1,4 @@
-import { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 
@@ -29,11 +29,11 @@ const config: CapacitorConfig = {
   appId: 'news.freedomtimes.app',
   appName: SITE_DISPLAY_NAME,
   webDir: 'cap-web',
+  appendUserAgent: appendedUserAgent,
   server: {
     url: serverUrl,
     cleartext: usesCleartext,
     androidScheme: usesCleartext ? 'http' : 'https',
-    appendUserAgent: appendedUserAgent,
   },
   android: {
     allowMixedContent: usesCleartext,
