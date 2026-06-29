@@ -277,6 +277,16 @@ async function optimizePngUnderLimit(
 	return best;
 }
 
+/** Downscale/cover-crop hero backgrounds before Satori embed — large masters (e.g. 2.7 MB PNG) fail silently as white. */
+async function prepareBgImageForSatori(input: Buffer): Promise<{ buffer: Buffer; mimeType: string }> {
+	const prepared = await sharp(input)
+		.rotate()
+		.resize(OG_WIDTH, OG_HEIGHT, { fit: 'cover', position: 'center' })
+		.jpeg({ quality: 85, mozjpeg: true })
+		.toBuffer();
+	return { buffer: prepared, mimeType: 'image/jpeg' };
+}
+
 type SocialFonts = { playfair: ArrayBuffer; noto900: ArrayBuffer };
 
 type GenerateSlugOptions = {
@@ -1008,10 +1018,12 @@ async function generateSocialImageForSlug(
 				headers: { Authorization: `Bearer ${apiToken}` }
 			});
 			if (res.ok) {
-				const buffer = await res.arrayBuffer();
-				const base64 = Buffer.from(buffer).toString('base64');
-				const mimeType = res.headers.get('content-type') || 'image/jpeg';
-				console.log(`Fetched bg image, buffer size: ${buffer.byteLength}, type: ${mimeType}`);
+				const raw = Buffer.from(await res.arrayBuffer());
+				const { buffer, mimeType } = await prepareBgImageForSatori(raw);
+				const base64 = buffer.toString('base64');
+				console.log(
+					`Fetched bg image, raw ${raw.byteLength} bytes → prepared ${buffer.byteLength} bytes (${mimeType})`,
+				);
 				bgImageNode = {
 					type: 'div',
 					props: {
