@@ -18,6 +18,7 @@ export const READER_SUBMISSION_SOURCE_PATHS = [
   'infra/subscriptions-database/migrations/20260702_create_notification_diagnostics.sql',
   'infra/subscriptions-database/migrations/20260703_add_push_reader_test_sent_at.sql',
   'infra/subscriptions-database/migrations/20260704_add_notification_diagnostics_status.sql',
+  'infra/subscriptions-database/migrations/20260705_rename_notification_diagnostics_status_values.sql',
   'web/src/pages/tip-source.astro',
   'web/src/pages/api/tip-source.json.ts',
   'web/src/pages/api/notification-diagnostics.ts',

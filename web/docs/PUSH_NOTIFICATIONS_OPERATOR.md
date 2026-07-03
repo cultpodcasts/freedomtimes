@@ -404,16 +404,18 @@ Readers can submit anonymous notification troubleshooting reports from the push 
 
 | Item | Value |
 |------|--------|
-| Migration | `infra/subscriptions-database/migrations/20260702_create_notification_diagnostics.sql` |
-| Apply | `npm run subscriptions:db:migrate` (included in `subscriptions:db:deploy`) |
+| Migration | `infra/subscriptions-database/migrations/20260702_create_notification_diagnostics.sql` (+ status columns / value renames in later migrations) |
+| Apply | `npm run subscriptions:db:migrate:staging` (staging) or `npm run subscriptions:db:migrate` (production) |
 | Worker env | `TURSO_SUBSCRIPTIONS_DATABASE_URL`, `TURSO_SUBSCRIPTIONS_AUTH_TOKEN` |
 | Handler | `web/src/lib/notification-diagnostics-server.ts` |
 | Admin UI | `/admin/notification-diagnostics` (staging: sign in first, then open) |
-| Admin API | `GET /api/admin/notification-diagnostics` — last 50 reports, newest first |
+| Admin API | `GET /api/admin/notification-diagnostics?status=new` — last 50 reports, newest first (default filter **`new`**) |
+| Update API | `PATCH /api/admin/notification-diagnostics/:id` with `{ "status": "reviewed" \| "archived" \| "new" }` |
+| Status values | `new`, `reviewed`, `archived` (same triage model as story tips) |
 | Access | Auth0 role **`admin`** only (`requireNotificationDiagnosticsSession` / `authorizeNotificationDiagnosticsApiRequest` in `web/src/lib/notification-diagnostics-session.ts`) |
 | Auth responses | **401** without session; **403** with valid session but wrong role (e.g. `editor`-only user) |
 
-**Reviewing reports:** open the admin page after signing in on staging or production with an **`admin`** account. Each card shows timestamp, permission/browser/OS badges, the reader's optional note, and an expandable technical snapshot (service worker state, push subscription, errors). On locked staging, anonymous routes are blocked — sign in at `/` as admin, then open **Admin** → **Push diagnostics**.
+**Reviewing reports:** open the admin page after signing in on staging or production with an **`admin`** account. Each card shows timestamp, permission/browser/OS badges, the reader's optional note, and an expandable technical snapshot (service worker state, push subscription, errors). Triage actions match story tips: **Mark reviewed**, **Archive**, **Reopen**. Filter defaults to **New**. On locked staging, anonymous routes are blocked — sign in at `/` as admin, then open **Admin** → **Push diagnostics**.
 
 If the table was previously created on the tips database by mistake, export/backup both databases, run `subscriptions:db:migrate` on subscriptions, and leave the empty or orphaned table on tips (harmless) or drop it manually after confirming no data to migrate.
 

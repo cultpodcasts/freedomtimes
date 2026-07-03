@@ -33,8 +33,8 @@ if (session instanceof Response) {
 			<label class="toolbar__filter">
 				<span class="toolbar__label">Status</span>
 				<select id="diagnostics-filter" class="toolbar__select">
-					<option value="unread" selected>Unread</option>
-					<option value="read">Read</option>
+					<option value="new" selected>New</option>
+					<option value="reviewed">Reviewed</option>
 					<option value="archived">Archived</option>
 					<option value="all">All</option>
 				</select>
@@ -83,14 +83,18 @@ if (session instanceof Response) {
 	}
 
 	function statusLabel(status) {
-		const labels = { unread: 'Unread', read: 'Read', archived: 'Archived' };
+		const labels = { new: 'New', reviewed: 'Reviewed', archived: 'Archived' };
 		return labels[status] || status;
 	}
 
 	function renderActionButton(action, label, currentStatus) {
-		const disabled = action === currentStatus;
+		const disabled =
+			(action === 'reviewed' && currentStatus === 'reviewed') ||
+			(action === 'archived' && currentStatus === 'archived') ||
+			(action === 'new' && currentStatus === 'new');
+
 		const variant =
-			action === 'read' && currentStatus === 'unread'
+			action === 'reviewed' && currentStatus === 'new'
 				? 'btn--primary'
 				: action === 'archived'
 					? 'btn--secondary'
@@ -355,8 +359,8 @@ if (session instanceof Response) {
 		const testStatusLabel = test
 			? `Test: ${testSendStatusLabel(test)}`
 			: 'Test: not attempted';
-		const status = report.status || 'unread';
-		const safeStatus = ['unread', 'read', 'archived'].includes(status) ? status : 'unread';
+		const status = report.status || 'new';
+		const safeStatus = ['new', 'reviewed', 'archived'].includes(status) ? status : 'new';
 
 		return `
 			<section class="diag-card" role="listitem" data-report-id="${escapeHtml(report.id)}" data-status="${escapeHtml(safeStatus)}">
@@ -371,9 +375,9 @@ if (session instanceof Response) {
 						${snapshot?.platformType ? `<span class="badge badge--muted">${escapeHtml(formatLabel(snapshot.platformType))}</span>` : ''}
 					</div>
 					<div class="diag-card__actions">
-						${renderActionButton('read', 'Mark read', safeStatus)}
+						${renderActionButton('reviewed', 'Mark reviewed', safeStatus)}
 						${renderActionButton('archived', 'Archive', safeStatus)}
-						${renderActionButton('unread', 'Mark unread', safeStatus)}
+						${renderActionButton('new', 'Reopen', safeStatus)}
 					</div>
 					${
 						buttonSummary
@@ -415,7 +419,7 @@ if (session instanceof Response) {
 		}
 
 		const filter = filterEl.value;
-		const query = `?status=${encodeURIComponent(filter)}`;
+		const query = filter === 'all' ? '' : `?status=${encodeURIComponent(filter)}`;
 		statusEl.textContent = 'Loading…';
 		statusEl.classList.remove('toolbar__count--empty', 'toolbar__count--error');
 		listEl.innerHTML = '';
@@ -480,7 +484,7 @@ if (session instanceof Response) {
 
 		if (target instanceof HTMLButtonElement && target.disabled) return;
 
-		if (action !== 'read' && action !== 'archived' && action !== 'unread') {
+		if (action !== 'reviewed' && action !== 'archived' && action !== 'new') {
 			return;
 		}
 
@@ -637,12 +641,12 @@ if (session instanceof Response) {
 		line-height: 1.4;
 	}
 
-	.diagnostics-admin :global(.status-badge--unread) {
+	.diagnostics-admin :global(.status-badge--new) {
 		background: #fce8e8;
 		color: #7a1a1a;
 	}
 
-	.diagnostics-admin :global(.status-badge--read) {
+	.diagnostics-admin :global(.status-badge--reviewed) {
 		background: #edf7f1;
 		color: #2d6a4f;
 	}

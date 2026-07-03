@@ -17,7 +17,7 @@ export const GET: APIRoute = async ({ cookies, request, url }) => {
   const statusParam = url.searchParams.get('status');
   const status = statusParam
     ? parseNotificationDiagnosticListStatus(statusParam)
-    : 'unread';
+    : 'new';
   if (statusParam && !status) {
     return json({ error: 'Invalid status filter.' }, 400);
   }
@@ -26,7 +26,7 @@ export const GET: APIRoute = async ({ cookies, request, url }) => {
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
 
   try {
-    const reports = await listNotificationDiagnostics({ status: status ?? 'unread', limit });
+    const reports = await listNotificationDiagnostics({ status: status ?? 'new', limit });
     return json({ reports }, 200);
   } catch (error) {
     console.error('[admin/notification-diagnostics] list failed', {

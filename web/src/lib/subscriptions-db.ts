@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { readEnv } from './auth';
 
-export const notificationDiagnosticStatuses = ['unread', 'read', 'archived'] as const;
+export const notificationDiagnosticStatuses = ['new', 'reviewed', 'archived'] as const;
 export type NotificationDiagnosticStatus = (typeof notificationDiagnosticStatuses)[number];
 
 export const notificationDiagnosticsTable = sqliteTable('notification_diagnostics', {
@@ -11,7 +11,7 @@ export const notificationDiagnosticsTable = sqliteTable('notification_diagnostic
   payloadJson: text('payload_json').notNull(),
   userNote: text('user_note'),
   createdAt: text('created_at').notNull(),
-  status: text('status').notNull().default('unread'),
+  status: text('status').notNull().default('new'),
   updatedAt: text('updated_at'),
 });
 

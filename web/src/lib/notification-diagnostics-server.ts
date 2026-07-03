@@ -89,7 +89,7 @@ export async function persistNotificationDiagnostic(
     payloadJson: JSON.stringify(submission.snapshot),
     userNote: submission.userNote,
     createdAt: now,
-    status: 'unread',
+    status: 'new',
     updatedAt: now,
   });
 

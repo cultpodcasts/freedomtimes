@@ -1,5 +1,5 @@
--- Triage status for admin notification diagnostic reports
-ALTER TABLE notification_diagnostics ADD COLUMN status TEXT NOT NULL DEFAULT 'unread';
+-- Triage status for admin notification diagnostic reports (new / reviewed / archived)
+ALTER TABLE notification_diagnostics ADD COLUMN status TEXT NOT NULL DEFAULT 'new';
 ALTER TABLE notification_diagnostics ADD COLUMN updated_at TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_notification_diagnostics_status_created_at

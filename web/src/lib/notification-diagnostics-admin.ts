@@ -23,7 +23,7 @@ export type NotificationDiagnosticUpdate = {
 
 const DEFAULT_LIST_LIMIT = 50;
 const MAX_LIST_LIMIT = 200;
-const DEFAULT_LIST_STATUS: NotificationDiagnosticStatus = 'unread';
+const DEFAULT_LIST_STATUS: NotificationDiagnosticStatus = 'new';
 
 export async function listNotificationDiagnostics(params: {
   status?: NotificationDiagnosticStatus | 'all';
@@ -143,7 +143,7 @@ function mapNotificationDiagnosticRow(
     id: row.id,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt ?? null,
-    status: parseNotificationDiagnosticStatus(row.status) ?? 'unread',
+    status: parseNotificationDiagnosticStatus(row.status) ?? 'new',
     userNote: row.userNote,
     snapshot: parseSnapshotJson(row.payloadJson),
   };
