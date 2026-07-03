@@ -1,7 +1,21 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
+import type { LastTestNotification } from './notification-diagnostics-server';
 import { SITE_DISPLAY_NAME } from './site-brand';
+
+export type { LastTestNotification };
+
+/** Service worker → client message when a reader test notification is shown. */
+export const TEST_NOTIFICATION_DISPLAYED_MESSAGE = 'freedomtimes-test-notification-displayed';
+
+const READER_TEST_NOTIFICATION_TAGS = new Set([
+  'freedomtimes-reader-test',
+  'freedomtimes-reader-test-local',
+]);
+
+let lastTestNotification: LastTestNotification | null = null;
+let testNotificationReceiptListenerInstalled = false;
 
 const NATIVE_CHANNEL_ID = 'reader-alerts';
 const NATIVE_CHANNEL_NAME = 'Reader Alerts';
@@ -763,6 +777,112 @@ export async function getBrowserPushSubscription(): Promise<PushSubscription | n
   }
 }
 
+export function getLastTestNotification(): LastTestNotification | null {
+  return lastTestNotification ? { ...lastTestNotification } : null;
+}
+
+/** Listen for service-worker confirmation that a test notification was displayed. */
+export function ensureTestNotificationReceiptListener(): void {
+  if (
+    testNotificationReceiptListenerInstalled
+    || typeof navigator === 'undefined'
+    || !('serviceWorker' in navigator)
+  ) {
+    return;
+  }
+
+  testNotificationReceiptListenerInstalled = true;
+  navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
+    const data = event.data;
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+
+    const record = data as Record<string, unknown>;
+    if (record.type !== TEST_NOTIFICATION_DISPLAYED_MESSAGE) {
+      return;
+    }
+
+    const tag = typeof record.tag === 'string' ? record.tag : '';
+    if (!READER_TEST_NOTIFICATION_TAGS.has(tag)) {
+      return;
+    }
+
+    if (!lastTestNotification || lastTestNotification.sendStatus !== 'success') {
+      return;
+    }
+
+    if (lastTestNotification.receivedOnDevice === true) {
+      return;
+    }
+
+    const receivedAt =
+      typeof record.displayedAt === 'string' && record.displayedAt.trim().length > 0
+        ? record.displayedAt.trim()
+        : new Date().toISOString();
+
+    lastTestNotification = {
+      ...lastTestNotification,
+      receivedOnDevice: true,
+      receivedAt,
+    };
+  });
+}
+
+function beginTestNotificationAttempt(): void {
+  ensureTestNotificationReceiptListener();
+  lastTestNotification = {
+    attemptedAt: new Date().toISOString(),
+    sendStatus: 'pending',
+    sendMessage: 'Sending test notification…',
+    delivery: null,
+    httpStatus: null,
+    receivedOnDevice: null,
+    receivedAt: null,
+  };
+}
+
+function recordTestNotificationSuccess(options: {
+  sendMessage: string;
+  delivery: string | null;
+  httpStatus: number | null;
+  receivedOnDevice: boolean | null;
+  receivedAt: string | null;
+}): void {
+  if (!lastTestNotification) {
+    return;
+  }
+
+  lastTestNotification = {
+    ...lastTestNotification,
+    sendStatus: 'success',
+    sendMessage: options.sendMessage.slice(0, 500),
+    delivery: options.delivery,
+    httpStatus: options.httpStatus,
+    receivedOnDevice: options.receivedOnDevice,
+    receivedAt: options.receivedAt,
+  };
+}
+
+function recordTestNotificationError(options: {
+  sendMessage: string;
+  httpStatus?: number | null;
+}): void {
+  if (!lastTestNotification) {
+    return;
+  }
+
+  lastTestNotification = {
+    ...lastTestNotification,
+    sendStatus: 'error',
+    sendMessage: options.sendMessage.slice(0, 500),
+    delivery: null,
+    httpStatus: options.httpStatus ?? null,
+    receivedOnDevice: null,
+    receivedAt: null,
+  };
+}
+
 export async function showLocalTestNotification(): Promise<void> {
   if (!('Notification' in window) || Notification.permission !== 'granted') {
     throw new Error('Notification permission is not granted on this device.');
@@ -782,52 +902,100 @@ export async function showLocalTestNotification(): Promise<void> {
 }
 
 export async function sendReaderTestPushNotification(): Promise<string> {
-  const subscription = await getBrowserPushSubscription();
-  if (!subscription) {
-    throw new Error('This browser is not registered for push notifications yet.');
-  }
+  beginTestNotificationAttempt();
 
-  const payload = subscription.toJSON();
-  const endpoint = typeof payload.endpoint === 'string' ? payload.endpoint : '';
-  const keys = payload.keys;
-
-  if (!endpoint || !keys || typeof keys !== 'object') {
-    throw new Error('Unable to read this browser push subscription.');
-  }
-
-  const response = await fetch('/api/push-test-notification', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      endpoint,
-      keys,
-    }),
-  });
-  const result = await response.json().catch(() => ({}));
-
-  if (response.status === 503) {
-    await showLocalTestNotification();
-    return 'Server test push is not configured here, so we showed a local test notification in this browser instead.';
-  }
-
-  if (response.status === 429) {
-    const retryAfter = response.headers.get('retry-after');
-    const base =
-      typeof result.error === 'string'
-        ? result.error
-        : 'Too many test notifications. Please wait before trying again.';
-    if (retryAfter) {
-      const minutes = Math.ceil(Number.parseInt(retryAfter, 10) / 60);
-      throw new Error(
-        minutes > 1 ? `${base} Try again in about ${minutes} minutes.` : `${base} Try again in a minute.`,
-      );
+  try {
+    const subscription = await getBrowserPushSubscription();
+    if (!subscription) {
+      const message = 'This browser is not registered for push notifications yet.';
+      recordTestNotificationError({ sendMessage: message });
+      throw new Error(message);
     }
-    throw new Error(base);
-  }
 
-  if (!response.ok) {
-    throw new Error(typeof result.error === 'string' ? result.error : 'Test notification failed.');
-  }
+    const payload = subscription.toJSON();
+    const endpoint = typeof payload.endpoint === 'string' ? payload.endpoint : '';
+    const keys = payload.keys;
 
-  return 'Test notification sent to this device. It should appear shortly.';
+    if (!endpoint || !keys || typeof keys !== 'object') {
+      const message = 'Unable to read this browser push subscription.';
+      recordTestNotificationError({ sendMessage: message });
+      throw new Error(message);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch('/api/push-test-notification', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          endpoint,
+          keys,
+        }),
+      });
+    } catch {
+      const message = 'Network error while sending the test notification.';
+      recordTestNotificationError({ sendMessage: message, httpStatus: null });
+      throw new Error(message);
+    }
+
+    const result = await response.json().catch(() => ({}));
+
+    if (response.status === 503) {
+      await showLocalTestNotification();
+      const message =
+        'Server test push is not configured here, so we showed a local test notification in this browser instead.';
+      const receivedAt = new Date().toISOString();
+      recordTestNotificationSuccess({
+        sendMessage: message,
+        delivery: 'local',
+        httpStatus: 503,
+        // Local showNotification resolved — we have evidence the OS accepted display.
+        receivedOnDevice: true,
+        receivedAt,
+      });
+      return message;
+    }
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('retry-after');
+      const base =
+        typeof result.error === 'string'
+          ? result.error
+          : 'Too many test notifications. Please wait before trying again.';
+      const message = retryAfter
+        ? (() => {
+          const minutes = Math.ceil(Number.parseInt(retryAfter, 10) / 60);
+          return minutes > 1
+            ? `${base} Try again in about ${minutes} minutes.`
+            : `${base} Try again in a minute.`;
+        })()
+        : base;
+      recordTestNotificationError({ sendMessage: message, httpStatus: 429 });
+      throw new Error(message);
+    }
+
+    if (!response.ok) {
+      const message = typeof result.error === 'string' ? result.error : 'Test notification failed.';
+      recordTestNotificationError({ sendMessage: message, httpStatus: response.status });
+      throw new Error(message);
+    }
+
+    const delivery = typeof result.delivery === 'string' ? result.delivery.slice(0, 40) : null;
+    const message = 'Test notification sent to this device. It should appear shortly.';
+    recordTestNotificationSuccess({
+      sendMessage: message,
+      delivery,
+      httpStatus: response.status,
+      // Receipt is best-effort via service-worker postMessage when the test push is shown.
+      receivedOnDevice: null,
+      receivedAt: null,
+    });
+    return message;
+  } catch (error) {
+    if (lastTestNotification?.sendStatus === 'pending') {
+      const message = error instanceof Error ? error.message : 'Test notification failed.';
+      recordTestNotificationError({ sendMessage: message, httpStatus: null });
+    }
+    throw error;
+  }
 }

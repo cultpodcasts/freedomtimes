@@ -1,5 +1,17 @@
 import { createSubscriptionsDb, notificationDiagnosticsTable } from './subscriptions-db';
 
+/** In-memory result of the reader's last "Send test notification" attempt (page session). */
+export type LastTestNotification = {
+  attemptedAt: string;
+  sendStatus: 'success' | 'error' | 'pending';
+  sendMessage: string;
+  delivery: string | null;
+  httpStatus: number | null;
+  /** true when SW/page confirmed display; false only with evidence; null when unknown. */
+  receivedOnDevice: boolean | null;
+  receivedAt: string | null;
+};
+
 /** Fields collected client-side for anonymous notification troubleshooting. */
 export type NotificationDiagnosticSnapshot = {
   browserFamily: string;
@@ -25,6 +37,8 @@ export type NotificationDiagnosticSnapshot = {
   lastErrorMessage: string | null;
   /** Path only — no query string or hash. */
   pagePath: string;
+  /** Last test-notification attempt in this page session, or null if not attempted. */
+  lastTestNotification: LastTestNotification | null;
 };
 
 const MAX_USER_NOTE_LENGTH = 500;
@@ -32,6 +46,9 @@ const MAX_SUPPORT_MESSAGE_LENGTH = 500;
 const MAX_ERROR_MESSAGE_LENGTH = 500;
 const MAX_BUTTON_LABEL_LENGTH = 80;
 const MAX_BUTTON_DISABLED_REASON_LENGTH = 200;
+const MAX_TEST_SEND_MESSAGE_LENGTH = 500;
+const MAX_TEST_DELIVERY_LENGTH = 40;
+const MAX_ISO_TIMESTAMP_LENGTH = 40;
 
 export type NotificationDiagnosticSubmission = {
   snapshot: NotificationDiagnosticSnapshot;
@@ -117,6 +134,10 @@ function readDiagnosticSnapshot(value: unknown): NotificationDiagnosticSnapshot 
 
   const browserVersionMajor = readOptionalVersionMajor(record.browserVersionMajor);
   const pushEndpointHost = readOptionalHostname(record.pushEndpointHost);
+  const lastTestNotification = readLastTestNotification(record.lastTestNotification);
+  if (lastTestNotification === undefined) {
+    return null;
+  }
 
   return {
     browserFamily,
@@ -138,7 +159,101 @@ function readDiagnosticSnapshot(value: unknown): NotificationDiagnosticSnapshot 
     supportMessage,
     lastErrorMessage,
     pagePath,
+    lastTestNotification,
   };
+}
+
+/** null = not attempted; undefined = invalid payload (reject snapshot). */
+function readLastTestNotification(value: unknown): LastTestNotification | null | undefined {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const attemptedAt = readIsoTimestamp(record.attemptedAt);
+  const sendStatus = readEnumString(record.sendStatus, ['success', 'error', 'pending']);
+  const sendMessage = readRequiredTrimmedString(record.sendMessage, MAX_TEST_SEND_MESSAGE_LENGTH);
+  const delivery = readOptionalTrimmedString(record.delivery, MAX_TEST_DELIVERY_LENGTH);
+  const httpStatus = readOptionalHttpStatus(record.httpStatus);
+  const receivedOnDevice = readOptionalBooleanOrNull(record.receivedOnDevice);
+  const receivedAt = readOptionalIsoTimestamp(record.receivedAt);
+
+  if (
+    !attemptedAt
+    || !sendStatus
+    || !sendMessage
+    || httpStatus === undefined
+    || receivedOnDevice === undefined
+    || receivedAt === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    attemptedAt,
+    sendStatus: sendStatus as LastTestNotification['sendStatus'],
+    sendMessage,
+    delivery,
+    httpStatus,
+    receivedOnDevice,
+    receivedAt,
+  };
+}
+
+function readIsoTimestamp(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_ISO_TIMESTAMP_LENGTH) {
+    return null;
+  }
+
+  const parsed = Date.parse(trimmed);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return trimmed;
+}
+
+function readOptionalIsoTimestamp(value: unknown): string | null | undefined {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const timestamp = readIsoTimestamp(value);
+  return timestamp ?? undefined;
+}
+
+function readOptionalHttpStatus(value: unknown): number | null | undefined {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 100 || value > 599) {
+    return undefined;
+  }
+
+  return value;
+}
+
+/** true/false/null accepted; anything else is invalid. */
+function readOptionalBooleanOrNull(value: unknown): boolean | null | undefined {
+  if (value === null) {
+    return null;
+  }
+
+  if (value === true || value === false) {
+    return value;
+  }
+
+  return undefined;
 }
 
 function readEnumString(value: unknown, allowed: readonly string[]): string | null {

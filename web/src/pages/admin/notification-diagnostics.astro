@@ -108,6 +108,104 @@ if (session instanceof Response) {
 		return 'badge--ok';
 	}
 
+	function testSendStatusLabel(test) {
+		if (!test) {
+			return 'Not attempted';
+		}
+		switch (test.sendStatus) {
+			case 'success':
+				return 'Sent OK';
+			case 'error':
+				return 'Send failed';
+			case 'pending':
+				return 'Pending';
+			default:
+				return formatLabel(test.sendStatus);
+		}
+	}
+
+	function testSendBadgeClass(test) {
+		if (!test) {
+			return 'badge--muted';
+		}
+		switch (test.sendStatus) {
+			case 'success':
+				return 'badge--ok';
+			case 'error':
+				return 'badge--error';
+			case 'pending':
+				return 'badge--warn';
+			default:
+				return 'badge--muted';
+		}
+	}
+
+	function receivedOnDeviceLabel(value) {
+		if (value === true) {
+			return 'Yes';
+		}
+		if (value === false) {
+			return 'No';
+		}
+		return 'Unknown (browser does not confirm display)';
+	}
+
+	function receivedOnDeviceBadgeClass(value) {
+		if (value === true) {
+			return 'badge--ok';
+		}
+		if (value === false) {
+			return 'badge--error';
+		}
+		return 'badge--muted';
+	}
+
+	function renderTestNotificationSection(snapshot) {
+		const test = snapshot?.lastTestNotification ?? null;
+		const statusLabel = testSendStatusLabel(test);
+
+		if (!test) {
+			return `
+				<div class="diag-card__test">
+					<p class="diag-card__test-heading">Test notification</p>
+					<p><span class="badge ${testSendBadgeClass(test)}">${escapeHtml(statusLabel)}</span></p>
+				</div>
+			`;
+		}
+
+		const rows = [
+			['Message', test.sendMessage || '—'],
+			['Delivery', test.delivery || '—'],
+			['HTTP status', test.httpStatus != null ? String(test.httpStatus) : '—'],
+			['Attempted at', test.attemptedAt ? formatWhen(test.attemptedAt) : '—'],
+			['Received at', test.receivedAt ? formatWhen(test.receivedAt) : '—'],
+		];
+
+		const detailRows = rows
+			.map(
+				([label, value]) => `
+					<p>
+						<span class="diag-card__status-label">${escapeHtml(label)}</span>
+						${escapeHtml(value)}
+					</p>
+				`,
+			)
+			.join('');
+
+		return `
+			<div class="diag-card__test">
+				<p class="diag-card__test-heading">Test notification</p>
+				<p class="diag-card__test-badges">
+					<span class="badge ${testSendBadgeClass(test)}">${escapeHtml(statusLabel)}</span>
+					<span class="badge ${receivedOnDeviceBadgeClass(test.receivedOnDevice)}">
+						Received on device: ${escapeHtml(receivedOnDeviceLabel(test.receivedOnDevice))}
+					</span>
+				</p>
+				${detailRows}
+			</div>
+		`;
+	}
+
 	function renderSnapshotDetails(snapshot) {
 		if (!snapshot) {
 			return `
@@ -137,6 +235,44 @@ if (session instanceof Response) {
 			['Button disabled reason', snapshot.buttonDisabledReason || '—'],
 			['Support message', snapshot.supportMessage || '—'],
 			['Last error', snapshot.lastErrorMessage || '—'],
+			[
+				'Test notification',
+				snapshot.lastTestNotification
+					? testSendStatusLabel(snapshot.lastTestNotification)
+					: 'Not attempted',
+			],
+			[
+				'Test send message',
+				snapshot.lastTestNotification?.sendMessage || '—',
+			],
+			[
+				'Test delivery',
+				snapshot.lastTestNotification?.delivery || '—',
+			],
+			[
+				'Test HTTP status',
+				snapshot.lastTestNotification?.httpStatus != null
+					? String(snapshot.lastTestNotification.httpStatus)
+					: '—',
+			],
+			[
+				'Received on device',
+				snapshot.lastTestNotification
+					? receivedOnDeviceLabel(snapshot.lastTestNotification.receivedOnDevice)
+					: '—',
+			],
+			[
+				'Test attempted at',
+				snapshot.lastTestNotification?.attemptedAt
+					? formatWhen(snapshot.lastTestNotification.attemptedAt)
+					: '—',
+			],
+			[
+				'Test received at',
+				snapshot.lastTestNotification?.receivedAt
+					? formatWhen(snapshot.lastTestNotification.receivedAt)
+					: '—',
+			],
 		];
 
 		const tableRows = rows
@@ -198,6 +334,7 @@ if (session instanceof Response) {
 						</div>`
 						: ''
 				}
+				${renderTestNotificationSection(snapshot)}
 				${
 					userNote
 						? `<div class="diag-card__note"><span class="diag-card__note-label">Reader note</span><p>${escapeHtml(userNote).replaceAll('\n', '<br />')}</p></div>`
@@ -384,6 +521,47 @@ if (session instanceof Response) {
 		letter-spacing: 0.04em;
 		text-transform: uppercase;
 		color: var(--text-secondary);
+	}
+
+	.diagnostics-admin :global(.diag-card__test) {
+		margin: 0 0 1rem;
+		padding: 0.75rem 0.9rem;
+		border-radius: 6px;
+		background: #f4f8fb;
+		border: 1px solid var(--border-subtle);
+		display: grid;
+		gap: 0.45rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__test-heading) {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.diagnostics-admin :global(.diag-card__test-badges) {
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__test-badges .badge) {
+		text-transform: none;
+		letter-spacing: 0.01em;
+		font-size: 0.78rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__test p) {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+		line-height: 1.5;
+		color: var(--text-primary);
 	}
 
 	.diagnostics-admin :global(.diag-card__time) {

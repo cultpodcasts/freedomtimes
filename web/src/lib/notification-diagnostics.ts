@@ -1,7 +1,14 @@
-import type { NotificationDiagnosticSnapshot } from './notification-diagnostics-server';
-import { getNotificationSupportState } from './device-notifications';
+import type {
+  LastTestNotification,
+  NotificationDiagnosticSnapshot,
+} from './notification-diagnostics-server';
+import {
+  ensureTestNotificationReceiptListener,
+  getLastTestNotification,
+  getNotificationSupportState,
+} from './device-notifications';
 
-export type { NotificationDiagnosticSnapshot };
+export type { LastTestNotification, NotificationDiagnosticSnapshot };
 
 export async function collectNotificationDiagnostics(
   publicKey: string,
@@ -10,6 +17,8 @@ export async function collectNotificationDiagnostics(
     supportMessage?: string;
   } = {},
 ): Promise<NotificationDiagnosticSnapshot> {
+  ensureTestNotificationReceiptListener();
+
   const browser = parseBrowserInfo();
   const os = parseOsInfo();
   const platformType = detectPlatformType();
@@ -46,6 +55,7 @@ export async function collectNotificationDiagnostics(
     supportMessage: ((options.supportMessage ?? supportState.message) || 'No status message shown.').slice(0, 500),
     lastErrorMessage: options.lastErrorMessage?.trim().slice(0, 500) ?? null,
     pagePath: `${window.location.pathname}`,
+    lastTestNotification: getLastTestNotification(),
   };
 }
 
@@ -224,11 +234,47 @@ export const NOTIFICATION_DIAGNOSTIC_FIELD_LABELS: Record<keyof NotificationDiag
   supportMessage: 'Status message shown to you',
   lastErrorMessage: 'Last error message shown to you',
   pagePath: 'Page path where you saw this',
+  lastTestNotification: 'Last test notification (this page visit)',
 };
 
 export const NOTIFICATION_DIAGNOSTIC_PRIVACY_NOTES = [
   'We do not collect your IP address, email, account details, or raw browser fingerprint.',
   'We do not store your full push subscription URL or cryptographic keys.',
   'If you are subscribed, we only record the push service hostname (for example fcm.googleapis.com).',
+  'If you send a test notification, we record whether the send succeeded and whether this device confirmed display — not the notification contents.',
   'Reports are stored for troubleshooting only and reviewed by the editorial team.',
 ];
+
+export function formatLastTestNotificationSummary(
+  value: LastTestNotification | null | undefined,
+): string {
+  if (!value) {
+    return 'Not attempted';
+  }
+
+  const statusLabel =
+    value.sendStatus === 'success'
+      ? 'Sent OK'
+      : value.sendStatus === 'error'
+        ? 'Send failed'
+        : 'Pending';
+
+  const receivedLabel =
+    value.receivedOnDevice === true
+      ? 'Yes'
+      : value.receivedOnDevice === false
+        ? 'No'
+        : 'Unknown (browser does not confirm display)';
+
+  const parts = [
+    statusLabel,
+    value.sendMessage,
+    value.delivery ? `delivery=${value.delivery}` : null,
+    value.httpStatus != null ? `HTTP ${value.httpStatus}` : null,
+    `received=${receivedLabel}`,
+    `attempted=${value.attemptedAt}`,
+    value.receivedAt ? `receivedAt=${value.receivedAt}` : null,
+  ].filter(Boolean);
+
+  return parts.join(' · ');
+}

@@ -172,18 +172,25 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		return document.documentElement.dataset.nativeShell === '1';
 	}
 
-	import { collectNotificationDiagnostics } from '../lib/notification-diagnostics';
+	import {
+		collectNotificationDiagnostics,
+		formatLastTestNotificationSummary,
+	} from '../lib/notification-diagnostics';
 	import {
 		browserNotificationPermissionError,
 		enableNotificationsForCurrentDevice,
 		ensureBrowserPushSubscriptionSynced,
+		ensureTestNotificationReceiptListener,
 		getBrowserPermissionPromptMessage,
+		getLastTestNotification,
 		getNotificationSupportState,
 		initializeNativePushBridge,
 		prepareBrowserPushInfrastructure,
 		requestBrowserNotificationPermission,
 		sendReaderTestPushNotification,
 	} from '../lib/device-notifications';
+
+	ensureTestNotificationReceiptListener();
 
 	type UiMode = 'unsupported' | 'default' | 'subscribed' | 'denied' | 'error';
 
@@ -548,7 +555,11 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 			const dt = document.createElement('dt');
 			dt.textContent = label;
 			const dd = document.createElement('dd');
-			dd.textContent = value === null || value === undefined ? '—' : String(value);
+			if (key === 'lastTestNotification') {
+				dd.textContent = formatLastTestNotificationSummary(value);
+			} else {
+				dd.textContent = value === null || value === undefined ? '—' : String(value);
+			}
 			container.appendChild(dt);
 			container.appendChild(dd);
 		}
@@ -615,6 +626,12 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		const userNote = userNoteInput instanceof HTMLTextAreaElement
 			? userNoteInput.value.trim()
 			: '';
+
+		// Refresh test-notification receipt in case the SW confirmed display after the panel opened.
+		pendingSnapshot = {
+			...pendingSnapshot,
+			lastTestNotification: getLastTestNotification(),
+		};
 
 		try {
 			const response = await fetch('/api/notification-diagnostics', {

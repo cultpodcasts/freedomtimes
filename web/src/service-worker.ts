@@ -54,6 +54,14 @@ workerScope.addEventListener('fetch', (event) => {
   }
 });
 
+const READER_TEST_NOTIFICATION_TAGS = new Set([
+  'freedomtimes-reader-test',
+  'freedomtimes-reader-test-local',
+]);
+
+/** Must match `TEST_NOTIFICATION_DISPLAYED_MESSAGE` in device-notifications.ts. */
+const TEST_NOTIFICATION_DISPLAYED_MESSAGE = 'freedomtimes-test-notification-displayed';
+
 workerScope.addEventListener('push', (event) => {
   const payload = readPushPayload(event.data);
 
@@ -70,7 +78,11 @@ workerScope.addEventListener('push', (event) => {
     options.image = payload.image;
   }
 
-  event.waitUntil(workerScope.registration.showNotification(payload.title, options));
+  event.waitUntil(
+    workerScope.registration
+      .showNotification(payload.title, options)
+      .then(() => notifyClientsOfTestNotificationDisplayed(payload.tag)),
+  );
 });
 
 workerScope.addEventListener('notificationclick', (event) => {
@@ -108,6 +120,26 @@ function defaultPushPayload(payload: PushNotificationPayload): Required<Omit<Pus
     tag: payload.tag?.trim() || 'freedomtimes-notification',
   };
   return image ? { ...base, image } : base;
+}
+
+async function notifyClientsOfTestNotificationDisplayed(tag: string): Promise<void> {
+  if (!READER_TEST_NOTIFICATION_TAGS.has(tag)) {
+    return;
+  }
+
+  const clients = await workerScope.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+  const message = {
+    type: TEST_NOTIFICATION_DISPLAYED_MESSAGE,
+    tag,
+    displayedAt: new Date().toISOString(),
+  };
+
+  for (const client of clients) {
+    client.postMessage(message);
+  }
 }
 
 async function focusOrOpenClient(url: string): Promise<void> {
