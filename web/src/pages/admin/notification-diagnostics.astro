@@ -30,6 +30,15 @@ if (session instanceof Response) {
 		</p>
 
 		<div class="toolbar">
+			<label class="toolbar__filter">
+				<span class="toolbar__label">Status</span>
+				<select id="diagnostics-filter" class="toolbar__select">
+					<option value="unread" selected>Unread</option>
+					<option value="read">Read</option>
+					<option value="archived">Archived</option>
+					<option value="all">All</option>
+				</select>
+			</label>
 			<div class="toolbar__actions">
 				<p id="diagnostics-status" class="toolbar__count" aria-live="polite"></p>
 				<button id="diagnostics-refresh" type="button" class="btn btn--secondary">Refresh</button>
@@ -41,6 +50,18 @@ if (session instanceof Response) {
 </Layout>
 
 <script>
+	function readCookie(name) {
+		const prefix = `${name}=`;
+		const parts = document.cookie.split(';');
+		for (const part of parts) {
+			const trimmed = part.trim();
+			if (trimmed.startsWith(prefix)) {
+				return decodeURIComponent(trimmed.slice(prefix.length));
+			}
+		}
+		return '';
+	}
+
 	function escapeHtml(value) {
 		return String(value)
 			.replaceAll('&', '&amp;')
@@ -59,6 +80,24 @@ if (session instanceof Response) {
 		return String(value)
 			.replaceAll('_', ' ')
 			.replace(/\b\w/g, (char) => char.toUpperCase());
+	}
+
+	function statusLabel(status) {
+		const labels = { unread: 'Unread', read: 'Read', archived: 'Archived' };
+		return labels[status] || status;
+	}
+
+	function renderActionButton(action, label, currentStatus) {
+		const disabled = action === currentStatus;
+		const variant =
+			action === 'read' && currentStatus === 'unread'
+				? 'btn--primary'
+				: action === 'archived'
+					? 'btn--secondary'
+					: 'btn--ghost';
+
+		const disabledAttr = disabled ? ' disabled aria-disabled="true"' : '';
+		return `<button type="button" class="btn ${variant}" data-action="${action}"${disabledAttr}>${label}</button>`;
 	}
 
 	function permissionBadgeClass(permission) {
@@ -316,17 +355,25 @@ if (session instanceof Response) {
 		const testStatusLabel = test
 			? `Test: ${testSendStatusLabel(test)}`
 			: 'Test: not attempted';
+		const status = report.status || 'unread';
+		const safeStatus = ['unread', 'read', 'archived'].includes(status) ? status : 'unread';
 
 		return `
-			<section class="diag-card" role="listitem" data-report-id="${escapeHtml(report.id)}">
+			<section class="diag-card" role="listitem" data-report-id="${escapeHtml(report.id)}" data-status="${escapeHtml(safeStatus)}">
 				<header class="diag-card__header">
 					<div class="diag-card__meta">
+						<span class="status-badge status-badge--${escapeHtml(safeStatus)}">${escapeHtml(statusLabel(safeStatus))}</span>
 						<time class="diag-card__time" datetime="${escapeHtml(report.createdAt)}">${escapeHtml(formatWhen(report.createdAt))}</time>
 						<span class="badge ${permissionBadgeClass(permission)}">${escapeHtml(formatLabel(permission))}</span>
 						<span class="badge ${testSendBadgeClass(test)}">${escapeHtml(testStatusLabel)}</span>
 						<span class="badge badge--muted">${escapeHtml(browser)}</span>
 						<span class="badge badge--muted">${escapeHtml(os)}</span>
 						${snapshot?.platformType ? `<span class="badge badge--muted">${escapeHtml(formatLabel(snapshot.platformType))}</span>` : ''}
+					</div>
+					<div class="diag-card__actions">
+						${renderActionButton('read', 'Mark read', safeStatus)}
+						${renderActionButton('archived', 'Archive', safeStatus)}
+						${renderActionButton('unread', 'Mark unread', safeStatus)}
 					</div>
 					${
 						buttonSummary
@@ -353,21 +400,28 @@ if (session instanceof Response) {
 		`;
 	}
 
+	const filterEl = document.querySelector('#diagnostics-filter');
 	const refreshEl = document.querySelector('#diagnostics-refresh');
 	const statusEl = document.querySelector('#diagnostics-status');
 	const listEl = document.querySelector('#diagnostics-list');
 
 	async function loadReports() {
-		if (!(statusEl instanceof HTMLElement) || !(listEl instanceof HTMLElement)) {
+		if (
+			!(filterEl instanceof HTMLSelectElement)
+			|| !(statusEl instanceof HTMLElement)
+			|| !(listEl instanceof HTMLElement)
+		) {
 			return;
 		}
 
+		const filter = filterEl.value;
+		const query = `?status=${encodeURIComponent(filter)}`;
 		statusEl.textContent = 'Loading…';
 		statusEl.classList.remove('toolbar__count--empty', 'toolbar__count--error');
 		listEl.innerHTML = '';
 
 		try {
-			const response = await fetch('/api/admin/notification-diagnostics', {
+			const response = await fetch(`/api/admin/notification-diagnostics${query}`, {
 				credentials: 'include',
 			});
 			const body = await response.json();
@@ -381,7 +435,7 @@ if (session instanceof Response) {
 			const reports = Array.isArray(body.reports) ? body.reports : [];
 			statusEl.textContent =
 				reports.length === 0
-					? 'No diagnostic reports yet'
+					? 'No reports in this view'
 					: `${reports.length} report${reports.length === 1 ? '' : 's'}`;
 			statusEl.classList.toggle('toolbar__count--empty', reports.length === 0);
 
@@ -393,6 +447,56 @@ if (session instanceof Response) {
 		}
 	}
 
+	async function patchReport(id, payload) {
+		const csrfToken = readCookie('ft_csrf');
+		const response = await fetch(`/api/admin/notification-diagnostics/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			credentials: 'include',
+			headers: {
+				'content-type': 'application/json',
+				...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+			},
+			body: JSON.stringify(payload),
+		});
+
+		const body = await response.json();
+		if (!response.ok) {
+			throw new Error(body.error || 'Update failed.');
+		}
+
+		return body.report;
+	}
+
+	listEl?.addEventListener('click', async (event) => {
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return;
+
+		const card = target.closest('[data-report-id]');
+		if (!(card instanceof HTMLElement)) return;
+
+		const id = card.dataset.reportId;
+		const action = target.dataset.action;
+		if (!id || !action) return;
+
+		if (target instanceof HTMLButtonElement && target.disabled) return;
+
+		if (action !== 'read' && action !== 'archived' && action !== 'unread') {
+			return;
+		}
+
+		try {
+			await patchReport(id, { status: action });
+			await loadReports();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (statusEl instanceof HTMLElement) {
+				statusEl.textContent = message;
+				statusEl.classList.add('toolbar__count--error');
+			}
+		}
+	});
+
+	filterEl?.addEventListener('change', loadReports);
 	refreshEl?.addEventListener('click', loadReports);
 	loadReports();
 </script>
@@ -424,13 +528,45 @@ if (session instanceof Response) {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: flex-end;
-		justify-content: flex-end;
+		justify-content: space-between;
 		gap: 1rem 1.5rem;
 		margin-bottom: 1.5rem;
 		padding: 1rem 1.15rem;
 		border: 1px solid var(--border-subtle);
 		border-radius: 8px;
 		background: #fafafa;
+	}
+
+	.toolbar__filter {
+		display: grid;
+		gap: 0.4rem;
+		min-width: min(100%, 12rem);
+	}
+
+	.toolbar__label {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.toolbar__select {
+		font: inherit;
+		font-family: 'Inter', sans-serif;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 4px;
+		background: #fff;
+		cursor: pointer;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.toolbar__select:focus-visible {
+		outline: none;
+		border-color: #888;
+		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
 	}
 
 	.toolbar__actions {
@@ -472,6 +608,11 @@ if (session instanceof Response) {
 	}
 
 	.diagnostics-admin :global(.diag-card__header) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.85rem 1.25rem;
 		margin-bottom: 1rem;
 		padding-bottom: 0.85rem;
 		border-bottom: 1px solid var(--border-subtle);
@@ -484,8 +625,42 @@ if (session instanceof Response) {
 		gap: 0.55rem 0.65rem;
 	}
 
+	.diagnostics-admin :global(.status-badge) {
+		display: inline-block;
+		padding: 0.2rem 0.6rem;
+		border-radius: 999px;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		line-height: 1.4;
+	}
+
+	.diagnostics-admin :global(.status-badge--unread) {
+		background: #fce8e8;
+		color: #7a1a1a;
+	}
+
+	.diagnostics-admin :global(.status-badge--read) {
+		background: #edf7f1;
+		color: #2d6a4f;
+	}
+
+	.diagnostics-admin :global(.status-badge--archived) {
+		background: #f0f0f0;
+		color: #555555;
+	}
+
+	.diagnostics-admin :global(.diag-card__actions) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+	}
+
 	.diagnostics-admin :global(.diag-card__button-state) {
-		margin: 0.75rem 0 0;
+		flex: 1 1 100%;
+		margin: 0;
 	}
 
 	.diagnostics-admin :global(.diag-card__button-state .badge) {
@@ -738,6 +913,19 @@ if (session instanceof Response) {
 		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
 	}
 
+	.btn--primary,
+	.diagnostics-admin :global(.btn--primary) {
+		background: #7a1a1a;
+		border-color: #7a1a1a;
+		color: #fff;
+	}
+
+	.btn--primary:hover:not(:disabled),
+	.diagnostics-admin :global(.btn--primary:hover:not(:disabled)) {
+		background: #651515;
+		border-color: #651515;
+	}
+
 	.btn--secondary,
 	.diagnostics-admin :global(.btn--secondary) {
 		background: #fff;
@@ -751,14 +939,49 @@ if (session instanceof Response) {
 		border-color: #ccc;
 	}
 
+	.btn--ghost,
+	.diagnostics-admin :global(.btn--ghost) {
+		background: transparent;
+		border-color: transparent;
+		color: var(--text-secondary);
+		padding-left: 0.65rem;
+		padding-right: 0.65rem;
+	}
+
+	.btn--ghost:hover:not(:disabled),
+	.diagnostics-admin :global(.btn--ghost:hover:not(:disabled)) {
+		background: #f0f0f0;
+		color: var(--text-primary);
+	}
+
+	.btn:disabled,
+	.diagnostics-admin :global(.btn:disabled) {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
 	@media (max-width: 540px) {
 		.toolbar {
-			justify-content: stretch;
+			flex-direction: column;
+			align-items: stretch;
 		}
 
 		.toolbar__actions {
 			width: 100%;
 			justify-content: space-between;
+		}
+
+		.diagnostics-admin :global(.diag-card__header) {
+			flex-direction: column;
+		}
+
+		.diagnostics-admin :global(.diag-card__actions) {
+			width: 100%;
+		}
+
+		.diagnostics-admin :global(.diag-card__actions .btn) {
+			flex: 1 1 auto;
+			text-align: center;
 		}
 	}
 </style>

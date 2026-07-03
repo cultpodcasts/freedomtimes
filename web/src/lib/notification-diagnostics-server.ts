@@ -83,11 +83,14 @@ export async function persistNotificationDiagnostic(
   const id = crypto.randomUUID();
   const { db } = createSubscriptionsDb();
 
+  const now = new Date().toISOString();
   await db.insert(notificationDiagnosticsTable).values({
     id,
     payloadJson: JSON.stringify(submission.snapshot),
     userNote: submission.userNote,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    status: 'unread',
+    updatedAt: now,
   });
 
   return id;

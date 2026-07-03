@@ -40,5 +40,6 @@ export async function authorizeNotificationDiagnosticsApiRequest(params: {
     url: params.url,
     roleCheck: hasAdminRole,
     logPrefix: 'notification-diagnostics-session',
+    requireCsrf: true,
   });
 }

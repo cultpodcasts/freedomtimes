@@ -3,11 +3,16 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { readEnv } from './auth';
 
+export const notificationDiagnosticStatuses = ['unread', 'read', 'archived'] as const;
+export type NotificationDiagnosticStatus = (typeof notificationDiagnosticStatuses)[number];
+
 export const notificationDiagnosticsTable = sqliteTable('notification_diagnostics', {
   id: text('id').primaryKey(),
   payloadJson: text('payload_json').notNull(),
   userNote: text('user_note'),
   createdAt: text('created_at').notNull(),
+  status: text('status').notNull().default('unread'),
+  updatedAt: text('updated_at'),
 });
 
 export const pushSubscriptionsTable = sqliteTable('push_subscriptions', {
