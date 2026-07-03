@@ -39,7 +39,9 @@ function Get-FirstProcessEnvValue {
 function Set-TursoPlatformApiTokenForEnvironment {
     param([string]$Environment)
 
-    $candidates = Get-TursoPlatformApiTokenCandidateNames -Environment $Environment
+    # Wrap in @() so an empty return from the helper is an empty array, not $null
+    # (StrictMode rejects .Count on $null — auth0-shared has no Turso candidates).
+    $candidates = @(Get-TursoPlatformApiTokenCandidateNames -Environment $Environment)
     if ($candidates.Count -eq 0) {
         return
     }

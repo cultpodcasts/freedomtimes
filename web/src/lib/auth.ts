@@ -261,7 +261,6 @@ export function hasAdminRole(payload: JWTPayload): boolean {
 /**
  * Any role that may complete Auth0 login on the site (`admin` or `editor`).
  * Freedom Times `/admin/*` tools require `admin` only; `editor` is for editorial content.
- * An Auth0 `tips` role may still exist in the tenant but is unused by this app.
  */
 export function hasStaffLoginRole(payload: JWTPayload): boolean {
   return hasEditorialRole(payload);

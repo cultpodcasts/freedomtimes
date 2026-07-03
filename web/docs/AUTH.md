@@ -37,7 +37,7 @@ Role detection checks `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` when configured, or
 | `admin` | EmDash CMS, broadsheet homepage, all Freedom Times `/admin/*` tools (tips desk, push diagnostics) |
 | `editor` | EmDash CMS, broadsheet homepage (no Freedom Times `/admin` hub) |
 
-An Auth0 `tips` role may still exist in the tenant from Terraform but is **unused** by this app. After login, `admin` and `editor` users go to `/homepage`.
+After login, `admin` and `editor` users go to `/homepage`.
 
 ## Auth0 scope and consent
 

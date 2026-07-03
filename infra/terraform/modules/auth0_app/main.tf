@@ -101,14 +101,6 @@ resource "auth0_role" "admin" {
   description = "Can manage all content, delete stories, manage subscribers"
 }
 
-# Tips desk role — retained in Auth0 for historical assignments; the Freedom Times
-# app no longer uses this role (all /admin tools require `admin` only).
-resource "auth0_role" "tips" {
-  count       = var.create_shared_resources ? 1 : 0
-  name        = "tips"
-  description = "Unused by Freedom Times app; tip desk requires admin role"
-}
-
 # Editor role permissions
 resource "auth0_role_permissions" "editor_permissions" {
   count   = var.create_shared_resources ? 1 : 0
@@ -141,22 +133,6 @@ resource "auth0_role_permissions" "admin_permissions" {
       "subscribers:manage",
       "tips:manage"
     ]
-    content {
-      name                       = permissions.value
-      resource_server_identifier = auth0_resource_server.api[0].identifier
-    }
-  }
-
-  depends_on = [auth0_resource_server_scopes.api_scopes]
-}
-
-# Tips role permissions
-resource "auth0_role_permissions" "tips_permissions" {
-  count   = var.create_shared_resources ? 1 : 0
-  role_id = auth0_role.tips[0].id
-
-  dynamic "permissions" {
-    for_each = ["tips:manage"]
     content {
       name                       = permissions.value
       resource_server_identifier = auth0_resource_server.api[0].identifier

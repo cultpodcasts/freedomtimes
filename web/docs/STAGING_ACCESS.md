@@ -45,7 +45,7 @@ On locked staging, `isPublicReaderPath()` returns `false` for all of these.
 
 Shared helpers live in `web/src/lib/admin-session.ts`; role-specific wrappers in `admin-dashboard-session.ts`, `tips-session.ts`, and `notification-diagnostics-session.ts`.
 
-**`/admin`** is the staff hub for Auth0 **`admin`** only. All Freedom Times `/admin/*` pages and `/api/admin/*` APIs require the `admin` role. The header **Admin** link is shown only for admins and points here. An Auth0 `tips` role may still exist in the tenant (Terraform) but is **unused** by this app.
+**`/admin`** is the staff hub for Auth0 **`admin`** only. All Freedom Times `/admin/*` pages and `/api/admin/*` APIs require the `admin` role. The header **Admin** link is shown only for admins and points here.
 
 | Route | Required Auth0 roles | Page helper | API helper |
 |-------|---------------------|-------------|------------|

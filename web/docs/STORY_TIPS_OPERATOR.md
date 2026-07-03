@@ -73,7 +73,7 @@ Reader tips are **not** in EmDash. Operators with the Auth0 **`admin`** role tri
 ### Auth0 setup
 
 1. Tip-desk access uses the existing Auth0 **`admin`** role (no separate app role required).
-2. Terraform in `infra/terraform/environments/auth0-shared` may still define an unused `tips` role and `tips:manage` scope; the app does not check them for `/admin` access.
+2. Terraform in `infra/terraform/environments/auth0-shared` manages `admin` and `editor` only. The app checks the `admin` role for `/admin` access (not API scopes).
 3. Admins sign in via `/auth/login`, open **Admin** in the header, and choose **Story tips desk**.
 
 There is **no email or push alert** to tip-desk staff when a new tip arrives (see below). Check `/admin/tips` manually or poll the list API.
@@ -117,7 +117,7 @@ When **GitHub Actions deploys are broken or untrusted**, use **local PowerShell 
 | Step | Command / script | Needs GitHub? |
 |------|------------------|---------------|
 | Staging Terraform (creates tips Turso DB + token) | `pwsh scripts/terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove` | No |
-| Auth0 roles (admin for tip desk; optional unused `tips` role in tenant) | `pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation apply -LoadEnvFiles -AutoApprove` | No |
+| Auth0 roles (`admin` for tip desk) | `pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation apply -LoadEnvFiles -AutoApprove` | No |
 | Write Turso URLs into `.env.dev` | `pwsh scripts/sync-staging-turso-env-dev.ps1` | No |
 | Tips DB migrations | `cd web; npm run tips:db:deploy:staging` | No |
 | Subscriptions diagnostics (if needed) | `cd web; npm run subscriptions:db:migrate:staging` | No |
