@@ -16,37 +16,23 @@ if (session instanceof Response) {
 	return session;
 }
 
-type AdminTile = {
-	title: string;
-	href: string;
-	description: string;
-};
-
-const tiles: AdminTile[] = [];
-
-if (session.canAccessTips) {
-	tiles.push({
+const tiles = [
+	{
 		title: 'Story tips desk',
 		href: '/admin/tips',
 		description: 'Review and triage reader story tips from the dedicated tips database.',
-	});
-}
-
-if (session.canAccessDiagnostics) {
-	tiles.push({
+	},
+	{
 		title: 'Push diagnostics',
 		href: '/admin/notification-diagnostics',
 		description: 'Review reader-submitted push notification troubleshooting reports.',
-	});
-}
-
-if (session.canAccessCms) {
-	tiles.push({
+	},
+	{
 		title: 'EmDash CMS',
 		href: '/_emdash/admin',
 		description: 'Edit posts, pages, and media in the editorial content management system.',
-	});
-}
+	},
+];
 ---
 
 <Layout
@@ -54,33 +40,24 @@ if (session.canAccessCms) {
 	description="Staff tools for Freedom Times editorial and operations."
 	canonicalUrl={Astro.url.href}
 >
-	<Header
-		section="Admin"
-		isEditor={session.isEditor}
-		isTipsHandler={session.isTipsHandler}
-		isSignedIn={true}
-	/>
+	<Header section="Admin" isAdmin={true} isSignedIn={true} />
 	<article class="admin-dashboard">
 		<h1>Admin</h1>
 		<p class="lede">
-			Signed in as {session.displayName}. Choose a tool below — access depends on your Auth0 roles.
+			Signed in as {session.displayName}. Choose a tool below.
 		</p>
 
-		{ tiles.length > 0 ? (
-			<ul class="tile-grid">
-				{ tiles.map((tile) => (
-					<li>
-						<a class="tile" href={tile.href}>
-							<h2 class="tile__title">{tile.title}</h2>
-							<p class="tile__description">{tile.description}</p>
-							<span class="tile__cta">Open</span>
-						</a>
-					</li>
-				)) }
-			</ul>
-		) : (
-			<p class="empty">No admin tools are available for your account.</p>
-		) }
+		<ul class="tile-grid">
+			{tiles.map((tile) => (
+				<li>
+					<a class="tile" href={tile.href}>
+						<h2 class="tile__title">{tile.title}</h2>
+						<p class="tile__description">{tile.description}</p>
+						<span class="tile__cta">Open</span>
+					</a>
+				</li>
+			))}
+		</ul>
 	</article>
 </Layout>
 
@@ -164,13 +141,5 @@ if (session.canAccessCms) {
 		font-weight: 700;
 		letter-spacing: 0.02em;
 		color: #0044bb;
-	}
-
-	.empty {
-		margin: 0;
-		font-size: 1.05rem;
-		line-height: 1.65;
-		color: var(--text-secondary);
-		font-style: italic;
 	}
 </style>

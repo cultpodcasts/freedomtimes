@@ -45,21 +45,21 @@ On locked staging, `isPublicReaderPath()` returns `false` for all of these.
 
 Shared helpers live in `web/src/lib/admin-session.ts`; role-specific wrappers in `admin-dashboard-session.ts`, `tips-session.ts`, and `notification-diagnostics-session.ts`.
 
-**`/admin`** is the staff hub: signed-in users with any staff role land on a dashboard of tiles linking to the tools their roles can access (tips desk, push diagnostics, EmDash CMS). The header **Admin** link points here.
+**`/admin`** is the staff hub for Auth0 **`admin`** only. All Freedom Times `/admin/*` pages and `/api/admin/*` APIs require the `admin` role. The header **Admin** link is shown only for admins and points here. An Auth0 `tips` role may still exist in the tenant (Terraform) but is **unused** by this app.
 
 | Route | Required Auth0 roles | Page helper | API helper |
 |-------|---------------------|-------------|------------|
-| `/admin` | `admin`, `editor`, or `tips` (any staff role) | `requireAdminDashboardSession()` | — |
-| `/admin/tips` | `tips` or `admin` | `requireTipsSession()` | — |
-| `/api/admin/story-tips` | `tips` or `admin` | — | `authorizeTipsApiRequest()` |
-| `/api/admin/story-tips/:id` | `tips` or `admin` | — | `authorizeTipsApiRequest()` |
-| `/admin/notification-diagnostics` | `admin` or `editor` | `requireNotificationDiagnosticsSession()` | — |
-| `/api/admin/notification-diagnostics` | `admin` or `editor` | — | `authorizeNotificationDiagnosticsApiRequest()` |
-| `/_emdash/admin` (EmDash CMS) | EmDash OAuth / MCP | — | — |
+| `/admin` | `admin` | `requireAdminDashboardSession()` | — |
+| `/admin/tips` | `admin` | `requireTipsSession()` | — |
+| `/api/admin/story-tips` | `admin` | — | `authorizeTipsApiRequest()` |
+| `/api/admin/story-tips/:id` | `admin` | — | `authorizeTipsApiRequest()` |
+| `/admin/notification-diagnostics` | `admin` | `requireNotificationDiagnosticsSession()` | — |
+| `/api/admin/notification-diagnostics` | `admin` | — | `authorizeNotificationDiagnosticsApiRequest()` |
+| `/_emdash/admin` (EmDash CMS) | EmDash OAuth / MCP (linked from the admin hub for admins) | — | — |
 
 API auth responses: **401** when the session cookie is missing or invalid; **403** when the session is valid but the role is wrong. Mutating tips APIs also require the `X-CSRF-Token` header.
 
-The **`tips`** role does **not** grant access to push diagnostics or EmDash CMS. The **`editor`** role does **not** grant tips desk access unless the user also has `tips` or `admin`.
+The **`editor`** role grants editorial content access (`/homepage`, posts on locked staging) but **not** Freedom Times `/admin/*` tools.
 
 ## Central enforcement (required for new routes)
 
@@ -81,7 +81,7 @@ When adding a new production-public reader route:
 
 ## Testing reader flows on staging
 
-1. Open `https://staging.freedomtimes.news/` and sign in with Auth0 (`editor`, `admin`, or `tips` role).
+1. Open `https://staging.freedomtimes.news/` and sign in with Auth0 (`editor` or `admin` role).
 2. Navigate to the reader route (e.g. `/submit-a-tip`) or call the API with session cookies.
 3. Unauthenticated requests to reader routes on staging must return the login wall (pages) or `401` (APIs).
 

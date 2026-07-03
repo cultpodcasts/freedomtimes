@@ -57,7 +57,7 @@ Set at **build** time (before `npm run build` / worker deploy):
 
 ## Tips desk (admin UI)
 
-Reader tips are **not** in EmDash. Operators with the Auth0 **`tips`** role (or **`admin`**) triage them at:
+Reader tips are **not** in EmDash. Operators with the Auth0 **`admin`** role triage them at:
 
 | Item | Value |
 |------|--------|
@@ -65,16 +65,16 @@ Reader tips are **not** in EmDash. Operators with the Auth0 **`tips`** role (or 
 | List API | `GET /api/admin/story-tips?status=new` |
 | Update API | `PATCH /api/admin/story-tips/:id` with `{ "status": "reviewed" \| "archived" \| "new", "internalNotes": "..." }` |
 | Auth | Auth0 session cookie (`ft_session`); CSRF header `X-CSRF-Token` on mutations |
-| Roles | `tips` (tips desk only) or `admin` (full access including tips) |
+| Roles | `admin` only (all Freedom Times `/admin/*` tools) |
 | Enforcement | `requireTipsSession` / `authorizeTipsApiRequest` (`web/src/lib/tips-session.ts` → `admin-session.ts`); **401** without session, **403** with wrong role |
 
-**Editors** (`editor` role) do **not** get tips desk access unless they are also assigned `tips` or `admin`.
+**Editors** (`editor` role) do **not** get tips desk access. Assign **`admin`** for anyone who should use `/admin/tips` or other admin tools.
 
 ### Auth0 setup
 
-1. Apply Terraform in `infra/terraform/environments/auth0-shared` - adds API scope `tips:manage`, role `tips`, and grants `tips:manage` to `admin`.
-2. In Auth0 Dashboard → User Management → Users, assign the **`tips`** role to tip-desk staff (or use **`admin`** for editors who should see everything).
-3. Tips-only users sign in via `/auth/login` and land on `/admin/tips`. They do not get EmDash CMS access.
+1. Tip-desk access uses the existing Auth0 **`admin`** role (no separate app role required).
+2. Terraform in `infra/terraform/environments/auth0-shared` may still define an unused `tips` role and `tips:manage` scope; the app does not check them for `/admin` access.
+3. Admins sign in via `/auth/login`, open **Admin** in the header, and choose **Story tips desk**.
 
 There is **no email or push alert** to tip-desk staff when a new tip arrives (see below). Check `/admin/tips` manually or poll the list API.
 
@@ -117,7 +117,7 @@ When **GitHub Actions deploys are broken or untrusted**, use **local PowerShell 
 | Step | Command / script | Needs GitHub? |
 |------|------------------|---------------|
 | Staging Terraform (creates tips Turso DB + token) | `pwsh scripts/terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove` | No |
-| Auth0 `tips` role / scope (once) | `pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation apply -LoadEnvFiles -AutoApprove` | No |
+| Auth0 roles (admin for tip desk; optional unused `tips` role in tenant) | `pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation apply -LoadEnvFiles -AutoApprove` | No |
 | Write Turso URLs into `.env.dev` | `pwsh scripts/sync-staging-turso-env-dev.ps1` | No |
 | Tips DB migrations | `cd web; npm run tips:db:deploy:staging` | No |
 | Subscriptions diagnostics (if needed) | `cd web; npm run subscriptions:db:migrate:staging` | No |
@@ -176,7 +176,7 @@ curl -sI https://staging.freedomtimes.news/submit-a-tip
 curl -sI https://staging.freedomtimes.news/admin/tips
 ```
 
-**Auth0 tips desk:** after `auth0-shared` apply, assign the `tips` role in the Auth0 dashboard. CI is not required.
+**Auth0 tips desk:** assign the **`admin`** role in the Auth0 dashboard to anyone who should triage tips. CI is not required.
 
 **~~Do not use when CI is down:~~** ~~`gh workflow run terraform-staging.yml`~~, ~~merge to `main` expecting deploy~~, ~~`set-github-secrets.ps1` without `-SyncCloudflareWorkerSecrets` only (that path syncs GitHub repo secrets, not Workers)~~.
 

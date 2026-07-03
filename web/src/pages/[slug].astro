@@ -17,7 +17,7 @@ const isHomepage = slug === 'homepage' && isLockedSiteAccess();
 const isLocked = isLockedSiteAccess();
 
 let displayName = 'Reader';
-let isEditor = false;
+let isAdmin = false;
 let isSignedIn = false;
 let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let resolvedIsPreview = false;
@@ -43,7 +43,7 @@ if (isHomepage) {
 			return Astro.rewrite('/?denied=1');
 		}
 
-		isEditor = session.isEditor;
+		isAdmin = session.isAdmin;
 		isSignedIn = true;
 	}
 } else if (isLocked) {
@@ -59,6 +59,8 @@ if (isHomepage) {
 	}
 
 	displayName = session.displayName;
+	isAdmin = session.isAdmin;
+	isSignedIn = true;
 }
 
 if (!isHomepage) {
@@ -117,7 +119,7 @@ if (!isHomepage) {
 ---
 
 {isHomepage ? (
-	<HomepageView isEditor={isEditor} isSignedIn={isSignedIn} />
+	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
 ) : (
 	<EmDashContentView
 		entry={resolvedEntry!}
@@ -125,7 +127,7 @@ if (!isHomepage) {
 		emdashCollection={resolvedCollectionKey ?? 'pages'}
 		displayName={displayName}
 		isPreview={resolvedIsPreview}
-		isEditor={isLocked}
-		isSignedIn={isLocked}
+		isAdmin={isAdmin}
+		isSignedIn={isSignedIn}
 	/>
 )}

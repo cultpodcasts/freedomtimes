@@ -62,7 +62,7 @@ export function isLockedSiteAccess(): boolean {
  * from `editorial-session.ts` so locked staging requires an Auth0 session first.
  *
  * **Never** add staging-only public exceptions. To test reader flows on staging,
- * sign in at `/` (editor/admin/tips role), then open the route.
+ * sign in at `/` (editor or admin role), then open the route.
  *
  * **Not listed here** (separate rules):
  * - `/_emdash/*` — EmDash OAuth/MCP; own auth in middleware (`AUTH_BYPASS_RULES`)
@@ -258,36 +258,16 @@ export function hasAdminRole(payload: JWTPayload): boolean {
   return false;
 }
 
-export function hasTipsRole(payload: JWTPayload): boolean {
-  for (const claim of getRoleClaims()) {
-    const value = payload[claim];
-    if (Array.isArray(value) && value.some((r) => String(r).toLowerCase() === 'tips')) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/** Tips desk or full admin — can open `/admin/tips`. */
-export function hasTipsAccess(payload: JWTPayload): boolean {
-  return hasAdminRole(payload) || hasTipsRole(payload);
-}
-
-/** Any role that may complete Auth0 login on the site. */
+/**
+ * Any role that may complete Auth0 login on the site (`admin` or `editor`).
+ * Freedom Times `/admin/*` tools require `admin` only; `editor` is for editorial content.
+ * An Auth0 `tips` role may still exist in the tenant but is unused by this app.
+ */
 export function hasStaffLoginRole(payload: JWTPayload): boolean {
-  return hasEditorialRole(payload) || hasTipsAccess(payload);
+  return hasEditorialRole(payload);
 }
 
-export function getPostLoginPath(payload: JWTPayload): '/' | '/homepage' | '/admin/tips' {
-  if (hasEditorialRole(payload)) {
-    return getHomePath();
-  }
-
-  if (hasTipsAccess(payload)) {
-    return '/admin/tips';
-  }
-
+export function getPostLoginPath(_payload: JWTPayload): '/' | '/homepage' {
   return getHomePath();
 }
 

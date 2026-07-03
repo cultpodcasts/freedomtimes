@@ -28,7 +28,7 @@ const {
 	emdashCollection,
 	displayName,
 	isPreview = false,
-	isEditor = false,
+	isAdmin = false,
 	isSignedIn,
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
@@ -37,7 +37,7 @@ const {
 	emdashCollection: string;
 	displayName: string;
 	isPreview?: boolean;
-	isEditor?: boolean;
+	isAdmin?: boolean;
 	isSignedIn?: boolean;
 };
 
@@ -134,7 +134,7 @@ const showReaderDataProvenance = entrySlug === "privacy-policy";
 			sectionUrl={collectionLabel === "Archive"
 				? "/archives"
 				: getHomePath()}
-			isEditor={isEditor}
+			isAdmin={isAdmin}
 			isSignedIn={resolvedIsSignedIn}
 		/>
 

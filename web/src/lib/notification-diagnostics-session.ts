@@ -1,7 +1,6 @@
 import type { AstroCookies } from 'astro';
-import type { JWTPayload } from 'jose';
 
-import { hasEditorialRole } from './auth';
+import { hasAdminRole } from './auth';
 import {
   authorizeAdminApiRequest,
   requireAdminPageSession,
@@ -17,26 +16,16 @@ type NotificationDiagnosticsSessionContext = {
   redirect: (path: string) => Response;
 };
 
-export type NotificationDiagnosticsSession = AdminSessionBase & {
-  isEditor: boolean;
-};
-
-function buildSession(base: AdminSessionBase, _payload: JWTPayload): NotificationDiagnosticsSession {
-  return {
-    ...base,
-    isEditor: true,
-  };
-}
+export type NotificationDiagnosticsSession = AdminSessionBase;
 
 export async function requireNotificationDiagnosticsSession(
   context: NotificationDiagnosticsSessionContext,
 ): Promise<NotificationDiagnosticsSession | Response> {
   return requireAdminPageSession({
     context,
-    roleCheck: hasEditorialRole,
+    roleCheck: hasAdminRole,
     loginNextPath: ADMIN_PATH,
     logPrefix: 'notification-diagnostics-session',
-    buildSession,
   });
 }
 
@@ -49,8 +38,7 @@ export async function authorizeNotificationDiagnosticsApiRequest(params: {
     cookies: params.cookies,
     request: params.request,
     url: params.url,
-    roleCheck: hasEditorialRole,
+    roleCheck: hasAdminRole,
     logPrefix: 'notification-diagnostics-session',
-    buildSession,
   });
 }

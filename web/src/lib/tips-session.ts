@@ -1,6 +1,6 @@
 import type { AstroCookies } from 'astro';
 
-import { hasTipsAccess } from './auth';
+import { hasAdminRole } from './auth';
 import {
   authorizeAdminApiRequest,
   requireAdminPageSession,
@@ -24,7 +24,7 @@ export async function requireTipsSession(
 ): Promise<TipsSession | Response> {
   return requireAdminPageSession({
     context,
-    roleCheck: hasTipsAccess,
+    roleCheck: hasAdminRole,
     loginNextPath: ADMIN_PATH,
     logPrefix: 'tips-session',
   });
@@ -39,7 +39,7 @@ export async function authorizeTipsApiRequest(params: {
     cookies: params.cookies,
     request: params.request,
     url: params.url,
-    roleCheck: hasTipsAccess,
+    roleCheck: hasAdminRole,
     logPrefix: 'tips-session',
     requireCsrf: true,
   });

@@ -1,7 +1,6 @@
 ---
 import Header from '../../components/Header.astro';
 import Layout from '../../layouts/Layout.astro';
-import { hasEditorialRole, SESSION_COOKIE, verifyIdToken, getAuthConfig } from '../../lib/auth';
 import { requireTipsSession } from '../../lib/tips-session';
 
 export const prerender = false;
@@ -16,17 +15,6 @@ const session = await requireTipsSession({
 if (session instanceof Response) {
 	return session;
 }
-
-let isEditor = false;
-const token = Astro.cookies.get(SESSION_COOKIE)?.value;
-if (token) {
-	try {
-		const payload = await verifyIdToken(token, getAuthConfig());
-		isEditor = hasEditorialRole(payload);
-	} catch {
-		isEditor = false;
-	}
-}
 ---
 
 <Layout
@@ -34,7 +22,7 @@ if (token) {
 	description="Review and triage reader story tips."
 	canonicalUrl={Astro.url.href}
 >
-	<Header section="Story tips" isEditor={isEditor} isTipsHandler={true} isSignedIn={true} />
+	<Header section="Story tips" isAdmin={true} isSignedIn={true} />
 	<article class="tips-admin">
 		<h1>Story tips desk</h1>
 		<p class="lede">

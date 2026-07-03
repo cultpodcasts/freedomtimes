@@ -101,11 +101,12 @@ resource "auth0_role" "admin" {
   description = "Can manage all content, delete stories, manage subscribers"
 }
 
-# Tips desk role — view and triage reader story tips (no CMS access required)
+# Tips desk role — retained in Auth0 for historical assignments; the Freedom Times
+# app no longer uses this role (all /admin tools require `admin` only).
 resource "auth0_role" "tips" {
   count       = var.create_shared_resources ? 1 : 0
   name        = "tips"
-  description = "Can view and handle reader story tips"
+  description = "Unused by Freedom Times app; tip desk requires admin role"
 }
 
 # Editor role permissions

@@ -8,6 +8,7 @@ import {
 	getCookieDeleteOptionsForHost,
 	getDisplayName,
 	getRoleClaimDebug,
+	hasAdminRole,
 	hasEditorialRole,
 	isPublicReaderPath,
 	verifyIdToken,
@@ -23,6 +24,7 @@ type EditorialSessionContext = {
 type EditorialSession = {
 	displayName: string;
 	isEditor: boolean;
+	isAdmin: boolean;
 	requestId: string;
 };
 
@@ -59,6 +61,7 @@ export async function requireEditorialSession(
 		return {
 			displayName: getDisplayName(payload),
 			isEditor: hasEditorialRole(payload),
+			isAdmin: hasAdminRole(payload),
 			requestId,
 		};
 	} catch (error) {

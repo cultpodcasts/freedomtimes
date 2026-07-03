@@ -398,8 +398,8 @@ Each environment composes shared modules with environment-specific variables onl
 Editorial authentication is **same-origin** on the Cloudflare Worker — Auth0 session cookies on the site domain, with no separate API gateway.
 
 1. Editor visits `/auth/login` → Auth0 Authorization Code flow.
-2. `/auth/callback` exchanges the code, verifies staff role claims (`admin`, `editor`, or `tips`), and sets HttpOnly cookies (`ft_session`, `ft_access_token`, `ft_csrf`) scoped to the site domain.
-3. Protected Astro routes (for example `/homepage`, `/signed-in`, `/admin/tips`) validate the session JWT in Worker middleware.
+2. `/auth/callback` exchanges the code, verifies staff role claims (`admin` or `editor`), and sets HttpOnly cookies (`ft_session`, `ft_access_token`, `ft_csrf`) scoped to the site domain.
+3. Protected Astro routes (for example `/homepage`, `/signed-in`, `/admin/*`) validate the session JWT in Worker middleware.
 4. EmDash admin (`/_emdash/admin`) and MCP (`/_emdash/api/mcp`) run on the same Worker origin; EmDash handles its own OAuth and MCP token flows alongside the outer Auth0 gate.
 5. Browser JavaScript does not read bearer tokens; auth is cookie-based with CSRF protection on state-changing requests.
 
@@ -409,7 +409,7 @@ The Auth0 API audience identifier (for example `https://api.freedomtimes.news`) 
 
 - [x] Auth0 login/callback/logout routes in the Worker.
 - [x] HttpOnly session and access-token cookies with domain scoping and stale-cookie cleanup.
-- [x] Role claim enforcement (`admin`, `editor`, `tips`) at callback and protected routes.
+- [x] Role claim enforcement (`admin`, `editor`) at callback; Freedom Times `/admin/*` requires `admin` only.
 - [x] CSRF cookie (`ft_csrf`) for cookie-authenticated requests.
 - [x] EmDash admin and MCP on the same Worker deployment.
 - [x] First-party Auth0 consent skipped for normal login.
@@ -420,7 +420,7 @@ The Auth0 API audience identifier (for example `https://api.freedomtimes.news`) 
 - CSRF controls for cookie-authenticated state-changing requests.
 - Middleware keeps `/_emdash/*` and OAuth discovery paths available for EmDash's own auth flows.
 
-**Story tips desk:** Reader tips land in the tips Turso database (not EmDash). Staff with Auth0 role `tips` or `admin` triage them at `/admin/tips` (status, internal notes). There is no automatic staff notification on new tips yet — reader push alerts remain publish-only. Operator guide: [web/docs/STORY_TIPS_OPERATOR.md](web/docs/STORY_TIPS_OPERATOR.md).
+**Story tips desk:** Reader tips land in the tips Turso database (not EmDash). Staff with Auth0 role `admin` triage them at `/admin/tips` (status, internal notes). There is no automatic staff notification on new tips yet — reader push alerts remain publish-only. Operator guide: [web/docs/STORY_TIPS_OPERATOR.md](web/docs/STORY_TIPS_OPERATOR.md).
 
 ---
 
