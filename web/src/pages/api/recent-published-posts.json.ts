@@ -3,6 +3,7 @@ import { getEmDashCollection, type ContentEntry } from 'emdash';
 
 import { readArticleNotificationImagePath } from '../../lib/content/contentEntry';
 import { readEmDashPublishedAt } from '../../lib/content/emdashTimestamps';
+import { authorizeReaderApiRequest } from '../../lib/editorial-session';
 
 export const prerender = false;
 
@@ -28,8 +29,13 @@ function summarizeEntryForLog(entry: ContentEntry<Record<string, unknown>>): Rec
   };
 }
 
-export const GET: APIRoute = async ({ request }) => {
-  const siteOrigin = new URL(request.url).origin;
+export const GET: APIRoute = async ({ cookies, request, url }) => {
+  const auth = await authorizeReaderApiRequest({ cookies, request, url });
+  if (auth instanceof Response) {
+    return auth;
+  }
+
+  const siteOrigin = url.origin;
 
   const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
     status: 'published',

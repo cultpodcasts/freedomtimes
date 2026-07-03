@@ -344,6 +344,13 @@ $logicalOutputs = @(
         TokenOutput = "scheduler_turso_database_auth_token"
         EnvKeysUrl = @("TURSO_SCHEDULER_DATABASE_URL", "TURSO_PRODUCTION_SCHEDULER_DB_URL")
         EnvKeysToken = @("TURSO_SCHEDULER_AUTH_TOKEN", "TURSO_PRODUCTION_SCHEDULER_DB_TOKEN")
+    },
+    @{
+        UrlOutput  = "tips_turso_database_url"
+        NameOutput = "tips_turso_database_name"
+        TokenOutput = "tips_turso_database_auth_token"
+        EnvKeysUrl = @("TURSO_TIPS_DATABASE_URL", "TURSO_PRODUCTION_TIPS_DB_URL")
+        EnvKeysToken = @("TURSO_TIPS_AUTH_TOKEN", "TURSO_PRODUCTION_TIPS_DB_TOKEN")
     }
 )
 

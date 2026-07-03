@@ -1,0 +1,613 @@
+---
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { hasEditorialRole, SESSION_COOKIE, verifyIdToken, getAuthConfig } from '../../lib/auth';
+import { requireTipsSession } from '../../lib/tips-session';
+
+export const prerender = false;
+
+const session = await requireTipsSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+
+let isEditor = false;
+const token = Astro.cookies.get(SESSION_COOKIE)?.value;
+if (token) {
+	try {
+		const payload = await verifyIdToken(token, getAuthConfig());
+		isEditor = hasEditorialRole(payload);
+	} catch {
+		isEditor = false;
+	}
+}
+---
+
+<Layout
+	title="Story tips desk"
+	description="Review and triage reader story tips."
+	canonicalUrl={Astro.url.href}
+>
+	<Header section="Story tips" isEditor={isEditor} isTipsHandler={true} isSignedIn={true} />
+	<article class="tips-admin">
+		<h1>Story tips desk</h1>
+		<p class="lede">
+			Signed in as {session.displayName}. Tips are stored in the dedicated tips database — not in EmDash.
+		</p>
+
+		<div class="toolbar">
+			<label class="toolbar__filter">
+				<span class="toolbar__label">Status</span>
+				<select id="tips-filter" class="toolbar__select">
+					<option value="new" selected>New</option>
+					<option value="reviewed">Reviewed</option>
+					<option value="archived">Archived</option>
+					<option value="all">All</option>
+				</select>
+			</label>
+			<div class="toolbar__actions">
+				<p id="tips-status" class="toolbar__count" aria-live="polite"></p>
+				<button id="tips-refresh" type="button" class="btn btn--secondary">Refresh</button>
+			</div>
+		</div>
+
+		<div id="tips-list" class="tips-list" role="list"></div>
+	</article>
+</Layout>
+
+<script>
+	function readCookie(name) {
+		const prefix = `${name}=`;
+		const parts = document.cookie.split(';');
+		for (const part of parts) {
+			const trimmed = part.trim();
+			if (trimmed.startsWith(prefix)) {
+				return decodeURIComponent(trimmed.slice(prefix.length));
+			}
+		}
+		return '';
+	}
+
+	function escapeHtml(value) {
+		return String(value)
+			.replaceAll('&', '&amp;')
+			.replaceAll('<', '&lt;')
+			.replaceAll('>', '&gt;')
+			.replaceAll('"', '&quot;');
+	}
+
+	function formatWhen(value) {
+		const date = new Date(value);
+		return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+	}
+
+	function statusLabel(status) {
+		const labels = { new: 'New', reviewed: 'Reviewed', archived: 'Archived' };
+		return labels[status] || status;
+	}
+
+	function renderActionButton(action, label, currentStatus) {
+		const disabled =
+			(action === 'reviewed' && currentStatus === 'reviewed') ||
+			(action === 'archived' && currentStatus === 'archived') ||
+			(action === 'new' && currentStatus === 'new');
+
+		const variant =
+			action === 'reviewed' && currentStatus === 'new'
+				? 'btn--primary'
+				: action === 'archived'
+					? 'btn--secondary'
+					: 'btn--ghost';
+
+		const disabledAttr = disabled ? ' disabled aria-disabled="true"' : '';
+		return `<button type="button" class="btn ${variant}" data-action="${action}"${disabledAttr}>${label}</button>`;
+	}
+
+	function renderContact(tip) {
+		if (tip.anonymous || (!tip.contactName && !tip.contactEmail)) {
+			return `<p class="tip-card__contact tip-card__contact--anonymous">Anonymous submission</p>`;
+		}
+
+		return `
+			<div class="tip-card__contact">
+				<span class="tip-card__contact-label">Contact</span>
+				<span class="tip-card__contact-name">${escapeHtml(tip.contactName || '—')}</span>
+				<a class="tip-card__contact-email" href="mailto:${escapeHtml(tip.contactEmail || '')}">${escapeHtml(tip.contactEmail || '—')}</a>
+			</div>
+		`;
+	}
+
+	const filterEl = document.querySelector('#tips-filter');
+	const refreshEl = document.querySelector('#tips-refresh');
+	const statusEl = document.querySelector('#tips-status');
+	const listEl = document.querySelector('#tips-list');
+
+	async function loadTips() {
+		if (!(filterEl instanceof HTMLSelectElement) || !(statusEl instanceof HTMLElement) || !(listEl instanceof HTMLElement)) {
+			return;
+		}
+
+		const filter = filterEl.value;
+		const query = filter === 'all' ? '' : `?status=${encodeURIComponent(filter)}`;
+		statusEl.textContent = 'Loading…';
+		statusEl.classList.remove('toolbar__count--empty', 'toolbar__count--error');
+		listEl.innerHTML = '';
+
+		try {
+			const response = await fetch(`/api/admin/story-tips${query}`, {
+				credentials: 'include',
+			});
+			const body = await response.json();
+
+			if (!response.ok) {
+				statusEl.textContent = body.error || 'Unable to load tips.';
+				statusEl.classList.add('toolbar__count--error');
+				return;
+			}
+
+			const tips = Array.isArray(body.tips) ? body.tips : [];
+			statusEl.textContent =
+				tips.length === 0 ? 'No tips in this view' : `${tips.length} tip${tips.length === 1 ? '' : 's'}`;
+			statusEl.classList.toggle('toolbar__count--empty', tips.length === 0);
+
+			listEl.innerHTML = tips
+				.map((tip) => {
+					const status = tip.status || 'new';
+					const safeStatus = ['new', 'reviewed', 'archived'].includes(status) ? status : 'new';
+
+					return `
+						<section class="tip-card" role="listitem" data-tip-id="${escapeHtml(tip.id)}" data-status="${escapeHtml(safeStatus)}">
+							<header class="tip-card__header">
+								<div class="tip-card__meta">
+									<span class="status-badge status-badge--${escapeHtml(safeStatus)}">${escapeHtml(statusLabel(safeStatus))}</span>
+									<time class="tip-card__time" datetime="${escapeHtml(tip.createdAt)}">${escapeHtml(formatWhen(tip.createdAt))}</time>
+								</div>
+								<div class="tip-card__actions">
+									${renderActionButton('reviewed', 'Mark reviewed', safeStatus)}
+									${renderActionButton('archived', 'Archive', safeStatus)}
+									${renderActionButton('new', 'Reopen', safeStatus)}
+								</div>
+							</header>
+							<div class="tip-card__body">${escapeHtml(tip.body).replaceAll('\n', '<br />')}</div>
+							${renderContact(tip)}
+							<div class="tip-card__notes">
+								<label class="notes-field">
+									<span class="notes-field__label">Internal notes</span>
+									<textarea rows="3" data-notes placeholder="Add handler notes — not visible to the submitter">${escapeHtml(tip.internalNotes || '')}</textarea>
+									<div class="notes-field__actions">
+										<button type="button" class="btn btn--ghost" data-action="save-notes">Save notes</button>
+									</div>
+								</label>
+							</div>
+						</section>
+					`;
+				})
+				.join('');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			statusEl.textContent = `Request failed: ${message}`;
+			statusEl.classList.add('toolbar__count--error');
+		}
+	}
+
+	async function patchTip(id, payload) {
+		const csrfToken = readCookie('ft_csrf');
+		const response = await fetch(`/api/admin/story-tips/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			credentials: 'include',
+			headers: {
+				'content-type': 'application/json',
+				...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+			},
+			body: JSON.stringify(payload),
+		});
+
+		const body = await response.json();
+		if (!response.ok) {
+			throw new Error(body.error || 'Update failed.');
+		}
+
+		return body.tip;
+	}
+
+	listEl?.addEventListener('click', async (event) => {
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return;
+
+		const card = target.closest('[data-tip-id]');
+		if (!(card instanceof HTMLElement)) return;
+
+		const id = card.dataset.tipId;
+		const action = target.dataset.action;
+		if (!id || !action) return;
+
+		if (target instanceof HTMLButtonElement && target.disabled) return;
+
+		try {
+			if (action === 'save-notes') {
+				const notesField = card.querySelector('[data-notes]');
+				const notes = notesField instanceof HTMLTextAreaElement ? notesField.value : '';
+				await patchTip(id, { internalNotes: notes });
+			} else if (action === 'reviewed' || action === 'archived' || action === 'new') {
+				await patchTip(id, { status: action });
+			} else {
+				return;
+			}
+
+			await loadTips();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (statusEl instanceof HTMLElement) {
+				statusEl.textContent = message;
+				statusEl.classList.add('toolbar__count--error');
+			}
+		}
+	});
+
+	filterEl?.addEventListener('change', loadTips);
+	refreshEl?.addEventListener('click', loadTips);
+	loadTips();
+</script>
+
+<style>
+	.tips-admin {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+	}
+
+	.lede {
+		margin: 0 0 2rem;
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
+
+	.toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 1rem 1.5rem;
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.15rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+		background: #fafafa;
+	}
+
+	.toolbar__filter {
+		display: grid;
+		gap: 0.4rem;
+		min-width: min(100%, 12rem);
+	}
+
+	.toolbar__label {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.toolbar__select {
+		font: inherit;
+		font-family: 'Inter', sans-serif;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 4px;
+		background: #fff;
+		cursor: pointer;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.toolbar__select:focus-visible {
+		outline: none;
+		border-color: #888;
+		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+	}
+
+	.toolbar__actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem 1rem;
+	}
+
+	.toolbar__count {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.toolbar__count--empty {
+		color: var(--text-secondary);
+		font-weight: 500;
+	}
+
+	.toolbar__count--error {
+		color: #7a271a;
+		font-weight: 600;
+	}
+
+	.tips-list {
+		display: grid;
+		gap: 1.25rem;
+	}
+
+	/* Dynamic card content is injected via innerHTML — use :global so scoped styles apply */
+	.tips-admin :global(.tip-card) {
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+		padding: 1.25rem 1.35rem;
+		background: #fff;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	}
+
+	.tips-admin :global(.tip-card__header) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.85rem 1.25rem;
+		margin-bottom: 1rem;
+		padding-bottom: 0.85rem;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.tips-admin :global(.tip-card__meta) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.65rem 0.85rem;
+	}
+
+	.tips-admin :global(.status-badge) {
+		display: inline-block;
+		padding: 0.2rem 0.6rem;
+		border-radius: 999px;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		line-height: 1.4;
+	}
+
+	.tips-admin :global(.status-badge--new) {
+		background: #fce8e8;
+		color: #7a1a1a;
+	}
+
+	.tips-admin :global(.status-badge--reviewed) {
+		background: #edf7f1;
+		color: #2d6a4f;
+	}
+
+	.tips-admin :global(.status-badge--archived) {
+		background: #f0f0f0;
+		color: #555555;
+	}
+
+	.tips-admin :global(.tip-card__time) {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		color: var(--text-secondary);
+	}
+
+	.tips-admin :global(.tip-card__actions) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+	}
+
+	.tips-admin :global(.tip-card__body) {
+		margin: 0 0 1rem;
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-primary);
+		white-space: pre-wrap;
+	}
+
+	.tips-admin :global(.tip-card__contact) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.35rem 0.65rem;
+		margin: 0 0 1rem;
+		padding: 0.65rem 0.85rem;
+		border-radius: 6px;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+	}
+
+	.tips-admin :global(.tip-card__contact--anonymous) {
+		margin: 0 0 1rem;
+		padding: 0;
+		font-style: italic;
+		color: var(--text-secondary);
+		background: transparent;
+	}
+
+	.tips-admin :global(.tip-card__contact:not(.tip-card__contact--anonymous)) {
+		background: #f7f7f7;
+		border: 1px solid var(--border-subtle);
+	}
+
+	.tips-admin :global(.tip-card__contact-label) {
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.tips-admin :global(.tip-card__contact-name) {
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.tips-admin :global(.tip-card__contact-email) {
+		color: #0044bb;
+		text-decoration: none;
+		word-break: break-all;
+	}
+
+	.tips-admin :global(.tip-card__contact-email:hover) {
+		text-decoration: underline;
+	}
+
+	.tips-admin :global(.tip-card__notes) {
+		padding-top: 0.85rem;
+		border-top: 1px dashed var(--border-subtle);
+	}
+
+	.tips-admin :global(.notes-field) {
+		display: grid;
+		gap: 0.5rem;
+	}
+
+	.tips-admin :global(.notes-field__label) {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.tips-admin :global(.notes-field textarea) {
+		font: inherit;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+		padding: 0.7rem 0.85rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 4px;
+		background: #fafafa;
+		resize: vertical;
+		min-height: 4.5rem;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+	}
+
+	.tips-admin :global(.notes-field textarea:focus-visible) {
+		outline: none;
+		border-color: #888;
+		background: #fff;
+		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+	}
+
+	.tips-admin :global(.notes-field__actions) {
+		display: flex;
+		justify-content: flex-start;
+	}
+
+	/* Shared button styles — static toolbar + dynamic card actions */
+	.btn,
+	.tips-admin :global(.btn) {
+		font: inherit;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		font-weight: 600;
+		line-height: 1.2;
+		padding: 0.55rem 1rem;
+		border-radius: 999px;
+		border: 1px solid transparent;
+		cursor: pointer;
+		transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+	}
+
+	.btn:focus-visible,
+	.tips-admin :global(.btn:focus-visible) {
+		outline: none;
+		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
+	}
+
+	.btn--primary,
+	.tips-admin :global(.btn--primary) {
+		background: #7a1a1a;
+		border-color: #7a1a1a;
+		color: #fff;
+	}
+
+	.btn--primary:hover:not(:disabled),
+	.tips-admin :global(.btn--primary:hover:not(:disabled)) {
+		background: #651515;
+		border-color: #651515;
+	}
+
+	.btn--secondary,
+	.tips-admin :global(.btn--secondary) {
+		background: #fff;
+		border-color: var(--border-subtle);
+		color: var(--text-primary);
+	}
+
+	.btn--secondary:hover:not(:disabled),
+	.tips-admin :global(.btn--secondary:hover:not(:disabled)) {
+		background: #f5f5f5;
+		border-color: #ccc;
+	}
+
+	.btn--ghost,
+	.tips-admin :global(.btn--ghost) {
+		background: transparent;
+		border-color: transparent;
+		color: var(--text-secondary);
+		padding-left: 0.65rem;
+		padding-right: 0.65rem;
+	}
+
+	.btn--ghost:hover:not(:disabled),
+	.tips-admin :global(.btn--ghost:hover:not(:disabled)) {
+		background: #f0f0f0;
+		color: var(--text-primary);
+	}
+
+	.btn:disabled,
+	.tips-admin :global(.btn:disabled) {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	@media (max-width: 540px) {
+		.toolbar {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.toolbar__actions {
+			justify-content: space-between;
+		}
+
+		.tips-admin :global(.tip-card__header) {
+			flex-direction: column;
+		}
+
+		.tips-admin :global(.tip-card__actions) {
+			width: 100%;
+		}
+
+		.tips-admin :global(.tip-card__actions .btn) {
+			flex: 1 1 auto;
+			text-align: center;
+		}
+	}
+</style>

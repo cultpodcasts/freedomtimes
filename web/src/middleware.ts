@@ -12,6 +12,8 @@ type PathRule = {
 };
 
 const AUTH_BYPASS_RULES: PathRule[] = [
+  // EmDash OAuth/MCP only — the sole non-Auth0 paths that stay reachable on locked staging.
+  // Do not add reader or editorial routes here. See web/docs/STAGING_ACCESS.md.
   { path: '/_emdash', mode: PathMode.Exact },
   { path: '/_emdash/', mode: PathMode.StartsWith },
   { path: '/.well-known/', mode: PathMode.StartsWith },
@@ -163,6 +165,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // Keep EmDash and MCP OAuth endpoints free of outer Auth0 gating.
   // EmDash handles its own auth and token validation for these routes.
+  // Locked staging: NOTHING else is public — reader routes use authorizeReaderApiRequest /
+  // requireReaderPageSession (see PUBLIC_READER_PATHS in auth.ts).
   if (isAuthBypassPath(path)) {
     return next();
   }

@@ -10,10 +10,10 @@ import {
   getCookieDomainForHost,
   getRoleClaimDebug,
   getAuthConfig,
-  getHomePath,
+  getPostLoginPath,
   makeState,
   getStateCookieName,
-  hasEditorialRole,
+  hasStaffLoginRole,
   isNativeAuthFlow,
   verifyIdToken,
 } from '../../lib/auth';
@@ -56,8 +56,8 @@ export const GET: APIRoute = async (ctx) => {
     const { idToken, accessToken } = await exchangeCodeForTokens({ code, redirectUri, config });
     const payload = await verifyIdToken(idToken, config);
 
-    if (!hasEditorialRole(payload)) {
-      console.warn('[auth.callback] user denied: missing required editorial role claim', {
+    if (!hasStaffLoginRole(payload)) {
+      console.warn('[auth.callback] user denied: missing required staff role claim', {
         requestId,
         idToken,
         decodedPayload: payload,
@@ -113,7 +113,7 @@ export const GET: APIRoute = async (ctx) => {
 
     console.info('[auth.callback] login successful', { requestId });
 
-    return ctx.redirect(getHomePath());
+    return ctx.redirect(getPostLoginPath(payload));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[auth.callback] login failed during token exchange/verification', {

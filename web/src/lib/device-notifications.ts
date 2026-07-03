@@ -73,11 +73,29 @@ const BROWSER_NOTIFICATION_MESSAGES: Record<BrowserKind, BrowserNotificationMess
 
 type NativePlatform = 'android' | 'ios';
 
-type NotificationSupportState = {
+export type NotificationSupportState = {
   supported: boolean;
   buttonDisabled: boolean;
+  /** Human-readable reason the enable control is unavailable, or null when ready. */
+  buttonDisabledReason: string | null;
+  /** Label for the primary enable control in the current state. */
+  buttonLabel: string;
   message: string;
+  testNotificationAvailable: boolean;
 };
+
+const BUTTON_LABEL_ENABLE = 'Enable notifications';
+const BUTTON_LABEL_SUBSCRIBED = 'Subscribed';
+
+const BUTTON_DISABLED_REASON = {
+  alreadySubscribed: 'Already subscribed on this device',
+  permissionDenied: 'Browser notifications are blocked (permission denied)',
+  notificationsUnsupported: 'Notifications API not supported in this browser',
+  serviceWorkerUnsupported: 'Service workers not supported',
+  pushUnsupported: 'Push messaging not supported',
+  vapidMissing: 'Push configuration missing on this site',
+  androidPushMissing: 'Android push is not configured in this app build',
+} as const;
 
 type NativeAppConfigPlugin = {
   getFirebaseStatus: () => Promise<{ firebaseConfigured: boolean }>;
@@ -109,7 +127,10 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
       return {
         supported: false,
         buttonDisabled: true,
+        buttonDisabledReason: BUTTON_DISABLED_REASON.androidPushMissing,
+        buttonLabel: BUTTON_LABEL_ENABLE,
         message: 'Android push is not configured in this app build yet.',
+        testNotificationAvailable: false,
       };
     }
 
@@ -118,14 +139,20 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
       return {
         supported: true,
         buttonDisabled: true,
+        buttonDisabledReason: BUTTON_DISABLED_REASON.alreadySubscribed,
+        buttonLabel: BUTTON_LABEL_SUBSCRIBED,
         message: 'Notifications are already enabled for this app.',
+        testNotificationAvailable: true,
       };
     }
 
     return {
       supported: true,
       buttonDisabled: false,
+      buttonDisabledReason: null,
+      buttonLabel: BUTTON_LABEL_ENABLE,
       message: 'Enable notifications on this device to receive app alerts from published EmDash content.',
+      testNotificationAvailable: false,
     };
   }
 
@@ -133,19 +160,53 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
     return {
       supported: false,
       buttonDisabled: true,
+      buttonDisabledReason: BUTTON_DISABLED_REASON.vapidMissing,
+      buttonLabel: BUTTON_LABEL_ENABLE,
       message: 'Notifications are waiting on the staging VAPID public key.',
+      testNotificationAvailable: false,
     };
   }
 
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+  if (!('Notification' in window)) {
     return {
       supported: false,
       buttonDisabled: true,
+      buttonDisabledReason: BUTTON_DISABLED_REASON.notificationsUnsupported,
+      buttonLabel: BUTTON_LABEL_ENABLE,
       message: 'This browser does not support web push notifications.',
+      testNotificationAvailable: false,
+    };
+  }
+
+  if (!('serviceWorker' in navigator)) {
+    return {
+      supported: false,
+      buttonDisabled: true,
+      buttonDisabledReason: BUTTON_DISABLED_REASON.serviceWorkerUnsupported,
+      buttonLabel: BUTTON_LABEL_ENABLE,
+      message: 'This browser does not support web push notifications.',
+      testNotificationAvailable: false,
+    };
+  }
+
+  if (!('PushManager' in window)) {
+    return {
+      supported: false,
+      buttonDisabled: true,
+      buttonDisabledReason: BUTTON_DISABLED_REASON.pushUnsupported,
+      buttonLabel: BUTTON_LABEL_ENABLE,
+      message: 'This browser does not support web push notifications.',
+      testNotificationAvailable: false,
     };
   }
 
   if (Notification.permission === 'granted') {
+    try {
+      await navigator.serviceWorker.ready;
+    } catch {
+      // Ignore — fall through to getRegistration below.
+    }
+
     const registration = await navigator.serviceWorker.getRegistration('/');
     const existingSubscription = registration
       ? await registration.pushManager.getSubscription()
@@ -156,14 +217,20 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
       return {
         supported: true,
         buttonDisabled: true,
+        buttonDisabledReason: BUTTON_DISABLED_REASON.alreadySubscribed,
+        buttonLabel: BUTTON_LABEL_SUBSCRIBED,
         message: 'Notifications are already enabled in this browser.',
+        testNotificationAvailable: true,
       };
     }
 
     return {
       supported: true,
       buttonDisabled: false,
+      buttonDisabledReason: null,
+      buttonLabel: BUTTON_LABEL_ENABLE,
       message: 'Notification permission is on, but this browser is not registered yet. Click Enable to finish setup.',
+      testNotificationAvailable: false,
     };
   }
 
@@ -171,14 +238,20 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
     return {
       supported: true,
       buttonDisabled: true,
+      buttonDisabledReason: BUTTON_DISABLED_REASON.permissionDenied,
+      buttonLabel: BUTTON_LABEL_ENABLE,
       message: getBrowserNotificationsBlockedMessage(),
+      testNotificationAvailable: false,
     };
   }
 
   return {
     supported: true,
     buttonDisabled: false,
+    buttonDisabledReason: null,
+    buttonLabel: BUTTON_LABEL_ENABLE,
     message: `Enable browser notifications on this device to receive published ${SITE_DISPLAY_NAME} alerts.`,
+    testNotificationAvailable: false,
   };
 }
 
@@ -670,4 +743,91 @@ function summarizeSubscriptionPayload(payload: unknown): Record<string, string> 
   }
 
   return { kind: 'unknown' };
+}
+
+export async function getBrowserPushSubscription(): Promise<PushSubscription | null> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return null;
+  }
+
+  try {
+    await navigator.serviceWorker.ready;
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    if (!registration?.pushManager) {
+      return null;
+    }
+
+    return registration.pushManager.getSubscription();
+  } catch {
+    return null;
+  }
+}
+
+export async function showLocalTestNotification(): Promise<void> {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    throw new Error('Notification permission is not granted on this device.');
+  }
+
+  if (!('serviceWorker' in navigator)) {
+    throw new Error('Service workers are not supported in this browser.');
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  await registration.showNotification('Freedom Times test notification', {
+    body: 'If you can read this, this browser can display notifications on this device.',
+    icon: '/favicon.svg',
+    badge: '/favicon.svg',
+    tag: 'freedomtimes-reader-test-local',
+  });
+}
+
+export async function sendReaderTestPushNotification(): Promise<string> {
+  const subscription = await getBrowserPushSubscription();
+  if (!subscription) {
+    throw new Error('This browser is not registered for push notifications yet.');
+  }
+
+  const payload = subscription.toJSON();
+  const endpoint = typeof payload.endpoint === 'string' ? payload.endpoint : '';
+  const keys = payload.keys;
+
+  if (!endpoint || !keys || typeof keys !== 'object') {
+    throw new Error('Unable to read this browser push subscription.');
+  }
+
+  const response = await fetch('/api/push-test-notification', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      endpoint,
+      keys,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (response.status === 503) {
+    await showLocalTestNotification();
+    return 'Server test push is not configured here, so we showed a local test notification in this browser instead.';
+  }
+
+  if (response.status === 429) {
+    const retryAfter = response.headers.get('retry-after');
+    const base =
+      typeof result.error === 'string'
+        ? result.error
+        : 'Too many test notifications. Please wait before trying again.';
+    if (retryAfter) {
+      const minutes = Math.ceil(Number.parseInt(retryAfter, 10) / 60);
+      throw new Error(
+        minutes > 1 ? `${base} Try again in about ${minutes} minutes.` : `${base} Try again in a minute.`,
+      );
+    }
+    throw new Error(base);
+  }
+
+  if (!response.ok) {
+    throw new Error(typeof result.error === 'string' ? result.error : 'Test notification failed.');
+  }
+
+  return 'Test notification sent to this device. It should appear shortly.';
 }

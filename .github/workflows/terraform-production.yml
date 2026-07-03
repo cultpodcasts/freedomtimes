@@ -261,6 +261,8 @@ jobs:
           SCHEDULER_TURSO_AUTH_TOKEN=$(terraform output -raw scheduler_turso_database_auth_token 2>/dev/null || echo "")
           SUBSCRIPTIONS_TURSO_DATABASE_URL=$(terraform output -raw subscriptions_turso_database_url 2>/dev/null || echo "")
           SUBSCRIPTIONS_TURSO_AUTH_TOKEN=$(terraform output -raw subscriptions_turso_database_auth_token 2>/dev/null || echo "")
+          TIPS_TURSO_DATABASE_URL=$(terraform output -raw tips_turso_database_url 2>/dev/null || echo "")
+          TIPS_TURSO_AUTH_TOKEN=$(terraform output -raw tips_turso_database_auth_token 2>/dev/null || echo "")
 
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
           echo "turso_database_url=$TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
@@ -272,6 +274,9 @@ jobs:
           echo "subscriptions_turso_database_url=$SUBSCRIPTIONS_TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
           echo "::add-mask::$SUBSCRIPTIONS_TURSO_AUTH_TOKEN"
           echo "subscriptions_turso_auth_token=$SUBSCRIPTIONS_TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
+          echo "tips_turso_database_url=$TIPS_TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
+          echo "::add-mask::$TIPS_TURSO_AUTH_TOKEN"
+          echo "tips_turso_auth_token=$TIPS_TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
 
       - name: Fetch Auth0 App Secret
         id: auth0_app_secret
@@ -354,6 +359,8 @@ jobs:
           TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
+          TURSO_TIPS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
+          TURSO_TIPS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_auth_token }}
           PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
         run: |
@@ -367,6 +374,8 @@ jobs:
             TURSO_AUTH_TOKEN_VALUE
             TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE
             TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE
+            TURSO_TIPS_DATABASE_URL_VALUE
+            TURSO_TIPS_AUTH_TOKEN_VALUE
             PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE
             EMDASH_AUTH_SECRET_VALUE
           )
@@ -504,6 +513,27 @@ jobs:
 
           npm run subscriptions:db:deploy
 
+      - name: Apply Tips Database Migration
+        if: steps.tf_outputs.outputs.tips_turso_database_url != '' && steps.tf_outputs.outputs.tips_turso_database_url != 'null'
+        working-directory: web
+        env:
+          TURSO_TIPS_DATABASE_URL: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
+          TURSO_TIPS_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.tips_turso_auth_token }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${TURSO_TIPS_DATABASE_URL}" ]; then
+            echo "ERROR: TURSO_TIPS_DATABASE_URL is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          if [ -z "${TURSO_TIPS_AUTH_TOKEN}" ]; then
+            echo "ERROR: TURSO_TIPS_AUTH_TOKEN is required but empty from Terraform outputs"
+            exit 1
+          fi
+
+          npm run tips:db:deploy
+
       - name: Build Astro Worker
         working-directory: web
         env:
@@ -568,6 +598,8 @@ jobs:
           TURSO_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.turso_auth_token }}
           TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
           TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.subscriptions_turso_auth_token }}
+          TURSO_TIPS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
+          TURSO_TIPS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_auth_token }}
           PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
           EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_PRODUCTION }}
@@ -586,6 +618,8 @@ jobs:
           printf '%s' "$TURSO_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_AUTH_TOKEN --config wrangler.jsonc --env production
           printf '%s' "$TURSO_SUBSCRIPTIONS_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_DATABASE_URL --config wrangler.jsonc --env production
           printf '%s' "$TURSO_SUBSCRIPTIONS_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_SUBSCRIPTIONS_AUTH_TOKEN --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_TIPS_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_TIPS_DATABASE_URL --config wrangler.jsonc --env production
+          printf '%s' "$TURSO_TIPS_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_TIPS_AUTH_TOKEN --config wrangler.jsonc --env production
           printf '%s' "$PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE" | npx wrangler secret put PUSH_SUBSCRIBE_PUBLIC_KEY --config wrangler.jsonc --env production
           printf '%s' "$EMDASH_AUTH_SECRET_VALUE" | npx wrangler secret put EMDASH_AUTH_SECRET --config wrangler.jsonc --env production
 

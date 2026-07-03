@@ -111,6 +111,7 @@ export function resolveTursoHostSuffixFromEnv() {
 export const PRODUCTION_TURSO_DATABASE_NAMES = {
   subscriptions: "freedomtimes-subscriptions-production",
   scheduler: "freedomtimes-scheduler-production",
+  tips: "freedomtimes-tips-production",
 };
 
 export function productionTerraformDir() {

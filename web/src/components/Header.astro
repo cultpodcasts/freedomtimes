@@ -6,10 +6,11 @@ interface Props {
 	section?: string;
 	sectionUrl?: string;
 	isEditor?: boolean;
+	isTipsHandler?: boolean;
 	isSignedIn?: boolean;
 }
 
-const { section, sectionUrl, isEditor, isSignedIn } = Astro.props;
+const { section, sectionUrl, isEditor, isTipsHandler, isSignedIn } = Astro.props;
 const homePath = getHomePath();
 ---
 
@@ -35,7 +36,14 @@ const homePath = getHomePath();
 		<div class="nav-links">
 			<a href={homePath} class={Astro.url.pathname === '/' || Astro.url.pathname === '/homepage' ? 'active' : ''}>Home</a>
 			<a href="/archives" class={Astro.url.pathname.startsWith('/archives') ? 'active' : ''}>Archives</a>
-			{isEditor && <a href="/_emdash/admin">CMS</a>}
+			{(isEditor || isTipsHandler) && (
+				<a
+					href="/admin"
+					class={/^\/admin\/?$/.test(Astro.url.pathname) ? 'active' : ''}
+				>
+					Admin
+				</a>
+			)}
 			{isSignedIn && <a href="/auth/logout">Sign out</a>}
 		</div>
 		

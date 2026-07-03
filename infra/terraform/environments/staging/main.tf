@@ -29,9 +29,13 @@ locals {
   subscriptions_turso_database_group = trimspace(var.subscriptions_turso_database_group) != "" ? trimspace(var.subscriptions_turso_database_group) : local.turso_database_group
   subscriptions_turso_database_token_expiration = trimspace(var.subscriptions_turso_database_token_expiration) != "" ? trimspace(var.subscriptions_turso_database_token_expiration) : local.turso_database_token_expiration
   subscriptions_turso_database_size_limit = trimspace(var.subscriptions_turso_database_size_limit) != "" ? trimspace(var.subscriptions_turso_database_size_limit) : local.turso_database_size_limit
+  tips_turso_database_group = trimspace(var.tips_turso_database_group) != "" ? trimspace(var.tips_turso_database_group) : local.turso_database_group
+  tips_turso_database_token_expiration = trimspace(var.tips_turso_database_token_expiration) != "" ? trimspace(var.tips_turso_database_token_expiration) : local.turso_database_token_expiration
+  tips_turso_database_size_limit = trimspace(var.tips_turso_database_size_limit) != "" ? trimspace(var.tips_turso_database_size_limit) : local.turso_database_size_limit
   turso_database_url = format("libsql://%s", turso_database.emdash.hostname)
   scheduler_turso_database_url = format("libsql://%s", turso_database.scheduler.hostname)
   subscriptions_turso_database_url = format("libsql://%s", turso_database.subscriptions.hostname)
+  tips_turso_database_url = format("libsql://%s", turso_database.tips.hostname)
 }
 
 resource "turso_database" "emdash" {
@@ -98,6 +102,28 @@ resource "turso_database_token" "subscriptions" {
   database_name     = turso_database.subscriptions.name
   authorization     = var.subscriptions_turso_database_token_authorization
   expiration        = local.subscriptions_turso_database_token_expiration
+}
+
+resource "turso_database" "tips" {
+  organization_name = var.turso_organization
+  name              = var.tips_turso_database_name
+  group             = local.tips_turso_database_group
+}
+
+resource "turso_database_configuration" "tips" {
+  count = var.tips_turso_database_delete_protection || local.tips_turso_database_size_limit != null ? 1 : 0
+
+  organization_slug = var.turso_organization
+  database_name     = turso_database.tips.name
+  delete_protection = var.tips_turso_database_delete_protection
+  size_limit        = local.tips_turso_database_size_limit
+}
+
+resource "turso_database_token" "tips" {
+  organization_name = var.turso_organization
+  database_name     = turso_database.tips.name
+  authorization     = var.tips_turso_database_token_authorization
+  expiration        = local.tips_turso_database_token_expiration
 }
 
 

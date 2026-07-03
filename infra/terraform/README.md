@@ -9,7 +9,7 @@ Terraform is not required for local application development. Local work can run 
 - Cloudflare holding page worker
 - Worker route attachment to a configured zone pattern
 - Auth0 application and RBAC resources
-- Turso databases for EmDash, scheduler, and push subscriptions
+- Turso databases for EmDash, scheduler, push subscriptions, and reader tips
 - Environment entrypoints for `production` and `staging`
 
 ## Environment Separation Rule

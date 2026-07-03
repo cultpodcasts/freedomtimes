@@ -89,6 +89,8 @@ $outputMap = [ordered]@{
     subscriptions_turso_database_auth_token = "TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN"
     scheduler_turso_database_url           = "TURSO_STAGING_SCHEDULER_DB_URL"
     scheduler_turso_database_auth_token    = "TURSO_STAGING_SCHEDULER_DB_TOKEN"
+    tips_turso_database_url                = "TURSO_STAGING_TIPS_DB_URL"
+    tips_turso_database_auth_token         = "TURSO_STAGING_TIPS_DB_TOKEN"
 }
 
 $updatedKeys = [System.Collections.Generic.List[string]]::new()

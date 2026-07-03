@@ -1,0 +1,176 @@
+---
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { requireAdminDashboardSession } from '../../lib/admin-dashboard-session';
+
+export const prerender = false;
+
+const session = await requireAdminDashboardSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+
+type AdminTile = {
+	title: string;
+	href: string;
+	description: string;
+};
+
+const tiles: AdminTile[] = [];
+
+if (session.canAccessTips) {
+	tiles.push({
+		title: 'Story tips desk',
+		href: '/admin/tips',
+		description: 'Review and triage reader story tips from the dedicated tips database.',
+	});
+}
+
+if (session.canAccessDiagnostics) {
+	tiles.push({
+		title: 'Push diagnostics',
+		href: '/admin/notification-diagnostics',
+		description: 'Review reader-submitted push notification troubleshooting reports.',
+	});
+}
+
+if (session.canAccessCms) {
+	tiles.push({
+		title: 'EmDash CMS',
+		href: '/_emdash/admin',
+		description: 'Edit posts, pages, and media in the editorial content management system.',
+	});
+}
+---
+
+<Layout
+	title="Admin"
+	description="Staff tools for Freedom Times editorial and operations."
+	canonicalUrl={Astro.url.href}
+>
+	<Header
+		section="Admin"
+		isEditor={session.isEditor}
+		isTipsHandler={session.isTipsHandler}
+		isSignedIn={true}
+	/>
+	<article class="admin-dashboard">
+		<h1>Admin</h1>
+		<p class="lede">
+			Signed in as {session.displayName}. Choose a tool below — access depends on your Auth0 roles.
+		</p>
+
+		{ tiles.length > 0 ? (
+			<ul class="tile-grid">
+				{ tiles.map((tile) => (
+					<li>
+						<a class="tile" href={tile.href}>
+							<h2 class="tile__title">{tile.title}</h2>
+							<p class="tile__description">{tile.description}</p>
+							<span class="tile__cta">Open</span>
+						</a>
+					</li>
+				)) }
+			</ul>
+		) : (
+			<p class="empty">No admin tools are available for your account.</p>
+		) }
+	</article>
+</Layout>
+
+<style>
+	.admin-dashboard {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+	}
+
+	.lede {
+		margin: 0 0 2rem;
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
+
+	.tile-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+		gap: 1rem;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.tile {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		padding: 1.25rem 1.35rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+		background: #fafafa;
+		color: inherit;
+		text-decoration: none;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+	}
+
+	.tile:hover,
+	.tile:focus-visible {
+		border-color: #bbb;
+		background: #fff;
+		box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+	}
+
+	.tile:focus-visible {
+		outline: none;
+		box-shadow: 0 0 0 3px rgba(0, 68, 187, 0.25);
+	}
+
+	.tile__title {
+		margin: 0 0 0.65rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: 1.35rem;
+		font-weight: 800;
+		line-height: 1.2;
+		color: var(--text-primary);
+	}
+
+	.tile__description {
+		flex: 1 1 auto;
+		margin: 0 0 1rem;
+		font-size: 0.98rem;
+		line-height: 1.55;
+		color: var(--text-secondary);
+	}
+
+	.tile__cta {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		font-weight: 700;
+		letter-spacing: 0.02em;
+		color: #0044bb;
+	}
+
+	.empty {
+		margin: 0;
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+		font-style: italic;
+	}
+</style>

@@ -8,6 +8,7 @@ Editorial authentication is **same-origin** on the Cloudflare Worker: Auth0 sess
 |---|---|
 | `/` | Public holding page |
 | `/homepage` | Protected broadsheet homepage (`admin` or `editor` role) |
+| `/admin/tips` | Protected story tips desk (`admin` or `tips` role) — see [STORY_TIPS_OPERATOR.md](./STORY_TIPS_OPERATOR.md) |
 | `/auth/login` | Starts Auth0 Authorization Code flow |
 | `/auth/callback` | Exchanges code, enforces roles, sets cookies |
 | `/auth/logout` | Clears app session and logs out at Auth0 |
@@ -28,7 +29,15 @@ Copy `web/.env.example` to `web/.env`. Local development uses pure runtime names
 | `COOKIE_BASE_DOMAIN` | Parent domain for auth cookies |
 | `API_BASE_URL` | Editorial API base URL (when used) |
 
-Role detection checks `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` when configured, or plain `roles`. The user must have `admin` or `editor` (case-insensitive).
+Role detection checks `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` when configured, or plain `roles`. Login succeeds when the user has at least one staff role (case-insensitive):
+
+| Role | Access |
+|------|--------|
+| `admin` | EmDash CMS, broadsheet homepage, tips desk |
+| `editor` | EmDash CMS, broadsheet homepage |
+| `tips` | Tips desk only (`/admin/tips`) |
+
+After login, users with `admin` or `editor` go to `/homepage`; users with only `tips` (or `admin`) also reach the tips desk and land on `/admin/tips` when they have no editorial role.
 
 ## Auth0 scope and consent
 
@@ -62,8 +71,8 @@ Use this when validating login on staging at [https://staging.freedomtimes.news]
 1. `GET /auth/login`
 2. Redirect to Auth0 authorize endpoint (Authorization Code flow, scope `openid`, API audience requested)
 3. `GET /auth/callback?code=...&state=...`
-4. Role check passes for `admin` or `editor`
-5. Redirect to `GET /homepage` (or `GET /signed-in` for the admin test page)
+4. Role check passes for `admin`, `editor`, or `tips`
+5. Redirect to `GET /homepage` (editorial roles), `GET /admin/tips` (tips-only), or `GET /signed-in` for the admin test page
 6. Token verifies and page renders
 
 **Live tail during each test:**

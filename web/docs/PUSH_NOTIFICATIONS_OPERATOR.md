@@ -29,6 +29,7 @@ All operator scripts run from **`web/`** unless noted. They load repo-root **`.e
   - [subscriptions:send-test](#subscriptionssend-test)
   - [subscriptions:reset-sent-article](#subscriptionsreset-sent-article)
   - [subscriptions:db:* and backfill](#subscriptionsdb-and-backfill)
+  - [Notification diagnostic reports](#notification-diagnostic-reports)
   - [Auxiliary scripts (no npm alias)](#auxiliary-scripts-no-npm-alias)
   - [shared/push module](#sharedpush-module)
   - [Typical workflows](#typical-workflows)
@@ -43,7 +44,7 @@ All operator scripts run from **`web/`** unless noted. They load repo-root **`.e
 
 ### Turso: subscriptions + scheduler
 
-Operator push scripts connect to **subscriptions** (subscription rows, `sent_article_notifications`) and **scheduler** (`scheduler_jobs` for inspect). Keys are **environment-specific** — staging and production are separate databases.
+Operator push scripts connect to **subscriptions** (subscription rows, `sent_article_notifications`, `notification_diagnostics`) and **scheduler** (`scheduler_jobs` for inspect). Keys are **environment-specific** — staging and production are separate databases.
 
 | Variable | Purpose | Staging / production | How to obtain / sync | Common mistakes |
 |----------|---------|----------------------|----------------------|-----------------|
@@ -394,6 +395,42 @@ npx tsx scripts/backfill-sent-article-notifications.ts --origin https://freedomt
 ```
 
 Backfill marks published posts as already notified (prevents retroactive scheduler spam).
+
+---
+
+### Notification diagnostic reports
+
+Readers can submit anonymous notification troubleshooting reports from the push callout ("Report a problem"). Reports are stored in the **subscriptions** Turso database (`notification_diagnostics` table), not the tips database.
+
+| Item | Value |
+|------|--------|
+| Migration | `infra/subscriptions-database/migrations/20260702_create_notification_diagnostics.sql` |
+| Apply | `npm run subscriptions:db:migrate` (included in `subscriptions:db:deploy`) |
+| Worker env | `TURSO_SUBSCRIPTIONS_DATABASE_URL`, `TURSO_SUBSCRIPTIONS_AUTH_TOKEN` |
+| Handler | `web/src/lib/notification-diagnostics-server.ts` |
+| Admin UI | `/admin/notification-diagnostics` (staging: sign in first, then open) |
+| Admin API | `GET /api/admin/notification-diagnostics` — last 50 reports, newest first |
+| Access | Auth0 roles **`admin`** or **`editor`** (`requireNotificationDiagnosticsSession` / `authorizeNotificationDiagnosticsApiRequest` in `web/src/lib/notification-diagnostics-session.ts`) |
+| Auth responses | **401** without session; **403** with valid session but wrong role (e.g. `tips`-only user) |
+
+**Reviewing reports:** open the admin page after signing in on staging or production. Each card shows timestamp, permission/browser/OS badges, the reader's optional note, and an expandable technical snapshot (service worker state, push subscription, errors). On locked staging, anonymous routes are blocked — sign in at `/` with an editorial role, then navigate to the admin page (nav link: **Push diagnostics**).
+
+If the table was previously created on the tips database by mistake, export/backup both databases, run `subscriptions:db:migrate` on subscriptions, and leave the empty or orphaned table on tips (harmless) or drop it manually after confirming no data to migrate.
+
+### Reader test push (`/api/push-test-notification`)
+
+The push callout **Send test notification** hits `POST /api/push-test-notification`. Rate limits are enforced in **Cloudflare KV** (not Turso):
+
+| Limit | Window | KV key pattern |
+|-------|--------|----------------|
+| 2 sends | 5 minutes | `test:5m:{sha256(endpoint)}` (TTL 300s) |
+| 3 sends | 24 hours | `test:24h:{sha256(endpoint)}` (TTL 86400s) |
+
+- **Binding:** `READER_TEST_PUSH_THROTTLE` on the web worker (`web/wrangler.jsonc`).
+- **Privacy:** keys use SHA-256 of the push endpoint only — no raw endpoint or user id in KV.
+- **429 responses** include a `Retry-After` header (seconds until the active window expires).
+- **Terraform:** worker KV bindings are owned by Wrangler (Terraform `cloudflare_holding_page` ignores `kv_namespace_binding` changes). Create namespaces with `npx wrangler kv namespace create "READER_TEST_PUSH_THROTTLE"` (staging/production IDs live in `wrangler.jsonc`).
+- The subscriptions column `last_reader_test_at` is legacy; throttling is KV-authoritative after deploy.
 
 ---
 

@@ -3,6 +3,13 @@ import { drizzle } from 'drizzle-orm/libsql';
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 import { readEnv } from './auth';
 
+export const notificationDiagnosticsTable = sqliteTable('notification_diagnostics', {
+  id: text('id').primaryKey(),
+  payloadJson: text('payload_json').notNull(),
+  userNote: text('user_note'),
+  createdAt: text('created_at').notNull(),
+});
+
 export const pushSubscriptionsTable = sqliteTable('push_subscriptions', {
   id: text('id').primaryKey(),
   endpoint: text('endpoint').notNull().unique(),
@@ -15,6 +22,7 @@ export const pushSubscriptionsTable = sqliteTable('push_subscriptions', {
   lastSuccessAt: text('last_success_at'),
   lastFailureAt: text('last_failure_at'),
   lastFailureReason: text('last_failure_reason'),
+  lastReaderTestAt: text('last_reader_test_at'),
   active: integer('active').notNull(),
 });
 
@@ -30,6 +38,7 @@ export function createSubscriptionsDb() {
     db: drizzle(client, {
       schema: {
         pushSubscriptions: pushSubscriptionsTable,
+        notificationDiagnostics: notificationDiagnosticsTable,
       },
     }),
   };

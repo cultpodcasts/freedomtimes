@@ -1,0 +1,1112 @@
+---
+import Header from '../components/Header.astro';
+import Layout from '../layouts/Layout.astro';
+import ReaderDataProvenance from '../components/ReaderDataProvenance.astro';
+import { requireReaderPageSession } from '../lib/editorial-session';
+import {
+	MIN_BODY_LENGTH,
+	MAX_BODY_LENGTH,
+	STORY_TIP_UNEXPECTED_ERROR,
+	STORY_TIP_UNEXPECTED_ERROR_DETAIL,
+	resolveStoryTipSimulateMode,
+} from '../lib/story-tips';
+import { readTurnstileSiteKey } from '../lib/turnstile';
+
+/**
+ * Operator error-state previews (staging / local dev only — disabled on production):
+ *   /submit-a-tip?simulate=expected-error   — POST returns 400/403 simulated errors
+ *   /submit-a-tip?simulate=unexpected-error — POST returns 500 simulated error
+ * Submit sends a real request; server simulates failure (nothing persisted).
+ * On production the param is ignored silently (normal form, no preview banner).
+ * See web/docs/STORY_TIPS_OPERATOR.md § Error-state previews.
+ */
+const simulateMode = resolveStoryTipSimulateMode(
+	Astro.url.searchParams.get('simulate'),
+	Astro.url,
+);
+
+const session = await requireReaderPageSession(
+	{
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+		pathname: Astro.url.pathname,
+	},
+	{
+		noSession: () => Astro.rewrite('/'),
+		denied: () => Astro.rewrite('/?denied=1'),
+	},
+);
+
+if (session instanceof Response) {
+	return session;
+}
+
+const turnstileSiteKey = readTurnstileSiteKey();
+---
+
+<Layout
+	title="Submit a tip"
+	description="Send an anonymous or identified story tip to the freedom times editorial team."
+	canonicalUrl={Astro.url.href}
+>
+	<Header section="Submit a tip" />
+	<article class="tip-page">
+		<h1>Submit a tip</h1>
+		<p class="lede">
+			We protect sources. You can send a tip without giving your name or contact details.
+			If you choose to stay anonymous, we do not ask for identifying information and our handler
+			is written not to store it.
+		</p>
+
+		{simulateMode && (
+			<p class="tip-preview-notice" role="status">
+				Preview mode: submit sends a real request; the server returns a simulated error (nothing is saved).
+			</p>
+		)}
+
+		<form id="story-tip-form" class="tip-form" novalidate>
+			<label class="field field--body">
+				<span class="field-label">
+					Your tip
+					<span id="tip-submitted-badge" class="tip-submitted-badge" hidden>Submitted</span>
+				</span>
+				<p id="tip-body-helper" class="field-helper">
+					Tell us what happened, who is involved, when it took place, and any evidence or documents you can point us to.
+				</p>
+				<textarea
+					id="tip-body"
+					name="body"
+					required
+					minlength={MIN_BODY_LENGTH}
+					maxlength={MAX_BODY_LENGTH}
+					rows="10"
+					placeholder="What happened? Who is involved? What evidence exists?"
+					aria-describedby="tip-body-helper tip-body-count tip-body-error"
+				></textarea>
+				<p id="tip-body-count" class="char-count char-count--neutral" aria-live="polite">
+					0 / {MIN_BODY_LENGTH} characters minimum
+				</p>
+				<p id="tip-body-error" class="field-error" hidden role="alert"></p>
+			</label>
+
+			<label class="checkbox-row">
+				<input id="tip-anonymous" name="anonymous" type="checkbox" checked />
+				<span>Submit anonymously (recommended for sensitive tips)</span>
+			</label>
+
+			<p id="tip-anonymous-note" class="anonymous-note">No contact details will be stored.</p>
+
+			<div id="tip-contact-fields" class="contact-fields" hidden>
+				<p class="contact-note">
+					Optional contact details if you want us to reach you. We store these only when you uncheck anonymous submission.
+				</p>
+				<label class="field">
+					<span class="field-label">Name</span>
+					<input
+						id="tip-contact-name"
+						name="contactName"
+						type="text"
+						maxlength="120"
+						autocomplete="name"
+						aria-describedby="tip-contact-name-error"
+					/>
+					<p id="tip-contact-name-error" class="field-error" hidden role="alert"></p>
+				</label>
+				<label class="field">
+					<span class="field-label">Email</span>
+					<input
+						id="tip-contact-email"
+						name="contactEmail"
+						type="email"
+						maxlength="254"
+						autocomplete="email"
+						aria-describedby="tip-contact-email-error"
+					/>
+					<p id="tip-contact-email-error" class="field-error" hidden role="alert"></p>
+				</label>
+			</div>
+
+			{turnstileSiteKey ? (
+				<div
+					id="tip-turnstile"
+					class="turnstile-wrap"
+					data-sitekey={turnstileSiteKey}
+				></div>
+			) : (
+				<p class="form-note warn">Human verification is not configured on this environment.</p>
+			)}
+
+			<div class="submit-row">
+				<button
+					id="tip-submit"
+					type="submit"
+					class="primary-button"
+					disabled={!turnstileSiteKey}
+					aria-describedby="tip-submit-feedback"
+				>
+					Send tip
+				</button>
+				<div id="tip-submit-feedback" class="submit-feedback" aria-live="polite">
+					<p id="tip-submit-hint" class="submit-hint"></p>
+					<div id="tip-error-banner" class="tip-error-banner" hidden role="alert" tabindex="-1">
+						<span class="tip-error-banner__icon" aria-hidden="true">!</span>
+						<div class="tip-error-banner__content">
+							<p id="tip-error-title" class="tip-error-banner__title">Your tip was not sent</p>
+							<p id="tip-error-message" class="tip-error-banner__text"></p>
+						</div>
+					</div>
+					<div id="tip-success-banner" class="tip-success-banner" hidden role="status">
+						<span class="tip-success-banner__icon" aria-hidden="true">✓</span>
+						<div class="tip-success-banner__content">
+							<p class="tip-success-banner__title">Your tip was sent</p>
+							<p class="tip-success-banner__text">
+								Thank you — our editorial team received your submission. You can review what you sent below.
+							</p>
+							<p id="tip-success-detail" class="tip-success-banner__detail" hidden></p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</form>
+
+		<section class="privacy-block" aria-labelledby="tip-privacy-heading">
+			<h2 id="tip-privacy-heading">What we collect</h2>
+			<ul>
+				<li><strong>Anonymous mode:</strong> tip text only. No name, email, IP address, or account data is stored by our handler.</li>
+				<li><strong>Identified mode:</strong> tip text plus the name and email you provide.</li>
+				<li><strong>Always:</strong> Cloudflare Turnstile checks that a human submitted the form (we do not add IP to our database).</li>
+			</ul>
+			<p>
+				Read our <a href="/privacy-policy">privacy policy</a>.
+			</p>
+			<ReaderDataProvenance />
+		</section>
+	</article>
+</Layout>
+
+{turnstileSiteKey && (
+	<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+)}
+
+<script define:vars={{ turnstileSiteKey, minBodyLength: MIN_BODY_LENGTH, maxBodyLength: MAX_BODY_LENGTH, unexpectedError: STORY_TIP_UNEXPECTED_ERROR, unexpectedErrorDetail: STORY_TIP_UNEXPECTED_ERROR_DETAIL, simulateMode }}>
+	const form = document.querySelector('#story-tip-form');
+	const bodyInput = document.querySelector('#tip-body');
+	const bodyCount = document.querySelector('#tip-body-count');
+	const bodyError = document.querySelector('#tip-body-error');
+	const anonymousInput = document.querySelector('#tip-anonymous');
+	const anonymousNote = document.querySelector('#tip-anonymous-note');
+	const contactFields = document.querySelector('#tip-contact-fields');
+	const contactNameInput = document.querySelector('#tip-contact-name');
+	const contactNameError = document.querySelector('#tip-contact-name-error');
+	const contactEmailInput = document.querySelector('#tip-contact-email');
+	const contactEmailError = document.querySelector('#tip-contact-email-error');
+	const submitButton = document.querySelector('#tip-submit');
+	const submitHint = document.querySelector('#tip-submit-hint');
+	const successBanner = document.querySelector('#tip-success-banner');
+	const successDetail = document.querySelector('#tip-success-detail');
+	const errorBanner = document.querySelector('#tip-error-banner');
+	const errorTitle = document.querySelector('#tip-error-title');
+	const errorMessage = document.querySelector('#tip-error-message');
+	const submittedBadge = document.querySelector('#tip-submitted-badge');
+	const turnstileWrap = document.querySelector('#tip-turnstile');
+	let turnstileToken = '';
+	let formSubmitted = false;
+	let submitAttempted = false;
+
+	function hideErrorBanner() {
+		if (errorBanner instanceof HTMLElement) {
+			errorBanner.hidden = true;
+			errorBanner.classList.remove('tip-error-banner--unexpected');
+		}
+		if (errorTitle instanceof HTMLElement) {
+			errorTitle.textContent = 'Your tip was not sent';
+		}
+		if (errorMessage instanceof HTMLElement) {
+			errorMessage.textContent = '';
+		}
+		if (!formSubmitted) {
+			updateSubmitState();
+		}
+	}
+
+	function showExpectedError(message) {
+		if (!(errorBanner instanceof HTMLElement) || !(errorMessage instanceof HTMLElement)) {
+			return;
+		}
+
+		if (submitHint instanceof HTMLElement) {
+			submitHint.hidden = true;
+		}
+		if (successBanner instanceof HTMLElement) {
+			successBanner.hidden = true;
+		}
+
+		errorBanner.classList.remove('tip-error-banner--unexpected');
+		if (errorTitle instanceof HTMLElement) {
+			errorTitle.textContent = 'Your tip was not sent';
+		}
+		errorMessage.textContent = message;
+		errorBanner.hidden = false;
+		errorBanner.focus();
+	}
+
+	function showUnexpectedError(serverMessage) {
+		if (!(errorBanner instanceof HTMLElement) || !(errorMessage instanceof HTMLElement)) {
+			return;
+		}
+
+		if (submitHint instanceof HTMLElement) {
+			submitHint.hidden = true;
+		}
+		if (successBanner instanceof HTMLElement) {
+			successBanner.hidden = true;
+		}
+
+		errorBanner.classList.add('tip-error-banner--unexpected');
+		if (errorTitle instanceof HTMLElement) {
+			errorTitle.textContent = 'Something went wrong';
+		}
+		errorMessage.textContent =
+			typeof serverMessage === 'string' && serverMessage.trim()
+				? serverMessage
+				: unexpectedErrorDetail;
+		errorBanner.hidden = false;
+		errorBanner.focus();
+	}
+
+	function isFetchNetworkError(error) {
+		return (
+			error instanceof TypeError ||
+			(error instanceof Error &&
+				(error.message === 'Failed to fetch' || error.message === 'NetworkError when attempting to fetch resource.'))
+		);
+	}
+
+	function setFieldError(input, errorEl, message) {
+		if (!(input instanceof HTMLElement) || !(errorEl instanceof HTMLElement)) {
+			return;
+		}
+
+		if (message) {
+			input.setAttribute('aria-invalid', 'true');
+			input.classList.add('field-input--invalid');
+			errorEl.textContent = message;
+			errorEl.hidden = false;
+		} else {
+			input.removeAttribute('aria-invalid');
+			input.classList.remove('field-input--invalid');
+			errorEl.textContent = '';
+			errorEl.hidden = true;
+		}
+	}
+
+	function clearAllFieldErrors() {
+		setFieldError(bodyInput, bodyError, null);
+		setFieldError(contactNameInput, contactNameError, null);
+		setFieldError(contactEmailInput, contactEmailError, null);
+	}
+
+	function getTrimmedBodyLength() {
+		return bodyInput instanceof HTMLTextAreaElement ? bodyInput.value.trim().length : 0;
+	}
+
+	function isBodyLengthValid() {
+		if (!(bodyInput instanceof HTMLTextAreaElement)) {
+			return false;
+		}
+		const trimmed = bodyInput.value.trim();
+		return trimmed.length >= minBodyLength && trimmed.length <= maxBodyLength;
+	}
+
+	function updateCharCount() {
+		if (!(bodyCount instanceof HTMLElement)) {
+			return;
+		}
+
+		const len = getTrimmedBodyLength();
+		const rawLen = bodyInput instanceof HTMLTextAreaElement ? bodyInput.value.length : 0;
+		bodyCount.textContent = `${len} / ${minBodyLength} characters minimum`;
+		bodyCount.classList.remove('char-count--neutral', 'char-count--short', 'char-count--met', 'char-count--over');
+
+		if (rawLen > maxBodyLength) {
+			bodyCount.classList.add('char-count--over');
+		} else if (len >= minBodyLength) {
+			bodyCount.classList.add('char-count--met');
+		} else if (len > 0) {
+			bodyCount.classList.add('char-count--short');
+		} else {
+			bodyCount.classList.add('char-count--neutral');
+		}
+	}
+
+	function updateSubmitHint(bodyOk, turnstileOk) {
+		if (!(submitHint instanceof HTMLElement) || formSubmitted) {
+			return;
+		}
+
+		if (errorBanner instanceof HTMLElement && !errorBanner.hidden) {
+			submitHint.hidden = true;
+			return;
+		}
+
+		const hints = [];
+		if (!bodyOk) {
+			const remaining = minBodyLength - getTrimmedBodyLength();
+			if (remaining > 0) {
+				hints.push(
+					remaining === 1
+						? 'One more character will give us enough to work with.'
+						: `${remaining} more characters will give us enough to work with.`,
+				);
+			} else if (bodyInput instanceof HTMLTextAreaElement && bodyInput.value.length > maxBodyLength) {
+				hints.push('Your tip is a little long — please shorten it before sending.');
+			}
+		}
+		if (turnstileSiteKey && !turnstileOk) {
+			hints.push('Complete the check above when you are ready to send.');
+		}
+
+		submitHint.textContent = hints.join(' ');
+		submitHint.hidden = hints.length === 0;
+	}
+
+	function updateSubmitState() {
+		const bodyOk = isBodyLengthValid();
+		const turnstileOk = Boolean(turnstileToken);
+		const canSubmit = Boolean(turnstileSiteKey) && bodyOk && turnstileOk && !formSubmitted;
+
+		if (submitButton instanceof HTMLButtonElement) {
+			submitButton.disabled = !canSubmit;
+		}
+
+		updateSubmitHint(bodyOk, turnstileOk);
+		updateCharCount();
+	}
+
+	function validateClientPayload(body, anonymous, contactName, contactEmail, token) {
+		let firstError = null;
+
+		if (!body) {
+			setFieldError(bodyInput, bodyError, 'Please share what you know — even a short note helps us get started.');
+			firstError = firstError ?? 'Please enter your tip.';
+		} else if (body.length < minBodyLength) {
+			setFieldError(
+				bodyInput,
+				bodyError,
+				`A little more detail would help — please write at least ${minBodyLength} characters.`,
+			);
+			firstError = firstError ?? `Please write at least ${minBodyLength} characters so we have enough detail to follow up.`;
+		} else if (body.length > maxBodyLength) {
+			setFieldError(bodyInput, bodyError, 'Your tip is a little long — please shorten it before sending.');
+			firstError = firstError ?? `Your tip is too long. Please keep it under ${maxBodyLength} characters.`;
+		} else {
+			setFieldError(bodyInput, bodyError, null);
+		}
+
+		if (!token) {
+			firstError = firstError ?? 'Please complete the verification check.';
+		}
+
+		if (!anonymous) {
+			if (!contactName) {
+				setFieldError(
+					contactNameInput,
+					contactNameError,
+					'Please add your name, or tick "Submit anonymously" if you prefer.',
+				);
+				firstError = firstError ?? 'Please enter your name, or check "Submit anonymously".';
+			} else {
+				setFieldError(contactNameInput, contactNameError, null);
+			}
+
+			if (!contactEmail) {
+				setFieldError(
+					contactEmailInput,
+					contactEmailError,
+					'Please add your email so we can reach you, or tick "Submit anonymously".',
+				);
+				firstError = firstError ?? 'Please enter your email, or check "Submit anonymously".';
+			} else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+				setFieldError(contactEmailInput, contactEmailError, 'That email address does not look quite right.');
+				firstError = firstError ?? 'Please enter a valid email address.';
+			} else {
+				setFieldError(contactEmailInput, contactEmailError, null);
+			}
+		} else {
+			setFieldError(contactNameInput, contactNameError, null);
+			setFieldError(contactEmailInput, contactEmailError, null);
+		}
+
+		return firstError;
+	}
+
+	function markFormSubmitted() {
+		if (!(form instanceof HTMLFormElement) || formSubmitted) {
+			return;
+		}
+
+		const wasAnonymous = anonymousInput instanceof HTMLInputElement && anonymousInput.checked;
+
+		formSubmitted = true;
+		form.classList.add('tip-form--submitted');
+		hideErrorBanner();
+		clearAllFieldErrors();
+
+		if (submitHint instanceof HTMLElement) {
+			submitHint.hidden = true;
+		}
+		if (successBanner instanceof HTMLElement) {
+			successBanner.hidden = false;
+		}
+		if (successDetail instanceof HTMLElement) {
+			successDetail.textContent = wasAnonymous
+				? 'Submitted anonymously — no contact details were stored.'
+				: 'We have your contact details if we need to follow up.';
+			successDetail.hidden = false;
+		}
+		if (submittedBadge instanceof HTMLElement) {
+			submittedBadge.hidden = false;
+		}
+		if (bodyInput instanceof HTMLTextAreaElement) {
+			bodyInput.readOnly = true;
+		}
+		if (anonymousInput instanceof HTMLInputElement) {
+			const anonymousRow = anonymousInput.closest('.checkbox-row');
+			if (anonymousRow instanceof HTMLElement) {
+				anonymousRow.classList.add('checkbox-row--locked');
+			}
+		}
+		if (anonymousNote instanceof HTMLElement) {
+			anonymousNote.hidden = true;
+		}
+		if (contactFields instanceof HTMLElement) {
+			contactFields.hidden = wasAnonymous;
+		}
+		if (contactNameInput instanceof HTMLInputElement) {
+			contactNameInput.readOnly = true;
+		}
+		if (contactEmailInput instanceof HTMLInputElement) {
+			contactEmailInput.readOnly = true;
+		}
+		if (submitButton instanceof HTMLButtonElement) {
+			submitButton.disabled = true;
+			submitButton.textContent = 'Tip sent';
+		}
+		if (turnstileWrap instanceof HTMLElement) {
+			turnstileWrap.hidden = true;
+		}
+	}
+
+	function syncContactVisibility() {
+		const anonymous = anonymousInput instanceof HTMLInputElement && anonymousInput.checked;
+		if (anonymousNote instanceof HTMLElement) {
+			anonymousNote.hidden = formSubmitted || !anonymous;
+		}
+		if (contactFields instanceof HTMLElement) {
+			contactFields.hidden = anonymous;
+		}
+		if (contactNameInput instanceof HTMLInputElement) {
+			contactNameInput.required = !anonymous;
+			if (anonymous) {
+				contactNameInput.value = '';
+				setFieldError(contactNameInput, contactNameError, null);
+			}
+		}
+		if (contactEmailInput instanceof HTMLInputElement) {
+			contactEmailInput.required = !anonymous;
+			if (anonymous) {
+				contactEmailInput.value = '';
+				setFieldError(contactEmailInput, contactEmailError, null);
+			}
+		}
+		updateSubmitState();
+	}
+
+	function renderTurnstile() {
+		if (!turnstileSiteKey || !(window.turnstile instanceof Object)) {
+			return;
+		}
+
+		const mount = document.querySelector('#tip-turnstile');
+		if (!(mount instanceof HTMLElement) || mount.dataset.rendered === 'true') {
+			return;
+		}
+
+		window.turnstile.render(mount, {
+			sitekey: turnstileSiteKey,
+			callback(token) {
+				turnstileToken = token;
+				updateSubmitState();
+			},
+			'expired-callback'() {
+				turnstileToken = '';
+				updateSubmitState();
+			},
+			'error-callback'() {
+				turnstileToken = '';
+				updateSubmitState();
+			},
+		});
+		mount.dataset.rendered = 'true';
+	}
+
+	if (bodyInput instanceof HTMLTextAreaElement) {
+		bodyInput.addEventListener('input', () => {
+			if (submitAttempted) {
+				validateClientPayload(
+					bodyInput.value.trim(),
+					anonymousInput instanceof HTMLInputElement && anonymousInput.checked,
+					contactNameInput instanceof HTMLInputElement ? contactNameInput.value.trim() : null,
+					contactEmailInput instanceof HTMLInputElement ? contactEmailInput.value.trim() : null,
+					turnstileToken,
+				);
+			} else {
+				setFieldError(bodyInput, bodyError, null);
+			}
+			updateSubmitState();
+		});
+	}
+
+	for (const [input, errorEl] of [
+		[contactNameInput, contactNameError],
+		[contactEmailInput, contactEmailError],
+	]) {
+		if (input instanceof HTMLInputElement) {
+			input.addEventListener('input', () => {
+				if (submitAttempted) {
+					validateClientPayload(
+						bodyInput instanceof HTMLTextAreaElement ? bodyInput.value.trim() : '',
+						anonymousInput instanceof HTMLInputElement && anonymousInput.checked,
+						contactNameInput instanceof HTMLInputElement ? contactNameInput.value.trim() : null,
+						contactEmailInput instanceof HTMLInputElement ? contactEmailInput.value.trim() : null,
+						turnstileToken,
+					);
+				} else {
+					setFieldError(input, errorEl, null);
+				}
+			});
+		}
+	}
+
+	if (anonymousInput instanceof HTMLInputElement) {
+		anonymousInput.addEventListener('change', syncContactVisibility);
+		syncContactVisibility();
+	}
+
+	const turnstilePoll = window.setInterval(() => {
+		if (window.turnstile) {
+			window.clearInterval(turnstilePoll);
+			renderTurnstile();
+		}
+	}, 200);
+
+	updateSubmitState();
+
+	if (form instanceof HTMLFormElement) {
+		form.addEventListener('submit', async (event) => {
+			event.preventDefault();
+			if (formSubmitted) {
+				return;
+			}
+			if (!(bodyInput instanceof HTMLTextAreaElement)) {
+				return;
+			}
+
+			submitAttempted = true;
+
+			const anonymous = anonymousInput instanceof HTMLInputElement && anonymousInput.checked;
+			const body = bodyInput.value.trim();
+			const contactName = anonymous
+				? null
+				: (contactNameInput instanceof HTMLInputElement ? contactNameInput.value.trim() : null);
+			const contactEmail = anonymous
+				? null
+				: (contactEmailInput instanceof HTMLInputElement ? contactEmailInput.value.trim() : null);
+
+			const clientError = validateClientPayload(body, anonymous, contactName, contactEmail, turnstileToken);
+			if (clientError) {
+				showExpectedError(clientError);
+				if (clientError.includes('tip') || clientError.includes('characters')) {
+					bodyInput.focus();
+				} else if (clientError.includes('name')) {
+					contactNameInput instanceof HTMLInputElement && contactNameInput.focus();
+				} else if (clientError.includes('email')) {
+					contactEmailInput instanceof HTMLInputElement && contactEmailInput.focus();
+				}
+				updateSubmitState();
+				return;
+			}
+
+			hideErrorBanner();
+
+			const payload = {
+				body,
+				anonymous,
+				contactName,
+				contactEmail,
+				turnstileToken,
+				...(simulateMode ? { _simulate: simulateMode } : {}),
+			};
+
+			if (submitButton instanceof HTMLButtonElement) {
+				submitButton.disabled = true;
+				submitButton.textContent = 'Sending…';
+			}
+			if (submitHint instanceof HTMLElement) {
+				submitHint.hidden = true;
+			}
+
+			try {
+				let response;
+				try {
+					response = await fetch('/api/story-tips', {
+						method: 'POST',
+						headers: { 'content-type': 'application/json' },
+						body: JSON.stringify(payload),
+					});
+				} catch (error) {
+					if (isFetchNetworkError(error)) {
+						showUnexpectedError();
+					} else {
+						showUnexpectedError(unexpectedError);
+					}
+					return;
+				}
+
+				const result = await response.json().catch(() => ({}));
+
+				if (!response.ok) {
+					const serverMessage = typeof result.error === 'string' ? result.error : null;
+					const expectedStatus = response.status === 400 || response.status === 403 || response.status === 429;
+
+					if (response.status === 401) {
+						showExpectedError('Your session has expired. Please sign in again and try again.');
+						return;
+					}
+
+					if (expectedStatus) {
+						showExpectedError(serverMessage ?? 'Please check the form and try again.');
+						return;
+					}
+
+					showUnexpectedError(serverMessage ?? unexpectedErrorDetail);
+					return;
+				}
+
+				markFormSubmitted();
+			} finally {
+				if (submitButton instanceof HTMLButtonElement && !formSubmitted) {
+					updateSubmitState();
+					submitButton.textContent = 'Send tip';
+				}
+			}
+		});
+	}
+</script>
+
+<style>
+	.tip-page {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+		margin: 0 0 1rem;
+	}
+
+	.lede {
+		font-size: 1.1rem;
+		line-height: 1.7;
+		color: var(--text-secondary);
+		margin: 0 0 2rem;
+	}
+
+	.tip-error-banner--unexpected {
+		border-color: #912018;
+		background: #fff5f5;
+	}
+
+	.tip-error-banner--unexpected .tip-error-banner__icon {
+		background: #912018;
+	}
+
+	.tip-preview-notice {
+		margin: 0 0 1.25rem;
+		padding: 0.75rem 1rem;
+		border: 1px solid #b8860b;
+		border-radius: 6px;
+		background: #fffbeb;
+		color: #7a4e00;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.9rem;
+		line-height: 1.5;
+	}
+
+	.tip-form {
+		display: grid;
+		gap: 1.25rem;
+	}
+
+	.tip-form--submitted {
+		position: relative;
+	}
+
+	.tip-error-banner {
+		display: flex;
+		gap: 0.85rem;
+		align-items: flex-start;
+		padding: 1rem 1.1rem;
+		border: 1px solid #b42318;
+		border-radius: 6px;
+		background: #fef3f2;
+		color: #7a271a;
+		outline: none;
+	}
+
+	.tip-error-banner[hidden] {
+		display: none !important;
+	}
+
+	.tip-error-banner:focus-visible {
+		box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.25);
+	}
+
+	.tip-error-banner__icon {
+		flex-shrink: 0;
+		display: grid;
+		place-items: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		border-radius: 50%;
+		background: #b42318;
+		color: #fff;
+		font-weight: 700;
+		font-size: 1rem;
+		line-height: 1;
+	}
+
+	.tip-error-banner__content {
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.tip-error-banner__title {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 1.05rem;
+		font-weight: 700;
+	}
+
+	.tip-error-banner__text {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+		line-height: 1.5;
+	}
+
+	.tip-success-banner {
+		display: flex;
+		gap: 0.85rem;
+		align-items: flex-start;
+		padding: 1rem 1.1rem;
+		border: 1px solid #2d6a4f;
+		border-radius: 6px;
+		background: #edf7f1;
+		color: #1b4332;
+	}
+
+	.tip-success-banner[hidden] {
+		display: none !important;
+	}
+
+	.tip-success-banner__icon {
+		flex-shrink: 0;
+		display: grid;
+		place-items: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		border-radius: 50%;
+		background: #2d6a4f;
+		color: #fff;
+		font-weight: 700;
+		font-size: 1rem;
+		line-height: 1;
+	}
+
+	.tip-success-banner__content {
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.tip-success-banner__title {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 1.05rem;
+		font-weight: 700;
+	}
+
+	.tip-success-banner__text,
+	.tip-success-banner__detail {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+		line-height: 1.5;
+	}
+
+	.tip-success-banner__detail {
+		font-weight: 500;
+	}
+
+	.tip-success-banner__detail[hidden] {
+		display: none !important;
+	}
+
+	.tip-submitted-badge {
+		margin-left: 0.5rem;
+		padding: 0.15rem 0.45rem;
+		border-radius: 999px;
+		background: #e8f0ea;
+		color: #2d6a4f;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.7rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		vertical-align: middle;
+	}
+
+	.tip-submitted-badge[hidden] {
+		display: none !important;
+	}
+
+	.tip-form--submitted textarea,
+	.tip-form--submitted input[type='text'],
+	.tip-form--submitted input[type='email'] {
+		background: #f8f8f8;
+		color: var(--text-primary, #111);
+		cursor: default;
+	}
+
+	.tip-form--submitted textarea:focus,
+	.tip-form--submitted input[type='text']:focus,
+	.tip-form--submitted input[type='email']:focus {
+		outline: none;
+		box-shadow: none;
+	}
+
+	.checkbox-row--locked {
+		pointer-events: none;
+		cursor: default;
+	}
+
+	.tip-form--submitted .checkbox-row input[type='checkbox'] {
+		accent-color: #2d6a4f;
+	}
+
+	.tip-form--submitted .turnstile-wrap[hidden] {
+		display: none !important;
+	}
+
+	.field {
+		display: grid;
+		gap: 0.45rem;
+	}
+
+	.field-label {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+	}
+
+	.field-helper {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.9rem;
+		line-height: 1.55;
+		color: var(--text-secondary);
+	}
+
+	.char-count {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.82rem;
+		line-height: 1.4;
+		transition: color 0.15s ease;
+	}
+
+	.char-count--neutral {
+		color: var(--text-secondary);
+	}
+
+	.char-count--short {
+		color: #9a6700;
+	}
+
+	.char-count--met {
+		color: #2d6a4f;
+	}
+
+	.char-count--over {
+		color: #9a6700;
+	}
+
+	.field-error {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		line-height: 1.45;
+		color: #7a271a;
+	}
+
+	.field-error[hidden] {
+		display: none !important;
+	}
+
+	textarea,
+	input[type='text'],
+	input[type='email'] {
+		font: inherit;
+		padding: 0.75rem 0.85rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 4px;
+		background: #fff;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	textarea:focus,
+	input[type='text']:focus,
+	input[type='email']:focus {
+		outline: none;
+		border-color: #888;
+		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+	}
+
+	.field-input--invalid {
+		border-color: #c45c4a;
+	}
+
+	.field-input--invalid:focus {
+		border-color: #b42318;
+		box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
+	}
+
+	.submit-row {
+		display: grid;
+		gap: 0.65rem;
+		justify-items: start;
+	}
+
+	.submit-feedback {
+		display: grid;
+		gap: 0.65rem;
+		width: 100%;
+		max-width: 36rem;
+	}
+
+	.submit-hint {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
+
+	.submit-hint[hidden] {
+		display: none !important;
+	}
+
+	.submit-feedback .tip-error-banner,
+	.submit-feedback .tip-success-banner {
+		width: 100%;
+	}
+
+	.checkbox-row {
+		display: flex;
+		gap: 0.65rem;
+		align-items: flex-start;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+	}
+
+	.anonymous-note {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+		color: var(--text-secondary);
+	}
+
+	.anonymous-note[hidden],
+	.contact-fields[hidden] {
+		display: none !important;
+	}
+
+	.contact-fields {
+		display: grid;
+		gap: 1rem;
+		padding: 1rem;
+		border: 1px solid var(--border-subtle);
+	}
+
+	.contact-note {
+		margin: 0;
+		font-size: 0.95rem;
+		color: var(--text-secondary);
+	}
+
+	.turnstile-wrap {
+		min-height: 65px;
+	}
+
+	.primary-button {
+		justify-self: start;
+		padding: 0.75rem 1.2rem;
+		border: 1px solid #111;
+		border-radius: 999px;
+		background: #111;
+		color: #fff;
+		font-family: 'Inter', sans-serif;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.primary-button:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	.form-note.warn {
+		color: #8a4b00;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.9rem;
+	}
+
+	.privacy-block {
+		margin-top: 3rem;
+		padding-top: 2rem;
+		border-top: 1px solid var(--border-subtle);
+	}
+
+	.privacy-block h2 {
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: 1.5rem;
+		margin: 0 0 1rem;
+	}
+
+	.privacy-block ul {
+		padding-left: 1.2rem;
+		line-height: 1.7;
+	}
+
+	.privacy-block a {
+		color: #0044bb;
+	}
+</style>

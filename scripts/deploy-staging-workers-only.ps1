@@ -190,6 +190,16 @@ Write-Step "Building web (npm run build)"
 $buildStartedAt = Get-Date
 Push-Location (Join-Path $repoRoot "web")
 try {
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($git) {
+        $commitSha = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
+        if ($commitSha) {
+            [Environment]::SetEnvironmentVariable("FT_BUILD_COMMIT_SHA", $commitSha, "Process")
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable("GITHUB_REPOSITORY", "Process"))) {
+        [Environment]::SetEnvironmentVariable("GITHUB_REPOSITORY", "cultpodcasts/freedomtimes", "Process")
+    }
     & npm run build
     if ($LASTEXITCODE -ne 0) {
         throw "npm run build failed (exit $LASTEXITCODE). Web worker deploy aborted."

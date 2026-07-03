@@ -80,6 +80,11 @@ resource "auth0_resource_server_scopes" "api_scopes" {
     name        = "subscribers:manage"
     description = "Manage subscribers"
   }
+
+  scopes {
+    name        = "tips:manage"
+    description = "View and handle reader story tips"
+  }
 }
 
 # Editor Role — tenant-wide, production only
@@ -94,6 +99,13 @@ resource "auth0_role" "admin" {
   count       = var.create_shared_resources ? 1 : 0
   name        = "admin"
   description = "Can manage all content, delete stories, manage subscribers"
+}
+
+# Tips desk role — view and triage reader story tips (no CMS access required)
+resource "auth0_role" "tips" {
+  count       = var.create_shared_resources ? 1 : 0
+  name        = "tips"
+  description = "Can view and handle reader story tips"
 }
 
 # Editor role permissions
@@ -125,8 +137,25 @@ resource "auth0_role_permissions" "admin_permissions" {
       "story:create",
       "story:update",
       "story:delete",
-      "subscribers:manage"
+      "subscribers:manage",
+      "tips:manage"
     ]
+    content {
+      name                       = permissions.value
+      resource_server_identifier = auth0_resource_server.api[0].identifier
+    }
+  }
+
+  depends_on = [auth0_resource_server_scopes.api_scopes]
+}
+
+# Tips role permissions
+resource "auth0_role_permissions" "tips_permissions" {
+  count   = var.create_shared_resources ? 1 : 0
+  role_id = auth0_role.tips[0].id
+
+  dynamic "permissions" {
+    for_each = ["tips:manage"]
     content {
       name                       = permissions.value
       resource_server_identifier = auth0_resource_server.api[0].identifier

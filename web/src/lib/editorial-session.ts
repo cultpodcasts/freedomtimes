@@ -9,6 +9,7 @@ import {
 	getDisplayName,
 	getRoleClaimDebug,
 	hasEditorialRole,
+	isPublicReaderPath,
 	verifyIdToken,
 } from './auth';
 
@@ -72,4 +73,67 @@ export async function requireEditorialSession(
 
 		return context.redirect('/');
 	}
+}
+
+export async function authorizeEditorialApiRequest(params: {
+	cookies: AstroCookies;
+	request: Request;
+	url: URL;
+}): Promise<EditorialSession | Response> {
+	return requireEditorialSession({
+		cookies: params.cookies,
+		url: params.url,
+		request: params.request,
+		redirect: () =>
+			new Response(JSON.stringify({ error: 'Unauthorized' }), {
+				status: 401,
+				headers: { 'content-type': 'application/json; charset=utf-8' },
+			}),
+	});
+}
+
+type ReaderPageAccessHandlers = {
+	noSession?: () => Response;
+	denied?: () => Response;
+};
+
+/**
+ * Gate reader-facing pages listed in `PUBLIC_READER_PATHS`.
+ * Production: anonymous access allowed. Locked staging: requires editorial session.
+ */
+export async function requireReaderPageSession(
+	context: EditorialSessionContext & { pathname: string },
+	handlers?: ReaderPageAccessHandlers,
+): Promise<EditorialSession | null | Response> {
+	if (isPublicReaderPath(context.pathname)) {
+		return null;
+	}
+
+	const token = context.cookies.get(SESSION_COOKIE)?.value;
+	if (!token) {
+		return handlers?.noSession?.() ?? context.redirect('/');
+	}
+
+	const session = await requireEditorialSession(context);
+	if (session instanceof Response) {
+		return handlers?.denied?.() ?? session;
+	}
+
+	return session;
+}
+
+/**
+ * Gate reader-facing API routes listed in `PUBLIC_READER_PATHS`.
+ * Production: anonymous access allowed. Locked staging: requires editorial session (401).
+ */
+export async function authorizeReaderApiRequest(params: {
+	cookies: AstroCookies;
+	request: Request;
+	url: URL;
+}): Promise<EditorialSession | void | Response> {
+	if (isPublicReaderPath(params.url.pathname)) {
+		return;
+	}
+
+	return authorizeEditorialApiRequest(params);
 }

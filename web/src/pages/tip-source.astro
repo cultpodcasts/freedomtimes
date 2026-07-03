@@ -1,0 +1,149 @@
+---
+import Header from '../components/Header.astro';
+import Layout from '../layouts/Layout.astro';
+import {
+  BUILD_COMMIT_SHA,
+  GITHUB_REPOSITORY,
+  READER_SUBMISSION_SOURCE_PATHS,
+  buildProvenancePayload,
+  githubBlobUrl,
+  githubCommitUrl,
+} from '../lib/build-provenance';
+import { requireReaderPageSession } from '../lib/editorial-session';
+
+const session = await requireReaderPageSession(
+  {
+    cookies: Astro.cookies,
+    url: Astro.url,
+    request: Astro.request,
+    redirect: Astro.redirect,
+    pathname: Astro.url.pathname,
+  },
+  {
+    noSession: () => Astro.rewrite('/'),
+    denied: () => Astro.rewrite('/?denied=1'),
+  },
+);
+
+if (session instanceof Response) {
+  return session;
+}
+
+const provenance = buildProvenancePayload();
+---
+
+<Layout
+	title="Tip handler source"
+	description="Verify which open-source commit handles story tips and notification diagnostics on this deployment."
+	canonicalUrl={Astro.url.href}
+>
+	<Header section="Source verification" />
+	<article class="source-page">
+		<h1>Verify what runs on this site</h1>
+		<p class="lede">
+			Story tips and notification troubleshooting reports are handled by code in our public GitHub repository.
+			This page shows the exact commit baked into the current deployment so you can inspect the handler yourself.
+		</p>
+
+		<dl class="meta-grid">
+			<div>
+				<dt>Repository</dt>
+				<dd><a href={`https://github.com/${GITHUB_REPOSITORY}`}>{GITHUB_REPOSITORY}</a></dd>
+			</div>
+			<div>
+				<dt>Deployed commit</dt>
+				<dd><a href={githubCommitUrl()}><code>{BUILD_COMMIT_SHA}</code></a></dd>
+			</div>
+			<div>
+				<dt>Machine-readable</dt>
+				<dd><a href="/api/version.json">/api/version.json</a> · <a href="/api/tip-source.json">/api/tip-source.json</a></dd>
+			</div>
+		</dl>
+
+		<h2>Handler source files</h2>
+		<ul class="file-list">
+			{READER_SUBMISSION_SOURCE_PATHS.map((path) => (
+				<li>
+					<a href={githubBlobUrl(path)}>{path}</a>
+				</li>
+			))}
+		</ul>
+
+		<h2>What this proves</h2>
+		<ul>
+			<li>The form you see is served from the same Worker build that exposes this commit SHA.</li>
+			<li>Anonymous story tips are stored without contact fields when you choose anonymous mode — see <code>web/src/lib/story-tips.ts</code> (tips database).</li>
+			<li>Notification diagnostic reports store a sanitized snapshot in the subscriptions database — see <code>web/src/lib/notification-diagnostics-server.ts</code>.</li>
+			<li>Neither handler writes IP addresses to Turso. Cloudflare may process requests at the edge per our privacy policy.</li>
+		</ul>
+
+		<p class="footnote">
+			Generated at deploy time. JSON payload timestamp: {provenance.verifiedAt}.
+		</p>
+	</article>
+</Layout>
+
+<style>
+	.source-page {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		margin: 0 0 1rem;
+	}
+
+	h2 {
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: 1.5rem;
+		margin: 2rem 0 1rem;
+	}
+
+	.lede {
+		font-size: 1.1rem;
+		line-height: 1.7;
+		color: var(--text-secondary);
+	}
+
+	.meta-grid {
+		display: grid;
+		gap: 1rem;
+		margin: 2rem 0;
+	}
+
+	.meta-grid dt {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.8rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.meta-grid dd {
+		margin: 0.25rem 0 0;
+	}
+
+	.file-list {
+		padding-left: 1.2rem;
+		line-height: 1.8;
+	}
+
+	.file-list a,
+	.meta-grid a {
+		color: #0044bb;
+		word-break: break-all;
+	}
+
+	.footnote {
+		margin-top: 2.5rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		color: var(--text-secondary);
+	}
+</style>
