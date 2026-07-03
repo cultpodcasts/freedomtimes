@@ -166,9 +166,12 @@ if (session instanceof Response) {
 
 		if (!test) {
 			return `
-				<div class="diag-card__test">
+				<div class="diag-card__test diag-card__test--empty">
 					<p class="diag-card__test-heading">Test notification</p>
-					<p><span class="badge ${testSendBadgeClass(test)}">${escapeHtml(statusLabel)}</span></p>
+					<p class="diag-card__test-badges">
+						<span class="badge ${testSendBadgeClass(test)}">${escapeHtml(statusLabel)}</span>
+					</p>
+					<p class="diag-card__test-empty-note">No test notification in this report.</p>
 				</div>
 			`;
 		}
@@ -309,6 +312,10 @@ if (session instanceof Response) {
 		const buttonSummary = buttonStateSummary(snapshot);
 		const supportMessage = snapshot?.supportMessage?.trim();
 		const lastError = snapshot?.lastErrorMessage?.trim();
+		const test = snapshot?.lastTestNotification ?? null;
+		const testStatusLabel = test
+			? `Test: ${testSendStatusLabel(test)}`
+			: 'Test: not attempted';
 
 		return `
 			<section class="diag-card" role="listitem" data-report-id="${escapeHtml(report.id)}">
@@ -316,6 +323,7 @@ if (session instanceof Response) {
 					<div class="diag-card__meta">
 						<time class="diag-card__time" datetime="${escapeHtml(report.createdAt)}">${escapeHtml(formatWhen(report.createdAt))}</time>
 						<span class="badge ${permissionBadgeClass(permission)}">${escapeHtml(formatLabel(permission))}</span>
+						<span class="badge ${testSendBadgeClass(test)}">${escapeHtml(testStatusLabel)}</span>
 						<span class="badge badge--muted">${escapeHtml(browser)}</span>
 						<span class="badge badge--muted">${escapeHtml(os)}</span>
 						${snapshot?.platformType ? `<span class="badge badge--muted">${escapeHtml(formatLabel(snapshot.platformType))}</span>` : ''}
@@ -562,6 +570,11 @@ if (session instanceof Response) {
 		font-size: 0.92rem;
 		line-height: 1.5;
 		color: var(--text-primary);
+	}
+
+	.diagnostics-admin :global(.diag-card__test-empty-note) {
+		color: var(--text-secondary);
+		font-style: italic;
 	}
 
 	.diagnostics-admin :global(.diag-card__time) {
