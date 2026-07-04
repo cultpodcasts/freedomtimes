@@ -30,7 +30,6 @@
     "subscriptions:compare-vapid-keys": "node scripts/compare-push-vapid-keys.mjs",
     "preview": "astro preview",
     "astro": "astro",
-    "archive:prepare": "tsx scripts/prepare-archive-assets.ts",
     "android:launcher-icons": "node scripts/generate-android-launcher-icons.mjs",
     "build:service-worker": "tsx scripts/build-service-worker.ts",
     "cap:doctor": "cap doctor",
