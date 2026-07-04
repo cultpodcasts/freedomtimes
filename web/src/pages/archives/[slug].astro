@@ -10,6 +10,8 @@ const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
 
 let displayName = 'Reader';
+let isAdmin = false;
+let isSignedIn = false;
 
 if (isLocked) {
 	const session = await requireEditorialSession({
@@ -24,6 +26,8 @@ if (isLocked) {
 	}
 
 	displayName = session.displayName;
+	isAdmin = session.isAdmin;
+	isSignedIn = true;
 }
 
 const slug = Astro.params.slug;
@@ -117,8 +121,8 @@ if (!slug) {
 		emdashCollection="archives"
 		displayName={displayName}
 		isPreview={isPreview}
-		isEditor={isLocked}
-		isSignedIn={isLocked}
+		isAdmin={isAdmin}
+		isSignedIn={isSignedIn}
 	/>
 )}
 

@@ -5,11 +5,12 @@ import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 interface Props {
 	section?: string;
 	sectionUrl?: string;
-	isEditor?: boolean;
+	/** Auth0 `admin` role — shows the Freedom Times `/admin` hub link. */
+	isAdmin?: boolean;
 	isSignedIn?: boolean;
 }
 
-const { section, sectionUrl, isEditor, isSignedIn } = Astro.props;
+const { section, sectionUrl, isAdmin, isSignedIn } = Astro.props;
 const homePath = getHomePath();
 ---
 
@@ -35,7 +36,14 @@ const homePath = getHomePath();
 		<div class="nav-links">
 			<a href={homePath} class={Astro.url.pathname === '/' || Astro.url.pathname === '/homepage' ? 'active' : ''}>Home</a>
 			<a href="/archives" class={Astro.url.pathname.startsWith('/archives') ? 'active' : ''}>Archives</a>
-			{isEditor && <a href="/_emdash/admin">CMS</a>}
+			{isAdmin && (
+				<a
+					href="/admin"
+					class={/^\/admin\/?$/.test(Astro.url.pathname) ? 'active' : ''}
+				>
+					Admin
+				</a>
+			)}
 			{isSignedIn && <a href="/auth/logout">Sign out</a>}
 		</div>
 		

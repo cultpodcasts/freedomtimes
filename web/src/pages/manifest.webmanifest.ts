@@ -1,8 +1,14 @@
 import type { APIRoute } from 'astro';
 
 import { SITE_DISPLAY_NAME } from '../lib/site-brand';
+import { authorizeReaderApiRequest } from '../lib/editorial-session';
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ cookies, request, url }) => {
+  const auth = await authorizeReaderApiRequest({ cookies, request, url });
+  if (auth instanceof Response) {
+    return auth;
+  }
+
   const manifest = {
     name: SITE_DISPLAY_NAME,
     short_name: SITE_DISPLAY_NAME,

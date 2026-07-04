@@ -55,27 +55,7 @@ function Test-LooksLikeTursoDatabaseJwt {
     return $v.StartsWith("eyJ") -and ($v.Split(".").Count -ge 3)
 }
 
-function Resolve-TerraformExecutable {
-    $cmd = Get-Command terraform -ErrorAction SilentlyContinue
-    if ($cmd -and $cmd.Source) {
-        return $cmd.Source
-    }
-
-    $wingetLink = "C:\Users\jonbr\AppData\Local\Microsoft\WinGet\Links\terraform.exe"
-    if (Test-Path -LiteralPath $wingetLink) {
-        return $wingetLink
-    }
-
-    $whereOutput = & where.exe terraform 2>$null
-    if ($whereOutput) {
-        $first = ($whereOutput | Select-Object -First 1).ToString().Trim()
-        if ($first) {
-            return $first
-        }
-    }
-
-    throw "terraform executable not found (checked PATH, WinGet Links, and where.exe)"
-}
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
 
 function Get-EnvFileValue {
     param(
@@ -146,10 +126,7 @@ function Get-TerraformOutputRaw {
         $stdout = Get-Content $stdoutFile -Raw -ErrorAction SilentlyContinue
         Remove-Item $stderrFile, $stdoutFile -Force -ErrorAction SilentlyContinue
         if ($proc.ExitCode -ne 0) {
-            if ($stderr -match 'Output "[^"]+" not found') {
-                return $null
-            }
-            throw "terraform output -raw $OutputName failed with exit code $($proc.ExitCode)"
+            return $null
         }
         return $stdout.TrimEnd()
     }
@@ -158,30 +135,64 @@ function Get-TerraformOutputRaw {
     }
 }
 
-function Get-TursoHostSuffixFromEmdashUrl {
-    param([string]$EmdashUrl)
+function Get-TursoHostSuffixFromLibsqlUrl {
+    param([string]$Url)
 
-    if ([string]::IsNullOrWhiteSpace($EmdashUrl)) {
-        throw "Cannot derive Turso host suffix: production terraform output turso_database_url is missing or empty."
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        throw "Cannot derive Turso host suffix from an empty libsql URL."
     }
 
-    $hostPart = $EmdashUrl -replace "^libsql://", "" -replace "^https://", ""
+    $hostPart = $Url -replace "^libsql://", "" -replace "^https://", ""
     $hostPart = ($hostPart -split "\?")[0]
     $at = $hostPart.LastIndexOf("@")
     if ($at -ge 0) {
         $hostPart = $hostPart.Substring($at + 1)
     }
 
-    if ($hostPart -match "^freedomtimes-emdash-production-(.+)$") {
+    if ($hostPart -match "^freedomtimes-(?:emdash|subscriptions|scheduler|tips)-production-(.+)$") {
         return $Matches[1]
     }
 
     $dash = $hostPart.IndexOf("-")
     if ($dash -lt 0) {
-        throw "Unexpected production emdash libsql host '$hostPart'; check terraform output turso_database_url."
+        throw "Unexpected production libsql host '$hostPart'."
     }
 
     return $hostPart.Substring($dash + 1)
+}
+
+function Get-ProductionTursoHostSuffix {
+    param([string]$TerraformExe)
+
+    $suffixSourceKeys = @(
+        "TURSO_PRODUCTION_EMDASH_DB_URL",
+        "TURSO_SUBSCRIPTIONS_DATABASE_URL",
+        "TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL",
+        "TURSO_SCHEDULER_DATABASE_URL",
+        "TURSO_PRODUCTION_SCHEDULER_DB_URL",
+        "TURSO_TIPS_DATABASE_URL",
+        "TURSO_PRODUCTION_TIPS_DB_URL"
+    )
+
+    foreach ($key in $suffixSourceKeys) {
+        $candidate = Get-EnvFileValue -Path $envDevPath -Key $key
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            Write-Host "Deriving Turso host suffix from .env.dev $key" -ForegroundColor DarkGray
+            return Get-TursoHostSuffixFromLibsqlUrl -Url $candidate
+        }
+    }
+
+    $productionEmdashUrl = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName "turso_database_url"
+    if (-not [string]::IsNullOrWhiteSpace($productionEmdashUrl)) {
+        Write-Host "Deriving Turso host suffix from terraform output turso_database_url" -ForegroundColor DarkGray
+        return Get-TursoHostSuffixFromLibsqlUrl -Url $productionEmdashUrl
+    }
+
+    throw @"
+Cannot derive production Turso host suffix. Set one of these in .env.dev to a libsql:// URL:
+  $($suffixSourceKeys -join ', ')
+Or run terraform apply in infra/terraform/environments/production.
+"@
 }
 
 function Get-TursoOrganizationFromEnv {
@@ -289,7 +300,8 @@ function Resolve-LibsqlUrl {
         [string]$TerraformExe,
         [string]$UrlOutputName,
         [string]$NameOutputName,
-        [string]$HostSuffix
+        [string]$HostSuffix,
+        [string]$DefaultName
     )
 
     $url = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName $UrlOutputName
@@ -299,10 +311,16 @@ function Resolve-LibsqlUrl {
 
     $dbName = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName $NameOutputName
     if ([string]::IsNullOrWhiteSpace($dbName)) {
-        throw "terraform output '$UrlOutputName' is missing and '$NameOutputName' is empty. Ensure the production workspace state includes scheduler/subscriptions Turso database names."
+        if ([string]::IsNullOrWhiteSpace($DefaultName)) {
+            throw "terraform output '$UrlOutputName' is missing and '$NameOutputName' is empty."
+        }
+        $dbName = $DefaultName
+        Write-Warning "terraform output '$UrlOutputName' and '$NameOutputName' not in remote state; deriving libsql URL from default name '$dbName'."
+    }
+    else {
+        Write-Warning "terraform output '$UrlOutputName' not in remote state; deriving libsql URL from '$NameOutputName' ($dbName)."
     }
 
-    Write-Warning "terraform output '$UrlOutputName' not in remote state; deriving libsql URL from '$NameOutputName' ($dbName)."
     return "libsql://${dbName}-${HostSuffix}"
 }
 
@@ -310,7 +328,8 @@ function Resolve-TursoDatabaseAuthToken {
     param(
         [string]$TerraformExe,
         [string]$TokenOutputName,
-        [string]$NameOutputName
+        [string]$NameOutputName,
+        [string]$DefaultName
     )
 
     $token = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName $TokenOutputName
@@ -320,7 +339,10 @@ function Resolve-TursoDatabaseAuthToken {
 
     $dbName = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName $NameOutputName
     if ([string]::IsNullOrWhiteSpace($dbName)) {
-        throw "terraform output '$TokenOutputName' is missing and '$NameOutputName' is empty; cannot mint a Turso DB token."
+        if ([string]::IsNullOrWhiteSpace($DefaultName)) {
+            throw "terraform output '$TokenOutputName' is missing and '$NameOutputName' is empty; cannot mint a Turso DB token."
+        }
+        $dbName = $DefaultName
     }
 
     Write-Warning "terraform output '$TokenOutputName' not in remote state; minting token via Turso Platform API for '$dbName'."
@@ -332,9 +354,18 @@ function Resolve-TursoDatabaseAuthToken {
 # Each Terraform output maps to multiple .env.dev keys (inspect scripts prefer TURSO_*_DATABASE_URL first).
 $logicalOutputs = @(
     @{
+        UrlOutput  = "turso_database_url"
+        NameOutput = "turso_database_name"
+        TokenOutput = "turso_database_auth_token"
+        DefaultName = "freedomtimes-emdash-production"
+        EnvKeysUrl = @("TURSO_DATABASE_URL", "TURSO_PRODUCTION_EMDASH_DB_URL")
+        EnvKeysToken = @("TURSO_AUTH_TOKEN", "TURSO_PRODUCTION_EMDASH_DB_TOKEN")
+    },
+    @{
         UrlOutput  = "subscriptions_turso_database_url"
         NameOutput = "subscriptions_turso_database_name"
         TokenOutput = "subscriptions_turso_database_auth_token"
+        DefaultName = "freedomtimes-subscriptions-production"
         EnvKeysUrl = @("TURSO_SUBSCRIPTIONS_DATABASE_URL", "TURSO_PRODUCTION_SUBSCRIPTIONS_DB_URL")
         EnvKeysToken = @("TURSO_SUBSCRIPTIONS_AUTH_TOKEN", "TURSO_PRODUCTION_SUBSCRIPTIONS_DB_TOKEN")
     },
@@ -342,8 +373,17 @@ $logicalOutputs = @(
         UrlOutput  = "scheduler_turso_database_url"
         NameOutput = "scheduler_turso_database_name"
         TokenOutput = "scheduler_turso_database_auth_token"
+        DefaultName = "freedomtimes-scheduler-production"
         EnvKeysUrl = @("TURSO_SCHEDULER_DATABASE_URL", "TURSO_PRODUCTION_SCHEDULER_DB_URL")
         EnvKeysToken = @("TURSO_SCHEDULER_AUTH_TOKEN", "TURSO_PRODUCTION_SCHEDULER_DB_TOKEN")
+    },
+    @{
+        UrlOutput  = "tips_turso_database_url"
+        NameOutput = "tips_turso_database_name"
+        TokenOutput = "tips_turso_database_auth_token"
+        DefaultName = "freedomtimes-tips-production"
+        EnvKeysUrl = @("TURSO_TIPS_DATABASE_URL", "TURSO_PRODUCTION_TIPS_DB_URL")
+        EnvKeysToken = @("TURSO_TIPS_AUTH_TOKEN", "TURSO_PRODUCTION_TIPS_DB_TOKEN")
     }
 )
 
@@ -353,12 +393,11 @@ $terraformExe = Resolve-TerraformExecutable
 Write-Host "Using terraform: $terraformExe" -ForegroundColor DarkGray
 Write-Host "Reading production outputs from: $envDir" -ForegroundColor DarkGray
 
-$productionEmdashUrl = Get-TerraformOutputRaw -TerraformExe $terraformExe -OutputName "turso_database_url"
-$hostSuffix = Get-TursoHostSuffixFromEmdashUrl -EmdashUrl $productionEmdashUrl
+$hostSuffix = Get-ProductionTursoHostSuffix -TerraformExe $terraformExe
 
 $updatedKeys = [System.Collections.Generic.List[string]]::new()
 foreach ($entry in $logicalOutputs) {
-    $url = Resolve-LibsqlUrl -TerraformExe $terraformExe -UrlOutputName $entry.UrlOutput -NameOutputName $entry.NameOutput -HostSuffix $hostSuffix
+    $url = Resolve-LibsqlUrl -TerraformExe $terraformExe -UrlOutputName $entry.UrlOutput -NameOutputName $entry.NameOutput -HostSuffix $hostSuffix -DefaultName $entry.DefaultName
     if ([string]::IsNullOrWhiteSpace($url)) {
         throw "Resolved empty URL for $($entry.UrlOutput)"
     }
@@ -374,7 +413,7 @@ foreach ($entry in $logicalOutputs) {
         continue
     }
 
-    $token = Resolve-TursoDatabaseAuthToken -TerraformExe $terraformExe -TokenOutputName $entry.TokenOutput -NameOutputName $entry.NameOutput
+    $token = Resolve-TursoDatabaseAuthToken -TerraformExe $terraformExe -TokenOutputName $entry.TokenOutput -NameOutputName $entry.NameOutput -DefaultName $entry.DefaultName
     foreach ($envKey in $entry.EnvKeysToken) {
         Set-Or-AddEnvFileValue -Path $envDevPath -Key $envKey -Value $token
         $updatedKeys.Add($envKey)

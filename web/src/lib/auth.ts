@@ -50,6 +50,59 @@ export function isLockedSiteAccess(): boolean {
   return readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase() !== 'public';
 }
 
+/**
+ * ## Staging access policy (hard rule)
+ *
+ * **Production** (`SITE_ACCESS_MODE=public`): paths listed here are reachable without
+ * Auth0 — anonymous readers can submit tips, subscribe to push, run diagnostics, etc.
+ *
+ * **Staging** (`SITE_ACCESS_MODE=locked`): **NOTHING** in this list is public.
+ * `isPublicReaderPath()` always returns `false` when the site is locked. Every route
+ * here must call `authorizeReaderApiRequest` (API) or `requireReaderPageSession` (page)
+ * from `editorial-session.ts` so locked staging requires an Auth0 session first.
+ *
+ * **Never** add staging-only public exceptions. To test reader flows on staging,
+ * sign in at `/` (editor or admin role), then open the route.
+ *
+ * **Not listed here** (separate rules):
+ * - `/_emdash/*` — EmDash OAuth/MCP; own auth in middleware (`AUTH_BYPASS_RULES`)
+ * - `/auth/*` — login wall must stay reachable on staging
+ * - `/` — staging login wall (not a reader bypass)
+ * - Editorial content (`/posts/*`, `/homepage`, EmDash pages) — gated by page handlers
+ *
+ * When adding a new production-public reader route, add it here **and** wire the handler
+ * through the central helpers. See `web/docs/STAGING_ACCESS.md`.
+ */
+export const PUBLIC_READER_PATHS = [
+  '/submit-a-tip',
+  '/tip-source',
+  '/api/story-tips',
+  '/api/tip-source.json',
+  '/api/version.json',
+  '/api/push-subscriptions',
+  '/api/notification-diagnostics',
+  '/api/push-test-notification',
+  '/api/recent-published-posts.json',
+  '/manifest.webmanifest',
+] as const;
+
+export function normalizePathname(pathname: string): string {
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    return pathname.slice(0, -1);
+  }
+
+  return pathname;
+}
+
+export function isPublicReaderPath(pathname: string): boolean {
+  if (isLockedSiteAccess()) {
+    return false;
+  }
+
+  const normalized = normalizePathname(pathname);
+  return PUBLIC_READER_PATHS.some((path) => normalized === path);
+}
+
 /** Editorial home URL: `/homepage` on locked staging, `/` on public production. */
 export function getHomePath(): '/' | '/homepage' {
   return isLockedSiteAccess() ? '/homepage' : '/';
@@ -203,6 +256,18 @@ export function hasAdminRole(payload: JWTPayload): boolean {
   }
 
   return false;
+}
+
+/**
+ * Any role that may complete Auth0 login on the site (`admin` or `editor`).
+ * Freedom Times `/admin/*` tools require `admin` only; `editor` is for editorial content.
+ */
+export function hasStaffLoginRole(payload: JWTPayload): boolean {
+  return hasEditorialRole(payload);
+}
+
+export function getPostLoginPath(_payload: JWTPayload): '/' | '/homepage' {
+  return getHomePath();
 }
 
 export function hasEditorialRole(payload: JWTPayload): boolean {

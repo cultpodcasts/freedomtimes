@@ -9,7 +9,7 @@ param(
 
 .DESCRIPTION
   Loads Turso build credentials from repo-root .env.dev, runs npm run build in web/,
-  then deploys freedomtimes-holding-staging and freedomtimes-scheduler-staging via npx wrangler.
+  then deploys freedomtimes-staging and freedomtimes-scheduler-staging via npx wrangler.
 
   Required in .env.dev:
     TURSO_DATABASE_URL, TURSO_AUTH_TOKEN
@@ -188,6 +188,8 @@ if ($SyncCloudflareWorkerSecrets) {
 
 Write-Step "Building web (npm run build)"
 $buildStartedAt = Get-Date
+. "$PSScriptRoot/build-provenance-env.ps1"
+Set-BuildProvenanceEnv -RepoRoot $repoRoot
 Push-Location (Join-Path $repoRoot "web")
 try {
     & npm run build
@@ -204,7 +206,7 @@ Assert-FreshWebBuild -DistDir $webDistDir -BuildStartedAt $buildStartedAt
 
 $webVarArgs = Get-StagingWebWranglerVarArgs
 
-Write-Step "Deploying web worker (freedomtimes-holding-staging)"
+Write-Step "Deploying web worker (freedomtimes-staging)"
 Push-Location $repoRoot
 try {
     & npx wrangler deploy --config .\web\wrangler.jsonc --env staging $webVarArgs
@@ -229,7 +231,7 @@ finally {
 }
 
 Write-Step "Staging workers deploy complete"
-Write-Host "Web worker:    freedomtimes-holding-staging" -ForegroundColor Green
+Write-Host "Web worker:    freedomtimes-staging" -ForegroundColor Green
 Write-Host "Scheduler:     freedomtimes-scheduler-staging" -ForegroundColor Green
 Write-Host "Staging site:  $stagingSiteOrigin" -ForegroundColor Green
 

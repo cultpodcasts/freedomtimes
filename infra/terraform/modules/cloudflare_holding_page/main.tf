@@ -25,10 +25,15 @@ resource "cloudflare_workers_script" "holding_page" {
   compatibility_date = var.worker_compatibility_date
   logpush    = true
 
-  # Wrangler owns deployed Worker bundle content; Terraform manages routing/domain bindings.
+  # Wrangler owns deployed Worker bundle content and runtime metadata; Terraform manages name/routing.
   lifecycle {
     ignore_changes = [
       content,
+      module,
+      compatibility_date,
+      compatibility_flags,
+      logpush,
+      tags,
       plain_text_binding,
       r2_bucket_binding,
       kv_namespace_binding,

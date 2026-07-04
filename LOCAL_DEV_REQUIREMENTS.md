@@ -2,6 +2,8 @@
 
 This is a living checklist for setting up and validating local development for Freedom Times.
 
+**Windows CLI paths:** **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** is the primary reference for where Terraform vs Turso run (Windows native vs WSL) and how to verify installs when `terraform` or `turso` is not found.
+
 ## Local environment files
 
 Copy [`.env.dev.example`](.env.dev.example) → `.env.dev` (repo root) and [`web/.env.example`](web/.env.example) → `web/.env`. Turso sync scripts, variable sources, and dev-server Turso requirements: **[web/docs/ENV_DEV.md](web/docs/ENV_DEV.md)**.
@@ -10,12 +12,12 @@ Copy [`.env.dev.example`](.env.dev.example) → `.env.dev` (repo root) and [`web
 
 - Git
 - GitHub CLI (`gh`) with access to this repository
-- Terraform CLI (for IaC deployment workflows)
+- Terraform CLI (IaC) and Turso CLI (backups, rollback branches) — see **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (Terraform on Windows; Turso in WSL). Turso backup workflow: [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md)
 - A code editor (VS Code recommended)
 
 ## Verified in This Workspace
 
-- Terraform: `v1.14.8` (`terraform -version`)
+- Terraform `v1.14.8` and Turso via WSL — verification commands in **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)**
 
 ## GitHub Access
 
@@ -57,6 +59,10 @@ Local automation helpers (recommended):
 - Validate environment and provider credentials:
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment staging -LoadEnvFiles`
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment production -LoadEnvFiles`
+- **Production Worker deploy without Terraform apply** (when `.env.dev` has production Turso keys):
+   - `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` — verify Turso credential resolution
+   - `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction` — build + wrangler deploy
+   - Refresh production Turso URLs/tokens in `.env.dev`: `pwsh ./scripts/sync-production-turso-env-dev.ps1`
 - Run Terraform non-interactively:
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles`
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFiles`
@@ -78,15 +84,11 @@ Notes:
 
 ## Cloudflare Token Permissions (Track This)
 
-Current required permissions for `TF_VAR_cloudflare_api_token`:
+See **[infra/terraform/CLOUDFLARE_API_TOKEN.md](infra/terraform/CLOUDFLARE_API_TOKEN.md)** for the full permission matrix, dashboard walkthrough, and TFC / `.env.dev` sync.
 
-- Account: `Workers Scripts: Edit`
-- Zone: `Workers Routes: Edit`
-- Zone: `Zone: Read`
+Terraform-only minimum: Account **Workers Scripts → Edit**, **Turnstile → Edit**; Zone **Workers Routes → Edit**, **Workers Domains → Edit** (if listed), **Zone → Read**. CI Wrangler deploy may also need **Workers KV Storage → Edit**.
 
-Scope the token to the specific Freedom Times account and zone only.
-
-If Terraform resources change later (for example DNS records, KV namespace management, cache operations), update this section before expanding token permissions.
+If Terraform resources change later, update that guide before expanding token permissions.
 
 ## Next Items to Add Here
 

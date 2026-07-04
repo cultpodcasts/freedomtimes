@@ -2,8 +2,25 @@
 [CmdletBinding()]
 param(
     [switch]$SyncCloudflareWorkerSecrets,
-    [switch]$AllowProduction
+    [switch]$AllowProduction,
+    [switch]$DryRun
 )
+
+<#
+.SYNOPSIS
+  Build and deploy the production Cloudflare Worker without GitHub Actions.
+
+.DESCRIPTION
+  Resolves EmDash Turso build credentials from Terraform outputs when present,
+  otherwise from repo-root .env.dev (TURSO_PRODUCTION_EMDASH_* or production-prefixed
+  scheduler/subscriptions/tips URLs for derivation). Terraform apply is not required
+  when .env.dev is populated.
+
+  Use -DryRun to verify credential resolution without building or deploying.
+
+.EXAMPLE
+  pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun
+#>
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -13,6 +30,8 @@ if (-not $AllowProduction) {
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
+Initialize-WindowsCliPath
 $productionEnvDir = Join-Path $repoRoot "infra/terraform/environments/production"
 $secretSyncScript = Join-Path $PSScriptRoot "set-github-secrets.ps1"
 
@@ -22,26 +41,35 @@ function Write-Step {
     Write-Host "[$timestamp] $Message" -ForegroundColor Cyan
 }
 
-function Get-TerraformOutputRaw {
-    param([string]$Name)
-    Push-Location $productionEnvDir
-    try {
-        $value = (& terraform output -raw $Name).Trim()
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($value)) {
-            throw "Failed to read terraform output '$Name' from $productionEnvDir. Run terraform apply or fix credentials."
-        }
-        return $value
+function Get-WorkerNameForDisplay {
+    . "$PSScriptRoot/resolve-turso-build-credentials.ps1"
+    $terraformExe = Resolve-TerraformExecutable
+    $workerName = Try-TerraformOutputRaw -TerraformExe $terraformExe -TerraformEnvDir $productionEnvDir -OutputName "worker_name"
+    if (-not [string]::IsNullOrWhiteSpace($workerName)) {
+        return $workerName
     }
-    finally {
-        Pop-Location
+
+    $workerFromEnv = [Environment]::GetEnvironmentVariable("TF_VAR_WORKER_NAME_PRODUCTION", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($workerFromEnv)) {
+        return $workerFromEnv.Trim()
     }
+
+    return "freedomtimes"
 }
 
 Write-Step "Local production Worker deploy (no GitHub Actions)"
-Write-Step "Reading Turso build credentials from Terraform outputs"
+Write-Step "Resolving Turso build credentials (Terraform or .env.dev)"
 
-$env:TURSO_DATABASE_URL = Get-TerraformOutputRaw -Name "turso_database_url"
-$env:TURSO_AUTH_TOKEN   = Get-TerraformOutputRaw -Name "turso_database_auth_token"
+. "$PSScriptRoot/resolve-turso-build-credentials.ps1"
+$resolved = Set-TursoBuildEnv -Environment production -RepoRoot $repoRoot
+Write-Host "  TURSO_DATABASE_URL <= $($resolved.Url.Source)" -ForegroundColor DarkGray
+Write-Host "  TURSO_AUTH_TOKEN   <= $($resolved.Token.Source)" -ForegroundColor DarkGray
+
+if ($DryRun) {
+    Write-Step "Dry run complete — Turso credentials resolved; skipping build and deploy"
+    Write-Host "Worker name (display): $(Get-WorkerNameForDisplay)" -ForegroundColor Green
+    return
+}
 
 if ($SyncCloudflareWorkerSecrets) {
     Write-Step "Syncing Worker secrets to Cloudflare from .env files"
@@ -56,6 +84,8 @@ if ($SyncCloudflareWorkerSecrets) {
 }
 
 Write-Step "Building web (npm run build)"
+. "$PSScriptRoot/build-provenance-env.ps1"
+Set-BuildProvenanceEnv -RepoRoot $repoRoot
 Push-Location (Join-Path $repoRoot "web")
 try {
     & npm run build
@@ -80,4 +110,4 @@ finally {
 }
 
 Write-Step "Production Worker deploy finished"
-Write-Host "Worker name: $(Get-TerraformOutputRaw -Name 'worker_name')" -ForegroundColor Green
+Write-Host "Worker name: $(Get-WorkerNameForDisplay)" -ForegroundColor Green

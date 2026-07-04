@@ -1,4 +1,7 @@
 
+# Local production rebuild: Terraform apply -> Auth0 .env.dev sync -> Worker secret sync -> build -> wrangler deploy.
+# Preflight requires production VAPID + FCM keys in .env.dev (Assert-ProductionPushSecretsReady).
+# Troubleshooting (FCM preflight, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle): web/docs/DEPLOY_TROUBLESHOOTING.md
 [CmdletBinding()]
 param()
 
@@ -6,6 +9,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
+Initialize-WindowsCliPath
 $terraformRunScript = Join-Path $PSScriptRoot "terraform-run.ps1"
 $secretSyncScript = Join-Path $PSScriptRoot "set-github-secrets.ps1"
 $productionEnvDir = Join-Path $repoRoot "infra/terraform/environments/production"
@@ -182,6 +187,9 @@ function Invoke-WorkerBuild {
     # Set build-time env vars required by astro.config.ts from Terraform outputs
     $env:TURSO_DATABASE_URL = Get-TerraformOutputRaw -Name "turso_database_url"
     $env:TURSO_AUTH_TOKEN   = Get-TerraformOutputRaw -Name "turso_database_auth_token"
+
+    . "$PSScriptRoot/build-provenance-env.ps1"
+    Set-BuildProvenanceEnv -RepoRoot $repoRoot
 
     Push-Location (Join-Path $repoRoot "web")
     try {

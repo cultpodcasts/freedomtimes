@@ -1,0 +1,991 @@
+---
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { requireNotificationDiagnosticsSession } from '../../lib/notification-diagnostics-session';
+
+export const prerender = false;
+
+const session = await requireNotificationDiagnosticsSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+---
+
+<Layout
+	title="Push notification diagnostics"
+	description="Review reader-submitted push notification troubleshooting reports."
+	canonicalUrl={Astro.url.href}
+>
+	<Header section="Push diagnostics" isAdmin={true} isSignedIn={true} />
+	<article class="diagnostics-admin">
+		<h1>Push notification diagnostics</h1>
+		<p class="lede">
+			Signed in as {session.displayName}. Reports are stored in the subscriptions database — not in EmDash.
+		</p>
+
+		<div class="toolbar">
+			<label class="toolbar__filter">
+				<span class="toolbar__label">Status</span>
+				<select id="diagnostics-filter" class="toolbar__select">
+					<option value="new" selected>New</option>
+					<option value="reviewed">Reviewed</option>
+					<option value="archived">Archived</option>
+					<option value="all">All</option>
+				</select>
+			</label>
+			<div class="toolbar__actions">
+				<p id="diagnostics-status" class="toolbar__count" aria-live="polite"></p>
+				<button id="diagnostics-refresh" type="button" class="btn btn--secondary">Refresh</button>
+			</div>
+		</div>
+
+		<div id="diagnostics-list" class="diagnostics-list" role="list"></div>
+	</article>
+</Layout>
+
+<script>
+	function readCookie(name) {
+		const prefix = `${name}=`;
+		const parts = document.cookie.split(';');
+		for (const part of parts) {
+			const trimmed = part.trim();
+			if (trimmed.startsWith(prefix)) {
+				return decodeURIComponent(trimmed.slice(prefix.length));
+			}
+		}
+		return '';
+	}
+
+	function escapeHtml(value) {
+		return String(value)
+			.replaceAll('&', '&amp;')
+			.replaceAll('<', '&lt;')
+			.replaceAll('>', '&gt;')
+			.replaceAll('"', '&quot;');
+	}
+
+	function formatWhen(value) {
+		const date = new Date(value);
+		return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+	}
+
+	function formatLabel(value) {
+		if (!value) return '—';
+		return String(value)
+			.replaceAll('_', ' ')
+			.replace(/\b\w/g, (char) => char.toUpperCase());
+	}
+
+	function statusLabel(status) {
+		const labels = { new: 'New', reviewed: 'Reviewed', archived: 'Archived' };
+		return labels[status] || status;
+	}
+
+	function renderActionButton(action, label, currentStatus) {
+		const disabled =
+			(action === 'reviewed' && currentStatus === 'reviewed') ||
+			(action === 'archived' && currentStatus === 'archived') ||
+			(action === 'new' && currentStatus === 'new');
+
+		const variant =
+			action === 'reviewed' && currentStatus === 'new'
+				? 'btn--primary'
+				: action === 'archived'
+					? 'btn--secondary'
+					: 'btn--ghost';
+
+		const disabledAttr = disabled ? ' disabled aria-disabled="true"' : '';
+		return `<button type="button" class="btn ${variant}" data-action="${action}"${disabledAttr}>${label}</button>`;
+	}
+
+	function permissionBadgeClass(permission) {
+		switch (permission) {
+			case 'granted':
+				return 'badge--ok';
+			case 'denied':
+				return 'badge--error';
+			case 'default':
+				return 'badge--warn';
+			default:
+				return 'badge--muted';
+		}
+	}
+
+	function boolLabel(value) {
+		return value ? 'Yes' : 'No';
+	}
+
+	function buttonStateSummary(snapshot) {
+		if (!snapshot) {
+			return null;
+		}
+
+		const label = snapshot.buttonLabel || 'Enable notifications';
+		const disabled = snapshot.buttonDisabled === true;
+		const reason = snapshot.buttonDisabledReason || null;
+
+		if (disabled && reason) {
+			return `Button: disabled — ${reason}`;
+		}
+		if (disabled) {
+			return `Button: disabled (${label})`;
+		}
+		return `Button: enabled — ${label}`;
+	}
+
+	function buttonBadgeClass(snapshot) {
+		if (!snapshot) {
+			return 'badge--muted';
+		}
+		if (snapshot.buttonDisabled === true) {
+			return snapshot.buttonDisabledReason?.toLowerCase().includes('subscribed')
+				? 'badge--ok'
+				: 'badge--warn';
+		}
+		return 'badge--ok';
+	}
+
+	function testSendStatusLabel(test) {
+		if (!test) {
+			return 'Not attempted';
+		}
+		switch (test.sendStatus) {
+			case 'success':
+				return 'Sent OK';
+			case 'error':
+				return 'Send failed';
+			case 'pending':
+				return 'Pending';
+			default:
+				return formatLabel(test.sendStatus);
+		}
+	}
+
+	function testSendBadgeClass(test) {
+		if (!test) {
+			return 'badge--muted';
+		}
+		switch (test.sendStatus) {
+			case 'success':
+				return 'badge--ok';
+			case 'error':
+				return 'badge--error';
+			case 'pending':
+				return 'badge--warn';
+			default:
+				return 'badge--muted';
+		}
+	}
+
+	function receivedOnDeviceLabel(value) {
+		if (value === true) {
+			return 'Yes';
+		}
+		if (value === false) {
+			return 'No';
+		}
+		return 'Unknown (browser does not confirm display)';
+	}
+
+	function receivedOnDeviceBadgeClass(value) {
+		if (value === true) {
+			return 'badge--ok';
+		}
+		if (value === false) {
+			return 'badge--error';
+		}
+		return 'badge--muted';
+	}
+
+	function renderTestNotificationSection(snapshot) {
+		const test = snapshot?.lastTestNotification ?? null;
+		const statusLabel = testSendStatusLabel(test);
+
+		if (!test) {
+			return `
+				<div class="diag-card__test diag-card__test--empty">
+					<p class="diag-card__test-heading">Test notification</p>
+					<p class="diag-card__test-badges">
+						<span class="badge ${testSendBadgeClass(test)}">${escapeHtml(statusLabel)}</span>
+					</p>
+					<p class="diag-card__test-empty-note">No test notification in this report.</p>
+				</div>
+			`;
+		}
+
+		const rows = [
+			['Message', test.sendMessage || '—'],
+			['Delivery', test.delivery || '—'],
+			['HTTP status', test.httpStatus != null ? String(test.httpStatus) : '—'],
+			['Attempted at', test.attemptedAt ? formatWhen(test.attemptedAt) : '—'],
+			['Received at', test.receivedAt ? formatWhen(test.receivedAt) : '—'],
+		];
+
+		const detailRows = rows
+			.map(
+				([label, value]) => `
+					<p>
+						<span class="diag-card__status-label">${escapeHtml(label)}</span>
+						${escapeHtml(value)}
+					</p>
+				`,
+			)
+			.join('');
+
+		return `
+			<div class="diag-card__test">
+				<p class="diag-card__test-heading">Test notification</p>
+				<p class="diag-card__test-badges">
+					<span class="badge ${testSendBadgeClass(test)}">${escapeHtml(statusLabel)}</span>
+					<span class="badge ${receivedOnDeviceBadgeClass(test.receivedOnDevice)}">
+						Received on device: ${escapeHtml(receivedOnDeviceLabel(test.receivedOnDevice))}
+					</span>
+				</p>
+				${detailRows}
+			</div>
+		`;
+	}
+
+	function renderSnapshotDetails(snapshot) {
+		if (!snapshot) {
+			return `
+				<details class="diag-card__details">
+					<summary>Technical snapshot</summary>
+					<p class="diag-card__snapshot-error">Unable to parse stored snapshot JSON.</p>
+				</details>
+			`;
+		}
+
+		const rows = [
+			['Browser', `${formatLabel(snapshot.browserFamily)}${snapshot.browserVersionMajor ? ` ${snapshot.browserVersionMajor}` : ''}`],
+			['OS', formatLabel(snapshot.osFamily)],
+			['Platform', formatLabel(snapshot.platformType)],
+			['Page path', snapshot.pagePath || '—'],
+			['Notification permission', formatLabel(snapshot.notificationPermission)],
+			['Service worker supported', boolLabel(snapshot.serviceWorkerSupported)],
+			['Service worker registered', boolLabel(snapshot.serviceWorkerRegistered)],
+			['Service worker state', formatLabel(snapshot.serviceWorkerState)],
+			['Push manager supported', boolLabel(snapshot.pushManagerSupported)],
+			['Has push subscription', boolLabel(snapshot.hasPushSubscription)],
+			['Push endpoint host', snapshot.pushEndpointHost || '—'],
+			['Standalone PWA', boolLabel(snapshot.isStandalonePwa)],
+			['VAPID configured', boolLabel(snapshot.vapidConfigured)],
+			['Button disabled', boolLabel(snapshot.buttonDisabled)],
+			['Button label', snapshot.buttonLabel || '—'],
+			['Button disabled reason', snapshot.buttonDisabledReason || '—'],
+			['Support message', snapshot.supportMessage || '—'],
+			['Last error', snapshot.lastErrorMessage || '—'],
+			[
+				'Test notification',
+				snapshot.lastTestNotification
+					? testSendStatusLabel(snapshot.lastTestNotification)
+					: 'Not attempted',
+			],
+			[
+				'Test send message',
+				snapshot.lastTestNotification?.sendMessage || '—',
+			],
+			[
+				'Test delivery',
+				snapshot.lastTestNotification?.delivery || '—',
+			],
+			[
+				'Test HTTP status',
+				snapshot.lastTestNotification?.httpStatus != null
+					? String(snapshot.lastTestNotification.httpStatus)
+					: '—',
+			],
+			[
+				'Received on device',
+				snapshot.lastTestNotification
+					? receivedOnDeviceLabel(snapshot.lastTestNotification.receivedOnDevice)
+					: '—',
+			],
+			[
+				'Test attempted at',
+				snapshot.lastTestNotification?.attemptedAt
+					? formatWhen(snapshot.lastTestNotification.attemptedAt)
+					: '—',
+			],
+			[
+				'Test received at',
+				snapshot.lastTestNotification?.receivedAt
+					? formatWhen(snapshot.lastTestNotification.receivedAt)
+					: '—',
+			],
+		];
+
+		const tableRows = rows
+			.map(
+				([label, value]) => `
+					<tr>
+						<th scope="row">${escapeHtml(label)}</th>
+						<td>${escapeHtml(value)}</td>
+					</tr>
+				`,
+			)
+			.join('');
+
+		return `
+			<details class="diag-card__details">
+				<summary>Technical snapshot</summary>
+				<table class="diag-card__table">
+					<tbody>${tableRows}</tbody>
+				</table>
+				<details class="diag-card__raw">
+					<summary>Raw JSON</summary>
+					<pre class="diag-card__json">${escapeHtml(JSON.stringify(snapshot, null, 2))}</pre>
+				</details>
+			</details>
+		`;
+	}
+
+	function renderReport(report) {
+		const snapshot = report.snapshot;
+		const permission = snapshot?.notificationPermission || 'unknown';
+		const browser = snapshot ? formatLabel(snapshot.browserFamily) : 'Unknown';
+		const os = snapshot ? formatLabel(snapshot.osFamily) : 'Unknown';
+		const userNote = report.userNote?.trim();
+		const buttonSummary = buttonStateSummary(snapshot);
+		const supportMessage = snapshot?.supportMessage?.trim();
+		const lastError = snapshot?.lastErrorMessage?.trim();
+		const test = snapshot?.lastTestNotification ?? null;
+		const testStatusLabel = test
+			? `Test: ${testSendStatusLabel(test)}`
+			: 'Test: not attempted';
+		const status = report.status || 'new';
+		const safeStatus = ['new', 'reviewed', 'archived'].includes(status) ? status : 'new';
+
+		return `
+			<section class="diag-card" role="listitem" data-report-id="${escapeHtml(report.id)}" data-status="${escapeHtml(safeStatus)}">
+				<header class="diag-card__header">
+					<div class="diag-card__meta">
+						<span class="status-badge status-badge--${escapeHtml(safeStatus)}">${escapeHtml(statusLabel(safeStatus))}</span>
+						<time class="diag-card__time" datetime="${escapeHtml(report.createdAt)}">${escapeHtml(formatWhen(report.createdAt))}</time>
+						<span class="badge ${permissionBadgeClass(permission)}">${escapeHtml(formatLabel(permission))}</span>
+						<span class="badge ${testSendBadgeClass(test)}">${escapeHtml(testStatusLabel)}</span>
+						<span class="badge badge--muted">${escapeHtml(browser)}</span>
+						<span class="badge badge--muted">${escapeHtml(os)}</span>
+						${snapshot?.platformType ? `<span class="badge badge--muted">${escapeHtml(formatLabel(snapshot.platformType))}</span>` : ''}
+					</div>
+					<div class="diag-card__actions">
+						${renderActionButton('reviewed', 'Mark reviewed', safeStatus)}
+						${renderActionButton('archived', 'Archive', safeStatus)}
+						${renderActionButton('new', 'Reopen', safeStatus)}
+					</div>
+					${
+						buttonSummary
+							? `<p class="diag-card__button-state"><span class="badge ${buttonBadgeClass(snapshot)}">${escapeHtml(buttonSummary)}</span></p>`
+							: ''
+					}
+				</header>
+				${
+					supportMessage || lastError
+						? `<div class="diag-card__status">
+							${supportMessage ? `<p><span class="diag-card__status-label">Support message</span> ${escapeHtml(supportMessage)}</p>` : ''}
+							${lastError ? `<p class="diag-card__status-error"><span class="diag-card__status-label">Last error</span> ${escapeHtml(lastError)}</p>` : ''}
+						</div>`
+						: ''
+				}
+				${renderTestNotificationSection(snapshot)}
+				${
+					userNote
+						? `<div class="diag-card__note"><span class="diag-card__note-label">Reader note</span><p>${escapeHtml(userNote).replaceAll('\n', '<br />')}</p></div>`
+						: `<p class="diag-card__note diag-card__note--empty">No reader note submitted.</p>`
+				}
+				${renderSnapshotDetails(snapshot)}
+			</section>
+		`;
+	}
+
+	const filterEl = document.querySelector('#diagnostics-filter');
+	const refreshEl = document.querySelector('#diagnostics-refresh');
+	const statusEl = document.querySelector('#diagnostics-status');
+	const listEl = document.querySelector('#diagnostics-list');
+
+	async function loadReports() {
+		if (
+			!(filterEl instanceof HTMLSelectElement)
+			|| !(statusEl instanceof HTMLElement)
+			|| !(listEl instanceof HTMLElement)
+		) {
+			return;
+		}
+
+		const filter = filterEl.value;
+		const query = filter === 'all' ? '' : `?status=${encodeURIComponent(filter)}`;
+		statusEl.textContent = 'Loading…';
+		statusEl.classList.remove('toolbar__count--empty', 'toolbar__count--error');
+		listEl.innerHTML = '';
+
+		try {
+			const response = await fetch(`/api/admin/notification-diagnostics${query}`, {
+				credentials: 'include',
+			});
+			const body = await response.json();
+
+			if (!response.ok) {
+				statusEl.textContent = body.error || 'Unable to load reports.';
+				statusEl.classList.add('toolbar__count--error');
+				return;
+			}
+
+			const reports = Array.isArray(body.reports) ? body.reports : [];
+			statusEl.textContent =
+				reports.length === 0
+					? 'No reports in this view'
+					: `${reports.length} report${reports.length === 1 ? '' : 's'}`;
+			statusEl.classList.toggle('toolbar__count--empty', reports.length === 0);
+
+			listEl.innerHTML = reports.map(renderReport).join('');
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			statusEl.textContent = `Request failed: ${message}`;
+			statusEl.classList.add('toolbar__count--error');
+		}
+	}
+
+	async function patchReport(id, payload) {
+		const csrfToken = readCookie('ft_csrf');
+		const response = await fetch(`/api/admin/notification-diagnostics/${encodeURIComponent(id)}`, {
+			method: 'PATCH',
+			credentials: 'include',
+			headers: {
+				'content-type': 'application/json',
+				...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+			},
+			body: JSON.stringify(payload),
+		});
+
+		const body = await response.json();
+		if (!response.ok) {
+			throw new Error(body.error || 'Update failed.');
+		}
+
+		return body.report;
+	}
+
+	listEl?.addEventListener('click', async (event) => {
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return;
+
+		const card = target.closest('[data-report-id]');
+		if (!(card instanceof HTMLElement)) return;
+
+		const id = card.dataset.reportId;
+		const action = target.dataset.action;
+		if (!id || !action) return;
+
+		if (target instanceof HTMLButtonElement && target.disabled) return;
+
+		if (action !== 'reviewed' && action !== 'archived' && action !== 'new') {
+			return;
+		}
+
+		try {
+			await patchReport(id, { status: action });
+			await loadReports();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (statusEl instanceof HTMLElement) {
+				statusEl.textContent = message;
+				statusEl.classList.add('toolbar__count--error');
+			}
+		}
+	});
+
+	filterEl?.addEventListener('change', loadReports);
+	refreshEl?.addEventListener('click', loadReports);
+	loadReports();
+</script>
+
+<style>
+	.diagnostics-admin {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+	}
+
+	.lede {
+		margin: 0 0 2rem;
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
+
+	.toolbar {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 1rem 1.5rem;
+		margin-bottom: 1.5rem;
+		padding: 1rem 1.15rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+		background: #fafafa;
+	}
+
+	.toolbar__filter {
+		display: grid;
+		gap: 0.4rem;
+		min-width: min(100%, 12rem);
+	}
+
+	.toolbar__label {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.toolbar__select {
+		font: inherit;
+		font-family: 'Inter', sans-serif;
+		padding: 0.6rem 0.75rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 4px;
+		background: #fff;
+		cursor: pointer;
+		transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	}
+
+	.toolbar__select:focus-visible {
+		outline: none;
+		border-color: #888;
+		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+	}
+
+	.toolbar__actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem 1rem;
+	}
+
+	.toolbar__count {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.toolbar__count--empty {
+		color: var(--text-secondary);
+		font-weight: 500;
+	}
+
+	.toolbar__count--error {
+		color: #7a271a;
+		font-weight: 600;
+	}
+
+	.diagnostics-list {
+		display: grid;
+		gap: 1.25rem;
+	}
+
+	.diagnostics-admin :global(.diag-card) {
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+		padding: 1.25rem 1.35rem;
+		background: #fff;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+	}
+
+	.diagnostics-admin :global(.diag-card__header) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.85rem 1.25rem;
+		margin-bottom: 1rem;
+		padding-bottom: 0.85rem;
+		border-bottom: 1px solid var(--border-subtle);
+	}
+
+	.diagnostics-admin :global(.diag-card__meta) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.55rem 0.65rem;
+	}
+
+	.diagnostics-admin :global(.status-badge) {
+		display: inline-block;
+		padding: 0.2rem 0.6rem;
+		border-radius: 999px;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		line-height: 1.4;
+	}
+
+	.diagnostics-admin :global(.status-badge--new) {
+		background: #fce8e8;
+		color: #7a1a1a;
+	}
+
+	.diagnostics-admin :global(.status-badge--reviewed) {
+		background: #edf7f1;
+		color: #2d6a4f;
+	}
+
+	.diagnostics-admin :global(.status-badge--archived) {
+		background: #f0f0f0;
+		color: #555555;
+	}
+
+	.diagnostics-admin :global(.diag-card__actions) {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__button-state) {
+		flex: 1 1 100%;
+		margin: 0;
+	}
+
+	.diagnostics-admin :global(.diag-card__button-state .badge) {
+		text-transform: none;
+		letter-spacing: 0.01em;
+		font-size: 0.82rem;
+		font-weight: 600;
+		line-height: 1.35;
+		padding: 0.35rem 0.7rem;
+		white-space: normal;
+		max-width: 100%;
+	}
+
+	.diagnostics-admin :global(.diag-card__status) {
+		margin: 0 0 1rem;
+		padding: 0.75rem 0.9rem;
+		border-radius: 6px;
+		background: #f8fafc;
+		border: 1px solid var(--border-subtle);
+		display: grid;
+		gap: 0.45rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__status p) {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+		line-height: 1.5;
+		color: var(--text-primary);
+	}
+
+	.diagnostics-admin :global(.diag-card__status-error) {
+		color: #7a1a1a;
+	}
+
+	.diagnostics-admin :global(.diag-card__status-label) {
+		display: inline-block;
+		margin-right: 0.35rem;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.diagnostics-admin :global(.diag-card__test) {
+		margin: 0 0 1rem;
+		padding: 0.75rem 0.9rem;
+		border-radius: 6px;
+		background: #f4f8fb;
+		border: 1px solid var(--border-subtle);
+		display: grid;
+		gap: 0.45rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__test-heading) {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.diagnostics-admin :global(.diag-card__test-badges) {
+		margin: 0;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.45rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__test-badges .badge) {
+		text-transform: none;
+		letter-spacing: 0.01em;
+		font-size: 0.78rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__test p) {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+		line-height: 1.5;
+		color: var(--text-primary);
+	}
+
+	.diagnostics-admin :global(.diag-card__test-empty-note) {
+		color: var(--text-secondary);
+		font-style: italic;
+	}
+
+	.diagnostics-admin :global(.diag-card__time) {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		color: var(--text-secondary);
+		margin-right: 0.25rem;
+	}
+
+	.diagnostics-admin :global(.badge) {
+		display: inline-block;
+		padding: 0.2rem 0.6rem;
+		border-radius: 999px;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		line-height: 1.4;
+	}
+
+	.diagnostics-admin :global(.badge--ok) {
+		background: #edf7f1;
+		color: #2d6a4f;
+	}
+
+	.diagnostics-admin :global(.badge--error) {
+		background: #fce8e8;
+		color: #7a1a1a;
+	}
+
+	.diagnostics-admin :global(.badge--warn) {
+		background: #fff4e5;
+		color: #8a5a00;
+	}
+
+	.diagnostics-admin :global(.badge--muted) {
+		background: #f0f0f0;
+		color: #555555;
+	}
+
+	.diagnostics-admin :global(.diag-card__note) {
+		margin: 0 0 1rem;
+		padding: 0.85rem 1rem;
+		border-radius: 6px;
+		background: #f7f7f7;
+		border: 1px solid var(--border-subtle);
+	}
+
+	.diagnostics-admin :global(.diag-card__note-label) {
+		display: block;
+		margin-bottom: 0.35rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--text-secondary);
+	}
+
+	.diagnostics-admin :global(.diag-card__note p) {
+		margin: 0;
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-primary);
+		white-space: pre-wrap;
+	}
+
+	.diagnostics-admin :global(.diag-card__note--empty) {
+		font-style: italic;
+		color: var(--text-secondary);
+		background: transparent;
+		border: none;
+		padding: 0;
+	}
+
+	.diagnostics-admin :global(.diag-card__details) {
+		margin-top: 0.25rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__details > summary),
+	.diagnostics-admin :global(.diag-card__raw > summary) {
+		cursor: pointer;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+		user-select: none;
+	}
+
+	.diagnostics-admin :global(.diag-card__details > summary:hover),
+	.diagnostics-admin :global(.diag-card__raw > summary:hover) {
+		color: var(--text-primary);
+	}
+
+	.diagnostics-admin :global(.diag-card__table) {
+		width: 100%;
+		margin: 0.85rem 0 0;
+		border-collapse: collapse;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__table th) {
+		width: 42%;
+		padding: 0.45rem 0.65rem 0.45rem 0;
+		text-align: left;
+		vertical-align: top;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.diagnostics-admin :global(.diag-card__table td) {
+		padding: 0.45rem 0;
+		color: var(--text-primary);
+		word-break: break-word;
+	}
+
+	.diagnostics-admin :global(.diag-card__raw) {
+		margin-top: 0.75rem;
+	}
+
+	.diagnostics-admin :global(.diag-card__json) {
+		margin: 0.65rem 0 0;
+		padding: 0.85rem;
+		border-radius: 6px;
+		background: #fafafa;
+		border: 1px solid var(--border-subtle);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.78rem;
+		line-height: 1.5;
+		overflow-x: auto;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
+	.diagnostics-admin :global(.diag-card__snapshot-error) {
+		margin: 0.75rem 0 0;
+		color: #7a271a;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+	}
+
+	.btn,
+	.diagnostics-admin :global(.btn) {
+		font: inherit;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		font-weight: 600;
+		line-height: 1.2;
+		padding: 0.55rem 1rem;
+		border-radius: 999px;
+		border: 1px solid transparent;
+		cursor: pointer;
+		transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+	}
+
+	.btn:focus-visible,
+	.diagnostics-admin :global(.btn:focus-visible) {
+		outline: none;
+		box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
+	}
+
+	.btn--primary,
+	.diagnostics-admin :global(.btn--primary) {
+		background: #7a1a1a;
+		border-color: #7a1a1a;
+		color: #fff;
+	}
+
+	.btn--primary:hover:not(:disabled),
+	.diagnostics-admin :global(.btn--primary:hover:not(:disabled)) {
+		background: #651515;
+		border-color: #651515;
+	}
+
+	.btn--secondary,
+	.diagnostics-admin :global(.btn--secondary) {
+		background: #fff;
+		border-color: var(--border-subtle);
+		color: var(--text-primary);
+	}
+
+	.btn--secondary:hover:not(:disabled),
+	.diagnostics-admin :global(.btn--secondary:hover:not(:disabled)) {
+		background: #f5f5f5;
+		border-color: #ccc;
+	}
+
+	.btn--ghost,
+	.diagnostics-admin :global(.btn--ghost) {
+		background: transparent;
+		border-color: transparent;
+		color: var(--text-secondary);
+		padding-left: 0.65rem;
+		padding-right: 0.65rem;
+	}
+
+	.btn--ghost:hover:not(:disabled),
+	.diagnostics-admin :global(.btn--ghost:hover:not(:disabled)) {
+		background: #f0f0f0;
+		color: var(--text-primary);
+	}
+
+	.btn:disabled,
+	.diagnostics-admin :global(.btn:disabled) {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	@media (max-width: 540px) {
+		.toolbar {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.toolbar__actions {
+			width: 100%;
+			justify-content: space-between;
+		}
+
+		.diagnostics-admin :global(.diag-card__header) {
+			flex-direction: column;
+		}
+
+		.diagnostics-admin :global(.diag-card__actions) {
+			width: 100%;
+		}
+
+		.diagnostics-admin :global(.diag-card__actions .btn) {
+			flex: 1 1 auto;
+			text-align: center;
+		}
+	}
+</style>

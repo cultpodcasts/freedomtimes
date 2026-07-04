@@ -2,6 +2,7 @@
 import Layout from "../layouts/Layout.astro";
 import Header from "../components/Header.astro";
 import PushNotificationsCallout from "../components/PushNotificationsCallout.astro";
+import ReaderDataProvenance from "../components/ReaderDataProvenance.astro";
 import Video from "../components/Video.astro";
 import Audio from "../components/Audio.astro";
 import PortableImage from "../components/PortableImage.astro";
@@ -27,7 +28,7 @@ const {
 	emdashCollection,
 	displayName,
 	isPreview = false,
-	isEditor = false,
+	isAdmin = false,
 	isSignedIn,
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
@@ -36,7 +37,7 @@ const {
 	emdashCollection: string;
 	displayName: string;
 	isPreview?: boolean;
-	isEditor?: boolean;
+	isAdmin?: boolean;
 	isSignedIn?: boolean;
 };
 
@@ -108,6 +109,9 @@ const publicationDateLabel =
 const socialTitle = publicationDateLabel
 	? `${title} - ${publicationDateLabel}`
 	: title;
+
+const entrySlug = typeof entry.slug === "string" ? entry.slug : String(entry.id ?? "");
+const showReaderDataProvenance = entrySlug === "privacy-policy";
 ---
 
 <Layout
@@ -130,7 +134,7 @@ const socialTitle = publicationDateLabel
 			sectionUrl={collectionLabel === "Archive"
 				? "/archives"
 				: getHomePath()}
-			isEditor={isEditor}
+			isAdmin={isAdmin}
 			isSignedIn={resolvedIsSignedIn}
 		/>
 
@@ -165,6 +169,7 @@ const socialTitle = publicationDateLabel
 					legacyBlocks={legacyBlocks}
 					portableComponents={portableComponents}
 				/>
+				{showReaderDataProvenance && <ReaderDataProvenance />}
 				<PushNotificationsCallout />
 			</section>
 		</div>

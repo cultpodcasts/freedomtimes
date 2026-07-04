@@ -58,6 +58,7 @@ function cloudflareOptimizeDepsBuildFix(): Plugin {
 export default defineConfig({
   output: 'server',
   vite: {
+    envPrefix: ['PUBLIC_', 'FT_', 'GITHUB_'],
     resolve: {
       alias: {
         '@libsql/kysely-libsql': libsqlShimPath,

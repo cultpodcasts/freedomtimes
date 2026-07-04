@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 
+import { authorizeReaderApiRequest } from '../../lib/editorial-session';
 import {
   readPushSubscriptionRequest,
   upsertPushSubscription,
@@ -7,7 +8,12 @@ import {
 
 export const prerender = false;
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ cookies, request, url }) => {
+  const auth = await authorizeReaderApiRequest({ cookies, request, url });
+  if (auth instanceof Response) {
+    return auth;
+  }
+
   const userAgent = readOptionalHeader(request, 'user-agent');
   const locale = readOptionalHeader(request, 'accept-language');
   const forwardedHost = readOptionalHeader(request, 'x-forwarded-host');

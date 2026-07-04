@@ -5,6 +5,7 @@ This guide documents how to manage Freedom Times environments locally and in CI/
 **Table of Contents:**
 - [Environment Architecture](#environment-architecture)
 - [Local Setup: Complete Teardown & Rebuild](#local-setup-complete-teardown--rebuild)
+- [Deploy troubleshooting](#deploy-troubleshooting)
 - [Syncing Secrets & Variables](#syncing-secrets--variables)
 - [GitHub Actions Deployment Workflow](#github-actions-deployment-workflow)
 - [Sync Script Reference](#sync-script-reference)
@@ -19,12 +20,12 @@ This guide documents how to manage Freedom Times environments locally and in CI/
 
 - **Staging**: `staging.freedomtimes.news`
   - Auth0 API: `https://api-staging.freedomtimes.news`
-  - Cloudflare Worker: `freedomtimes-holding-staging`
+  - Cloudflare Worker: `freedomtimes-staging`
   - Branched deployment: `feat/11-editorial-api-cosmos`
 
 - **Production**: `freedomtimes.news`
   - Auth0 API: `https://api.freedomtimes.news`
-  - Cloudflare Worker: `freedomtimes-holding`
+  - Cloudflare Worker: `freedomtimes`
   - Main branch deployment
 
 ### Infrastructure Components
@@ -48,6 +49,8 @@ Each environment includes:
    pwsh (PowerShell 7+)
    github-cli (gh) - optional for GitHub manipulation
    ```
+
+   **Windows CLI paths:** **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** is the primary reference for Terraform on Windows vs Turso in WSL (PATH verification, WSL invoke patterns).
 
 2. **Environment files ready:**
    - `.env.dev` (credentials and variables used by local scripts)
@@ -204,6 +207,14 @@ npx wrangler deploy --config wrangler.jsonc --env staging
 # Production
 npx wrangler deploy --config wrangler.jsonc --env production
 ```
+
+---
+
+## Deploy troubleshooting
+
+When `staging-rebuild-local.ps1` or `production-rebuild-local.ps1` fails (especially **FCM preflight**, Turso secrets after worker rename, wrangler deploy path, or Terraform worker lifecycle conflicts), see **[web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)**.
+
+Production rebuild **requires** `PUSH_PRODUCTION_ANDROID_FCM_*` in `.env.dev` before Terraform runs — staging-prefixed FCM keys alone are not enough for preflight (secret sync accepts staging FCM as a fallback; preflight does not).
 
 ---
 
@@ -792,7 +803,7 @@ AUTH0_ROLES_CLAIM_NAMESPACE=https://freedomtimes.news/roles
 
 # STAGING
 TF_VAR_ROUTE_PATTERN_STAGING=staging.freedomtimes.news/*
-TF_VAR_WORKER_NAME_STAGING=freedomtimes-holding-staging
+TF_VAR_WORKER_NAME_STAGING=freedomtimes-staging
 TF_VAR_MANAGE_APEX_DNS_RECORD_STAGING=false
 TF_VAR_APEX_DNS_RECORD_CONTENT_STAGING=192.0.2.1
 TF_VAR_API_CUSTOM_HOSTNAME_STAGING=api-staging.freedomtimes.news
@@ -801,7 +812,7 @@ TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING="https://staging.freedomtimes.news
 
 # PRODUCTION
 TF_VAR_ROUTE_PATTERN_PRODUCTION=freedomtimes.news/*
-TF_VAR_WORKER_NAME_PRODUCTION=freedomtimes-holding
+TF_VAR_WORKER_NAME_PRODUCTION=freedomtimes
 TF_VAR_MANAGE_APEX_DNS_RECORD_PRODUCTION=true
 TF_VAR_APEX_DNS_RECORD_CONTENT_PRODUCTION=192.0.2.1
 TF_VAR_API_CUSTOM_HOSTNAME_PRODUCTION=api.freedomtimes.news
@@ -847,7 +858,7 @@ This dispatches and watches `.github/workflows/terraform-production.yml` with ap
 
 Recommended pre-apply checkpoint and rollback helpers:
 
-> Turso CLI operations in this repo should be run from **WSL**.
+> Turso CLI operations: see **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (WSL-only in this workspace).
 
 ```bash
 # Create Turso rollback checkpoint + metadata (includes git hashes)

@@ -1,5 +1,5 @@
 {
-	"name": "freedomtimes-holding",
+	"name": "freedomtimes",
 	"account_id": "bae3f835f19899c6eee1ec48f2d658cf",
 	"main": "dist/server/entry.mjs",
 	"compatibility_date": "2026-03-29",
@@ -24,11 +24,15 @@
 	// Default (production) config
 	"env": {
 		"production": {
-			"name": "freedomtimes-holding",
+			"name": "freedomtimes",
 			"kv_namespaces": [
 				{
 					"binding": "SESSION",
 					"id": "962280ddb8f649b1a9482739fb295bdd"
+				},
+				{
+					"binding": "READER_TEST_PUSH_THROTTLE",
+					"id": "8414910d865d4c65b3ea181943c96aa9"
 				}
 			],
 			"r2_buckets": [
@@ -47,11 +51,15 @@
 			}
 		},
 		"staging": {
-			"name": "freedomtimes-holding-staging",
+			"name": "freedomtimes-staging",
 			"kv_namespaces": [
 				{
 					"binding": "SESSION",
 					"id": "86dbef45deff49e4a12bff11b9148706"
+				},
+				{
+					"binding": "READER_TEST_PUSH_THROTTLE",
+					"id": "8ba24b04f64f4b4686830c7b86d6f147"
 				}
 			],
 			"r2_buckets": [

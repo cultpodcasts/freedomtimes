@@ -1,71 +1,431 @@
 ---
 import { getPushSubscribePublicKey } from '../lib/push-subscriptions';
+import {
+	NOTIFICATION_DIAGNOSTIC_FIELD_LABELS,
+	NOTIFICATION_DIAGNOSTIC_PRIVACY_NOTES,
+} from '../lib/notification-diagnostics';
 import { SITE_DISPLAY_NAME } from '../lib/site-brand';
+import { readTurnstileSiteKey } from '../lib/turnstile';
+import ReaderDataProvenance from './ReaderDataProvenance.astro';
 
 const pushSubscribePublicKey = getPushSubscribePublicKey();
+const turnstileSiteKey = readTurnstileSiteKey();
+const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_LABELS);
 ---
 
-<section id="push-notifications-callout" class="notifications" aria-labelledby="notifications-heading">
-	<div>
-		<p class="eyebrow">Reader Alerts</p>
+<section
+	id="push-notifications-callout"
+	class="notifications"
+	aria-labelledby="notifications-heading"
+	data-turnstile-site-key={turnstileSiteKey}
+	data-diagnostic-field-labels={diagnosticFieldLabelsJson}
+>
+	<div class="notifications-main">
+		<p id="notifications-eyebrow" class="eyebrow">Reader Alerts</p>
 		<h2 id="notifications-heading">Get notified when major stories land</h2>
-		<p id="notification-status" class="notification-copy">
-			Enable notifications on this device to receive published {SITE_DISPLAY_NAME} alerts.
+		<div class="notifications-footer">
+			<p id="notification-status" class="notification-copy">
+				Enable notifications on this device to receive published {SITE_DISPLAY_NAME} alerts.
+			</p>
+			<button
+				id="notifications-enable"
+				type="button"
+				class="primary-button"
+				data-public-key={pushSubscribePublicKey}
+				data-configured={pushSubscribePublicKey.length > 0 ? 'true' : 'false'}
+			>
+				Enable notifications
+			</button>
+			<div id="notifications-subscribed" class="subscribed-line" role="status" hidden>
+				<span class="subscribed-icon" aria-hidden="true">✓</span>
+				<span class="subscribed-text">Story alerts on this device</span>
+				<span class="subscribed-sep" aria-hidden="true">·</span>
+				<button
+					id="notifications-troubleshoot-toggle"
+					type="button"
+					class="troubleshoot-toggle"
+					aria-expanded="false"
+					aria-controls="notifications-troubleshoot-panel"
+				>
+					Having trouble?
+				</button>
+			</div>
+			<div id="notifications-troubleshooting" class="troubleshooting" hidden>
+				<button
+					id="notifications-troubleshoot-toggle-standalone"
+					type="button"
+					class="troubleshoot-toggle"
+					aria-expanded="false"
+					aria-controls="notifications-troubleshoot-panel"
+				>
+					Having trouble?
+				</button>
+			</div>
+		</div>
+		<p class="report-problem-row">
+			<button
+				id="notifications-report-problem"
+				type="button"
+				class="report-problem-link"
+				data-turnstile-configured={turnstileSiteKey.length > 0 ? 'true' : 'false'}
+				aria-expanded="false"
+				aria-controls="notification-diagnostics-panel"
+			>
+				Report a problem
+			</button>
 		</p>
 	</div>
-	<button
-		id="notifications-enable"
-		type="button"
-		class="secondary-button"
-		data-public-key={pushSubscribePublicKey}
-		data-configured={pushSubscribePublicKey.length > 0 ? 'true' : 'false'}
+	<div
+		id="notifications-troubleshoot-panel"
+		class="troubleshoot-panel"
+		hidden
+		aria-hidden="true"
 	>
-		Enable notifications
-	</button>
+		<p id="notification-troubleshoot-error" class="troubleshoot-error" role="alert" hidden></p>
+		<button
+			id="notifications-send-test"
+			type="button"
+			class="text-button"
+			hidden
+		>
+			Send test notification
+		</button>
+		<p id="notification-test-status" class="notification-test-status" role="status" aria-live="polite"></p>
+	</div>
+	<div
+		id="notification-diagnostics-panel"
+		class="diagnostics-panel"
+		hidden
+		aria-hidden="true"
+	>
+		<h3>Send an anonymous diagnostic report</h3>
+		<p class="diagnostics-intro">
+			If notifications fail on this device, you can send technical details to help us debug.
+			We show exactly what will be sent before you submit.
+		</p>
+
+		<section class="privacy-callout" aria-labelledby="diagnostics-privacy-heading">
+			<h4 id="diagnostics-privacy-heading">Privacy</h4>
+			<ul id="diagnostics-privacy-list">
+				{NOTIFICATION_DIAGNOSTIC_PRIVACY_NOTES.map((note) => (
+					<li>{note}</li>
+				))}
+			</ul>
+		</section>
+
+		<section aria-labelledby="diagnostics-preview-heading">
+			<h4 id="diagnostics-preview-heading">Data to be sent</h4>
+			<dl id="diagnostics-preview" class="diagnostics-preview"></dl>
+		</section>
+
+		<label class="field">
+			<span class="field-label">Optional note (max 500 characters)</span>
+			<textarea
+				id="diagnostics-user-note"
+				name="userNote"
+				maxlength="500"
+				rows="3"
+				placeholder="Describe what you tried, e.g. clicked Enable but nothing happened."
+			></textarea>
+		</label>
+
+		{turnstileSiteKey ? (
+			<div
+				id="diagnostics-turnstile"
+				class="turnstile-wrap"
+				data-sitekey={turnstileSiteKey}
+			></div>
+		) : (
+			<p class="form-note warn">Human verification is not configured on this environment.</p>
+		)}
+
+		<div class="diagnostics-actions">
+			<button id="diagnostics-submit" type="button" class="secondary-button" disabled={!turnstileSiteKey}>
+				Send report
+			</button>
+			<button id="diagnostics-cancel" type="button" class="text-button">
+				Cancel
+			</button>
+		</div>
+		<p id="diagnostics-status" class="diagnostics-status" role="status" aria-live="polite"></p>
+		<ReaderDataProvenance variant="inline" />
+	</div>
 </section>
 
+{turnstileSiteKey && (
+	<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+)}
+
 <script>
-	function isLikelyNativeShellClient(): boolean {
+	const calloutRoot = document.querySelector('#push-notifications-callout');
+	const notificationsHeading = document.querySelector('#notifications-heading');
+	const notificationsEyebrow = document.querySelector('#notifications-eyebrow');
+	const turnstileSiteKey = calloutRoot instanceof HTMLElement
+		? (calloutRoot.dataset.turnstileSiteKey ?? '')
+		: '';
+	const diagnosticFieldLabelsJson = calloutRoot instanceof HTMLElement
+		? (calloutRoot.dataset.diagnosticFieldLabels ?? '{}')
+		: '{}';
+	const NOTIFICATION_DIAGNOSTIC_FIELD_LABELS = JSON.parse(diagnosticFieldLabelsJson);
+
+	function isLikelyNativeShellClient() {
 		return document.documentElement.dataset.nativeShell === '1';
 	}
 
 	import {
+		collectNotificationDiagnostics,
+		formatLastTestNotificationSummary,
+	} from '../lib/notification-diagnostics';
+	import {
 		browserNotificationPermissionError,
 		enableNotificationsForCurrentDevice,
 		ensureBrowserPushSubscriptionSynced,
+		ensureTestNotificationReceiptListener,
 		getBrowserPermissionPromptMessage,
+		getLastTestNotification,
 		getNotificationSupportState,
 		initializeNativePushBridge,
 		prepareBrowserPushInfrastructure,
 		requestBrowserNotificationPermission,
+		sendReaderTestPushNotification,
 	} from '../lib/device-notifications';
 
-	const callout = document.querySelector('#push-notifications-callout');
+	ensureTestNotificationReceiptListener();
+
+	type UiMode = 'unsupported' | 'default' | 'subscribed' | 'denied' | 'error';
+
 	const button = document.querySelector('#notifications-enable');
+	const subscribedLine = document.querySelector('#notifications-subscribed');
 	const status = document.querySelector('#notification-status');
-const isNativeShell = isLikelyNativeShellClient();
+	const troubleshooting = document.querySelector('#notifications-troubleshooting');
+	const troubleshootPanel = document.querySelector('#notifications-troubleshoot-panel');
+	const troubleshootError = document.querySelector('#notification-troubleshoot-error');
+	const testButton = document.querySelector('#notifications-send-test');
+	const testStatus = document.querySelector('#notification-test-status');
+	const reportButton = document.querySelector('#notifications-report-problem');
+	const panel = document.querySelector('#notification-diagnostics-panel');
+	const preview = document.querySelector('#diagnostics-preview');
+	const userNoteInput = document.querySelector('#diagnostics-user-note');
+	const diagnosticsSubmit = document.querySelector('#diagnostics-submit');
+	const diagnosticsCancel = document.querySelector('#diagnostics-cancel');
+	const diagnosticsStatus = document.querySelector('#diagnostics-status');
+	const isNativeShell = isLikelyNativeShellClient();
+
+	let lastErrorMessage = null;
+	let currentSupportMessage = '';
+	let testNotificationAvailable = false;
+	let turnstileToken = '';
+	let turnstileWidgetId = null;
+	let pendingSnapshot = null;
+	let currentUiMode = 'default';
+	let troubleshootExpanded = false;
 
 	if (!isNativeShell && button instanceof HTMLButtonElement && status instanceof HTMLParagraphElement) {
-		void initializeNativePushBridge();
-		void prepareBrowserPushInfrastructure();
-		void ensureBrowserPushSubscriptionSynced(button.dataset.publicKey || '');
-		void applyInitialState(button, status);
+		void initializeNotificationsUi(button, status);
 
 		button.addEventListener('click', () => {
 			void subscribeToNotifications(button, status);
 		});
 	}
 
-	async function applyInitialState(button: HTMLButtonElement, status: HTMLParagraphElement) {
-		const state = await getNotificationSupportState(button.dataset.publicKey || '');
-		button.disabled = state.buttonDisabled;
-		status.textContent = state.message;
+	if (!isNativeShell && calloutRoot instanceof HTMLElement) {
+		for (const toggle of calloutRoot.querySelectorAll('.troubleshoot-toggle')) {
+			toggle.addEventListener('click', () => {
+				setTroubleshootExpanded(!troubleshootExpanded);
+			});
+		}
 	}
 
-	async function subscribeToNotifications(button: HTMLButtonElement, status: HTMLParagraphElement) {
+	function setTroubleshootExpanded(expanded) {
+		troubleshootExpanded = expanded;
+		if (troubleshootPanel instanceof HTMLElement) {
+			troubleshootPanel.hidden = !expanded;
+			troubleshootPanel.setAttribute('aria-hidden', expanded ? 'false' : 'true');
+		}
+		if (calloutRoot instanceof HTMLElement) {
+			for (const toggle of calloutRoot.querySelectorAll('.troubleshoot-toggle')) {
+				if (toggle instanceof HTMLButtonElement) {
+					toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+				}
+			}
+		}
+		if (!expanded && testStatus instanceof HTMLElement) {
+			testStatus.textContent = '';
+		}
+		syncTestNotificationButton();
+	}
+
+	if (!isNativeShell && testButton instanceof HTMLButtonElement && testStatus instanceof HTMLParagraphElement) {
+		testButton.addEventListener('click', () => {
+			void sendTestNotification(testButton, testStatus);
+		});
+	}
+
+	if (
+		!isNativeShell
+		&& reportButton instanceof HTMLButtonElement
+		&& panel instanceof HTMLElement
+		&& preview instanceof HTMLElement
+	) {
+		reportButton.addEventListener('click', () => {
+			if (panel.hidden) {
+				void openDiagnosticsPanel(button, status);
+			} else {
+				closeDiagnosticsPanel();
+			}
+		});
+	}
+
+	if (diagnosticsCancel instanceof HTMLButtonElement && panel instanceof HTMLElement) {
+		diagnosticsCancel.addEventListener('click', () => {
+			closeDiagnosticsPanel();
+		});
+	}
+
+	if (diagnosticsSubmit instanceof HTMLButtonElement) {
+		diagnosticsSubmit.addEventListener('click', () => {
+			void submitDiagnosticsReport();
+		});
+	}
+
+	function deriveUiMode(state, hasError) {
+		if (!state.supported) {
+			return 'unsupported';
+		}
+		if (hasError) {
+			return 'error';
+		}
+		if (state.testNotificationAvailable) {
+			return 'subscribed';
+		}
+		if ('Notification' in window && Notification.permission === 'denied') {
+			return 'denied';
+		}
+		return 'default';
+	}
+
+	function syncUiFromState(state, options = {}) {
+		const { hasError = false, expandTroubleshooting = false } = options;
+		currentUiMode = deriveUiMode(state, hasError);
+		testNotificationAvailable = state.testNotificationAvailable;
+		currentSupportMessage = state.message;
+
+		// Keep the enable control visible whenever the reader is not already subscribed,
+		// including disabled/greyed-out states, so the reason is inspectable and reportable.
+		const showEnable = currentUiMode !== 'subscribed';
+		const showSubscribed = currentUiMode === 'subscribed';
+		const showTroubleshooting = currentUiMode === 'subscribed'
+			|| currentUiMode === 'denied'
+			|| currentUiMode === 'error';
+
+		if (button instanceof HTMLButtonElement) {
+			button.hidden = !showEnable;
+			button.disabled = state.buttonDisabled;
+			button.textContent = state.buttonLabel || 'Enable notifications';
+			if (state.buttonDisabledReason) {
+				button.title = state.buttonDisabledReason;
+				button.setAttribute(
+					'aria-label',
+					`${state.buttonLabel || 'Enable notifications'}. ${state.buttonDisabledReason}`,
+				);
+			} else {
+				button.removeAttribute('title');
+				button.removeAttribute('aria-label');
+			}
+		}
+
+		if (subscribedLine instanceof HTMLElement) {
+			subscribedLine.hidden = !showSubscribed;
+		}
+
+		if (status instanceof HTMLParagraphElement) {
+			if (currentUiMode === 'subscribed') {
+				status.textContent = '';
+				status.hidden = true;
+			} else if (currentUiMode === 'unsupported') {
+				status.textContent = state.message;
+				status.hidden = false;
+			} else if (currentUiMode === 'denied') {
+				status.textContent = state.message;
+				status.hidden = false;
+			} else if (currentUiMode === 'error') {
+				status.textContent = 'Notification setup did not complete.';
+				status.hidden = false;
+			} else {
+				status.textContent = state.message;
+				status.hidden = false;
+			}
+		}
+
+		if (troubleshooting instanceof HTMLElement) {
+			troubleshooting.hidden = !showTroubleshooting || showSubscribed;
+		}
+
+		if (calloutRoot instanceof HTMLElement) {
+			calloutRoot.classList.toggle('notifications--subscribed', currentUiMode === 'subscribed');
+		}
+
+		if (notificationsEyebrow instanceof HTMLElement) {
+			notificationsEyebrow.classList.toggle('sr-only', currentUiMode === 'subscribed');
+		}
+
+		if (notificationsHeading instanceof HTMLHeadingElement) {
+			if (currentUiMode === 'subscribed') {
+				notificationsHeading.textContent = 'Story alerts enabled on this device';
+				notificationsHeading.classList.add('sr-only');
+			} else {
+				notificationsHeading.textContent = 'Get notified when major stories land';
+				notificationsHeading.classList.remove('sr-only');
+			}
+		}
+
+		if (troubleshootError instanceof HTMLElement) {
+			if (currentUiMode === 'error' && lastErrorMessage) {
+				troubleshootError.textContent = lastErrorMessage;
+				troubleshootError.hidden = false;
+			} else {
+				troubleshootError.textContent = '';
+				troubleshootError.hidden = true;
+			}
+		}
+
+		syncTestNotificationButton();
+
+		if (expandTroubleshooting || (currentUiMode === 'error' && showTroubleshooting)) {
+			setTroubleshootExpanded(true);
+		} else if (!showTroubleshooting) {
+			setTroubleshootExpanded(false);
+		}
+	}
+
+	async function initializeNotificationsUi(button, status) {
+		await initializeNativePushBridge();
+		await prepareBrowserPushInfrastructure();
+		const publicKey = button.dataset.publicKey || '';
+		await ensureBrowserPushSubscriptionSynced(publicKey);
+		await applyInitialState(button, status);
+	}
+
+	async function applyInitialState(button, status) {
+		const state = await getNotificationSupportState(button.dataset.publicKey || '');
+		syncUiFromState(state, { hasError: Boolean(lastErrorMessage) });
+	}
+
+	function syncTestNotificationButton() {
+		if (!(testButton instanceof HTMLButtonElement)) {
+			return;
+		}
+
+		const showTest = testNotificationAvailable && troubleshootExpanded;
+		testButton.hidden = !showTest;
+		testButton.disabled = false;
+	}
+
+	async function subscribeToNotifications(button, status) {
 		const permissionPromise = requestBrowserNotificationPermission();
 
 		button.disabled = true;
+		status.hidden = false;
 		status.textContent = Notification.permission === 'default'
 			? getBrowserPermissionPromptMessage()
 			: 'Registering this device for notifications...';
@@ -82,55 +442,534 @@ const isNativeShell = isLikelyNativeShellClient();
 				button.dataset.publicKey || '',
 				permission,
 			);
-			button.disabled = true;
+			lastErrorMessage = null;
+			await applyInitialState(button, status);
 		} catch (error) {
 			console.error('[notifications] subscribe failed', error);
-			status.textContent = error instanceof Error
+			lastErrorMessage = error instanceof Error
 				? error.message
 				: 'Notification setup failed. Check the console and try again.';
-			button.disabled = Notification.permission !== 'denied';
+			const state = await getNotificationSupportState(button.dataset.publicKey || '');
+			syncUiFromState(state, { hasError: true, expandTroubleshooting: true });
 		}
 	}
+
+	async function sendTestNotification(testButton, testStatus) {
+		testButton.disabled = true;
+		testStatus.textContent = 'Sending test notification…';
+
+		try {
+			testStatus.textContent = await sendReaderTestPushNotification();
+		} catch (error) {
+			testStatus.textContent = error instanceof Error
+				? error.message
+				: 'Test notification failed.';
+		} finally {
+			testButton.disabled = false;
+		}
+	}
+
+	function syncDiagnosticsPanelChrome(isOpen) {
+		if (panel instanceof HTMLElement) {
+			panel.hidden = !isOpen;
+			panel.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+		}
+		if (reportButton instanceof HTMLButtonElement) {
+			reportButton.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+		}
+	}
+
+	function resetTurnstileWidget() {
+		const mount = document.querySelector('#diagnostics-turnstile');
+		if (turnstileWidgetId !== null && window.turnstile instanceof Object) {
+			window.turnstile.remove(turnstileWidgetId);
+		}
+		turnstileWidgetId = null;
+		turnstileToken = '';
+		if (mount instanceof HTMLElement) {
+			mount.dataset.rendered = 'false';
+			mount.replaceChildren();
+		}
+		if (diagnosticsSubmit instanceof HTMLButtonElement) {
+			diagnosticsSubmit.disabled = !turnstileSiteKey || !turnstileToken;
+		}
+	}
+
+	async function openDiagnosticsPanel(button, status) {
+		if (!(panel instanceof HTMLElement) || !(preview instanceof HTMLElement)) {
+			return;
+		}
+
+		syncDiagnosticsPanelChrome(true);
+		if (diagnosticsStatus instanceof HTMLElement) {
+			diagnosticsStatus.textContent = '';
+		}
+		preview.replaceChildren();
+		const loading = document.createElement('p');
+		loading.className = 'diagnostics-loading';
+		loading.textContent = 'Collecting diagnostic details…';
+		preview.appendChild(loading);
+
+		try {
+			const publicKey = button instanceof HTMLButtonElement
+				? (button.dataset.publicKey || '')
+				: '';
+			pendingSnapshot = await collectNotificationDiagnostics(publicKey, {
+				lastErrorMessage,
+				supportMessage: status instanceof HTMLParagraphElement && !status.hidden
+					? status.textContent
+					: currentSupportMessage,
+			});
+			renderDiagnosticsPreview(preview, pendingSnapshot);
+		} catch (error) {
+			console.error('[notifications] diagnostics collection failed', error);
+			preview.replaceChildren();
+			if (diagnosticsStatus instanceof HTMLElement) {
+				diagnosticsStatus.textContent = 'Unable to collect diagnostic details right now.';
+			}
+		}
+
+		resetTurnstileWidget();
+		renderTurnstileIfNeeded();
+	}
+
+	function closeDiagnosticsPanel() {
+		syncDiagnosticsPanelChrome(false);
+		resetTurnstileWidget();
+		pendingSnapshot = null;
+		if (preview instanceof HTMLElement) {
+			preview.replaceChildren();
+		}
+		if (userNoteInput instanceof HTMLTextAreaElement) {
+			userNoteInput.value = '';
+		}
+		if (diagnosticsStatus instanceof HTMLElement) {
+			diagnosticsStatus.textContent = '';
+		}
+	}
+
+	function renderDiagnosticsPreview(container, snapshot) {
+		container.replaceChildren();
+		for (const [key, label] of Object.entries(NOTIFICATION_DIAGNOSTIC_FIELD_LABELS)) {
+			const value = snapshot[key];
+			const dt = document.createElement('dt');
+			dt.textContent = label;
+			const dd = document.createElement('dd');
+			if (key === 'lastTestNotification') {
+				dd.textContent = formatLastTestNotificationSummary(value);
+			} else {
+				dd.textContent = value === null || value === undefined ? '—' : String(value);
+			}
+			container.appendChild(dt);
+			container.appendChild(dd);
+		}
+	}
+
+	function renderTurnstileIfNeeded() {
+		if (!turnstileSiteKey || !(window.turnstile instanceof Object)) {
+			return;
+		}
+
+		const mount = document.querySelector('#diagnostics-turnstile');
+		if (!(mount instanceof HTMLElement) || mount.dataset.rendered === 'true') {
+			return;
+		}
+
+		turnstileWidgetId = window.turnstile.render(mount, {
+			sitekey: turnstileSiteKey,
+			callback(token) {
+				turnstileToken = token;
+				if (diagnosticsSubmit instanceof HTMLButtonElement) {
+					diagnosticsSubmit.disabled = false;
+				}
+			},
+			'expired-callback'() {
+				turnstileToken = '';
+				if (diagnosticsSubmit instanceof HTMLButtonElement) {
+					diagnosticsSubmit.disabled = true;
+				}
+			},
+			'error-callback'() {
+				turnstileToken = '';
+				if (diagnosticsSubmit instanceof HTMLButtonElement) {
+					diagnosticsSubmit.disabled = true;
+				}
+			},
+		});
+		mount.dataset.rendered = 'true';
+	}
+
+	const turnstilePoll = window.setInterval(() => {
+		if (window.turnstile) {
+			window.clearInterval(turnstilePoll);
+			if (panel instanceof HTMLElement && !panel.hidden) {
+				renderTurnstileIfNeeded();
+			}
+		}
+	}, 200);
+
+	async function submitDiagnosticsReport() {
+		if (!(diagnosticsStatus instanceof HTMLElement) || !pendingSnapshot) {
+			return;
+		}
+
+		if (!turnstileToken) {
+			diagnosticsStatus.textContent = 'Complete the human verification check first.';
+			return;
+		}
+
+		if (diagnosticsSubmit instanceof HTMLButtonElement) {
+			diagnosticsSubmit.disabled = true;
+		}
+		diagnosticsStatus.textContent = 'Sending report…';
+
+		const userNote = userNoteInput instanceof HTMLTextAreaElement
+			? userNoteInput.value.trim()
+			: '';
+
+		// Refresh test-notification receipt in case the SW confirmed display after the panel opened.
+		pendingSnapshot = {
+			...pendingSnapshot,
+			lastTestNotification: getLastTestNotification(),
+		};
+
+		try {
+			const response = await fetch('/api/notification-diagnostics', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					snapshot: pendingSnapshot,
+					userNote: userNote.length > 0 ? userNote : null,
+					turnstileToken,
+				}),
+			});
+			const result = await response.json().catch(() => ({}));
+
+			if (!response.ok) {
+				throw new Error(typeof result.error === 'string' ? result.error : 'Report failed.');
+			}
+
+			diagnosticsStatus.textContent = 'Thank you. Your diagnostic report was sent.';
+			if (userNoteInput instanceof HTMLTextAreaElement) {
+				userNoteInput.value = '';
+			}
+		} catch (error) {
+			diagnosticsStatus.textContent = error instanceof Error ? error.message : 'Report failed.';
+		} finally {
+			if (diagnosticsSubmit instanceof HTMLButtonElement) {
+				diagnosticsSubmit.disabled = !turnstileToken;
+			}
+		}
+	}
+
 </script>
 
 <style>
 	.notifications {
 		margin-top: 1.2rem;
-		padding: 1rem 1.1rem;
+		padding: 0.85rem 1rem;
 		border: 1px solid rgba(35, 77, 105, 0.18);
 		border-radius: 14px;
 		background: linear-gradient(180deg, rgba(35, 77, 105, 0.08), rgba(35, 77, 105, 0.03));
 		display: grid;
-		gap: 0.9rem;
+		gap: 0.5rem;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: min(65ch, 100%);
+		min-width: 0;
+		overflow-x: clip;
+	}
+
+	.notifications--subscribed {
+		width: fit-content;
+		max-width: min(65ch, 100%);
+		margin-top: 1.5rem;
+		padding: 0.28rem 0.5rem;
+		border: none;
+		border-radius: 4px;
+		background: rgba(35, 77, 105, 0.045);
+		gap: 0.2rem;
+	}
+
+	.notifications--subscribed:has(#notification-diagnostics-panel:not([hidden])),
+	.notifications--subscribed:has(#notifications-troubleshoot-panel:not([hidden])) {
+		width: 100%;
+		max-width: min(65ch, 100%);
+		padding: 0.65rem 0.85rem;
+		border: 1px solid rgba(35, 77, 105, 0.12);
+		border-radius: 10px;
+	}
+
+	.notifications-main {
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.notifications--subscribed .notifications-main {
+		display: block;
+		width: fit-content;
 	}
 
 	.eyebrow {
 		margin: 0;
+		font-family: 'Inter', sans-serif;
 		font-size: 0.72rem;
+		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
+		color: var(--text-secondary, #666);
+	}
+
+	.notifications--subscribed .eyebrow.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	h2 {
-		margin: 0.2rem 0 0;
-		font-size: clamp(1.1rem, 3vw, 1.45rem);
-		line-height: 1.1;
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: clamp(1.05rem, 2.8vw, 1.3rem);
+		font-weight: 700;
+		line-height: 1.15;
+	}
+
+	.notifications--subscribed h2.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	.notifications-footer {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 0.85rem;
+	}
+
+	.notifications--subscribed .notifications-footer {
+		display: block;
+		width: fit-content;
+	}
+
+	.report-problem-row {
+		margin: 0.15rem 0 0;
+	}
+
+	.notifications--subscribed .report-problem-row {
+		margin-top: 0.1rem;
+	}
+
+	.report-problem-link {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: var(--text-secondary, #666);
+		font-family: 'Inter', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 500;
+		cursor: pointer;
+		text-decoration: underline;
+		text-decoration-color: rgba(102, 102, 102, 0.35);
+		text-underline-offset: 0.12em;
+	}
+
+	.report-problem-link:hover,
+	.report-problem-link:focus-visible {
+		color: #0044bb;
+		text-decoration-color: rgba(0, 68, 187, 0.45);
+	}
+
+	.report-problem-link[aria-expanded='true'] {
+		color: #0044bb;
+		font-weight: 600;
 	}
 
 	.notification-copy {
-		margin: 0.55rem 0 0;
-		font-size: 0.97rem;
-		line-height: 1.6;
+		margin: 0;
+		flex: 1 1 12rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+		line-height: 1.45;
+		color: var(--text-secondary, #444);
+	}
+
+	.notification-copy[hidden] {
+		display: none;
+	}
+
+	.notifications-footer:has(#notifications-subscribed:not([hidden])) .notification-copy {
+		display: none;
+	}
+
+	.primary-button {
+		padding: 0.55rem 0.95rem;
+		border: 1px solid #234d69;
+		border-radius: 999px;
+		background: #234d69;
+		color: #fffdf8;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.92rem;
+		font-weight: 700;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.primary-button[hidden] {
+		display: none;
+	}
+
+	.primary-button:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.subscribed-line {
+		display: inline;
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.78rem;
+		font-weight: 400;
+		line-height: 1.45;
+		color: var(--text-secondary, #555);
+		white-space: normal;
+	}
+
+	.subscribed-line[hidden] {
+		display: none;
+	}
+
+	.subscribed-icon {
+		color: #1a5c3a;
+		font-size: 0.85em;
+		margin-right: 0.15rem;
+	}
+
+	.subscribed-sep {
+		margin: 0 0.3rem;
+		color: var(--text-secondary, #888);
+	}
+
+	.subscribed-line .troubleshoot-toggle {
+		display: inline;
+		vertical-align: baseline;
+		font-family: 'Inter', sans-serif;
+		font-size: inherit;
+		font-weight: 400;
+		color: var(--text-secondary, #666);
+		text-decoration: underline;
+		text-decoration-color: rgba(102, 102, 102, 0.4);
+		text-underline-offset: 0.12em;
+	}
+
+	.troubleshooting {
+		flex: 0 0 auto;
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.troubleshooting[hidden] {
+		display: none;
+	}
+
+	.troubleshoot-toggle {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: #0044bb;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		font-weight: 600;
+		cursor: pointer;
+		text-decoration: underline;
+		text-underline-offset: 0.15em;
+	}
+
+	.troubleshoot-panel {
+		margin-top: 0.65rem;
+		padding-top: 0.65rem;
+		border-top: 1px solid rgba(35, 77, 105, 0.12);
+		display: grid;
+		gap: 0.5rem;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: min(65ch, 100%);
+		min-width: 0;
+		overflow-x: clip;
+	}
+
+	.notifications--subscribed .troubleshoot-panel {
+		margin-top: 0.45rem;
+		padding-top: 0.45rem;
+		border-top: 1px solid rgba(35, 77, 105, 0.08);
+		width: 100%;
+		min-width: 0;
+	}
+
+	.troubleshoot-panel[hidden] {
+		display: none !important;
+	}
+
+	.troubleshoot-error {
+		margin: 0;
+		padding: 0.5rem 0.65rem;
+		border-radius: 6px;
+		background: rgba(180, 40, 40, 0.08);
+		color: #8a2020;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+		line-height: 1.45;
+	}
+
+	.troubleshoot-error[hidden] {
+		display: none;
+	}
+
+	.notification-test-status {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		line-height: 1.45;
+		color: var(--text-secondary, #444);
+	}
+
+	.notification-test-status:empty {
+		display: none;
 	}
 
 	.secondary-button {
 		justify-self: start;
-		padding: 0.72rem 1.05rem;
+		padding: 0.55rem 0.9rem;
 		border: 1px solid #234d69;
 		border-radius: 999px;
 		background: #fffdf8;
 		color: #234d69;
 		font: inherit;
+		font-size: 0.88rem;
 		font-weight: 700;
 		cursor: pointer;
 	}
@@ -138,5 +977,149 @@ const isNativeShell = isLikelyNativeShellClient();
 	.secondary-button:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
+	}
+
+	.text-button {
+		justify-self: start;
+		padding: 0.15rem 0;
+		border: 0;
+		background: transparent;
+		color: #0044bb;
+		font: inherit;
+		font-size: 0.85rem;
+		font-weight: 600;
+		cursor: pointer;
+		text-decoration: underline;
+		text-underline-offset: 0.15em;
+	}
+
+	.text-button[hidden] {
+		display: none;
+	}
+
+	.diagnostics-panel[hidden] {
+		display: none !important;
+	}
+
+	.diagnostics-panel {
+		margin-top: 0.5rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid rgba(35, 77, 105, 0.12);
+		display: grid;
+		gap: 0.85rem;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: min(65ch, 100%);
+		min-width: 0;
+		overflow-x: clip;
+	}
+
+	.diagnostics-loading {
+		margin: 0;
+		grid-column: 1 / -1;
+		font-size: 0.9rem;
+		color: var(--text-secondary);
+	}
+
+	.diagnostics-panel h3,
+	.diagnostics-panel h4 {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+		font-weight: 700;
+	}
+
+	.diagnostics-intro {
+		margin: 0;
+		font-size: 0.92rem;
+		line-height: 1.55;
+		color: var(--text-secondary);
+	}
+
+	.privacy-callout ul {
+		margin: 0.5rem 0 0;
+		padding-left: 1.2rem;
+		font-size: 0.9rem;
+		line-height: 1.5;
+	}
+
+	.diagnostics-preview {
+		margin: 0.5rem 0 0;
+		display: grid;
+		grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
+		gap: 0.35rem 1rem;
+		font-size: 0.88rem;
+		min-width: 0;
+	}
+
+	.diagnostics-preview dt {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-weight: 600;
+		color: var(--text-secondary);
+		min-width: 0;
+	}
+
+	.diagnostics-preview dd {
+		margin: 0;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	@media (max-width: 36rem) {
+		.diagnostics-preview {
+			grid-template-columns: 1fr;
+			gap: 0.15rem 0;
+		}
+
+		.diagnostics-preview dt:not(:first-child) {
+			margin-top: 0.45rem;
+		}
+	}
+
+	.field {
+		display: grid;
+		gap: 0.35rem;
+	}
+
+	.field-label {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.82rem;
+		font-weight: 600;
+	}
+
+	textarea {
+		font: inherit;
+		padding: 0.6rem 0.7rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 4px;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
+	}
+
+	.turnstile-wrap {
+		min-height: 65px;
+	}
+
+	.diagnostics-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.65rem 0.85rem;
+		align-items: center;
+	}
+
+	.diagnostics-status {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
+	}
+
+	.form-note.warn {
+		color: #8a4b00;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.88rem;
 	}
 </style>

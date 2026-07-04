@@ -80,6 +80,11 @@ resource "auth0_resource_server_scopes" "api_scopes" {
     name        = "subscribers:manage"
     description = "Manage subscribers"
   }
+
+  scopes {
+    name        = "tips:manage"
+    description = "View and handle reader story tips"
+  }
 }
 
 # Editor Role — tenant-wide, production only
@@ -125,7 +130,8 @@ resource "auth0_role_permissions" "admin_permissions" {
       "story:create",
       "story:update",
       "story:delete",
-      "subscribers:manage"
+      "subscribers:manage",
+      "tips:manage"
     ]
     content {
       name                       = permissions.value

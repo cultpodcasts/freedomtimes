@@ -3,6 +3,9 @@
  * `.cursor/mcp.json`). Use this for **schema** and **content** reads/writes instead of
  * `npx emdash schema` / `npx emdash content` when you need true stored JSON (**AGENTS.md**).
  *
+ * **Operators:** run manually from a terminal when you choose.
+ * **AI agents:** Cursor MCP only — **Primary guardrails §1** in **AGENTS.md** — do NOT use this script when MCP tools fail in the session.
+ *
  * Usage (from repo root):
  *   node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> [argumentsJson]
  *

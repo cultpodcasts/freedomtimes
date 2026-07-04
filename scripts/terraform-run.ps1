@@ -23,6 +23,9 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $envDir = Join-Path $repoRoot "infra/terraform/environments/$Environment"
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
+Initialize-WindowsCliPath
+. "$PSScriptRoot/terraform-turso-env.ps1"
 $preflightScript = Join-Path $PSScriptRoot "terraform-preflight.ps1"
 
 function Invoke-TerraformCommand {
@@ -75,7 +78,6 @@ function Invoke-EnvRemapping {
         "TF_VAR_auth0_management_client_id"     = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
         "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
         "TF_VAR_azure_location"                 = "TF_VAR_AZURE_LOCATION"
-        "TF_VAR_turso_api_token"                = "TURSO_TOKEN"
         "TF_VAR_turso_organization"             = "TF_VAR_TURSO_ORGANIZATION"
     }
     foreach ($target in $sharedAliases.Keys) {
@@ -116,6 +118,12 @@ function Invoke-EnvRemapping {
             $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_STAGING")
         }
         else {
+        $tursoApiTokenVarNames = if ($Env -eq "staging") {
+            @("TF_VAR_turso_api_token", "TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
+        }
+        else {
+            @("TF_VAR_turso_api_token", "TURSO_TOKEN", "TURSO_PLATFORM_API_TOKEN")
+        }
             $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_PRODUCTION", "AUTH0_API_AUDIENCE")
         }
         if (-not [string]::IsNullOrWhiteSpace($audience)) {
@@ -163,6 +171,12 @@ function Build-TerraformVarArgs {
         }
     }
     else {
+        $tursoApiTokenVarNames = if ($Env -eq "staging") {
+            @("TF_VAR_turso_api_token", "TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
+        }
+        else {
+            @("TF_VAR_turso_api_token", "TURSO_TOKEN", "TURSO_PLATFORM_API_TOKEN")
+        }
         $map = [ordered]@{
             cloudflare_api_token                    = @("TF_VAR_cloudflare_api_token", "TF_VAR_CLOUDFLARE_API_TOKEN")
             cloudflare_account_id                   = @("TF_VAR_cloudflare_account_id", "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
@@ -181,7 +195,7 @@ function Build-TerraformVarArgs {
             api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
             api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
             api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
-            turso_api_token                         = @("TF_VAR_turso_api_token", "TURSO_TOKEN")
+            turso_api_token                         = $tursoApiTokenVarNames
             turso_organization                      = @("TF_VAR_turso_organization", "TF_VAR_TURSO_ORGANIZATION")
             turso_database_name                     = @("TF_VAR_turso_database_name")
             turso_database_group                    = @("TF_VAR_turso_database_group")

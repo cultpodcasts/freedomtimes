@@ -2,6 +2,16 @@
 
 These guardrails define how ticket work moves from development to production.
 
+## Primary guardrails (AI agents in Cursor)
+
+Canonical copy: **`AGENTS.md`** § *Primary guardrails*. Summary for agents working in this repo:
+
+1. **EmDash MCP — IF MCP FAILS WE DO NOT FALL BACK TO SHELL.** When Cursor EmDash MCP is unavailable, errored, or auth fails: **STOP**, tell the operator to fix MCP (**Tools & MCP**, restart Cursor, enable `freedomtimes-staging` / `freedomtimes-production`, refresh tokens via `emdash login` / PAT, check **Output → MCP Logs**), then **wait**. **Never** fall back to `emdash-mcp-tools-call.mjs`, `npx emdash content`, REST curl, or CLI. Operators may run shell helpers manually; AI agents may not.
+2. **Database backup before any mutate** — Turso rollback branch or export before CMS/DB writes.
+3. **EmDash MCP-only for content JSON** — not EmDash CLI for `posts`/`pages` Portable Text shape.
+4. **Staging locked** — no anonymous staging reader routes (`web/docs/STAGING_ACCESS.md`).
+5. **No production publish without explicit operator ask** — push notifications are irreversible.
+
 ## Branch and Main Rules
 
 - No development work is done directly on `main` without explicit approval.

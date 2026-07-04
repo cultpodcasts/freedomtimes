@@ -24,7 +24,7 @@ Astro SSR app on Cloudflare Workers with EmDash CMS, Auth0 editorial auth, and o
 
 ### Environment variables
 
-Two local files — see **[docs/ENV_DEV.md](docs/ENV_DEV.md)** for the full setup (templates, Turso sync scripts, where each value comes from).
+Two local files — see **[docs/ENV_DEV.md](docs/ENV_DEV.md)** for the full setup (templates, Turso sync scripts, where each value comes from). If `terraform` or `turso` is not found: **[docs/CLI_PATHS_WINDOWS.md](../docs/CLI_PATHS_WINDOWS.md)** (primary reference — Terraform on Windows, Turso in WSL).
 
 | File | Template | Purpose |
 |------|----------|---------|

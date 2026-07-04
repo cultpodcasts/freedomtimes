@@ -26,6 +26,15 @@ function formatShortDate(value: string): string {
 	}
 	return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+/** Show Updated only when the displayed date differs from Published. */
+function shouldShowUpdatedDate(publishedAt: string | null, updatedAt: string | null): boolean {
+	if (!updatedAt) return false;
+	if (!publishedAt) return true;
+	return formatShortDate(updatedAt) !== formatShortDate(publishedAt);
+}
+
+const showUpdatedDate = shouldShowUpdatedDate(publishedAt, updatedAt);
 ---
 
 <header class="article-header">
@@ -35,7 +44,7 @@ function formatShortDate(value: string): string {
 	<div class="article-meta">
 		{primaryByline && <p>By {primaryByline}</p>}
 		{publishedAt && <p>Published {formatShortDate(publishedAt)}</p>}
-		{!publishedAt && updatedAt && <p>Updated {formatShortDate(updatedAt)}</p>}
+		{showUpdatedDate && updatedAt && <p>Updated {formatShortDate(updatedAt)}</p>}
 		{isPreview && <p class="preview">Preview mode</p>}
 	</div>
 	{subjectChips.length > 0 && (

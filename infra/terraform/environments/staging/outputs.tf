@@ -108,3 +108,24 @@ output "subscriptions_turso_database_auth_token" {
   value       = turso_database_token.subscriptions.jwt
   sensitive   = true
 }
+
+output "tips_turso_database_name" {
+  description = "Turso database name for the staging tips workload"
+  value       = turso_database.tips.name
+}
+
+output "tips_turso_database_url" {
+  description = "libSQL URL for the staging tips database"
+  value       = local.tips_turso_database_url
+}
+
+output "tips_turso_database_auth_token" {
+  description = "Application auth token for the staging tips database"
+  value       = turso_database_token.tips.jwt
+  sensitive   = true
+}
+
+output "turnstile_site_key" {
+  description = "Cloudflare Turnstile site key for story tips (staging)"
+  value       = cloudflare_turnstile_widget.story_tips.id
+}

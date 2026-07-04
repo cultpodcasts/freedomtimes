@@ -30,10 +30,10 @@ Fill placeholders manually or refresh from infrastructure (below). For Auth0 fie
 After `.env.dev` exists, refresh database URLs/tokens from Terraform:
 
 ```powershell
-# Staging scheduler + subscriptions → TURSO_STAGING_* keys
+# Staging scheduler + subscriptions + tips → TURSO_STAGING_* keys
 pwsh ./scripts/sync-staging-turso-env-dev.ps1
 
-# Production EmDash + scheduler + subscriptions → TURSO_DATABASE_URL, TURSO_* aliases
+# Production EmDash + scheduler + subscriptions + tips → TURSO_DATABASE_URL, TURSO_* aliases
 pwsh ./scripts/sync-production-turso-env-dev.ps1
 ```
 
@@ -42,6 +42,8 @@ Production tokens can also be pulled from deployed Workers:
 ```powershell
 node web/scripts/pull-production-turso-secrets.mjs
 ```
+
+**Local staging Terraform** (`terraform-run.ps1 -Environment staging`) needs a **Platform API** token in `.env.dev` as **`TURSO_TOKEN_STAGING`** (same value as the GitHub Actions secret). This is not the same as `TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN` or other database JWTs. Copy from GitHub → Settings → Secrets → `TURSO_TOKEN_STAGING`, or create one in Turso → Settings → API tokens.
 
 `astro.config.ts` requires **`TURSO_DATABASE_URL`** and **`TURSO_AUTH_TOKEN`** at startup (EmDash CMS). Those live in `.env.dev` after production sync. For `npm run dev`, either:
 
@@ -65,8 +67,9 @@ Same pattern applies to `npm run build` (see [SOCIAL_IMAGES_AND_FAVICONS.md](./S
 | Auth0 tenant + Management API | `TF_VAR_AUTH0_DOMAIN`, `TF_VAR_AUTH0_MANAGEMENT_*` | Auth0 dashboard; see [NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md) |
 | Auth0 login app (per env) | `AUTH0_LOGIN_APP_CLIENT_ID_STAGING`, `_PRODUCTION`, secrets | Terraform outputs after `terraform apply`; `scripts/terraform-run.ps1` can write staging keys into `.env.dev` |
 | EmDash Turso (CMS) | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | `sync-production-turso-env-dev.ps1` or Terraform production outputs |
-| Scheduler / subscriptions Turso | `TURSO_STAGING_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_SCHEDULER_*` | `sync-staging-turso-env-dev.ps1`, `sync-production-turso-env-dev.ps1` |
-| Turso Platform API (mint DB JWTs) | `TURSO_PLATFORM_API_TOKEN`, `TF_VAR_TURSO_ORGANIZATION` | Turso dashboard → Settings → API tokens |
+| Scheduler / subscriptions / tips Turso | `TURSO_STAGING_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_SCHEDULER_*`, `TURSO_STAGING_TIPS_DB_*`, `TURSO_TIPS_*`, `TURSO_PRODUCTION_TIPS_DB_*` | `sync-staging-turso-env-dev.ps1`, `sync-production-turso-env-dev.ps1` |
+| Turso Platform API (Terraform create DBs) | **`TURSO_TOKEN_STAGING`** (staging apply), `TURSO_TOKEN` (production), or `TURSO_PLATFORM_API_TOKEN` / `TF_VAR_turso_api_token` | GitHub secret `TURSO_TOKEN_STAGING` or Turso dashboard → Settings → API tokens — **not** a libsql DB JWT |
+| Turso Platform API (mint DB JWTs) | `TF_VAR_TURSO_ORGANIZATION` | Turso dashboard → organization slug |
 | Push (VAPID, FCM, APNs) | `PUSH_STAGING_*`, `PUSH_PRODUCTION_*` | Generated locally or synced via `set-github-secrets.ps1`; full key reference in [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) Section A |
 | Local dev Auth0 runtime | `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, … in **`web/.env`** | Map from staging login app credentials (`AUTH0_LOGIN_APP_CLIENT_ID_STAGING` → `AUTH0_CLIENT_ID`, etc.) or Auth0 dashboard |
 
@@ -87,3 +90,4 @@ Details: [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) (teardown/rebuild, s
 - [AUTH.md](./AUTH.md) — `web/.env` Auth0 variables for local login
 - [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) — full environment lifecycle
 - [SECRET_MANAGEMENT.md](../../SECRET_MANAGEMENT.md) — `.env.dev` + `.env.staging` / `.env.production` overlays
+

@@ -10,11 +10,11 @@ import {
   readEmDashUpdatedAt,
 } from '../lib/content/emdashTimestamps';
 type Props = {
-  isEditor?: boolean;
+  isAdmin?: boolean;
   isSignedIn?: boolean;
 };
 
-const { isEditor = false, isSignedIn = false } = Astro.props;
+const { isAdmin = false, isSignedIn = false } = Astro.props;
 
 type Story = {
   slug: string;
@@ -184,7 +184,7 @@ const socialImage = '/social/homepage-og.png';
   ogImageAlt={`${SITE_DISPLAY_NAME} homepage`}
 >
   <div class="paper-wrap">
-    <Header isEditor={isEditor} isSignedIn={isSignedIn} />
+    <Header isAdmin={isAdmin} isSignedIn={isSignedIn} />
 
     <main class="front-grid">
       {lead ? (

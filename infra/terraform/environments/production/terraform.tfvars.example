@@ -9,7 +9,7 @@ workspace_url = "https://example.com"
 # Additional Auth0 callbacks such as the Android deep-link return URL
 auth0_extra_callback_urls = ["news.freedomtimes.app://auth/callback"]
 
-worker_name     = "freedomtimes-holding"
+worker_name     = "freedomtimes"
 holding_title   = "Freedom Times"
 holding_heading = "Freedom Times"
 holding_message = "We are preparing the site. Please check back soon."

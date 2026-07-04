@@ -7,6 +7,8 @@ param(
     [switch]$LoadEnvFiles
 )
 
+. "$PSScriptRoot/terraform-turso-env.ps1"
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -83,7 +85,6 @@ if ($LoadEnvFiles) {
         "TF_VAR_auth0_management_client_id"    = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
         "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
         "TF_VAR_azure_location"                = "TF_VAR_AZURE_LOCATION"
-        "TF_VAR_turso_api_token"               = "TURSO_TOKEN"
         "TF_VAR_turso_organization"            = "TF_VAR_TURSO_ORGANIZATION"
     }
     foreach ($targetKey in $sharedAliases.Keys) {
@@ -156,6 +157,8 @@ if ($LoadEnvFiles) {
     }
 
     Write-Host "Remapped env-specific vars for $Environment." -ForegroundColor DarkGray
+
+    Set-TursoPlatformApiTokenForEnvironment -Environment $Environment
 }
 
 # Normalize legacy Auth0 env var names for compatibility.
@@ -222,7 +225,7 @@ if ($missing.Count -gt 0) {
 if ($Environment -eq "staging" -or $Environment -eq "production") {
     $tursoApiToken = [System.Environment]::GetEnvironmentVariable("TF_VAR_turso_api_token", "Process")
     if ([string]::IsNullOrWhiteSpace([string]$tursoApiToken)) {
-        Write-Error ("Missing Turso API token for {0}: provide TURSO_TOKEN." -f $Environment)
+        Write-Error ("Missing Turso API token for {0}: set TURSO_TOKEN_STAGING (staging), TURSO_TOKEN (production), or TURSO_PLATFORM_API_TOKEN / TF_VAR_turso_api_token." -f $Environment)
         exit 1
     }
 

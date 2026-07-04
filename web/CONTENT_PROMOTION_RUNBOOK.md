@@ -25,12 +25,32 @@ This runbook documents the repeatable process for getting verified staging conte
 
 ## Turso backups before any mutating work
 
+### Turso CLI in WSL
+
+**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](../docs/CLI_PATHS_WINDOWS.md)** — Turso is WSL-only in this workspace; auth, PATH quirks, verification, and invoke patterns live there.
+
+From **PowerShell** at repo root:
+
+```powershell
+wsl bash -lic "turso db list"
+# or: wsl bash -lc '$HOME/.turso/turso db list'
+```
+
+Rollback-branch helper from WSL: `./scripts/turso-create-rollback-branch-wsl.sh`.
+
 **Rule:** create a **recoverable backup** of the **specific Turso database** you are about to change **before** migrations, seeds, manual SQL, content promotion, or bulk CMS updates. Do not skip this for small or “obvious” edits.
 
 **Option A — file export (any Turso DB you can access with the CLI)**  
-After `turso auth login` in **WSL** (required in this repo; see [Turso CLI introduction](https://docs.turso.tech/cli/introduction)):
+After `turso auth login` in **WSL** (see [Turso CLI introduction](https://docs.turso.tech/cli/introduction)). From repo root in PowerShell:
+
+```powershell
+wsl bash -lc 'export PATH="$HOME/.turso:$PATH"; mkdir -p .release/backups; turso db export freedomtimes-emdash-staging --output-file ./.release/backups/emdash-staging-$(date +%Y%m%d-%H%M%S).db'
+```
+
+Or inside an interactive WSL shell:
 
 ```bash
+export PATH="$HOME/.turso:$PATH"
 turso db export freedomtimes-emdash-staging --output-file ./.release/backups/emdash-staging-$(date +%Y%m%d-%H%M%S).db
 ```
 

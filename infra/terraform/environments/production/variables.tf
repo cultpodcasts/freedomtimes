@@ -50,6 +50,12 @@ variable "scheduler_turso_database_name" {
   default     = "freedomtimes-scheduler-production"
 }
 
+variable "tips_turso_database_name" {
+  description = "Turso database name for the production tips workload"
+  type        = string
+  default     = "freedomtimes-tips-production"
+}
+
 variable "turso_database_group" {
   description = "Optional Turso group for production EmDash database"
   type        = string
@@ -64,6 +70,12 @@ variable "subscriptions_turso_database_group" {
 
 variable "scheduler_turso_database_group" {
   description = "Optional Turso group for the production scheduler database. Defaults to the EmDash database group when empty."
+  type        = string
+  default     = ""
+}
+
+variable "tips_turso_database_group" {
+  description = "Optional Turso group for the production tips database. Defaults to the EmDash database group when empty."
   type        = string
   default     = ""
 }
@@ -86,6 +98,12 @@ variable "scheduler_turso_database_token_expiration" {
   default     = ""
 }
 
+variable "tips_turso_database_token_expiration" {
+  description = "Optional expiration for the production tips database token. Defaults to the EmDash token expiration when empty."
+  type        = string
+  default     = ""
+}
+
 variable "turso_database_size_limit" {
   description = "Optional size limit for the production EmDash database"
   type        = string
@@ -100,6 +118,12 @@ variable "subscriptions_turso_database_size_limit" {
 
 variable "scheduler_turso_database_size_limit" {
   description = "Optional size limit for the production scheduler database. Defaults to the EmDash size limit when empty."
+  type        = string
+  default     = ""
+}
+
+variable "tips_turso_database_size_limit" {
+  description = "Optional size limit for the production tips database. Defaults to the EmDash size limit when empty."
   type        = string
   default     = ""
 }
@@ -122,6 +146,12 @@ variable "scheduler_turso_database_delete_protection" {
   default     = false
 }
 
+variable "tips_turso_database_delete_protection" {
+  description = "Whether delete protection should be enabled for the production tips database"
+  type        = bool
+  default     = false
+}
+
 variable "turso_database_token_authorization" {
   description = "Authorization level for the production EmDash database token"
   type        = string
@@ -136,6 +166,12 @@ variable "subscriptions_turso_database_token_authorization" {
 
 variable "scheduler_turso_database_token_authorization" {
   description = "Authorization level for the production scheduler database token"
+  type        = string
+  default     = "full-access"
+}
+
+variable "tips_turso_database_token_authorization" {
+  description = "Authorization level for the production tips database token"
   type        = string
   default     = "full-access"
 }
@@ -241,9 +277,9 @@ variable "api_custom_hostname_certificate_password" {
 }
 
 variable "worker_name" {
-  description = "Worker name for the holding page"
+  description = "Cloudflare Worker name for the web app"
   type        = string
-  default     = "freedomtimes-holding"
+  default     = "freedomtimes"
 }
 
 variable "route_pattern" {

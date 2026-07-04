@@ -1,0 +1,48 @@
+---
+import { formatShortCommitSha, githubCommitUrl } from '../lib/build-provenance';
+
+interface Props {
+	/** BEM-style modifier for scoped layout tweaks (e.g. diagnostics panel). */
+	variant?: 'default' | 'inline';
+}
+
+const { variant = 'default' } = Astro.props;
+
+const commitUrl = githubCommitUrl();
+const shortSha = formatShortCommitSha();
+---
+
+<p class:list={['reader-data-provenance', variant !== 'default' && `reader-data-provenance--${variant}`]}>
+	{commitUrl ? (
+		<>
+			You can review the source code for this handler on GitHub (
+			<a href={commitUrl} rel="noopener noreferrer">commit {shortSha}</a>).
+		</>
+	) : (
+		<>Handler source is on GitHub (commit not recorded for this build).</>
+	)}
+</p>
+
+<style>
+	.reader-data-provenance {
+		margin: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.78rem;
+		line-height: 1.45;
+		color: var(--text-secondary, #777);
+	}
+
+	.reader-data-provenance a {
+		color: inherit;
+		text-decoration: underline;
+		text-underline-offset: 0.12em;
+	}
+
+	.reader-data-provenance a:hover {
+		color: #0044bb;
+	}
+
+	.reader-data-provenance--inline {
+		margin-top: 0.35rem;
+	}
+</style>
