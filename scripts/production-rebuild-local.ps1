@@ -1,4 +1,7 @@
 
+# Local production rebuild: Terraform apply -> Auth0 .env.dev sync -> Worker secret sync -> build -> wrangler deploy.
+# Preflight requires production VAPID + FCM keys in .env.dev (Assert-ProductionPushSecretsReady).
+# Troubleshooting (FCM preflight, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle): web/docs/DEPLOY_TROUBLESHOOTING.md
 [CmdletBinding()]
 param()
 

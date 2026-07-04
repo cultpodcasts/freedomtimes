@@ -2,6 +2,8 @@
 
 Use this when staging is destroyed and needs to be rebuilt from local with minimal friction.
 
+Deploy failures (FCM keys, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle, Cloudflare token): **[web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)**.
+
 ## 1. Run one-command local staging rebuild
 
 Run from repo root:

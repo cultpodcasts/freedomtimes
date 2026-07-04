@@ -5,6 +5,7 @@ This guide documents how to manage Freedom Times environments locally and in CI/
 **Table of Contents:**
 - [Environment Architecture](#environment-architecture)
 - [Local Setup: Complete Teardown & Rebuild](#local-setup-complete-teardown--rebuild)
+- [Deploy troubleshooting](#deploy-troubleshooting)
 - [Syncing Secrets & Variables](#syncing-secrets--variables)
 - [GitHub Actions Deployment Workflow](#github-actions-deployment-workflow)
 - [Sync Script Reference](#sync-script-reference)
@@ -204,6 +205,14 @@ npx wrangler deploy --config wrangler.jsonc --env staging
 # Production
 npx wrangler deploy --config wrangler.jsonc --env production
 ```
+
+---
+
+## Deploy troubleshooting
+
+When `staging-rebuild-local.ps1` or `production-rebuild-local.ps1` fails (especially **FCM preflight**, Turso secrets after worker rename, wrangler deploy path, or Terraform worker lifecycle conflicts), see **[web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)**.
+
+Production rebuild **requires** `PUSH_PRODUCTION_ANDROID_FCM_*` in `.env.dev` before Terraform runs — staging-prefixed FCM keys alone are not enough for preflight (secret sync accepts staging FCM as a fallback; preflight does not).
 
 ---
 

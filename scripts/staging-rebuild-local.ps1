@@ -1,3 +1,5 @@
+# Local staging rebuild: Terraform apply -> Auth0 sync -> publish-only enforcement -> secret sync -> build -> deploy -> verify.
+# Preflight requires staging VAPID keys only (no FCM). Troubleshooting: web/docs/DEPLOY_TROUBLESHOOTING.md
 [CmdletBinding()]
 param()
 
