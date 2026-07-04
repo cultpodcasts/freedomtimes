@@ -79,7 +79,7 @@ Use this when validating login on staging at [https://staging.freedomtimes.news]
 
 ```powershell
 cd web
-npx wrangler tail freedomtimes-holding-staging --format pretty
+npx wrangler tail freedomtimes-staging --format pretty
 ```
 
 **Report each attempt with:**

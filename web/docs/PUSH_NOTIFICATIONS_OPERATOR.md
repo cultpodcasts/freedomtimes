@@ -140,7 +140,7 @@ Worker secrets: `PUSH_IOS_APNS_TEAM_ID`, `PUSH_IOS_APNS_KEY_ID`, `PUSH_IOS_APNS_
 ```
 .env.dev (operator)                    Cloudflare worker secrets
 ─────────────────────                  ───────────────────────────
-PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY  →   freedomtimes-holding-staging: PUSH_SUBSCRIBE_PUBLIC_KEY
+PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY  →   freedomtimes-staging: PUSH_SUBSCRIBE_PUBLIC_KEY
 PUSH_STAGING_VAPID_PRIVATE_KEY     →   freedomtimes-scheduler-staging: PUSH_VAPID_PRIVATE_KEY
                                        (+ PUSH_VAPID_PUBLIC_KEY = same public key)
 

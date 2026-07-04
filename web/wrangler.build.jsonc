@@ -26,7 +26,7 @@
 	//
 	// DO NOT add a `main` field here. DO NOT add env blocks or vars here —
 	// those belong in wrangler.jsonc where they are applied at deploy time.
-	"name": "freedomtimes-holding",
+	"name": "freedomtimes",
 	"compatibility_date": "2026-03-29",
 	"compatibility_flags": ["nodejs_compat"]
 }

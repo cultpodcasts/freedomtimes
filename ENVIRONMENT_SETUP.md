@@ -19,12 +19,12 @@ This guide documents how to manage Freedom Times environments locally and in CI/
 
 - **Staging**: `staging.freedomtimes.news`
   - Auth0 API: `https://api-staging.freedomtimes.news`
-  - Cloudflare Worker: `freedomtimes-holding-staging`
+  - Cloudflare Worker: `freedomtimes-staging`
   - Branched deployment: `feat/11-editorial-api-cosmos`
 
 - **Production**: `freedomtimes.news`
   - Auth0 API: `https://api.freedomtimes.news`
-  - Cloudflare Worker: `freedomtimes-holding`
+  - Cloudflare Worker: `freedomtimes`
   - Main branch deployment
 
 ### Infrastructure Components
@@ -792,7 +792,7 @@ AUTH0_ROLES_CLAIM_NAMESPACE=https://freedomtimes.news/roles
 
 # STAGING
 TF_VAR_ROUTE_PATTERN_STAGING=staging.freedomtimes.news/*
-TF_VAR_WORKER_NAME_STAGING=freedomtimes-holding-staging
+TF_VAR_WORKER_NAME_STAGING=freedomtimes-staging
 TF_VAR_MANAGE_APEX_DNS_RECORD_STAGING=false
 TF_VAR_APEX_DNS_RECORD_CONTENT_STAGING=192.0.2.1
 TF_VAR_API_CUSTOM_HOSTNAME_STAGING=api-staging.freedomtimes.news
@@ -801,7 +801,7 @@ TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING="https://staging.freedomtimes.news
 
 # PRODUCTION
 TF_VAR_ROUTE_PATTERN_PRODUCTION=freedomtimes.news/*
-TF_VAR_WORKER_NAME_PRODUCTION=freedomtimes-holding
+TF_VAR_WORKER_NAME_PRODUCTION=freedomtimes
 TF_VAR_MANAGE_APEX_DNS_RECORD_PRODUCTION=true
 TF_VAR_APEX_DNS_RECORD_CONTENT_PRODUCTION=192.0.2.1
 TF_VAR_API_CUSTOM_HOSTNAME_PRODUCTION=api.freedomtimes.news

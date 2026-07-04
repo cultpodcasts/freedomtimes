@@ -277,9 +277,9 @@ variable "api_custom_hostname_certificate_password" {
 }
 
 variable "worker_name" {
-  description = "Worker name for the holding page"
+  description = "Cloudflare Worker name for the web app"
   type        = string
-  default     = "freedomtimes-holding"
+  default     = "freedomtimes"
 }
 
 variable "route_pattern" {

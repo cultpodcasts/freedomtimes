@@ -12,7 +12,7 @@ auth0_extra_callback_urls = ["news.freedomtimes.app://auth/callback"]
 # CORS allowed origins for staging APIM
 api_management_allowed_origins = ["https://staging.example.com", "https://example.com"]
 
-worker_name     = "freedomtimes-holding-staging"
+worker_name     = "freedomtimes-staging"
 holding_title   = "Freedom Times (Staging)"
 holding_heading = "Freedom Times"
 holding_message = "This is the staging environment."

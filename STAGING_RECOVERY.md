@@ -112,8 +112,23 @@ Invoke-WebRequest https://staging.freedomtimes.news -UseBasicParsing
 - Optional logs:
 
 ```powershell
-npx wrangler tail freedomtimes-holding-staging --format pretty
+npx wrangler tail freedomtimes-staging --format pretty
 ```
+
+## Renaming web Workers (remove `-holding`)
+
+Historical names: `freedomtimes-holding-staging` → **`freedomtimes-staging`**, `freedomtimes-holding` → **`freedomtimes`**. Scheduler names are unchanged.
+
+Wrangler deploy with a new `name` creates a **new** Worker script; the old script remains until deleted. Custom domains and zone routes are owned by Terraform (`module.cloudflare_holding_page`):
+
+1. Update `TF_VAR_WORKER_NAME_STAGING` / `TF_VAR_WORKER_NAME_PRODUCTION` in `.env.dev` and GitHub repo variables.
+2. Apply staging Terraform so `cloudflare_workers_domain` / `cloudflare_workers_route` point at the new script name.
+3. Deploy the app: `.\scripts\deploy-staging-workers-only.ps1` (or full `staging-rebuild-local.ps1`).
+4. Verify `https://staging.freedomtimes.news` serves the new Worker (`npx wrangler deployments list --config web/wrangler.jsonc --env staging`).
+5. Copy secrets to the new Worker if needed (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`).
+6. After production is migrated the same way, delete obsolete scripts in Cloudflare dashboard: **Workers & Pages → freedomtimes-holding-staging**, **freedomtimes-holding**.
+
+Do **not** delete the old Worker until routes/custom domains are confirmed on the new name.
 
 ## Production Notes
 

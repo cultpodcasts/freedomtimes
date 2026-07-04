@@ -98,8 +98,9 @@ const envFp = fingerprint(bindings.envPublic.value, bindings.envPublic.name);
 
 console.log(`\nVAPID public key comparison (${target})`);
 console.log(formatFingerprint(envFp));
+const webWorkerName = target === 'production' ? 'freedomtimes' : 'freedomtimes-staging';
 console.log(`\nExpected worker secrets (same value as ${bindings.envPublic.name}):`);
-console.log(`  freedomtimes-holding-${target === 'production' ? 'production' : 'staging'} → ${bindings.workerSecretName}`);
+console.log(`  ${webWorkerName} → ${bindings.workerSecretName}`);
 console.log(`  freedomtimes-scheduler-${target === 'production' ? 'production' : 'staging'} → ${bindings.schedulerSecretName}`);
 console.log('  (wrangler cannot print secret values; re-sync from .env.dev / GitHub if fingerprints diverge)');
 
