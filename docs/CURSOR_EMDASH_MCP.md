@@ -43,7 +43,7 @@ Token resolution order:
 ### 1. Dependencies
 
 ```powershell
-cd C:\Users\jonbr\source\repos\freedomtimes\web
+cd $env:USERPROFILE\source\repos\freedomtimes\web
 npm install
 ```
 
@@ -52,7 +52,7 @@ Requires `mcp-remote@next` in `web/package.json` devDependencies.
 ### 2. Tokens
 
 ```powershell
-cd C:\Users\jonbr\source\repos\freedomtimes
+cd $env:USERPROFILE\source\repos\freedomtimes
 .\scripts\set-emdash-mcp-tokens.ps1 -UseCurrentLoginTokens
 ```
 
@@ -60,9 +60,9 @@ Sets user-level `EMDASH_STAGING_PAT` and `EMDASH_PRODUCTION_PAT`.
 
 ### 3. Global Cursor config (Windows)
 
-**File:** `C:\Users\jonbr\.cursor\mcp.json` — **user-local, not committed.**
+**File:** `%USERPROFILE%\.cursor\mcp.json` (Windows) or `~/.cursor/mcp.json` — **user-local, not committed.**
 
-Use **literal paths** on your machine (see `~/.cursor/skills/freedomtimes-emdash-mcp/mcp.json.template`):
+Use **literal paths** on your machine (see `~/.cursor/skills/freedomtimes-emdash-mcp/mcp.json.template`). Replace `<REPO_ROOT>` with your checkout path, e.g. `%USERPROFILE%\source\repos\freedomtimes`:
 
 ```json
 {
@@ -70,14 +70,14 @@ Use **literal paths** on your machine (see `~/.cursor/skills/freedomtimes-emdash
     "freedomtimes-staging": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": [
-        "C:/Users/jonbr/source/repos/freedomtimes/web/scripts/emdash-mcp-cursor-bridge.mjs",
+        "<REPO_ROOT>/web/scripts/emdash-mcp-cursor-bridge.mjs",
         "staging"
       ]
     },
     "freedomtimes-production": {
       "command": "C:/Program Files/nodejs/node.exe",
       "args": [
-        "C:/Users/jonbr/source/repos/freedomtimes/web/scripts/emdash-mcp-cursor-bridge.mjs",
+        "<REPO_ROOT>/web/scripts/emdash-mcp-cursor-bridge.mjs",
         "production"
       ]
     }
@@ -105,7 +105,7 @@ When MCP breaks after Cursor update, reload, or workspace change:
 6. Terminal smoke test:
 
 ```powershell
-& "C:\Program Files\nodejs\node.exe" "C:\Users\jonbr\source\repos\freedomtimes\web\scripts\emdash-mcp-cursor-bridge.mjs" staging
+& "C:\Program Files\nodejs\node.exe" "$env:USERPROFILE\source\repos\freedomtimes\web\scripts\emdash-mcp-cursor-bridge.mjs" staging
 ```
 
 Expect `Proxy established successfully` (Ctrl+C to stop).
