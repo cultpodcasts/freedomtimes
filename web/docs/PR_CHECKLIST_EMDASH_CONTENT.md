@@ -35,12 +35,15 @@ You only need a **schema change** if the **live** instance (staging/production) 
 
 ### 2.0a MCP only for content shape (“is this post Portable Text?”)
 
+**Primary guardrail (AI agents):** **IF MCP FAILS WE DO NOT FALL BACK TO SHELL.** See **`AGENTS.md`** § *Primary guardrails* §1. Use Cursor EmDash MCP only; **STOP** and ask the operator to fix MCP when unavailable or auth fails.
+
 **Policy:** Do **not** use **`npx emdash content get … --json`** to decide what is stored in the CMS. That output often shows **`data.content` as a long markdown string** (`STR` in the classifier below) even when **MCP `content_get`** returns **`item.data.content`** as **`PT blocks N`**.
 
 **Do this (staging/production):**
 
-1. Cursor **EmDash MCP** `content_get`, or **`node web/scripts/emdash-mcp-tools-call.mjs`** with `content_get` (see **`AGENTS.md`**).
-2. Inspect **`item.data.content`** in the tool result. If it is an **array**, that read path is **Portable Text**.
+1. **AI agents:** Cursor **EmDash MCP** `content_get` only. If MCP fails → **STOP** (no shell fallback).
+2. **Operators (humans):** Cursor MCP **or** **`node web/scripts/emdash-mcp-tools-call.mjs`** with `content_get` — operator choice from a terminal.
+3. Inspect **`item.data.content`** in the tool result. If it is an **array**, that read path is **Portable Text**.
 
 **HTTP callers:** send **`Accept: application/json, text/event-stream`** on MCP POSTs. See `web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md` section **CLI vs MCP**.
 
@@ -94,9 +97,9 @@ Pass `.tmp/canary-post-staging.json` and `.tmp/canary-post-production.json`, or 
 
 You want **`PT`** on canary posts once the live **`content`** field is truly **Portable Text** and entries are saved through that type. **`STR` from CLI JSON alone** does **not** prove legacy storage—check **§2.0a (MCP)** or **Turso** before concluding. **`STR`** everywhere (MCP + DB + admin) would indicate legacy rows, plain-text field type, or coercion on write—use §2.0 to decide which.
 
-### 2c. Clear stale env tokens (Windows)
+### 2c. Clear stale env tokens (Windows — operators only)
 
-If MCP returns **401 / invalid token**, clear overrides so **`emdash-mcp-tools-call.mjs`** can use **`~/.config/emdash/auth.json`**:
+If MCP returns **401 / invalid token**, operators may clear overrides so **`emdash-mcp-tools-call.mjs`** can use **`~/.config/emdash/auth.json`** (manual terminal use — **not** an agent fallback when Cursor MCP fails):
 
 ```powershell
 Remove-Item Env:EMDASH_STAGING_TOKEN -ErrorAction SilentlyContinue

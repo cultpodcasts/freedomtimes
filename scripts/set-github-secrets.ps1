@@ -50,11 +50,7 @@ function Main {
                 "PUSH_STAGING_IOS_APNS_TEAM_ID",
                 "PUSH_STAGING_IOS_APNS_KEY_ID",
                 "PUSH_STAGING_IOS_APNS_PRIVATE_KEY",
-                "PUSH_STAGING_IOS_APNS_BUNDLE_ID",
-                "TURNSTILE_STAGING_SITE_KEY",
-                "TURNSTILE_STAGING_SECRET_KEY",
-                "TURNSTILE_SITE_KEY",
-                "TURNSTILE_SECRET_KEY"
+                "PUSH_STAGING_IOS_APNS_BUNDLE_ID"
             ) -OverlayPath $stagingEnvPath -TargetLabel "Staging"
             $stagingEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $stagingOverlayValues
             $stagingAuth0Domain = Get-EnvValue -Values $stagingEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
@@ -76,17 +72,7 @@ function Main {
             $stagingIosApnsKeyId = Get-EnvValue -Values $stagingEnvValues -Keys @("PUSH_STAGING_IOS_APNS_KEY_ID")
             $stagingIosApnsPrivateKey = Get-EnvValue -Values $stagingEnvValues -Keys @("PUSH_STAGING_IOS_APNS_PRIVATE_KEY")
             $stagingIosApnsBundleId = Get-EnvValue -Values $stagingEnvValues -Keys @("PUSH_STAGING_IOS_APNS_BUNDLE_ID")
-            # Staging Turnstile: prefer TURNSTILE_STAGING_*; fall back to unprefixed names; then Cloudflare test keys.
-            $stagingTurnstileSiteKey = Get-EnvValue -Values $stagingEnvValues -Keys @("TURNSTILE_STAGING_SITE_KEY", "TURNSTILE_SITE_KEY")
-            $stagingTurnstileSecretKey = Get-EnvValue -Values $stagingEnvValues -Keys @("TURNSTILE_STAGING_SECRET_KEY", "TURNSTILE_SECRET_KEY")
-            if ([string]::IsNullOrWhiteSpace($stagingTurnstileSiteKey)) {
-                $stagingTurnstileSiteKey = "1x00000000000000000000AA"
-                Write-Host "[LOG] Using Cloudflare Turnstile test site key for staging (set TURNSTILE_STAGING_SITE_KEY in .env.dev to override)" -ForegroundColor Yellow
-            }
-            if ([string]::IsNullOrWhiteSpace($stagingTurnstileSecretKey)) {
-                $stagingTurnstileSecretKey = "1x0000000000000000000000000000000AA"
-                Write-Host "[LOG] Using Cloudflare Turnstile test secret key for staging (set TURNSTILE_STAGING_SECRET_KEY in .env.dev to override)" -ForegroundColor Yellow
-            }
+            Write-Host "[LOG] TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY are managed by Terraform (infra/terraform apply); skipping Worker sync for Turnstile." -ForegroundColor Gray
             Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, EMDASH_AUTH_SECRET, EMDASH_PREVIEW_SECRET for staging" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_DOMAIN" -Value $stagingAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $stagingClientId -WhatIfOnly:$DryRun
@@ -101,8 +87,6 @@ function Main {
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "PUSH_VAPID_SUBJECT" -Value $stagingPushSubject -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "EMDASH_AUTH_SECRET" -Value $stagingEmdashAuthSecret -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "EMDASH_PREVIEW_SECRET" -Value $stagingEmdashPreviewSecret -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "TURNSTILE_SITE_KEY" -Value $stagingTurnstileSiteKey -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name "TURNSTILE_SECRET_KEY" -Value $stagingTurnstileSecretKey -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "TURSO_SCHEDULER_DATABASE_URL" -Value $stagingSchedulerDbUrl -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "TURSO_SCHEDULER_AUTH_TOKEN" -Value $stagingSchedulerDbToken -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $stagingSubscriptionsDbUrl -WhatIfOnly:$DryRun
@@ -140,11 +124,7 @@ function Main {
                 "PUSH_PRODUCTION_IOS_APNS_TEAM_ID",
                 "PUSH_PRODUCTION_IOS_APNS_KEY_ID",
                 "PUSH_PRODUCTION_IOS_APNS_PRIVATE_KEY",
-                "PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID",
-                "TURNSTILE_PRODUCTION_SITE_KEY",
-                "TURNSTILE_PRODUCTION_SECRET_KEY",
-                "TURNSTILE_SITE_KEY",
-                "TURNSTILE_SECRET_KEY"
+                "PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID"
             ) -OverlayPath $productionEnvPath -TargetLabel "Production"
             $productionEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $productionOverlayValues
             $productionAuth0Domain = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
@@ -169,8 +149,7 @@ function Main {
             $productionTipsDbToken = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_TIPS_DB_TOKEN", "TURSO_TIPS_AUTH_TOKEN") -ErrorMessage "Missing production tips Turso token: set TURSO_PRODUCTION_TIPS_DB_TOKEN or TURSO_TIPS_AUTH_TOKEN for production Worker secret sync."
             $productionSchedulerDbUrl = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_URL", "TURSO_SCHEDULER_DATABASE_URL") -ErrorMessage "Missing production scheduler Turso URL: set TURSO_PRODUCTION_SCHEDULER_DB_URL or TURSO_SCHEDULER_DATABASE_URL for production scheduler Worker secret sync."
             $productionSchedulerDbToken = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_TOKEN", "TURSO_SCHEDULER_AUTH_TOKEN") -ErrorMessage "Missing production scheduler Turso token: set TURSO_PRODUCTION_SCHEDULER_DB_TOKEN or TURSO_SCHEDULER_AUTH_TOKEN for production scheduler Worker secret sync."
-            $productionTurnstileSiteKey = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURNSTILE_PRODUCTION_SITE_KEY", "TURNSTILE_SITE_KEY") -ErrorMessage "Missing production Turnstile site key: set TURNSTILE_PRODUCTION_SITE_KEY or TURNSTILE_SITE_KEY in .env.dev (Cloudflare dashboard -> Turnstile -> Add widget for freedomtimes.news)."
-            $productionTurnstileSecretKey = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURNSTILE_PRODUCTION_SECRET_KEY", "TURNSTILE_SECRET_KEY") -ErrorMessage "Missing production Turnstile secret key: set TURNSTILE_PRODUCTION_SECRET_KEY or TURNSTILE_SECRET_KEY in .env.dev (same Turnstile widget as the site key)."
+            Write-Host "[LOG] TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY are managed by Terraform (infra/terraform apply); skipping Worker sync for Turnstile." -ForegroundColor Gray
             Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for production" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
@@ -180,8 +159,6 @@ function Main {
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_TIPS_DATABASE_URL" -Value $productionTipsDbUrl -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_TIPS_AUTH_TOKEN" -Value $productionTipsDbToken -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "PUSH_SUBSCRIBE_PUBLIC_KEY" -Value $productionPushPublicKey -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURNSTILE_SITE_KEY" -Value $productionTurnstileSiteKey -WhatIfOnly:$DryRun
-            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURNSTILE_SECRET_KEY" -Value $productionTurnstileSecretKey -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SCHEDULER_DATABASE_URL" -Value $productionSchedulerDbUrl -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SCHEDULER_AUTH_TOKEN" -Value $productionSchedulerDbToken -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $productionSubscriptionsDbUrl -WhatIfOnly:$DryRun

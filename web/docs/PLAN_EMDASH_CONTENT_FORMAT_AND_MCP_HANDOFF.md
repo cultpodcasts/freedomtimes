@@ -48,13 +48,19 @@ The new session should **reproduce** MCP failures with a minimal call (e.g. get 
 
 ## CLI vs MCP: which tool to use for `content` (important)
 
+### Primary guardrail — AI agents: IF MCP FAILS WE DO NOT FALL BACK TO SHELL
+
+When Cursor **EmDash MCP** is unavailable, errored, auth invalid, or `call_mcp_tool` is not registered in the session: **STOP immediately.** Tell the operator to fix MCP (**Tools & MCP**, restart Cursor, enable `freedomtimes-staging` / `freedomtimes-production`, refresh tokens via `emdash login` / PAT, check **Output → MCP Logs**), then **wait**.
+
+**Never** fall back to **`web/scripts/emdash-mcp-tools-call.mjs`**, **`npx emdash content …`**, REST curl, or other shell/CLI workarounds. **Operators** may run **`emdash-mcp-tools-call.mjs`** manually from a terminal; that is operator choice, not an agent fallback. Canonical wording: **`AGENTS.md`** § *Primary guardrails* §1.
+
 **Problem:** Agents often default to **`npx emdash content get … --json`** because it is familiar and scriptable. For **`portableText`** fields on **`posts` / `pages`**, that routinely produces **`data.content` as a markdown string** in JSON even when **Turso stores a PT array** and **MCP returns PT**. Relying on the CLI alone has caused **wrong conclusions**, **repeated canaries**, and **wasted time and tokens** chasing “legacy string storage” that is not what the database holds.
 
 **Default for shape / automation truth:** use **staging or production MCP** (`content_get`, and `content_update` when editing) with a valid bearer token. The MCP response wraps the entry as **`item`** (use **`item.data.content`**). Observed on staging (2026-05-04): same published post showed **`STR`** via CLI JSON and **`PT blocks 66`** via MCP—aligned with Turso `json_array_length(content)`.
 
 **When the CLI is still appropriate:** quick human checks, CI that only needs title/slug/status, or flows that intentionally consume markdown. Do **not** use CLI-only JSON to decide whether Portable Text exists in storage.
 
-**HTTP MCP notes (non-IDE callers):** `POST /_emdash/api/mcp` expects header **`Accept: application/json, text/event-stream`**. Stale **`EMDASH_*_PAT`** env values may return `INVALID_TOKEN`; **`~/.config/emdash/auth.json`** access tokens from `emdash login` often work for the same host.
+**HTTP MCP notes (operators — non-IDE callers):** `POST /_emdash/api/mcp` expects header **`Accept: application/json, text/event-stream`**. Stale **`EMDASH_*_PAT`** env values may return `INVALID_TOKEN`; **`~/.config/emdash/auth.json`** access tokens from `emdash login` often work for the same host. **AI agents:** use Cursor MCP only — if auth fails, **STOP** per **Primary guardrails** above; do not switch to shell.
 
 **Release context:** EmDash **0.8.x–0.9.x** expanded MCP surface (`settings_*`, richer `content_update`, structured errors, etc.); see [emdash@0.8.0](https://github.com/emdash-cms/emdash/releases/tag/emdash%400.8.0) and [emdash@0.9.0](https://github.com/emdash-cms/emdash/releases/tag/emdash%400.9.0). None of those notes promise that **`content get --json`** returns raw PT arrays for rich-text fields.
 

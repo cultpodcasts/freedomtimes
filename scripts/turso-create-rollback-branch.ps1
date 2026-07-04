@@ -8,7 +8,7 @@ param(
     [string]$Notes,
     [switch]$AllowProduction,
     [switch]$DryRun,
-    [switch]$UseWslTurso
+    [switch]$UseNativeTurso
 )
 
 Set-StrictMode -Version Latest
@@ -52,13 +52,15 @@ if (-not (Test-CommandAvailable -CommandName "git")) {
     throw "git is required to capture release metadata."
 }
 
+$UseWslTurso = -not $UseNativeTurso
+
 if ($UseWslTurso) {
     if (-not (Test-CommandAvailable -CommandName "wsl")) {
-        throw "wsl is required when -UseWslTurso is set (run Turso installer inside Ubuntu WSL: https://get.tur.so/install.sh )."
+        throw "wsl is required for Turso (install Ubuntu WSL, then Turso: curl -sSfL https://get.tur.so/install.sh | bash). See docs/CLI_PATHS_WINDOWS.md"
     }
 }
 elseif (-not (Test-CommandAvailable -CommandName "turso")) {
-    throw "Turso CLI is required. Install Turso CLI and run 'turso auth login', or re-run with -UseWslTurso after installing Turso in WSL."
+    throw "Turso CLI not on Windows PATH. Use default WSL mode (-UseWslTurso) or install Turso in WSL. See docs/CLI_PATHS_WINDOWS.md and web/CONTENT_PROMOTION_RUNBOOK.md"
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent

@@ -8,6 +8,7 @@ Terraform is not required for local application development. Local work can run 
 
 - Cloudflare holding page worker
 - Worker route attachment to a configured zone pattern
+- Cloudflare Turnstile widgets for story tips (`/submit-a-tip`) with Worker secrets `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`
 - Auth0 application and RBAC resources
 - Turso databases for EmDash, scheduler, push subscriptions, and reader tips
 - Environment entrypoints for `production` and `staging`
@@ -44,24 +45,31 @@ Auth0 shared ownership rule:
 - Pass Cloudflare API token through environment variable or CI secret
 - Use least-privilege Cloudflare API tokens
 
-### Cloudflare API Token (Least Privilege)
+**Full token setup (permissions, dashboard steps, TFC + `.env.dev` sync):** [CLOUDFLARE_API_TOKEN.md](./CLOUDFLARE_API_TOKEN.md)
 
-For the current Terraform stack (Worker script + Worker route), create a token with only:
+### Cloudflare API Token (summary)
 
-- **Account permissions**
-   - `Workers Scripts: Edit`
-- **Zone permissions**
-   - `Workers Routes: Edit`
-   - `Zone: Read`
+Minimum **Terraform-only** permissions:
 
-Scope the token to:
+- **Account:** Workers Scripts → Edit; Turnstile → Edit
+- **Zone** (`freedomtimes.news`): Workers Routes → Edit; Workers Domains → Edit (if listed); Zone → Read
+- **Optional zone:** DNS → Edit — only when `manage_apex_dns_record = true`
 
-- the single Cloudflare account used for Freedom Times
-- the single production zone (domain)
+CI / Wrangler on the same token may also need Workers KV Storage → Edit (and R2 → Edit for media). See [CLOUDFLARE_API_TOKEN.md](./CLOUDFLARE_API_TOKEN.md#not-required-for-terraform-only-apply).
 
-Do not grant unrelated permissions (DNS edit, cache purge, account settings, billing, etc.) unless a later Terraform resource explicitly requires them.
+### Turnstile widgets
+
+Each environment creates a `cloudflare_turnstile_widget` and pushes `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` to the web Worker via `cloudflare_workers_secret`. Staging domains: `staging.freedomtimes.news`. Production domains: `freedomtimes.news`, `www.freedomtimes.news`.
+
+If a widget already exists in the Cloudflare dashboard, import it instead of creating a duplicate:
+
+```shell
+terraform import cloudflare_turnstile_widget.story_tips '<account_id>/<sitekey>'
+```
 
 ## Local Usage
+
+**CLI paths (primary reference):** **[docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md)** — Windows-native Terraform (WinGet PATH) vs WSL-only Turso CLI.
 
 1. Choose an environment directory:
    - `environments/production`
@@ -132,5 +140,7 @@ Recommended route examples:
 
 ## Related documentation
 
+- [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) — **primary reference** for Windows Terraform PATH and WSL Turso CLI
+- [CLOUDFLARE_API_TOKEN.md](./CLOUDFLARE_API_TOKEN.md) — Cloudflare API token permissions, dashboard setup, TFC variables
 - `ARCHITECTURE.md` — platform stack, EmDash CMS, Auth0 same-origin auth, deployment pipeline
 - `NON_TERRAFORM_RESOURCES.md` — one-time Auth0 bootstrap before first `terraform apply`

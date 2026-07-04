@@ -129,11 +129,25 @@ const turnstileSiteKey = readTurnstileSiteKey();
 			</div>
 
 			{turnstileSiteKey ? (
-				<div
-					id="tip-turnstile"
-					class="turnstile-wrap"
-					data-sitekey={turnstileSiteKey}
-				></div>
+				<div id="tip-turnstile-block" class="turnstile-block">
+					<div
+						id="tip-turnstile"
+						class="turnstile-wrap"
+						data-sitekey={turnstileSiteKey}
+					></div>
+					<aside class="turnstile-privacy-note" aria-label="About the bot check">
+						<p class="turnstile-privacy-note__label">About this check</p>
+						<ul>
+							<li>
+								<a href="https://www.cloudflare.com/en-gb/application-services/products/turnstile/" rel="noopener noreferrer">Cloudflare Turnstile</a> runs a bot check before your tip reaches us.
+							</li>
+							<li>We do not receive or store your IP address or other browser signals in our tips database.</li>
+							<li>
+								See Cloudflare's <a href="https://www.cloudflare.com/turnstile-privacy-policy/" rel="noopener noreferrer">Turnstile privacy addendum</a> for how they handle those signals.
+							</li>
+						</ul>
+					</aside>
+				</div>
 			) : (
 				<p class="form-note warn">Human verification is not configured on this environment.</p>
 			)}
@@ -173,13 +187,17 @@ const turnstileSiteKey = readTurnstileSiteKey();
 
 		<section class="privacy-block" aria-labelledby="tip-privacy-heading">
 			<h2 id="tip-privacy-heading">What we collect</h2>
+			<h3 class="privacy-subheading">What Freedom Times stores</h3>
 			<ul>
-				<li><strong>Anonymous mode:</strong> tip text only. No name, email, IP address, or account data is stored by our handler.</li>
-				<li><strong>Identified mode:</strong> tip text plus the name and email you provide.</li>
-				<li><strong>Always:</strong> Cloudflare Turnstile checks that a human submitted the form (we do not add IP to our database).</li>
+				<li><strong>Anonymous (default):</strong> your tip text and when you sent it. We do not save your name, email, IP address, or account details.</li>
+				<li><strong>With contact details:</strong> your tip text plus the name and email you provide so we can follow up.</li>
+			</ul>
+			<h3 class="privacy-subheading">What Cloudflare does for the bot check</h3>
+			<ul>
+				<li>Before your tip reaches us, <a href="https://www.cloudflare.com/en-gb/application-services/products/turnstile/" rel="noopener noreferrer">Cloudflare Turnstile</a> runs a spam check on Cloudflare's systems using technical browser signals (such as IP address and browser type). We do not receive or store those signals. Cloudflare says it uses them only to tell humans from bots — not to identify you or show you ads. See Cloudflare's <a href="https://www.cloudflare.com/turnstile-privacy-policy/" rel="noopener noreferrer">Turnstile privacy addendum</a>.</li>
 			</ul>
 			<p>
-				Read our <a href="/privacy-policy">privacy policy</a>.
+				Read our <a href="/privacy-policy">privacy policy</a> for how we handle your data, third-party services, and your rights.
 			</p>
 			<ReaderDataProvenance />
 		</section>
@@ -210,7 +228,7 @@ const turnstileSiteKey = readTurnstileSiteKey();
 	const errorTitle = document.querySelector('#tip-error-title');
 	const errorMessage = document.querySelector('#tip-error-message');
 	const submittedBadge = document.querySelector('#tip-submitted-badge');
-	const turnstileWrap = document.querySelector('#tip-turnstile');
+	const turnstileBlock = document.querySelector('#tip-turnstile-block');
 	let turnstileToken = '';
 	let formSubmitted = false;
 	let submitAttempted = false;
@@ -494,8 +512,8 @@ const turnstileSiteKey = readTurnstileSiteKey();
 			submitButton.disabled = true;
 			submitButton.textContent = 'Tip sent';
 		}
-		if (turnstileWrap instanceof HTMLElement) {
-			turnstileWrap.hidden = true;
+		if (turnstileBlock instanceof HTMLElement) {
+			turnstileBlock.hidden = true;
 		}
 	}
 
@@ -911,7 +929,7 @@ const turnstileSiteKey = readTurnstileSiteKey();
 		accent-color: #2d6a4f;
 	}
 
-	.tip-form--submitted .turnstile-wrap[hidden] {
+	.tip-form--submitted .turnstile-block[hidden] {
 		display: none !important;
 	}
 
@@ -1062,8 +1080,46 @@ const turnstileSiteKey = readTurnstileSiteKey();
 		color: var(--text-secondary);
 	}
 
+	.turnstile-block {
+		display: grid;
+		gap: 0.65rem;
+	}
+
 	.turnstile-wrap {
 		min-height: 65px;
+	}
+
+	.turnstile-privacy-note {
+		margin: 0;
+		padding: 0.75rem 0.85rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 4px;
+		background: #fafafa;
+	}
+
+	.turnstile-privacy-note__label {
+		margin: 0 0 0.35rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.82rem;
+		font-weight: 600;
+		color: var(--text-secondary);
+	}
+
+	.turnstile-privacy-note ul {
+		margin: 0;
+		padding-left: 1.15rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		line-height: 1.55;
+		color: var(--text-secondary);
+	}
+
+	.turnstile-privacy-note li + li {
+		margin-top: 0.25rem;
+	}
+
+	.turnstile-privacy-note a {
+		color: #0044bb;
 	}
 
 	.primary-button {
@@ -1099,6 +1155,13 @@ const turnstileSiteKey = readTurnstileSiteKey();
 		font-family: 'Playfair Display', Georgia, serif;
 		font-size: 1.5rem;
 		margin: 0 0 1rem;
+	}
+
+	.privacy-block .privacy-subheading {
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+		font-weight: 600;
+		margin: 1.25rem 0 0.5rem;
 	}
 
 	.privacy-block ul {

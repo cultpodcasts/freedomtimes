@@ -673,7 +673,11 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		background: linear-gradient(180deg, rgba(35, 77, 105, 0.08), rgba(35, 77, 105, 0.03));
 		display: grid;
 		gap: 0.5rem;
-		max-width: 65ch;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: min(65ch, 100%);
+		min-width: 0;
+		overflow-x: clip;
 	}
 
 	.notifications--subscribed {
@@ -689,8 +693,8 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 
 	.notifications--subscribed:has(#notification-diagnostics-panel:not([hidden])),
 	.notifications--subscribed:has(#notifications-troubleshoot-panel:not([hidden])) {
-		width: auto;
-		max-width: 65ch;
+		width: 100%;
+		max-width: min(65ch, 100%);
 		padding: 0.65rem 0.85rem;
 		border: 1px solid rgba(35, 77, 105, 0.12);
 		border-radius: 10px;
@@ -911,7 +915,11 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		border-top: 1px solid rgba(35, 77, 105, 0.12);
 		display: grid;
 		gap: 0.5rem;
-		max-width: 65ch;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: min(65ch, 100%);
+		min-width: 0;
+		overflow-x: clip;
 	}
 
 	.notifications--subscribed .troubleshoot-panel {
@@ -919,7 +927,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		padding-top: 0.45rem;
 		border-top: 1px solid rgba(35, 77, 105, 0.08);
 		width: 100%;
-		min-width: 18rem;
+		min-width: 0;
 	}
 
 	.troubleshoot-panel[hidden] {
@@ -999,7 +1007,11 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		border-top: 1px solid rgba(35, 77, 105, 0.12);
 		display: grid;
 		gap: 0.85rem;
-		max-width: 65ch;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: min(65ch, 100%);
+		min-width: 0;
+		overflow-x: clip;
 	}
 
 	.diagnostics-loading {
@@ -1034,9 +1046,10 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 	.diagnostics-preview {
 		margin: 0.5rem 0 0;
 		display: grid;
-		grid-template-columns: minmax(10rem, 40%) 1fr;
+		grid-template-columns: minmax(0, 40%) minmax(0, 1fr);
 		gap: 0.35rem 1rem;
 		font-size: 0.88rem;
+		min-width: 0;
 	}
 
 	.diagnostics-preview dt {
@@ -1044,11 +1057,25 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		font-family: 'Inter', sans-serif;
 		font-weight: 600;
 		color: var(--text-secondary);
+		min-width: 0;
 	}
 
 	.diagnostics-preview dd {
 		margin: 0;
+		min-width: 0;
+		overflow-wrap: anywhere;
 		word-break: break-word;
+	}
+
+	@media (max-width: 36rem) {
+		.diagnostics-preview {
+			grid-template-columns: 1fr;
+			gap: 0.15rem 0;
+		}
+
+		.diagnostics-preview dt:not(:first-child) {
+			margin-top: 0.45rem;
+		}
 	}
 
 	.field {
@@ -1067,6 +1094,10 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		padding: 0.6rem 0.7rem;
 		border: 1px solid var(--border-subtle);
 		border-radius: 4px;
+		box-sizing: border-box;
+		width: 100%;
+		max-width: 100%;
+		min-width: 0;
 	}
 
 	.turnstile-wrap {

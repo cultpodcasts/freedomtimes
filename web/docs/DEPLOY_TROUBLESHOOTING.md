@@ -4,6 +4,7 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 
 **Related docs:**
 
+- [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) — **primary reference** for Windows Terraform PATH and WSL Turso CLI
 - [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) — secret sync and FCM credential prep
 - [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) — full `.env.dev` push key reference
 - [STAGING_RECOVERY.md](../../STAGING_RECOVERY.md) — one-command staging rebuild and worker rename checklist
@@ -13,12 +14,30 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 
 ## Table of contents
 
+- [EmDash MCP failure (AI agents)](#emdash-mcp-failure-ai-agents)
 - [FCM keys (production deploy preflight)](#fcm-keys-production-deploy-preflight)
 - [Turso EmDash secrets after worker rename](#turso-emdash-secrets-after-worker-rename)
 - [Wrangler deploy working directory](#wrangler-deploy-working-directory)
 - [Terraform worker script lifecycle](#terraform-worker-script-lifecycle)
 - [Cloudflare API token vs Wrangler OAuth](#cloudflare-api-token-vs-wrangler-oauth)
 - [Quick symptom index](#quick-symptom-index)
+
+---
+
+## EmDash MCP failure (AI agents)
+
+### Symptom
+
+Cursor agent cannot call EmDash MCP (`content_get`, `content_update`, …): servers missing from **Tools & MCP**, red/error status in MCP Logs, `INVALID_TOKEN` / 401, or `call_mcp_tool` not registered (only built-in servers like `cursor-ide-browser`).
+
+### Fix MCP — do not use shell as agent workaround
+
+| Who | Action |
+|-----|--------|
+| **AI agent** | **STOP.** Tell operator: *"EmDash MCP is not available in this session. Enable freedomtimes-staging / freedomtimes-production under Tools & MCP, restart Cursor if needed, refresh tokens (`emdash login` / PAT), check Output → MCP Logs. Tell me when ready."* **Never** fall back to `emdash-mcp-tools-call.mjs`, `npx emdash content`, REST curl, or CLI. |
+| **Operator** | **Ctrl+Shift+J → Tools & MCP** — enable EmDash servers; restart Cursor; **Output → MCP Logs**; `cd web && npx emdash login` for staging/production; or set PAT via `scripts/set-emdash-mcp-tokens.ps1`. **Full Windows/Cursor setup:** **`docs/CURSOR_EMDASH_MCP.md`** and personal skill **`~/.cursor/skills/freedomtimes-emdash-mcp/SKILL.md`**. Optionally run `node web/scripts/emdash-mcp-tools-call.mjs …` manually from a terminal — operator choice only. |
+
+Canonical policy: **`AGENTS.md`** § *Primary guardrails* §1; **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** § *CLI vs MCP*.
 
 ---
 
@@ -116,8 +135,8 @@ Two secret sources apply to the **web** Worker:
 
 | Secret names | Set by | Purpose |
 |--------------|--------|---------|
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | **Terraform** (`cloudflare_workers_secret` in `infra/terraform/modules/cloudflare_holding_page`) | EmDash CMS Turso connection |
-| `AUTH0_*`, `EMDASH_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_TIPS_*`, `PUSH_SUBSCRIBE_PUBLIC_KEY`, … | **`set-github-secrets.ps1`** | Auth, tips, subscriptions, web push subscribe |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | **Terraform** (`cloudflare_workers_secret` in `infra/terraform/modules/cloudflare_holding_page`; Turnstile widget in each environment) | EmDash CMS Turso connection; story tips Turnstile |
+| `AUTH0_*`, `EMDASH_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_TIPS_*`, `PUSH_SUBSCRIBE_PUBLIC_KEY`, … | **`set-github-secrets.ps1`** | Auth, tips DB, subscriptions, web push subscribe |
 
 After rename, verify EmDash Turso secrets exist on the **new** script name:
 
@@ -230,7 +249,7 @@ npx wrangler whoami
 
 ### CI / GitHub Actions
 
-`TF_VAR_CLOUDFLARE_API_TOKEN` must cover **both** Terraform and Wrangler. Minimum for Worker deploy:
+`TF_VAR_CLOUDFLARE_API_TOKEN` must cover **both** Terraform and Wrangler. Terraform minimum: see [infra/terraform/CLOUDFLARE_API_TOKEN.md](../../infra/terraform/CLOUDFLARE_API_TOKEN.md). Wrangler deploy additionally needs:
 
 - `Workers Scripts:Edit`
 - `Workers KV Storage:Edit` (staging binds `SESSION` KV — without this, deploy fails with API error `10023`)
@@ -251,5 +270,7 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 | Wrangler deploy: bundle / dist not found | Wrong cwd or missing `--config .\web\wrangler.jsonc` | Build in `web/`, deploy with correct config |
 | Terraform: `No such module "node:module"` on worker script | Terraform trying to push holding template over Wrangler bundle | Ensure `lifecycle.ignore_changes` on `cloudflare_workers_script`; deploy via Wrangler |
 | Wrangler auth / non-interactive failure | OAuth not available | Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` |
+| Terraform `Authentication error (10000)` on Turnstile or Workers | Cloudflare API token missing permission | Add permission per [infra/terraform/CLOUDFLARE_API_TOKEN.md](../../infra/terraform/CLOUDFLARE_API_TOKEN.md); update `.env.dev` and TFC `TF_VAR_cloudflare_api_token`; re-apply |
 | `Android push delivery is not configured` at runtime | Scheduler worker missing `PUSH_ANDROID_FCM_*` | `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction` |
-| `/submit-a-tip` shows “Human verification is not configured” | Production Worker missing `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Create Turnstile widget; add `TURNSTILE_PRODUCTION_*` to `.env.dev`; `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction` (no redeploy) |
+| `/submit-a-tip` shows “Human verification is not configured” | Production Worker missing `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Run `terraform apply` in `infra/terraform/environments/production` (Turnstile widget + Worker secrets); ensure Cloudflare API token has **Turnstile → Edit** ([token guide](../../infra/terraform/CLOUDFLARE_API_TOKEN.md); no redeploy) |
+| EmDash MCP unavailable / auth error in Cursor agent session | Servers disabled, stale token, MCP not registered | **Agents: STOP** — fix MCP (Tools & MCP, restart Cursor, MCP Logs, `emdash login`). **Do not** shell-fallback to `emdash-mcp-tools-call.mjs` or `npx emdash content`. Operators may run shell helper manually. See [EmDash MCP failure (AI agents)](#emdash-mcp-failure-ai-agents) |

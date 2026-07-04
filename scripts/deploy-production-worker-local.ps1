@@ -13,6 +13,8 @@ if (-not $AllowProduction) {
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
+Initialize-WindowsCliPath
 $productionEnvDir = Join-Path $repoRoot "infra/terraform/environments/production"
 $secretSyncScript = Join-Path $PSScriptRoot "set-github-secrets.ps1"
 
@@ -56,6 +58,8 @@ if ($SyncCloudflareWorkerSecrets) {
 }
 
 Write-Step "Building web (npm run build)"
+. "$PSScriptRoot/build-provenance-env.ps1"
+Set-BuildProvenanceEnv -RepoRoot $repoRoot
 Push-Location (Join-Path $repoRoot "web")
 try {
     & npm run build

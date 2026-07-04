@@ -4,6 +4,8 @@ Use this when staging is destroyed and needs to be rebuilt from local with minim
 
 Deploy failures (FCM keys, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle, Cloudflare token): **[web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)**.
 
+**CLI paths:** Terraform on Windows; Turso in WSL. Primary reference: **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)**.
+
 ## 1. Run one-command local staging rebuild
 
 Run from repo root:

@@ -2,10 +2,10 @@
 import Header from '../components/Header.astro';
 import Layout from '../layouts/Layout.astro';
 import {
-  BUILD_COMMIT_SHA,
   GITHUB_REPOSITORY,
-  READER_SUBMISSION_SOURCE_PATHS,
+  STORY_TIP_HANDLER_SOURCE_PATHS,
   buildProvenancePayload,
+  formatShortCommitSha,
   githubBlobUrl,
   githubCommitUrl,
 } from '../lib/build-provenance';
@@ -30,6 +30,8 @@ if (session instanceof Response) {
 }
 
 const provenance = buildProvenancePayload();
+const commitUrl = githubCommitUrl();
+const shortSha = formatShortCommitSha();
 ---
 
 <Layout
@@ -52,7 +54,13 @@ const provenance = buildProvenancePayload();
 			</div>
 			<div>
 				<dt>Deployed commit</dt>
-				<dd><a href={githubCommitUrl()}><code>{BUILD_COMMIT_SHA}</code></a></dd>
+				<dd>
+					{commitUrl ? (
+						<a href={commitUrl}><code>{shortSha}</code></a>
+					) : (
+						<code>{shortSha}</code>
+					)}
+				</dd>
 			</div>
 			<div>
 				<dt>Machine-readable</dt>
@@ -60,13 +68,16 @@ const provenance = buildProvenancePayload();
 			</div>
 		</dl>
 
-		<h2>Handler source files</h2>
+		<h2>Story tip handler files</h2>
 		<ul class="file-list">
-			{READER_SUBMISSION_SOURCE_PATHS.map((path) => (
-				<li>
-					<a href={githubBlobUrl(path)}>{path}</a>
-				</li>
-			))}
+			{STORY_TIP_HANDLER_SOURCE_PATHS.map((path) => {
+				const blobUrl = githubBlobUrl(path);
+				return (
+					<li>
+						{blobUrl ? <a href={blobUrl}>{path}</a> : <code>{path}</code>}
+					</li>
+				);
+			})}
 		</ul>
 
 		<h2>What this proves</h2>

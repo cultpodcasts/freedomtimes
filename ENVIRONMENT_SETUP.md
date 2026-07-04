@@ -50,6 +50,8 @@ Each environment includes:
    github-cli (gh) - optional for GitHub manipulation
    ```
 
+   **Windows CLI paths:** **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** is the primary reference for Terraform on Windows vs Turso in WSL (PATH verification, WSL invoke patterns).
+
 2. **Environment files ready:**
    - `.env.dev` (credentials and variables used by local scripts)
 
@@ -856,7 +858,7 @@ This dispatches and watches `.github/workflows/terraform-production.yml` with ap
 
 Recommended pre-apply checkpoint and rollback helpers:
 
-> Turso CLI operations in this repo should be run from **WSL**.
+> Turso CLI operations: see **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (WSL-only in this workspace).
 
 ```bash
 # Create Turso rollback checkpoint + metadata (includes git hashes)

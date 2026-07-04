@@ -23,6 +23,8 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $envDir = Join-Path $repoRoot "infra/terraform/environments/$Environment"
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
+Initialize-WindowsCliPath
 . "$PSScriptRoot/terraform-turso-env.ps1"
 $preflightScript = Join-Path $PSScriptRoot "terraform-preflight.ps1"
 

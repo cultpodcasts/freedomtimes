@@ -7,28 +7,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $envDir = Join-Path $repoRoot "infra/terraform/environments/staging"
 $envDevPath = Join-Path $repoRoot ".env.dev"
-
-function Resolve-TerraformExecutable {
-    $cmd = Get-Command terraform -ErrorAction SilentlyContinue
-    if ($cmd -and $cmd.Source) {
-        return $cmd.Source
-    }
-
-    $wingetLink = "C:\Users\jonbr\AppData\Local\Microsoft\WinGet\Links\terraform.exe"
-    if (Test-Path -LiteralPath $wingetLink) {
-        return $wingetLink
-    }
-
-    $whereOutput = & where.exe terraform 2>$null
-    if ($whereOutput) {
-        $first = ($whereOutput | Select-Object -First 1).ToString().Trim()
-        if ($first) {
-            return $first
-        }
-    }
-
-    throw "terraform executable not found (checked PATH, WinGet Links, and where.exe)"
-}
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
 
 function Set-Or-AddEnvFileValue {
     param(

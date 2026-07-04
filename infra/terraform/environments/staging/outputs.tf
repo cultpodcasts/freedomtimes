@@ -124,3 +124,8 @@ output "tips_turso_database_auth_token" {
   value       = turso_database_token.tips.jwt
   sensitive   = true
 }
+
+output "turnstile_site_key" {
+  description = "Cloudflare Turnstile site key for story tips (staging)"
+  value       = cloudflare_turnstile_widget.story_tips.id
+}

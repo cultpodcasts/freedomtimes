@@ -544,6 +544,9 @@ jobs:
         env:
           TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
           TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+          FT_BUILD_COMMIT_SHA: ${{ github.sha }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          FT_BUILD_TREE_DIRTY: "0"
         run: |
           set -euo pipefail
 

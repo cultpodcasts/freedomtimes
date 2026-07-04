@@ -65,6 +65,7 @@ Deeper design: [ARCHITECTURE.md](ARCHITECTURE.md).
 | [web/README.md](web/README.md) | Astro app — local dev, Wrangler configs, deploy, scheduler |
 | [web/docs/ENV_DEV.md](web/docs/ENV_DEV.md) | `.env.dev` + `web/.env` setup, sync scripts, where values come from |
 | [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md) | Tooling checklist (Git, Terraform, Android SDK, etc.) |
+| [docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md) | **Primary reference** — Windows CLI paths (Terraform native vs Turso in WSL) |
 | [web/docs/AUTH.md](web/docs/AUTH.md) | Auth0 routes, cookies, staging login runbook |
 | [web/DESIGN_GUIDE.md](web/DESIGN_GUIDE.md) | Visual and layout conventions |
 
@@ -118,4 +119,4 @@ Copy-Item .env.example .env   # Auth0 runtime vars for the dev server
 npm run dev
 ```
 
-`astro.config.ts` needs `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` (from `.env.dev` after Turso sync). Copy them into `web/.env` or run `npx dotenv-cli -e ..\.env.dev -- npm run dev`. Full setup: [web/docs/ENV_DEV.md](web/docs/ENV_DEV.md). Tooling checklist: [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md).
+`astro.config.ts` needs `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` (from `.env.dev` after Turso sync). Copy them into `web/.env` or run `npx dotenv-cli -e ..\.env.dev -- npm run dev`. Full setup: [web/docs/ENV_DEV.md](web/docs/ENV_DEV.md). Tooling checklist: [LOCAL_DEV_REQUIREMENTS.md](LOCAL_DEV_REQUIREMENTS.md). If `terraform` or `turso` is not found: [docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md).

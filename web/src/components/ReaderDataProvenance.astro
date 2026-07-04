@@ -1,5 +1,5 @@
 ---
-import { BUILD_COMMIT_SHA, githubCommitUrl } from '../lib/build-provenance';
+import { formatShortCommitSha, githubCommitUrl } from '../lib/build-provenance';
 
 interface Props {
 	/** BEM-style modifier for scoped layout tweaks (e.g. diagnostics panel). */
@@ -9,13 +9,18 @@ interface Props {
 const { variant = 'default' } = Astro.props;
 
 const commitUrl = githubCommitUrl();
-const shortSha =
-	BUILD_COMMIT_SHA === 'unknown' ? 'unknown' : BUILD_COMMIT_SHA.slice(0, 8);
+const shortSha = formatShortCommitSha();
 ---
 
 <p class:list={['reader-data-provenance', variant !== 'default' && `reader-data-provenance--${variant}`]}>
-	Handled by open source at commit{' '}
-	<a href={commitUrl} rel="noopener noreferrer">{shortSha}</a>.
+	{commitUrl ? (
+		<>
+			You can review the source code for this handler on GitHub (
+			<a href={commitUrl} rel="noopener noreferrer">commit {shortSha}</a>).
+		</>
+	) : (
+		<>Handler source is on GitHub (commit not recorded for this build).</>
+	)}
 </p>
 
 <style>

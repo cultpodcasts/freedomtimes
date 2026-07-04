@@ -8,6 +8,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
+Initialize-WindowsCliPath
 $stagingEnvDir = Join-Path $repoRoot "infra/terraform/environments/staging"
 $secretSyncScript = Join-Path $PSScriptRoot "set-github-secrets.ps1"
 $baseEnvPath = Join-Path $repoRoot ".env.dev"
@@ -60,6 +62,8 @@ if ($SyncCloudflareWorkerSecrets) {
 }
 
 Write-Step "Building web (npm run build)"
+. "$PSScriptRoot/build-provenance-env.ps1"
+Set-BuildProvenanceEnv -RepoRoot $repoRoot
 Push-Location (Join-Path $repoRoot "web")
 try {
     & npm run build

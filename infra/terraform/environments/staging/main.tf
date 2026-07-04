@@ -126,6 +126,13 @@ resource "turso_database_token" "tips" {
   expiration        = local.tips_turso_database_token_expiration
 }
 
+resource "cloudflare_turnstile_widget" "story_tips" {
+  account_id = var.cloudflare_account_id
+  name       = "Freedom Times story tips (staging)"
+  domains    = ["staging.freedomtimes.news"]
+  mode       = "managed"
+  region     = "world"
+}
 
 module "cloudflare_holding_page" {
   source = "../../modules/cloudflare_holding_page"
@@ -146,8 +153,10 @@ module "cloudflare_holding_page" {
   contact_email   = var.contact_email
 
   worker_secrets = {
-    TURSO_DATABASE_URL = local.turso_database_url
-    TURSO_AUTH_TOKEN   = turso_database_token.emdash.jwt
+    TURSO_DATABASE_URL   = local.turso_database_url
+    TURSO_AUTH_TOKEN     = turso_database_token.emdash.jwt
+    TURNSTILE_SITE_KEY   = cloudflare_turnstile_widget.story_tips.id
+    TURNSTILE_SECRET_KEY = cloudflare_turnstile_widget.story_tips.secret
   }
 }
 

@@ -27,25 +27,16 @@ This runbook documents the repeatable process for getting verified staging conte
 
 ### Turso CLI in WSL
 
-In this repo the Turso CLI is installed and authenticated in **WSL** (Ubuntu), not on native Windows `PATH`. Bare `wsl bash -lc "turso …"` from PowerShell often fails with **command not found** because `~/.turso` is only on `PATH` in the WSL **login** shell.
+**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](../docs/CLI_PATHS_WINDOWS.md)** — Turso is WSL-only in this workspace; auth, PATH quirks, verification, and invoke patterns live there.
 
-- **Binary:** `~/.turso/turso` (on this machine: `/home/jonbr/.turso/turso`)
-- **Auth:** run `turso auth login` once inside WSL (`wsl bash -lic "turso auth login"` from PowerShell, or an interactive WSL terminal)
-
-From **PowerShell** at the repo root, invoke Turso with one of:
+From **PowerShell** at repo root:
 
 ```powershell
-# Login shell — picks up ~/.profile PATH
 wsl bash -lic "turso db list"
-
-# Non-login shell — set PATH explicitly (same as scripts/turso-create-rollback-branch-wsl.sh)
-wsl bash -lc 'export PATH="$HOME/.turso:$PATH"; turso db list'
-
-# Direct binary (same as scripts/turso-create-rollback-branch.ps1 -UseWslTurso)
-wsl bash -lc '$HOME/.turso/turso db list'
+# or: wsl bash -lc '$HOME/.turso/turso db list'
 ```
 
-Rollback-branch helper from WSL: `./scripts/turso-create-rollback-branch-wsl.sh` (prepends `~/.turso` to `PATH` automatically).
+Rollback-branch helper from WSL: `./scripts/turso-create-rollback-branch-wsl.sh`.
 
 **Rule:** create a **recoverable backup** of the **specific Turso database** you are about to change **before** migrations, seeds, manual SQL, content promotion, or bulk CMS updates. Do not skip this for small or “obvious” edits.
 

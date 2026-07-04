@@ -26,6 +26,21 @@ function formatShortDate(value: string): string {
 	}
 	return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+/** Show Updated when CMS metadata changed after first publication. */
+function shouldShowUpdatedDate(publishedAt: string | null, updatedAt: string | null): boolean {
+	if (!updatedAt) return false;
+	if (!publishedAt) return true;
+	const updated = new Date(updatedAt);
+	const published = new Date(publishedAt);
+	if (Number.isNaN(updated.getTime()) || Number.isNaN(published.getTime())) return false;
+	if (updated.toDateString() !== published.toDateString()) {
+		return updated > published;
+	}
+	return updated.getTime() - published.getTime() > 60_000;
+}
+
+const showUpdatedDate = shouldShowUpdatedDate(publishedAt, updatedAt);
 ---
 
 <header class="article-header">
@@ -35,7 +50,7 @@ function formatShortDate(value: string): string {
 	<div class="article-meta">
 		{primaryByline && <p>By {primaryByline}</p>}
 		{publishedAt && <p>Published {formatShortDate(publishedAt)}</p>}
-		{!publishedAt && updatedAt && <p>Updated {formatShortDate(updatedAt)}</p>}
+		{showUpdatedDate && updatedAt && <p>Updated {formatShortDate(updatedAt)}</p>}
 		{isPreview && <p class="preview">Preview mode</p>}
 	</div>
 	{subjectChips.length > 0 && (
