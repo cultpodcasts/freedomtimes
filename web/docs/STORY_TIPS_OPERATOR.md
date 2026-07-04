@@ -30,6 +30,16 @@ Cloudflare test keys (always pass) for local/staging:
 - Site: `1x00000000000000000000AA`
 - Secret: `1x0000000000000000000000000000000AA`
 
+**Production** needs a real Turnstile widget (Cloudflare dashboard → Turnstile → Add site) with hostnames `freedomtimes.news` and `www.freedomtimes.news`. Store keys in repo-root `.env.dev` as `TURNSTILE_PRODUCTION_SITE_KEY` and `TURNSTILE_PRODUCTION_SECRET_KEY`, then sync to the Worker (no redeploy required):
+
+```powershell
+pwsh scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Production -AllowProduction
+# Expect TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY in:
+npx wrangler secret list --config .\web\wrangler.jsonc --env production
+```
+
+If `/submit-a-tip` shows “Human verification is not configured on this environment”, `TURNSTILE_SITE_KEY` is missing or empty on the production Worker at SSR runtime.
+
 ## Public vs staging access
 
 See **[`web/docs/STAGING_ACCESS.md`](./STAGING_ACCESS.md)** for the full policy. Summary:
@@ -156,11 +166,10 @@ npm run tips:db:deploy:staging
 cd ..
 pwsh scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging
 
-# 5) Turnstile test keys on staging Worker (no redeploy required; takes effect on next request)
-$site  = '1x00000000000000000000AA'
-$secret = '1x0000000000000000000000000000000AA'
-$site  | npx wrangler secret put TURNSTILE_SITE_KEY  --config .\web\wrangler.jsonc --env staging
-$secret | npx wrangler secret put TURNSTILE_SECRET_KEY --config .\web\wrangler.jsonc --env staging
+# 5) Turnstile on staging Worker (included in set-github-secrets.ps1; test keys when TURNSTILE_STAGING_* unset)
+# Manual override only:
+# $site  | npx wrangler secret put TURNSTILE_SITE_KEY  --config .\web\wrangler.jsonc --env staging
+# $secret | npx wrangler secret put TURNSTILE_SECRET_KEY --config .\web\wrangler.jsonc --env staging
 
 # 6) Deploy code (uncommitted local tree is fine)
 $env:FT_BUILD_COMMIT_SHA = (git rev-parse HEAD)
@@ -222,5 +231,5 @@ Client error handling (`submit-a-tip.astro`): expected statuses **400 / 403 / 42
 3. **Sync env** - `pwsh scripts/sync-staging-turso-env-dev.ps1` (or production sync).
 4. **Migrate** - `cd web && npm run tips:db:deploy:staging` (staging) or `npm run tips:db:deploy` (production).
 5. **Worker secrets** - `pwsh scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging` (local; does not require GitHub Actions).
-6. **Turnstile** - staging test keys via wrangler (above) or production widget keys from Cloudflare dashboard.
+6. **Turnstile** - staging: `set-github-secrets.ps1 -Target Staging` (test keys by default). Production: create widget in Cloudflare dashboard, set `TURNSTILE_PRODUCTION_*` in `.env.dev`, then `set-github-secrets.ps1 -Target Production -AllowProduction`.
 7. **Deploy web Worker** - `pwsh scripts/deploy-staging-workers-only.ps1` (local); verify `/submit-a-tip` and `/tip-source`.

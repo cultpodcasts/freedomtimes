@@ -252,3 +252,4 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 | Terraform: `No such module "node:module"` on worker script | Terraform trying to push holding template over Wrangler bundle | Ensure `lifecycle.ignore_changes` on `cloudflare_workers_script`; deploy via Wrangler |
 | Wrangler auth / non-interactive failure | OAuth not available | Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` |
 | `Android push delivery is not configured` at runtime | Scheduler worker missing `PUSH_ANDROID_FCM_*` | `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction` |
+| `/submit-a-tip` shows “Human verification is not configured” | Production Worker missing `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Create Turnstile widget; add `TURNSTILE_PRODUCTION_*` to `.env.dev`; `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction` (no redeploy) |
