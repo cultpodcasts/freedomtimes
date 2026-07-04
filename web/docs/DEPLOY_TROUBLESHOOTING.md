@@ -17,6 +17,7 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 - [EmDash MCP failure (AI agents)](#emdash-mcp-failure-ai-agents)
 - [FCM keys (production deploy preflight)](#fcm-keys-production-deploy-preflight)
 - [Turso EmDash secrets after worker rename](#turso-emdash-secrets-after-worker-rename)
+- [Production deploy without Terraform apply](#production-deploy-without-terraform-apply)
 - [Wrangler deploy working directory](#wrangler-deploy-working-directory)
 - [Terraform worker script lifecycle](#terraform-worker-script-lifecycle)
 - [Cloudflare API token vs Wrangler OAuth](#cloudflare-api-token-vs-wrangler-oauth)
@@ -167,6 +168,35 @@ Expect `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. If missing:
 
 ---
 
+## Production deploy without Terraform apply
+
+### What happened
+
+`deploy-production-worker-local.ps1` used to require non-null Terraform outputs for `turso_database_url` and `turso_database_auth_token`. After adding scheduler, subscriptions, and tips Turso databases, production workspace outputs for **URLs** (and most tokens) can be **null** until `terraform apply` runs — even when databases already exist and credentials live in `.env.dev`.
+
+Staging avoids this with `deploy-staging-workers-only.ps1`, which loads `.env.dev` only.
+
+### Fix (no terraform apply)
+
+1. Ensure production Turso values exist in repo-root `.env.dev` (see [`.env.dev.example`](../../.env.dev.example) § Production Turso):
+   - **EmDash build:** `TURSO_PRODUCTION_EMDASH_DB_URL`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (preferred when `TURSO_DATABASE_URL` points at staging for local dev)
+   - **Scheduler / subscriptions / tips:** `TURSO_PRODUCTION_*` or unprefixed `TURSO_SCHEDULER_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_TIPS_*`
+2. Refresh from Terraform when outputs exist, or derive URLs when only names/default DB names are known:
+
+   ```powershell
+   pwsh ./scripts/sync-production-turso-env-dev.ps1
+   ```
+
+3. Verify credential resolution without building or deploying:
+
+   ```powershell
+   pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun
+   ```
+
+`deploy-production-worker-local.ps1` now uses `scripts/resolve-turso-build-credentials.ps1`: Terraform output first, then `.env.dev`, then derived `libsql://` URL from a production host suffix plus `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` (default `freedomtimes-emdash-production`).
+
+---
+
 ## Wrangler deploy working directory
 
 ### What happened
@@ -262,6 +292,7 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| `Failed to read terraform output 'turso_database_url'` during `deploy-production-worker-local.ps1` | Production Turso URL outputs null in Terraform state (new DB resources not applied) while `.env.dev` lacks production EmDash keys | Populate `TURSO_PRODUCTION_EMDASH_DB_URL` / `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (or production `TURSO_SUBSCRIPTIONS_*` URLs for host-suffix derivation) in `.env.dev`; run `pwsh ./scripts/sync-production-turso-env-dev.ps1`; verify with `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` |
 | `Missing required production push secret values … PUSH_PRODUCTION_ANDROID_FCM_*` | Only staging-prefixed FCM keys in `.env.dev` | Run `populate-android-fcm-env.ps1` or copy to `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |
 | `Refusing to sync placeholder value for Worker secret` | Secret sync hit a template value | Same as above |

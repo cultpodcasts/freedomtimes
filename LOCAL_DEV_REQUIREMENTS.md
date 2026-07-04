@@ -59,6 +59,10 @@ Local automation helpers (recommended):
 - Validate environment and provider credentials:
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment staging -LoadEnvFiles`
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment production -LoadEnvFiles`
+- **Production Worker deploy without Terraform apply** (when `.env.dev` has production Turso keys):
+   - `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` — verify Turso credential resolution
+   - `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction` — build + wrangler deploy
+   - Refresh production Turso URLs/tokens in `.env.dev`: `pwsh ./scripts/sync-production-turso-env-dev.ps1`
 - Run Terraform non-interactively:
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles`
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFiles`
