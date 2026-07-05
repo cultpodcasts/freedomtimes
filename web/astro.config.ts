@@ -72,6 +72,10 @@ export default defineConfig({
       noExternal: ['@libsql/kysely-libsql', '@libsql/client', '@libsql/client/web'],
     },
     plugins: [cloudflareOptimizeDepsBuildFix()],
+    build: {
+      // EmDash admin PluginRegistry client bundle is ~7.5 MB (all CMS field plugins); splitting needs emdash lazy routes.
+      chunkSizeWarningLimit: 8192,
+    },
   },
   integrations: [
     react(),

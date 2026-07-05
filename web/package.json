@@ -62,7 +62,8 @@
     "sharp": "^0.34.5"
   },
   "overrides": {
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "vite": "^8.1.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",

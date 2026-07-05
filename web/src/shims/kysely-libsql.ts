@@ -101,6 +101,11 @@ export function createDialect(config: { url?: string; authToken?: string }) {
   });
 }
 
+/** EmDash optional cold-start dialect; libsql has no session coalescing — reuse createDialect. */
+export function createCoalescingDialect(config: { url?: string; authToken?: string }) {
+  return createDialect(config);
+}
+
 class LibsqlDriver {
   private client: any;
   private closeClient: boolean;
