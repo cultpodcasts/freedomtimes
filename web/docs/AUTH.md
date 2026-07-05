@@ -109,18 +109,20 @@ The re-sign-in interval a user actually experiences is set by **three layers**, 
 
 **Before this change:** `jwt_configuration.lifetime_in_seconds` was hardcoded to `3600` (1 hour), while the `ft_session` cookie declared an 8-hour `maxAge`. The ID token's own `exp` was the real bottleneck — the cookie's 8-hour window was mostly theoretical because `verifyIdToken()` rejected the token as expired after 1 hour and forced a fresh Auth0 login.
 
-**Current (Terraform, this repo):**
+**Default path (Terraform, this repo):** Per-application settings on the staging/production login apps are always managed: **8-hour ID token** (`id_token_lifetime_in_seconds`, matching the existing `ft_session` cookie `maxAge`) and **refresh token rotation policy** on the Auth0 application (`enable_refresh_token_rotation`, absolute/idle lifetimes). That is the default session story—no tenant-wide Auth0 SSO session changes unless you opt in.
+
+**Tenant SSO session (opt-in):** `manage_tenant_session_lifetime` in `environments/auth0-shared/variables.tf` defaults to **`false`**, so `auth0_tenant.main` is **not** created and Auth0's existing tenant `session_lifetime` / `idle_session_lifetime` stay as-is. Set `manage_tenant_session_lifetime = true` (and import `auth0_tenant.main` before first apply) only when you intentionally want Terraform to set tenant-wide SSO lifetimes (defaults in vars: 336h / 168h).
 
 | Setting | Was | Now (default) | Managed by |
 |---|---|---|---|
-| ID token lifetime (`id_token_lifetime_in_seconds`) | 3,600s (1h, hardcoded) | 28,800s (8h) — matches the existing cookie `maxAge` | `modules/auth0_app` var, per staging/production login app |
+| ID token lifetime (`id_token_lifetime_in_seconds`) | 3,600s (1h, hardcoded) | 28,800s (8h) - matches the existing cookie `maxAge` | `modules/auth0_app` var, per staging/production login app |
 | Refresh token rotation | not configured | `rotating` / `expiring`, absolute 30d, idle 14d (`enable_refresh_token_rotation`) | `modules/auth0_app` var, per staging/production login app |
-| Auth0 tenant `session_lifetime` | Auth0 default 168h (7d) | 336h (14d) | `environments/auth0-shared` (`auth0_tenant.main`) |
-| Auth0 tenant `idle_session_lifetime` | Auth0 default 72h (3d) | 168h (7d) | `environments/auth0-shared` (`auth0_tenant.main`) |
+| Auth0 tenant `session_lifetime` | Auth0 default (unchanged) | 336h (14d) **only if** `manage_tenant_session_lifetime = true` | `environments/auth0-shared` (`auth0_tenant.main`, count) |
+| Auth0 tenant `idle_session_lifetime` | Auth0 default (unchanged) | 168h (7d) **only if** `manage_tenant_session_lifetime = true` | `environments/auth0-shared` (`auth0_tenant.main`, count) |
 
-**What this actually changes today:** raising `id_token_lifetime_in_seconds` to 8h is a real, immediate fix — it makes the ID token's lifetime match the cookie's already-declared 8-hour window, so users get the full 8 hours the app always intended instead of being forced to re-login after 1 hour. The tenant `session_lifetime`/`idle_session_lifetime` bump makes any *fresh* `/auth/login` → Auth0 `/authorize` round trip (e.g. once the 8-hour token/cookie has expired) more likely to complete silently via Auth0's own SSO cookie, without a password/Google prompt.
+**What this actually changes today:** raising `id_token_lifetime_in_seconds` to 8h is a real, immediate fix - it makes the ID token's lifetime match the cookie's already-declared 8-hour window, so users get the full 8 hours the app always intended instead of being forced to re-login after 1 hour. If you opt in to tenant session management, the `session_lifetime`/`idle_session_lifetime` bump makes any *fresh* `/auth/login` → Auth0 `/authorize` round trip (e.g. once the 8-hour token/cookie has expired) more likely to complete silently via Auth0's own SSO cookie, without a password/Google prompt.
 
-**What this does *not* yet do:** the refresh token settings (`enable_refresh_token_rotation`, `refresh_token_lifetime_seconds`, `refresh_token_idle_lifetime_seconds`) configure Auth0-side policy only. `web/src/pages/auth/login.ts` still requests only `scope=openid` (no `offline_access`), and `exchangeCodeForTokens()` never calls the `refresh_token` grant — so no refresh token is ever issued or used today. To get a true "days-long session without any Auth0 redirect" experience, a follow-up change would need to:
+**Refresh tokens (Terraform vs app):** Refresh token rotation and lifetimes are configured in Terraform on the login application, but they **do not extend sessions by themselves**. `web/src/pages/auth/login.ts` still requests only `scope=openid` (no `offline_access`), and `exchangeCodeForTokens()` never calls the `refresh_token` grant — so no refresh token is ever issued or used today. To get a true "days-long session without any Auth0 redirect" experience, a follow-up change would need to:
 
 1. Add `offline_access` to the `scope` in `login.ts`.
 2. Store the returned `refresh_token` in a new `HttpOnly` cookie with a `maxAge` matching `refresh_token_idle_lifetime_seconds`.

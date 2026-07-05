@@ -51,7 +51,7 @@ variable "workspace_url" {
 variable "manage_tenant_session_lifetime" {
   description = "Whether this environment manages tenant-wide Auth0 session lifetime settings (auth0_tenant.session_lifetime / idle_session_lifetime). Set false to leave tenant session settings entirely unmanaged by Terraform."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "tenant_session_lifetime_hours" {
