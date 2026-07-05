@@ -22,8 +22,25 @@ resource "auth0_client" "admin_ui" {
 
   jwt_configuration {
     alg                 = var.jwt_signing_alg
-    lifetime_in_seconds = 3600
+    lifetime_in_seconds = var.id_token_lifetime_in_seconds
     secret_encoded      = true
+  }
+
+  # Refresh token grant is already in local.login_app_grant_types. This block sets Auth0's
+  # rotation/lifetime policy for it. See var.enable_refresh_token_rotation description: the web
+  # app does not yet use offline_access/refresh_token client-side, so this is a forward-looking
+  # policy, not (by itself) a change to the currently observed re-sign-in interval.
+  dynamic "refresh_token" {
+    for_each = var.enable_refresh_token_rotation ? [1] : []
+    content {
+      rotation_type                 = "rotating"
+      expiration_type               = "expiring"
+      leeway                        = var.refresh_token_leeway
+      token_lifetime                = var.refresh_token_lifetime_seconds
+      idle_token_lifetime           = var.refresh_token_idle_lifetime_seconds
+      infinite_token_lifetime       = false
+      infinite_idle_token_lifetime  = false
+    }
   }
 }
 

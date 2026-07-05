@@ -71,3 +71,37 @@ variable "enable_machine_to_machine_grant" {
   type        = bool
   default     = false
 }
+
+# --- Session / re-sign-in interval settings -------------------------------
+# See web/docs/AUTH.md "Session lifetime (Terraform)" for how these map to the
+# app's ft_session cookie and verifyIdToken() exp check.
+
+variable "id_token_lifetime_in_seconds" {
+  description = "ID token lifetime (seconds) for the login app client (jwt_configuration.lifetime_in_seconds). Governs how long the ft_session cookie's token stays valid before every protected request (verifyIdToken) forces a fresh Auth0 login. Auth0 tenant default for new Regular Web Apps is 36000s (10h); this repo previously hardcoded 3600s (1h)."
+  type        = number
+  default     = 28800 # 8 hours - matches the existing ft_session/ft_csrf cookie maxAge (60*60*8) in web/src/pages/auth/callback.ts
+}
+
+variable "enable_refresh_token_rotation" {
+  description = "Configure a rotating, expiring refresh_token policy on the login app client. The refresh_token grant is already requested (see local.login_app_grant_types); this only sets Auth0-side rotation/lifetime policy. NOTE: the web app does not currently request the offline_access scope or call the refresh_token grant, so this alone does not extend user-visible sessions until app code adds a silent-refresh flow — see web/docs/AUTH.md."
+  type        = bool
+  default     = true
+}
+
+variable "refresh_token_lifetime_seconds" {
+  description = "Absolute refresh token lifetime in seconds (refresh_token.token_lifetime). Only applied when enable_refresh_token_rotation is true."
+  type        = number
+  default     = 2592000 # 30 days
+}
+
+variable "refresh_token_idle_lifetime_seconds" {
+  description = "Idle (inactive) refresh token lifetime in seconds (refresh_token.idle_token_lifetime). Only applied when enable_refresh_token_rotation is true."
+  type        = number
+  default     = 1209600 # 14 days
+}
+
+variable "refresh_token_leeway" {
+  description = "Grace period in seconds during which a rotated refresh token may still be reused (refresh_token.leeway), to tolerate client retries/race conditions."
+  type        = number
+  default     = 10
+}

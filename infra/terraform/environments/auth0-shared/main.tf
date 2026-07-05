@@ -19,3 +19,13 @@ module "auth0_app" {
   # Required input; login app is disabled in this environment.
   workspace_url = var.workspace_url
 }
+
+# Tenant-wide session lifetime (re-sign-in interval) — see variables.tf for import guidance
+# before the first apply. Only session_lifetime/idle_session_lifetime are set here; all other
+# auth0_tenant attributes are left Computed so existing tenant settings are not disturbed.
+resource "auth0_tenant" "main" {
+  count = var.manage_tenant_session_lifetime ? 1 : 0
+
+  session_lifetime      = var.tenant_session_lifetime_hours
+  idle_session_lifetime = var.tenant_idle_session_lifetime_hours
+}
