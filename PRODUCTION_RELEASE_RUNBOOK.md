@@ -40,7 +40,7 @@ $env:EMDASH_STAGING_TOKEN = "<staging-token>"
 $env:EMDASH_PRODUCTION_TOKEN = "<production-token>"
 ```
 
-## 1. Create Turso Rollback Checkpoint (Mandatory Before Production Schema Or Content Changes)
+1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
 
 This is mandatory before any production schema change, migration, or content promotion.
 
@@ -103,7 +103,7 @@ Plan-only dry path:
 
 ### 2b. Local production rebuild (operator bypass)
 
-Use this when you need a full local production path (Terraform apply, Auth0 `.env.dev` sync, Worker secrets, build, Wrangler deploy) without dispatching `terraform-production.yml`. It does **not** replace Step 1 Turso rollback checkpoints or schema/content promotion gates for releases that need them.
+1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
 
 From repo root:
 
@@ -115,8 +115,8 @@ Optional: `-BumpVersion` to bump `web/package.json` before build (default is no 
 
 **Prerequisites**
 
-1. **Turso rollback checkpoint** — same as [§1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
-2. **Production push secrets in `.env.dev`** — VAPID keys plus `PUSH_PRODUCTION_ANDROID_FCM_*` (preflight is strict; staging FCM prefixes are not accepted). Run `pwsh ./scripts/populate-android-fcm-env.ps1` or copy values per [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md).
+1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
+2. **Production push secrets in `.env.dev`** - Production VAPID keys plus FCM credentials (`PUSH_PRODUCTION_ANDROID_FCM_*` or `PUSH_STAGING_ANDROID_FCM_*` fallback; same as `scripts/assert-push-secrets-ready.ps1`). Staging rebuild preflight uses the same FCM checks. Run `pwsh ./scripts/populate-android-fcm-env.ps1` or copy values per [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md).
 3. **Cloudflare API token** — non-interactive Terraform and Wrangler (see [DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)).
 
 **Troubleshooting:** [web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md) (FCM preflight, Auth0 env sync, Turso secrets after worker rename, Wrangler cwd, Terraform worker lifecycle).

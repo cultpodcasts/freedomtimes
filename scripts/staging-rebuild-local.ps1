@@ -1,5 +1,5 @@
 # Local staging rebuild: Terraform apply -> Auth0 sync -> publish-only enforcement -> secret sync -> build -> deploy -> verify.
-# Preflight requires staging VAPID keys only (no FCM). Troubleshooting: web/docs/DEPLOY_TROUBLESHOOTING.md
+# Preflight: staging VAPID + shared FCM resolution (surfaces production deploy blockers). Troubleshooting: web/docs/DEPLOY_TROUBLESHOOTING.md
 [CmdletBinding()]
 param(
     [switch]$SkipVersionBump
@@ -15,6 +15,7 @@ $terraformRunScript = Join-Path $PSScriptRoot "terraform-run.ps1"
 $secretSyncScript = Join-Path $PSScriptRoot "set-github-secrets.ps1"
 $stagingEnvDir = Join-Path $repoRoot "infra/terraform/environments/staging"
 $baseEnvPath = Join-Path $repoRoot ".env.dev"
+. "$PSScriptRoot/assert-push-secrets-ready.ps1"
 
 function Write-Step {
     param([string]$Message)
@@ -103,49 +104,6 @@ function Get-EnvFileValue {
     }
 
     return ($line -split '=', 2)[1].Trim()
-}
-
-function Test-IsPlaceholderValue {
-    param([string]$Value)
-
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        return $false
-    }
-
-    return $Value.Trim() -match '^<[^>]+>$'
-}
-
-function Assert-StagingPushSecretsReady {
-    Write-Step "Preflight: validating staging push secret inputs in .env.dev"
-
-    $requiredKeys = @(
-        "PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY",
-        "PUSH_STAGING_VAPID_PRIVATE_KEY",
-        "PUSH_STAGING_VAPID_SUBJECT"
-    )
-
-    $missing = @()
-    $placeholders = @()
-
-    foreach ($key in $requiredKeys) {
-        $value = Get-EnvFileValue -Path $baseEnvPath -Key $key
-        if ([string]::IsNullOrWhiteSpace($value)) {
-            $missing += $key
-            continue
-        }
-
-        if (Test-IsPlaceholderValue -Value $value) {
-            $placeholders += $key
-        }
-    }
-
-    if ($missing.Count -gt 0) {
-        throw "Missing required staging push secret values in .env.dev: $($missing -join ', ')"
-    }
-
-    if ($placeholders.Count -gt 0) {
-        throw "Unresolved placeholder staging push secret values in .env.dev: $($placeholders -join ', ')"
-    }
 }
 
 function Assert-Auth0SyncToEnv {
@@ -305,7 +263,7 @@ function Invoke-Verification {
 }
 
 Write-Step "Starting local staging rebuild workflow"
-Assert-StagingPushSecretsReady
+Assert-StagingPushSecretsReady -EnvPath $baseEnvPath
 Invoke-TerraformApplyWithRecovery
 Assert-Auth0SyncToEnv
 Invoke-EnforceStagingPublishOnlyCollections

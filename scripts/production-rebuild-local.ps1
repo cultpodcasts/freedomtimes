@@ -1,6 +1,6 @@
 
 # Local production rebuild: Terraform apply -> Auth0 .env.dev sync -> Worker secret sync -> build -> wrangler deploy.
-# Preflight requires production VAPID keys; FCM accepts PUSH_PRODUCTION_ANDROID_FCM_* or PUSH_STAGING_ANDROID_FCM_* (Assert-ProductionPushSecretsReady).
+# Preflight: production VAPID + shared FCM resolution (scripts/assert-push-secrets-ready.ps1).
 # Troubleshooting (FCM preflight, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle): web/docs/DEPLOY_TROUBLESHOOTING.md
 #
 # Version bump default: does NOT bump web/package.json by default — production ships the same
@@ -23,6 +23,7 @@ $terraformRunScript = Join-Path $PSScriptRoot "terraform-run.ps1"
 $secretSyncScript = Join-Path $PSScriptRoot "set-github-secrets.ps1"
 $productionEnvDir = Join-Path $repoRoot "infra/terraform/environments/production"
 $baseEnvPath = Join-Path $repoRoot ".env.dev"
+. "$PSScriptRoot/assert-push-secrets-ready.ps1"
 
 function Write-Step {
     param([string]$Message)
@@ -105,123 +106,6 @@ function Get-EnvFileValue {
     return ($line -split '=', 2)[1].Trim()
 }
 
-function Test-IsPlaceholderValue {
-    param([string]$Value)
-
-    if ([string]::IsNullOrWhiteSpace($Value)) {
-        return $false
-    }
-
-    return $Value.Trim() -match '^<[^>]+>$'
-}
-
-function Get-ResolvedPushSecretValue {
-    param(
-        [string]$Path,
-        [string[]]$Keys
-    )
-
-    foreach ($key in $Keys) {
-        $value = Get-EnvFileValue -Path $Path -Key $key
-        if (-not [string]::IsNullOrWhiteSpace($value)) {
-            return [pscustomobject]@{
-                Key   = $key
-                Value = $value
-            }
-        }
-    }
-
-    return $null
-}
-
-function Assert-ProductionPushSecretsReady {
-    Write-Step "Preflight: validating production push secret inputs in .env.dev"
-
-    $vapidKeys = @(
-        "PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY",
-        "PUSH_PRODUCTION_VAPID_PRIVATE_KEY",
-        "PUSH_PRODUCTION_VAPID_SUBJECT"
-    )
-
-    $fcmKeyGroups = @(
-        @{
-            Label = "PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID or PUSH_STAGING_ANDROID_FCM_PROJECT_ID"
-            Keys  = @(
-                "PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID",
-                "PUSH_STAGING_ANDROID_FCM_PROJECT_ID"
-            )
-        },
-        @{
-            Label = "PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL or PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL"
-            Keys  = @(
-                "PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL",
-                "PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL"
-            )
-        },
-        @{
-            Label = "PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY or PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY"
-            Keys  = @(
-                "PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY",
-                "PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY"
-            )
-        }
-    )
-
-    $productionFcmKeys = @(
-        "PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID",
-        "PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL",
-        "PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY"
-    )
-
-    $missing = @()
-    $placeholders = @()
-
-    foreach ($key in $vapidKeys) {
-        $value = Get-EnvFileValue -Path $baseEnvPath -Key $key
-        if ([string]::IsNullOrWhiteSpace($value)) {
-            $missing += $key
-            continue
-        }
-
-        if (Test-IsPlaceholderValue -Value $value) {
-            $placeholders += $key
-        }
-    }
-
-    foreach ($group in $fcmKeyGroups) {
-        $resolved = Get-ResolvedPushSecretValue -Path $baseEnvPath -Keys $group.Keys
-        if ($null -eq $resolved) {
-            $missing += $group.Label
-            continue
-        }
-
-        if (Test-IsPlaceholderValue -Value $resolved.Value) {
-            $placeholders += $resolved.Key
-        }
-    }
-
-    if ($missing.Count -gt 0) {
-        throw "Missing required production push secret values in .env.dev: $($missing -join ', ')"
-    }
-
-    if ($placeholders.Count -gt 0) {
-        throw "Unresolved placeholder production push secret values in .env.dev: $($placeholders -join ', ')"
-    }
-
-    $allProductionFcmEmpty = $true
-    foreach ($key in $productionFcmKeys) {
-        $value = Get-EnvFileValue -Path $baseEnvPath -Key $key
-        if (-not [string]::IsNullOrWhiteSpace($value)) {
-            $allProductionFcmEmpty = $false
-            break
-        }
-    }
-
-    if ($allProductionFcmEmpty) {
-        Write-Warning "FCM preflight is using PUSH_STAGING_ANDROID_FCM_* only (no PUSH_PRODUCTION_ANDROID_FCM_*). This matches set-github-secrets.ps1 fallback. For clarity, run .\scripts\populate-android-fcm-env.ps1 or copy values to PUSH_PRODUCTION_ANDROID_FCM_* in .env.dev."
-    }
-}
-
 function Assert-Auth0SyncToEnv {
     Write-Step "Verifying Terraform-synced Auth0 production credentials in .env.dev"
     $prodClientIdInEnv = Get-EnvFileValue -Path $baseEnvPath -Key "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION"
@@ -300,7 +184,7 @@ function Invoke-WorkerBuild {
 }
 
 Write-Step "Starting local production rebuild workflow"
-Assert-ProductionPushSecretsReady
+Assert-ProductionPushSecretsReady -EnvPath $baseEnvPath
 Invoke-TerraformApplyWithRecovery
 
 # Update .env.dev with latest Auth0 values from Terraform outputs

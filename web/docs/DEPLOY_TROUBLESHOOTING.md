@@ -15,7 +15,7 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 ## Table of contents
 
 - [EmDash MCP failure (AI agents)](#emdash-mcp-failure-ai-agents)
-- [FCM keys (production deploy preflight)](#fcm-keys-production-deploy-preflight)
+- [FCM keys (staging and production rebuild preflight)](#fcm-keys-staging-and-production-rebuild-preflight)
 - [Auth0 env sync skipped](#auth0-env-sync-skipped)
 - [Turso EmDash secrets after worker rename](#turso-emdash-secrets-after-worker-rename)
 - [Production deploy without Terraform apply](#production-deploy-without-terraform-apply)
@@ -44,7 +44,7 @@ Canonical policy: **`AGENTS.md`** § *Primary guardrails* §1; **`web/docs/PLAN_
 
 ---
 
-## FCM keys (production deploy preflight)
+## FCM keys (staging and production rebuild preflight)
 
 ### What happened (Jul 2026 production deploy)
 
@@ -65,12 +65,12 @@ Production preflight now accepts `PUSH_STAGING_ANDROID_FCM_*` when production-pr
 
 | Stage | Script / step | Required `.env.dev` keys | FCM required? |
 |-------|---------------|--------------------------|---------------|
-| **Staging rebuild** | `Assert-StagingPushSecretsReady` | `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`, `PUSH_STAGING_VAPID_PRIVATE_KEY`, `PUSH_STAGING_VAPID_SUBJECT` | No — staging scheduler does not send Android FCM |
-| **Production rebuild preflight** | `Assert-ProductionPushSecretsReady` | Production VAPID keys **plus** `PUSH_PRODUCTION_ANDROID_FCM_*` **or** `PUSH_STAGING_ANDROID_FCM_*` (same fallback as secret sync) | **Yes** |
+| **Staging rebuild** | `Assert-StagingPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Staging VAPID keys **plus** same FCM resolution as production (`PUSH_PRODUCTION_ANDROID_FCM_*` or `PUSH_STAGING_ANDROID_FCM_*`) | **Yes** (preflight only; staging worker sync still does not push FCM) |
+| **Production rebuild preflight** | `Assert-ProductionPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Production VAPID keys **plus** `PUSH_PRODUCTION_ANDROID_FCM_*` **or** `PUSH_STAGING_ANDROID_FCM_*` (same fallback as secret sync) | **Yes** |
 | **Production secret sync** | `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets` | Prefer `PUSH_PRODUCTION_ANDROID_FCM_*`; **accepts** `PUSH_STAGING_ANDROID_FCM_*` as fallback | Yes — mapped to scheduler worker `PUSH_ANDROID_FCM_*` |
 | **Runtime Android push** | `freedomtimes-scheduler-production` queue consumer | Worker secrets `PUSH_ANDROID_FCM_PROJECT_ID`, `PUSH_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_ANDROID_FCM_PRIVATE_KEY` | Yes — missing → `Android push delivery is not configured` on publish/send-test |
 
-**Preflight alignment:** `Assert-ProductionPushSecretsReady` accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (same order as `set-github-secrets.ps1`). Preflight emits a warning recommending `populate-android-fcm-env.ps1` or `PUSH_PRODUCTION_ANDROID_FCM_*` for clarity; VAPID keys remain production-only.
+**Preflight alignment:** Staging and production rebuild scripts dot-source `scripts/assert-push-secrets-ready.ps1`. Both run the same FCM key resolution (production-prefixed first, then staging fallback). Staging rebuild surfaces missing FCM credentials before production deploy. `Assert-ProductionPushSecretsReady` accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (same order as `set-github-secrets.ps1`). Preflight emits a warning recommending `populate-android-fcm-env.ps1` or `PUSH_PRODUCTION_ANDROID_FCM_*` for clarity; VAPID key prefixes remain environment-specific (staging vs production).
 
 Production preflight also requires production VAPID delivery keys:
 
