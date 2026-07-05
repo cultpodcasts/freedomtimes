@@ -16,6 +16,7 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 
 - [EmDash MCP failure (AI agents)](#emdash-mcp-failure-ai-agents)
 - [FCM keys (production deploy preflight)](#fcm-keys-production-deploy-preflight)
+- [Auth0 env sync skipped](#auth0-env-sync-skipped)
 - [Turso EmDash secrets after worker rename](#turso-emdash-secrets-after-worker-rename)
 - [Production deploy without Terraform apply](#production-deploy-without-terraform-apply)
 - [Wrangler deploy working directory](#wrangler-deploy-working-directory)
@@ -341,10 +342,38 @@ The **official** production path (`scripts/production-release.ps1 -AllowProducti
 
 ---
 
+## Auth0 env sync skipped
+
+### Symptom
+
+After `terraform apply` via `scripts/terraform-run.ps1` (staging or production), output included:
+
+```text
+WARNING: Auth0 env sync skipped: The property 'module' cannot be found on this object.
+```
+
+(or a similar exception message). `.env.dev` may still lack updated `AUTH0_LOGIN_APP_CLIENT_ID_*` / `AUTH0_LOGIN_APP_CLIENT_SECRET_*` values.
+
+### Cause (fixed Jul 2026)
+
+`Sync-Auth0LoginAppEnvFromState` parsed `terraform state pull` JSON and accessed `.module` on every state resource. Under `Set-StrictMode -Version Latest`, resources without a `module` property threw; a catch block logged **Auth0 env sync skipped** instead of writing `.env.dev`.
+
+### What to do
+
+| Path | Behavior |
+|------|----------|
+| **`production-rebuild-local.ps1`** | Still reads `terraform output -raw auth0_app_client_id` / `auth0_app_client_secret` and updates `.env.dev` after apply, then runs `Assert-Auth0SyncToEnv`. Rebuild could succeed even when terraform-run sync was skipped. |
+| **`staging-rebuild-local.ps1`** | Relied on terraform-run sync only; a skipped sync could leave stale Auth0 keys until fixed. |
+| **After fix** | terraform-run uses the same `terraform output -raw` outputs as the rebuild scripts. Successful apply should log `Synced AUTH0_LOGIN_APP_CLIENT_ID_* ... from terraform outputs` with no skip warning. |
+
+If sync still warns about missing outputs, run `terraform output` in `infra/terraform/environments/<staging|production>` and confirm `auth0_app_client_id` / `auth0_app_client_secret` exist after apply.
+
+
 ## Quick symptom index
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); production-rebuild has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
 | `Failed to read terraform output 'turso_database_url'` during `deploy-production-worker-local.ps1` | Production Turso URL outputs null in Terraform state (new DB resources not applied) while `.env.dev` lacks production EmDash keys | Populate `TURSO_PRODUCTION_EMDASH_DB_URL` / `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (or production `TURSO_SUBSCRIPTIONS_*` URLs for host-suffix derivation) in `.env.dev`; run `pwsh ./scripts/sync-production-turso-env-dev.ps1`; verify with `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` |
 | `Missing required production push secret values … PUSH_PRODUCTION_ANDROID_FCM_*` | Only staging-prefixed FCM keys in `.env.dev` | Run `populate-android-fcm-env.ps1` or copy to `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |

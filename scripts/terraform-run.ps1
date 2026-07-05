@@ -315,36 +315,45 @@ function Remove-StaleAzureState {
     Write-Host "DEBUG: Removed $($staleAzureEntries.Count) stale Azure state entries." -ForegroundColor DarkGray
 }
 
+function Get-TerraformOutputRawForEnvSync {
+    param([string]$Name)
+
+    $rawOutput = & terraform output -raw $Name 2>$null
+    $exitCode = $LASTEXITCODE
+    if ($null -eq $exitCode) {
+        $exitCode = if ($?) { 0 } else { 1 }
+    }
+
+    if ($exitCode -ne 0) {
+        return $null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($rawOutput)) {
+        return $null
+    }
+
+    return [string]$rawOutput.Trim()
+}
+
 function Sync-Auth0LoginAppEnvFromState {
     param(
         [string]$Env,
         [string]$RepoRoot
     )
 
-    $stateJson = & terraform state pull
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($stateJson)) {
-        Write-Warning "Skipping Auth0 env sync: unable to pull terraform state."
+    if ($Env -ne "staging" -and $Env -ne "production") {
         return
     }
 
-    $state = $stateJson | ConvertFrom-Json
-    $clientResource = $state.resources |
-        Where-Object { $_.module -eq "module.auth0_app" -and $_.type -eq "auth0_client" -and $_.name -eq "admin_ui" } |
-        Select-Object -First 1
-    $credentialsResource = $state.resources |
-        Where-Object { $_.module -eq "module.auth0_app" -and $_.type -eq "auth0_client_credentials" -and $_.name -eq "admin_ui" } |
-        Select-Object -First 1
-
-    if ($null -eq $clientResource -or $null -eq $credentialsResource) {
-        Write-Warning "Skipping Auth0 env sync: auth0 app resources not present in state."
+    $clientId = Get-TerraformOutputRawForEnvSync -Name "auth0_app_client_id"
+    if ([string]::IsNullOrWhiteSpace($clientId)) {
+        Write-Warning "Skipping Auth0 env sync: terraform output 'auth0_app_client_id' is missing or unreadable."
         return
     }
 
-    $clientId = [string]$clientResource.instances[0].attributes.client_id
-    $clientSecret = [string]$credentialsResource.instances[0].attributes.client_secret
-
-    if ([string]::IsNullOrWhiteSpace($clientId) -or [string]::IsNullOrWhiteSpace($clientSecret)) {
-        Write-Warning "Skipping Auth0 env sync: missing client_id or client_secret in state."
+    $clientSecret = Get-TerraformOutputRawForEnvSync -Name "auth0_app_client_secret"
+    if ([string]::IsNullOrWhiteSpace($clientSecret)) {
+        Write-Warning "Skipping Auth0 env sync: terraform output 'auth0_app_client_secret' is missing or unreadable."
         return
     }
 
@@ -354,9 +363,8 @@ function Sync-Auth0LoginAppEnvFromState {
     Set-Or-AddEnvFileValue -Path $envFilePath -Key "AUTH0_LOGIN_APP_CLIENT_ID_$suffix" -Value $clientId
     Set-Or-AddEnvFileValue -Path $envFilePath -Key "AUTH0_LOGIN_APP_CLIENT_SECRET_$suffix" -Value $clientSecret
 
-    Write-Host "Synced AUTH0_LOGIN_APP_CLIENT_ID_$suffix and AUTH0_LOGIN_APP_CLIENT_SECRET_$suffix to .env.dev from terraform state." -ForegroundColor DarkGray
+    Write-Host "Synced AUTH0_LOGIN_APP_CLIENT_ID_$suffix and AUTH0_LOGIN_APP_CLIENT_SECRET_$suffix to .env.dev from terraform outputs." -ForegroundColor DarkGray
 }
-
 if (-not (Test-Path $envDir)) {
     throw "Environment directory not found: $envDir"
 }
@@ -490,12 +498,7 @@ try {
             Write-Host "DEBUG: applyArgs count: $($applyArgs.Count)" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs $applyArgs
             if ($exitCode -eq 0 -and ($Environment -eq "staging" -or $Environment -eq "production")) {
-                try {
-                    Sync-Auth0LoginAppEnvFromState -Env $Environment -RepoRoot $repoRoot
-                }
-                catch {
-                    Write-Warning ("Auth0 env sync skipped: " + $_.Exception.Message)
-                }
+                Sync-Auth0LoginAppEnvFromState -Env $Environment -RepoRoot $repoRoot
             }
             Write-Host "DEBUG: terraform apply exited with code: $exitCode" -ForegroundColor DarkGray
             exit $exitCode

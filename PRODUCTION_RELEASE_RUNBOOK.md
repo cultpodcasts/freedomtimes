@@ -101,6 +101,27 @@ Plan-only dry path:
 .\scripts\production-release.ps1 -TerraformMode plan -Watch -AllowProduction
 ```
 
+### 2b. Local production rebuild (operator bypass)
+
+Use this when you need a full local production path (Terraform apply, Auth0 `.env.dev` sync, Worker secrets, build, Wrangler deploy) without dispatching `terraform-production.yml`. It does **not** replace Step 1 Turso rollback checkpoints or schema/content promotion gates for releases that need them.
+
+From repo root:
+
+```powershell
+pwsh ./scripts/production-rebuild-local.ps1
+```
+
+Optional: `-BumpVersion` to bump `web/package.json` before build (default is no bump; staging usually already bumped for the release). See [web/docs/DEPLOY_TROUBLESHOOTING.md — Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
+
+**Prerequisites**
+
+1. **Turso rollback checkpoint** — same as [§1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
+2. **Production push secrets in `.env.dev`** — VAPID keys plus `PUSH_PRODUCTION_ANDROID_FCM_*` (preflight is strict; staging FCM prefixes are not accepted). Run `pwsh ./scripts/populate-android-fcm-env.ps1` or copy values per [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md).
+3. **Cloudflare API token** — non-interactive Terraform and Wrangler (see [DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)).
+
+**Troubleshooting:** [web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md) (FCM preflight, Auth0 env sync, Turso secrets after worker rename, Wrangler cwd, Terraform worker lifecycle).
+
+
 ## 3. Step 1: Prove Production Matches Staging Schema Semantics
 
 Schema changes are made on staging during development, not during the release. By release time, staging schema is already validated.
