@@ -59,16 +59,18 @@ PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY
 
 `.env.dev` had **`PUSH_STAGING_ANDROID_FCM_*`** populated (same Firebase project) but not the **production-prefixed** trio. VAPID keys were present; only FCM blocked the run.
 
+Production preflight now accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (aligned with `set-github-secrets.ps1`).
+
 ### Required env vars by stage
 
 | Stage | Script / step | Required `.env.dev` keys | FCM required? |
 |-------|---------------|--------------------------|---------------|
 | **Staging rebuild** | `Assert-StagingPushSecretsReady` | `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`, `PUSH_STAGING_VAPID_PRIVATE_KEY`, `PUSH_STAGING_VAPID_SUBJECT` | No — staging scheduler does not send Android FCM |
-| **Production rebuild preflight** | `Assert-ProductionPushSecretsReady` | Above **plus** `PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID`, `PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY` | **Yes** — strict production prefix only |
+| **Production rebuild preflight** | `Assert-ProductionPushSecretsReady` | Production VAPID keys **plus** `PUSH_PRODUCTION_ANDROID_FCM_*` **or** `PUSH_STAGING_ANDROID_FCM_*` (same fallback as secret sync) | **Yes** |
 | **Production secret sync** | `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets` | Prefer `PUSH_PRODUCTION_ANDROID_FCM_*`; **accepts** `PUSH_STAGING_ANDROID_FCM_*` as fallback | Yes — mapped to scheduler worker `PUSH_ANDROID_FCM_*` |
 | **Runtime Android push** | `freedomtimes-scheduler-production` queue consumer | Worker secrets `PUSH_ANDROID_FCM_PROJECT_ID`, `PUSH_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_ANDROID_FCM_PRIVATE_KEY` | Yes — missing → `Android push delivery is not configured` on publish/send-test |
 
-**Important asymmetry:** production rebuild preflight does **not** accept staging FCM fallbacks. You can pass `set-github-secrets.ps1` with only `PUSH_STAGING_ANDROID_FCM_*` and still fail `production-rebuild-local.ps1` at step 0.
+**Preflight alignment:** `Assert-ProductionPushSecretsReady` accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (same order as `set-github-secrets.ps1`). Preflight emits a warning recommending `populate-android-fcm-env.ps1` or `PUSH_PRODUCTION_ANDROID_FCM_*` for clarity; VAPID keys remain production-only.
 
 Production preflight also requires production VAPID delivery keys:
 
@@ -375,7 +377,7 @@ If sync still warns about missing outputs, run `terraform output` in `infra/terr
 |---------|--------------|-----|
 | `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); production-rebuild has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
 | `Failed to read terraform output 'turso_database_url'` during `deploy-production-worker-local.ps1` | Production Turso URL outputs null in Terraform state (new DB resources not applied) while `.env.dev` lacks production EmDash keys | Populate `TURSO_PRODUCTION_EMDASH_DB_URL` / `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (or production `TURSO_SUBSCRIPTIONS_*` URLs for host-suffix derivation) in `.env.dev`; run `pwsh ./scripts/sync-production-turso-env-dev.ps1`; verify with `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` |
-| `Missing required production push secret values … PUSH_PRODUCTION_ANDROID_FCM_*` | Only staging-prefixed FCM keys in `.env.dev` | Run `populate-android-fcm-env.ps1` or copy to `PUSH_PRODUCTION_ANDROID_FCM_*` |
+| `Missing required production push secret values` (FCM labels mention production **or** staging) | No FCM keys at all in `.env.dev` | Run `populate-android-fcm-env.ps1` or set `PUSH_STAGING_ANDROID_FCM_*` / `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |
 | `Refusing to sync placeholder value for Worker secret` | Secret sync hit a template value | Same as above |
 | `Missing PUSH_PRODUCTION_ANDROID_FCM_* or PUSH_STAGING_ANDROID_FCM_*` (secret sync) | No FCM keys at all | `populate-android-fcm-env.ps1` |
