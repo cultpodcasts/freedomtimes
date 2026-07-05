@@ -3,7 +3,9 @@
 # Preflight requires production VAPID + FCM keys in .env.dev (Assert-ProductionPushSecretsReady).
 # Troubleshooting (FCM preflight, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle): web/docs/DEPLOY_TROUBLESHOOTING.md
 [CmdletBinding()]
-param()
+param(
+    [switch]$SkipVersionBump
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -182,6 +184,13 @@ function Invoke-WorkerDeploy {
 }
 
 function Invoke-WorkerBuild {
+    if ($SkipVersionBump) {
+        Write-Step "Skipping web version bump (-SkipVersionBump)"
+    } else {
+        . "$PSScriptRoot/bump-web-version.ps1"
+        Invoke-WebVersionBump -RepoRoot $repoRoot | Out-Null
+    }
+
     Write-Step "Building production Worker"
 
     # Set build-time env vars required by astro.config.ts from Terraform outputs
