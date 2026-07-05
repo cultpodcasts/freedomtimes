@@ -1,16 +1,21 @@
 import type { AstroCookies } from 'astro';
+import type { JWTPayload } from 'jose';
 
 import {
-	ACCESS_TOKEN_COOKIE,
-	CSRF_COOKIE,
+	REFRESH_TOKEN_COOKIE,
 	SESSION_COOKIE,
+	clearAuthCookies,
+	exchangeRefreshTokenForTokens,
 	getAuthConfig,
 	getCookieDeleteOptionsForHost,
+	getCookieDomainForHost,
 	getDisplayName,
 	getRoleClaimDebug,
 	hasAdminRole,
 	hasEditorialRole,
 	isPublicReaderPath,
+	makeState,
+	setAuthCookies,
 	verifyIdToken,
 } from './auth';
 
@@ -28,54 +33,99 @@ type EditorialSession = {
 	requestId: string;
 };
 
+function buildSession(payload: JWTPayload, requestId: string): EditorialSession {
+	return {
+		displayName: getDisplayName(payload),
+		isEditor: hasEditorialRole(payload),
+		isAdmin: hasAdminRole(payload),
+		requestId,
+	};
+}
+
+/**
+ * Silent re-authentication: when the `ft_session` ID token is missing or has expired but a
+ * `ft_refresh` cookie is present, exchange it for a fresh token pair (grant_type=refresh_token)
+ * instead of forcing a full Auth0 `/authorize` redirect. On success, reissues all auth cookies
+ * (Auth0 rotation returns a new refresh_token on every use). See "Refresh tokens (app side)"
+ * in web/docs/AUTH.md.
+ */
+async function tryRefreshSession(
+	context: EditorialSessionContext,
+	requestId: string,
+): Promise<EditorialSession | null> {
+	const refreshToken = context.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
+	if (!refreshToken) {
+		return null;
+	}
+
+	try {
+		const config = getAuthConfig();
+		const refreshed = await exchangeRefreshTokenForTokens({ refreshToken, config });
+		const payload = await verifyIdToken(refreshed.idToken, config);
+
+		if (!hasEditorialRole(payload)) {
+			console.warn('[editorial-session] refreshed token failed role check', {
+				requestId,
+				roleDebug: getRoleClaimDebug(payload),
+			});
+			return null;
+		}
+
+		setAuthCookies(context.cookies, {
+			idToken: refreshed.idToken,
+			accessToken: refreshed.accessToken,
+			refreshToken: refreshed.refreshToken,
+			csrfToken: makeState(),
+			cookieDomain: getCookieDomainForHost(context.url.hostname),
+		});
+
+		console.info('[editorial-session] silently refreshed session via refresh_token', { requestId });
+
+		return buildSession(payload, requestId);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		console.warn('[editorial-session] refresh_token exchange failed', { requestId, message });
+		return null;
+	}
+}
+
 export async function requireEditorialSession(
 	context: EditorialSessionContext,
 ): Promise<EditorialSession | Response> {
 	const requestId = context.request.headers.get('cf-ray') ?? crypto.randomUUID();
 	const token = context.cookies.get(SESSION_COOKIE)?.value;
-
-	if (!token) {
-		console.warn('[editorial-session] missing session cookie', { requestId });
-		return context.redirect('/');
-	}
-
 	const deleteOptionsList = getCookieDeleteOptionsForHost(context.url.hostname);
 
-	try {
-		const payload = await verifyIdToken(token, getAuthConfig());
-		if (!hasEditorialRole(payload)) {
-			console.warn('[editorial-session] token verified but role check failed', {
-				requestId,
-				roleDebug: getRoleClaimDebug(payload),
-			});
+	if (token) {
+		try {
+			const payload = await verifyIdToken(token, getAuthConfig());
+			if (!hasEditorialRole(payload)) {
+				console.warn('[editorial-session] token verified but role check failed', {
+					requestId,
+					roleDebug: getRoleClaimDebug(payload),
+				});
 
-			for (const deleteOptions of deleteOptionsList) {
-				context.cookies.delete(SESSION_COOKIE, deleteOptions);
-				context.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-				context.cookies.delete(CSRF_COOKIE, deleteOptions);
+				clearAuthCookies(context.cookies, deleteOptionsList);
+				return context.redirect('/?denied=1');
 			}
 
-			return context.redirect('/?denied=1');
+			return buildSession(payload, requestId);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			console.warn('[editorial-session] token verification failed', { requestId, message });
+			// Fall through to a silent refresh attempt below before giving up.
 		}
-
-		return {
-			displayName: getDisplayName(payload),
-			isEditor: hasEditorialRole(payload),
-			isAdmin: hasAdminRole(payload),
-			requestId,
-		};
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn('[editorial-session] token verification failed', { requestId, message });
-
-		for (const deleteOptions of deleteOptionsList) {
-			context.cookies.delete(SESSION_COOKIE, deleteOptions);
-			context.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-			context.cookies.delete(CSRF_COOKIE, deleteOptions);
-		}
-
-		return context.redirect('/');
+	} else {
+		console.warn('[editorial-session] missing session cookie', { requestId });
 	}
+
+	const refreshed = await tryRefreshSession(context, requestId);
+	if (refreshed) {
+		return refreshed;
+	}
+
+	clearAuthCookies(context.cookies, deleteOptionsList);
+	return context.redirect('/');
 }
 
 export async function authorizeEditorialApiRequest(params: {
@@ -112,8 +162,12 @@ export async function requireReaderPageSession(
 		return null;
 	}
 
-	const token = context.cookies.get(SESSION_COOKIE)?.value;
-	if (!token) {
+	// A missing ft_session is not automatically "no session" — a valid ft_refresh cookie can
+	// still silently re-authenticate inside requireEditorialSession, so only short-circuit here
+	// when neither cookie is present.
+	const hasSessionToken = Boolean(context.cookies.get(SESSION_COOKIE)?.value);
+	const hasRefreshToken = Boolean(context.cookies.get(REFRESH_TOKEN_COOKIE)?.value);
+	if (!hasSessionToken && !hasRefreshToken) {
 		return handlers?.noSession?.() ?? context.redirect('/');
 	}
 

@@ -2,6 +2,8 @@
 
 Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, worker rename migrations). Use this when a deploy script fails before or after Terraform apply.
 
+**Shared implementation:** `scripts/Invoke-EnvironmentRebuild.ps1` — staging vs production differences are documented in its header table. Wrappers: `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, `deploy-staging-worker-local.ps1`, `deploy-production-worker-local.ps1`. `deploy-staging-workers-only.ps1` stays separate (web + scheduler, `.env.dev` only).
+
 **Related docs:**
 
 - [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) — **primary reference** for Windows Terraform PATH and WSL Turso CLI
@@ -15,7 +17,8 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 ## Table of contents
 
 - [EmDash MCP failure (AI agents)](#emdash-mcp-failure-ai-agents)
-- [FCM keys (production deploy preflight)](#fcm-keys-production-deploy-preflight)
+- [FCM keys (staging and production rebuild preflight)](#fcm-keys-staging-and-production-rebuild-preflight)
+- [Auth0 env sync skipped](#auth0-env-sync-skipped)
 - [Turso EmDash secrets after worker rename](#turso-emdash-secrets-after-worker-rename)
 - [Production deploy without Terraform apply](#production-deploy-without-terraform-apply)
 - [Wrangler deploy working directory](#wrangler-deploy-working-directory)
@@ -43,7 +46,7 @@ Canonical policy: **`AGENTS.md`** § *Primary guardrails* §1; **`web/docs/PLAN_
 
 ---
 
-## FCM keys (production deploy preflight)
+## FCM keys (staging and production rebuild preflight)
 
 ### What happened (Jul 2026 production deploy)
 
@@ -58,16 +61,18 @@ PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY
 
 `.env.dev` had **`PUSH_STAGING_ANDROID_FCM_*`** populated (same Firebase project) but not the **production-prefixed** trio. VAPID keys were present; only FCM blocked the run.
 
+Production preflight now accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (aligned with `set-github-secrets.ps1`).
+
 ### Required env vars by stage
 
 | Stage | Script / step | Required `.env.dev` keys | FCM required? |
 |-------|---------------|--------------------------|---------------|
-| **Staging rebuild** | `Assert-StagingPushSecretsReady` | `PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY`, `PUSH_STAGING_VAPID_PRIVATE_KEY`, `PUSH_STAGING_VAPID_SUBJECT` | No — staging scheduler does not send Android FCM |
-| **Production rebuild preflight** | `Assert-ProductionPushSecretsReady` | Above **plus** `PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID`, `PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY` | **Yes** — strict production prefix only |
+| **Staging rebuild** | `Assert-StagingPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Staging VAPID keys **plus** same FCM resolution as production (`PUSH_PRODUCTION_ANDROID_FCM_*` or `PUSH_STAGING_ANDROID_FCM_*`) | **Yes** (preflight only; staging worker sync still does not push FCM) |
+| **Production rebuild preflight** | `Assert-ProductionPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Production VAPID keys **plus** `PUSH_PRODUCTION_ANDROID_FCM_*` **or** `PUSH_STAGING_ANDROID_FCM_*` (same fallback as secret sync) | **Yes** |
 | **Production secret sync** | `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets` | Prefer `PUSH_PRODUCTION_ANDROID_FCM_*`; **accepts** `PUSH_STAGING_ANDROID_FCM_*` as fallback | Yes — mapped to scheduler worker `PUSH_ANDROID_FCM_*` |
 | **Runtime Android push** | `freedomtimes-scheduler-production` queue consumer | Worker secrets `PUSH_ANDROID_FCM_PROJECT_ID`, `PUSH_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_ANDROID_FCM_PRIVATE_KEY` | Yes — missing → `Android push delivery is not configured` on publish/send-test |
 
-**Important asymmetry:** production rebuild preflight does **not** accept staging FCM fallbacks. You can pass `set-github-secrets.ps1` with only `PUSH_STAGING_ANDROID_FCM_*` and still fail `production-rebuild-local.ps1` at step 0.
+**Preflight alignment:** Staging and production rebuild scripts dot-source `scripts/assert-push-secrets-ready.ps1`. Both run the same FCM key resolution (production-prefixed first, then staging fallback). Staging rebuild surfaces missing FCM credentials before production deploy. `Assert-ProductionPushSecretsReady` accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (same order as `set-github-secrets.ps1`). Preflight emits a warning recommending `populate-android-fcm-env.ps1` or `PUSH_PRODUCTION_ANDROID_FCM_*` for clarity; VAPID key prefixes remain environment-specific (staging vs production).
 
 Production preflight also requires production VAPID delivery keys:
 
@@ -293,27 +298,44 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 
 ---
 
+## Post-deploy Worker secret verify (rebuild scripts)
+
+`Invoke-EnvironmentRebuild.ps1` (via `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, and worker-only wrappers when deploy runs) lists secrets on the deployed web Worker after `wrangler deploy` and fails if any of these are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`.
+
+If verify fails after a successful deploy, re-run `pwsh ./scripts/set-github-secrets.ps1 -Target Staging|Production -SyncCloudflareWorkerSecrets` (production requires `-AllowProduction`), then deploy again or put secrets manually with `npx wrangler secret put` from `web/`.
+
+---
+
 ## Web version bump on deploy
 
 ### What this is
 
 `web/package.json` has a `version` field that was never bumped in this repo (stuck at `0.0.1` since the file was created). It is **not** currently read anywhere in the app, build, or service worker — the deployed-build identity that actually gets exposed (`/api/version.json`, `ReaderDataProvenance.astro`, `tip-source.astro`) is the **git commit SHA** baked in via `FT_BUILD_COMMIT_SHA` (`scripts/build-provenance-env.ps1` → `web/src/lib/build-provenance.ts`), not semver.
 
-Local deploy scripts now bump the `web/package.json` (and `web/package-lock.json`) **patch** version immediately before their `npm run build` step, via `scripts/bump-web-version.ps1` (`Invoke-WebVersionBump`):
+Local deploy scripts bump the `web/package.json` (and `web/package-lock.json`) **patch** version immediately before their `npm run build` step, via `scripts/bump-web-version.ps1` (`Invoke-WebVersionBump`):
 
 - `deploy-staging-workers-only.ps1`
 - `deploy-staging-worker-local.ps1`
-- `deploy-production-worker-local.ps1`
 - `staging-rebuild-local.ps1`
-- `production-rebuild-local.ps1`
 
-Pass `-SkipVersionBump` to any of these to opt out for a given run.
+**Staging bumps by default on every run** (patch: e.g. `0.0.1` → `0.0.2`). Pass `-SkipVersionBump` to opt out for a given staging run.
 
-### Why patch, why before build, why staging too
+**Production defaults the other way — no bump.** `deploy-production-worker-local.ps1` and `production-rebuild-local.ps1` ship the **same version staging already bumped** for this release unless you explicitly ask for a new one:
+
+| Script | Default | To bump anyway | To force no bump (same as default) |
+|---|---|---|---|
+| `deploy-staging-worker-local.ps1`, `deploy-staging-workers-only.ps1`, `staging-rebuild-local.ps1` | bump patch | *(default)* | `-SkipVersionBump` |
+| `deploy-production-worker-local.ps1`, `production-rebuild-local.ps1` | **no bump** (uses current `web/package.json` version) | `-BumpVersion` | `-SkipVersionBump` (no-op given the new default; kept for backward compatibility) |
+
+`-BumpVersion` and `-SkipVersionBump` are mutually exclusive on the production scripts (combining them throws).
+
+**Typical release flow:** deploy staging (bumps `0.0.1` → `0.0.2`), validate, then deploy production — production ships `0.0.2` too (no further bump), instead of the old behavior where production would bump again to `0.0.3` for the *same* release. If you need production to carry a version staging never had (e.g. a production-only hotfix), pass `-BumpVersion` on the production script.
+
+### Why patch, why before build, why the production default flipped
 
 - **Patch bump**: no existing semver convention in this repo to diverge from; patch is the least disruptive default for "a new build went out."
 - **Before build**: mirrors the existing commit-SHA provenance pattern — the artifact that gets deployed should reflect the version bump, not a build that predates it.
-- **Both staging and production**: the user-facing request was "whenever we deploy," and there is no established repo convention limiting version tracking to production only.
+- **Staging bumps, production doesn't (by default)**: a release is staged once (one patch bump) and promoted to production unchanged — bumping again on the production deploy of the *same* release made staging and production carry different versions for identical code, which was confusing. Production keeping the version staging already set matches "one version per release."
 
 ### Uncommitted by design
 
@@ -332,12 +354,40 @@ The **official** production path (`scripts/production-release.ps1 -AllowProducti
 
 ---
 
+## Auth0 env sync skipped
+
+### Symptom
+
+After `terraform apply` via `scripts/terraform-run.ps1` (staging or production), output included:
+
+```text
+WARNING: Auth0 env sync skipped: The property 'module' cannot be found on this object.
+```
+
+(or a similar exception message). `.env.dev` may still lack updated `AUTH0_LOGIN_APP_CLIENT_ID_*` / `AUTH0_LOGIN_APP_CLIENT_SECRET_*` values.
+
+### Cause (fixed Jul 2026)
+
+`Sync-Auth0LoginAppEnvFromState` parsed `terraform state pull` JSON and accessed `.module` on every state resource. Under `Set-StrictMode -Version Latest`, resources without a `module` property threw; a catch block logged **Auth0 env sync skipped** instead of writing `.env.dev`.
+
+### What to do
+
+| Path | Behavior |
+|------|----------|
+| **`production-rebuild-local.ps1`** | Still reads `terraform output -raw auth0_app_client_id` / `auth0_app_client_secret` and updates `.env.dev` after apply, then runs `Assert-Auth0SyncToEnv`. Rebuild could succeed even when terraform-run sync was skipped. |
+| **`staging-rebuild-local.ps1`** | Relied on terraform-run sync only; a skipped sync could leave stale Auth0 keys until fixed. |
+| **After fix** | terraform-run uses the same `terraform output -raw` outputs as the rebuild scripts. Successful apply should log `Synced AUTH0_LOGIN_APP_CLIENT_ID_* ... from terraform outputs` with no skip warning. |
+
+If sync still warns about missing outputs, run `terraform output` in `infra/terraform/environments/<staging|production>` and confirm `auth0_app_client_id` / `auth0_app_client_secret` exist after apply.
+
+
 ## Quick symptom index
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); production-rebuild has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
 | `Failed to read terraform output 'turso_database_url'` during `deploy-production-worker-local.ps1` | Production Turso URL outputs null in Terraform state (new DB resources not applied) while `.env.dev` lacks production EmDash keys | Populate `TURSO_PRODUCTION_EMDASH_DB_URL` / `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (or production `TURSO_SUBSCRIPTIONS_*` URLs for host-suffix derivation) in `.env.dev`; run `pwsh ./scripts/sync-production-turso-env-dev.ps1`; verify with `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` |
-| `Missing required production push secret values … PUSH_PRODUCTION_ANDROID_FCM_*` | Only staging-prefixed FCM keys in `.env.dev` | Run `populate-android-fcm-env.ps1` or copy to `PUSH_PRODUCTION_ANDROID_FCM_*` |
+| `Missing required production push secret values` (FCM labels mention production **or** staging) | No FCM keys at all in `.env.dev` | Run `populate-android-fcm-env.ps1` or set `PUSH_STAGING_ANDROID_FCM_*` / `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |
 | `Refusing to sync placeholder value for Worker secret` | Secret sync hit a template value | Same as above |
 | `Missing PUSH_PRODUCTION_ANDROID_FCM_* or PUSH_STAGING_ANDROID_FCM_*` (secret sync) | No FCM keys at all | `populate-android-fcm-env.ps1` |

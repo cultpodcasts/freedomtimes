@@ -40,7 +40,7 @@ $env:EMDASH_STAGING_TOKEN = "<staging-token>"
 $env:EMDASH_PRODUCTION_TOKEN = "<production-token>"
 ```
 
-## 1. Create Turso Rollback Checkpoint (Mandatory Before Production Schema Or Content Changes)
+1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
 
 This is mandatory before any production schema change, migration, or content promotion.
 
@@ -93,13 +93,38 @@ What this does:
 2. Requests Terraform apply (`production_terraform_apply=true`).
 3. Watches run completion and exits non-zero on failure.
 
-**Web version:** `terraform-production.yml` builds `web/` from whatever is already committed on `main` — this script does not bump or commit `web/package.json` for you. If you want the deployed build to carry a bumped version, bump and commit it first (`cd web && npm version patch --no-git-tag-version --allow-same-version && cd .. && git add web/package.json web/package-lock.json && git commit -m "chore: bump web version" && git push`). The local bypass scripts (`deploy-staging-workers-only.ps1`, `deploy-staging-worker-local.ps1`, `deploy-production-worker-local.ps1`, `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`) bump `web/package.json` automatically before their own build step (patch bump, uncommitted — pass `-SkipVersionBump` to opt out). See [web/docs/DEPLOY_TROUBLESHOOTING.md § Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
+**Web version:** `terraform-production.yml` builds `web/` from whatever is already committed on `main` — this script does not bump or commit `web/package.json` for you. If you want the deployed build to carry a bumped version, bump and commit it first (`cd web && npm version patch --no-git-tag-version --allow-same-version && cd .. && git add web/package.json web/package-lock.json && git commit -m "chore: bump web version" && git push`). Of the local bypass scripts, only the **staging** ones (`deploy-staging-workers-only.ps1`, `deploy-staging-worker-local.ps1`, `staging-rebuild-local.ps1`) bump `web/package.json` automatically before their own build step (patch bump, uncommitted — pass `-SkipVersionBump` to opt out). The **production** ones (`deploy-production-worker-local.ps1`, `production-rebuild-local.ps1`) default to **no bump** — they ship the same version staging already bumped for this release; pass `-BumpVersion` to bump anyway. See [web/docs/DEPLOY_TROUBLESHOOTING.md § Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
 
 Plan-only dry path:
 
 ```powershell
 .\scripts\production-release.ps1 -TerraformMode plan -Watch -AllowProduction
 ```
+
+### 2b. Local production rebuild (operator bypass)
+
+Implementation: `scripts/Invoke-EnvironmentRebuild.ps1 -Environment production` (wrapper: `production-rebuild-local.ps1`). Staging vs production step differences are in the shared script header.
+
+1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
+
+From repo root:
+
+```powershell
+pwsh ./scripts/production-rebuild-local.ps1
+```
+
+Optional: `-BumpVersion` to bump `web/package.json` before build (default is no bump; staging usually already bumped for the release). See [web/docs/DEPLOY_TROUBLESHOOTING.md — Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
+
+
+After deploy, the script runs `wrangler secret list` on the production web Worker and asserts `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, and `EMDASH_PREVIEW_SECRET` are present (same check as `staging-rebuild-local.ps1`).
+**Prerequisites**
+
+1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
+2. **Production push secrets in `.env.dev`** - Production VAPID keys plus FCM credentials (`PUSH_PRODUCTION_ANDROID_FCM_*` or `PUSH_STAGING_ANDROID_FCM_*` fallback; same as `scripts/assert-push-secrets-ready.ps1`). Staging rebuild preflight uses the same FCM checks. Run `pwsh ./scripts/populate-android-fcm-env.ps1` or copy values per [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md).
+3. **Cloudflare API token** — non-interactive Terraform and Wrangler (see [DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)).
+
+**Troubleshooting:** [web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md) (FCM preflight, Auth0 env sync, Turso secrets after worker rename, Wrangler cwd, Terraform worker lifecycle).
+
 
 ## 3. Step 1: Prove Production Matches Staging Schema Semantics
 
@@ -116,7 +141,7 @@ What must match before proceeding:
 3. Production manifest visibility for the touched collection.
 4. Production admin route resolution for the touched collection.
 
-This incident proved that field-level parity alone is insufficient. A collection can exist in both environments and still behave differently because collection metadata drifted or the persisted manifest cache is stale.
+This incident proved that field-level parity alone is insufficient. A collection can exist in both environments and still behave differently because collection metadata (`supports`, `source`, labels) drifted — not because of a stale manifest cache (removed in EmDash 0.9+).
 
 The schema promotion script is still useful, but it is only one part of Step 1. It diffs staging vs production, presents the required CLI commands for human review, then applies additive changes after explicit confirmation.
 
@@ -157,7 +182,7 @@ Then verify runtime visibility in production:
 
 1. `/_emdash/api/manifest` contains the collection.
 2. `/_emdash/admin/content/<collection>` resolves.
-3. If manifest visibility is wrong even though schema looks correct, clear `emdash:manifest_cache` and re-check before promoting content.
+3. If manifest visibility is wrong even though schema looks correct, compare `_emdash_collections` metadata between staging and production before promoting content (see [CONTENT_PROMOTION_RUNBOOK.md §5](web/CONTENT_PROMOTION_RUNBOOK.md#5-recover-from-collection-not-found-admin-issues)). Do **not** rely on clearing `emdash:manifest_cache` — current EmDash builds the manifest from the live DB per request.
 
 ## 4. Promote EmDash Content Changes
 

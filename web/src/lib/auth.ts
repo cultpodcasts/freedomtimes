@@ -1,13 +1,26 @@
+import type { AstroCookies } from 'astro';
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
 import { env as cfEnv } from 'cloudflare:workers';
 
 export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
 export const CSRF_COOKIE = 'ft_csrf';
+/** HttpOnly refresh token — used for silent re-authentication once SESSION_COOKIE expires. */
+export const REFRESH_TOKEN_COOKIE = 'ft_refresh';
 const STATE_COOKIE = 'ft_state';
 const NATIVE_APP_COOKIE = 'ft_native_app';
 const AUTH_FLOW_COOKIE = 'ft_auth_flow';
+/** Short-lived, single-use cookie carrying the post-login redirect target through the Auth0 round trip. */
+const RETURN_TO_COOKIE = 'ft_return_to';
 const NATIVE_AUTH_CALLBACK_URL = 'news.freedomtimes.app://auth/callback';
+/** Matches the state cookie lifetime — the whole Auth0 authorize round trip should complete well within this window. */
+export const RETURN_TO_COOKIE_MAX_AGE_SECONDS = 600;
+
+/** Matches `jwt_configuration.lifetime_in_seconds` (`id_token_lifetime_in_seconds`) in `infra/terraform/modules/auth0_app`. */
+export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours
+export const ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 30; // 30 minutes
+/** Matches `refresh_token_idle_lifetime_seconds` default in `infra/terraform/modules/auth0_app`. */
+export const REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function getRoleClaims(): string[] {
   const namespace = readOptionalEnv('AUTH0_ROLES_CLAIM_NAMESPACE').trim().replace(/\/$/, '');
@@ -135,6 +148,34 @@ export function getAuthFlowCookieName(): string {
   return AUTH_FLOW_COOKIE;
 }
 
+export function getReturnToCookieName(): string {
+  return RETURN_TO_COOKIE;
+}
+
+/**
+ * Validate a post-login redirect target (`?next=`) before it round-trips through a cookie.
+ * Only same-site, path-absolute URLs are allowed — this is the standard open-redirect guard
+ * for OAuth `returnTo`/`next` params. Rejects protocol-relative (`//host/...`), absolute
+ * (`https://...`), backslash-smuggled, and `/auth/*` paths (would otherwise loop back into
+ * the login flow itself).
+ */
+export function sanitizeReturnToPath(candidate: string | null | undefined): string | null {
+  if (!candidate) {
+    return null;
+  }
+
+  const trimmed = candidate.trim();
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.includes('\\')) {
+    return null;
+  }
+
+  if (trimmed.startsWith('/auth/')) {
+    return null;
+  }
+
+  return trimmed;
+}
+
 export function isNativeAppContext(value: string | undefined): boolean {
   return value === '1';
 }
@@ -176,7 +217,7 @@ export async function exchangeCodeForTokens(params: {
   code: string;
   redirectUri: string;
   config: AuthConfig;
-}): Promise<{ idToken: string; accessToken: string }> {
+}): Promise<{ idToken: string; accessToken: string; refreshToken?: string }> {
   const { code, redirectUri, config } = params;
   const tokenEndpoint = `https://${config.domain}/oauth/token`;
 
@@ -199,7 +240,11 @@ export async function exchangeCodeForTokens(params: {
     throw new Error(`Auth0 token exchange failed: ${response.status} ${text}`);
   }
 
-  const tokenResponse = (await response.json()) as { id_token?: string; access_token?: string };
+  const tokenResponse = (await response.json()) as {
+    id_token?: string;
+    access_token?: string;
+    refresh_token?: string;
+  };
   if (!tokenResponse.id_token) {
     throw new Error('Auth0 token exchange did not return id_token');
   }
@@ -211,7 +256,136 @@ export async function exchangeCodeForTokens(params: {
   return {
     idToken: tokenResponse.id_token,
     accessToken: tokenResponse.access_token,
+    // Only present when the authorize request included scope=offline_access (see login.ts).
+    refreshToken: tokenResponse.refresh_token,
   };
+}
+
+/**
+ * Silent re-authentication: exchange a stored `ft_refresh` cookie value for a fresh
+ * ID/access token pair, without a full Auth0 `/authorize` redirect. Used by
+ * `editorial-session.ts` when the ID token has expired. Rotation is enabled on the Auth0
+ * application (`enable_refresh_token_rotation`), so Auth0 normally returns a new
+ * `refresh_token` on every use — callers must persist it back into `ft_refresh`.
+ */
+export async function exchangeRefreshTokenForTokens(params: {
+  refreshToken: string;
+  config: AuthConfig;
+}): Promise<{ idToken: string; accessToken: string; refreshToken: string }> {
+  const { refreshToken, config } = params;
+  const tokenEndpoint = `https://${config.domain}/oauth/token`;
+
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    refresh_token: refreshToken,
+  });
+
+  const response = await fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Auth0 refresh_token exchange failed: ${response.status} ${text}`);
+  }
+
+  const tokenResponse = (await response.json()) as {
+    id_token?: string;
+    access_token?: string;
+    refresh_token?: string;
+  };
+
+  if (!tokenResponse.id_token) {
+    throw new Error('Auth0 refresh_token exchange did not return id_token');
+  }
+
+  if (!tokenResponse.access_token) {
+    throw new Error('Auth0 refresh_token exchange did not return access_token');
+  }
+
+  return {
+    idToken: tokenResponse.id_token,
+    accessToken: tokenResponse.access_token,
+    // Fall back to the presented token if Auth0 does not rotate it for some reason.
+    refreshToken: tokenResponse.refresh_token ?? refreshToken,
+  };
+}
+
+/**
+ * Set the full set of HttpOnly/JS-readable auth cookies after login or a silent refresh.
+ * `csrfToken`/`refreshToken` are optional so callers that only rotate a subset (none, today)
+ * can still reuse this helper consistently with `callback.ts`.
+ */
+export function setAuthCookies(
+  cookies: AstroCookies,
+  params: {
+    idToken: string;
+    accessToken: string;
+    refreshToken?: string;
+    csrfToken?: string;
+    cookieDomain?: string;
+  },
+): void {
+  const { idToken, accessToken, refreshToken, csrfToken, cookieDomain } = params;
+  const domainOption = cookieDomain ? { domain: cookieDomain } : {};
+
+  cookies.set(SESSION_COOKIE, idToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
+    ...domainOption,
+  });
+
+  cookies.set(ACCESS_TOKEN_COOKIE, accessToken, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
+    ...domainOption,
+  });
+
+  if (refreshToken) {
+    cookies.set(REFRESH_TOKEN_COOKIE, refreshToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS,
+      ...domainOption,
+    });
+  }
+
+  if (csrfToken) {
+    // JS-readable by design for double-submit CSRF protection on mutation requests.
+    cookies.set(CSRF_COOKIE, csrfToken, {
+      httpOnly: false,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
+      ...domainOption,
+    });
+  }
+}
+
+/** Clear every auth cookie (host-only and domain-scoped variants) — login denial, logout, or a failed refresh. */
+export function clearAuthCookies(
+  cookies: AstroCookies,
+  deleteOptionsList: Array<{ path: '/'; domain?: string }>,
+): void {
+  for (const deleteOptions of deleteOptionsList) {
+    cookies.delete(SESSION_COOKIE, deleteOptions);
+    cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+    cookies.delete(CSRF_COOKIE, deleteOptions);
+    cookies.delete(REFRESH_TOKEN_COOKIE, deleteOptions);
+  }
 }
 
 export async function verifyIdToken(idToken: string, config: AuthConfig): Promise<JWTPayload> {
@@ -268,6 +442,14 @@ export function hasStaffLoginRole(payload: JWTPayload): boolean {
 
 export function getPostLoginPath(_payload: JWTPayload): '/' | '/homepage' {
   return getHomePath();
+}
+
+/** Prefer the `?next=` path stored in `ft_return_to` during login; fall back to editorial home. */
+export function resolvePostLoginRedirect(
+  returnToCookie: string | null | undefined,
+  payload: JWTPayload,
+): string {
+  return sanitizeReturnToPath(returnToCookie) ?? getPostLoginPath(payload);
 }
 
 export function hasEditorialRole(payload: JWTPayload): boolean {

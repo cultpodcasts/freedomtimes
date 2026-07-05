@@ -4,9 +4,12 @@ import {
   getAuthFlowCookieName,
   getAuthRedirectUri,
   getNativeAppCookieName,
+  getReturnToCookieName,
   getStateCookieName,
   isNativeAppContext,
   makeState,
+  RETURN_TO_COOKIE_MAX_AGE_SECONDS,
+  sanitizeReturnToPath,
 } from '../../lib/auth';
 
 export const GET: APIRoute = async (ctx) => {
@@ -17,11 +20,15 @@ export const GET: APIRoute = async (ctx) => {
     ctx.url.searchParams.get('native') === '1' ||
     isNativeAppContext(ctx.cookies.get(getNativeAppCookieName())?.value);
   const redirectUri = getAuthRedirectUri(ctx.url.origin, useNativeApp);
+  // Gated pages (see admin-session.ts requireAdminPageSession) redirect here with `?next=`
+  // so the callback can send the user back to the page they originally wanted.
+  const returnTo = sanitizeReturnToPath(ctx.url.searchParams.get('next'));
 
   console.info('[auth.login] starting login redirect', {
     requestId,
     origin: ctx.url.origin,
     domain: config.domain,
+    returnTo,
   });
 
   ctx.cookies.set(getStateCookieName(), state, {
@@ -31,6 +38,18 @@ export const GET: APIRoute = async (ctx) => {
     path: '/',
     maxAge: 600,
   });
+
+  if (returnTo) {
+    ctx.cookies.set(getReturnToCookieName(), returnTo, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: RETURN_TO_COOKIE_MAX_AGE_SECONDS,
+    });
+  } else {
+    ctx.cookies.delete(getReturnToCookieName(), { path: '/' });
+  }
 
   if (useNativeApp) {
     ctx.cookies.set(getAuthFlowCookieName(), 'native', {
@@ -50,8 +69,9 @@ export const GET: APIRoute = async (ctx) => {
   authorizeUrl.searchParams.set('response_type', 'code');
   authorizeUrl.searchParams.set('client_id', config.clientId);
   authorizeUrl.searchParams.set('redirect_uri', redirectUri);
-  // Minimal identity scope; roles/permissions remain on token claims via API audience + Auth0 config.
-  authorizeUrl.searchParams.set('scope', 'openid');
+  // openid: minimal identity scope; roles/permissions remain on token claims via API audience + Auth0 config.
+  // offline_access: required for Auth0 to issue a refresh_token (see callback.ts / editorial-session.ts).
+  authorizeUrl.searchParams.set('scope', 'openid offline_access');
   authorizeUrl.searchParams.set('audience', config.apiAudience);
   authorizeUrl.searchParams.set('connection', 'google-oauth2');
   authorizeUrl.searchParams.set('state', state);
