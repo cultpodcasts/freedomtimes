@@ -192,9 +192,8 @@ module "cloudflare_holding_page" {
   build_revision  = var.build_revision
   contact_email   = var.contact_email
 
+  # EmDash Turso credentials are wrangler/deploy-managed — not Terraform (see production comment).
   worker_secrets = {
-    TURSO_DATABASE_URL   = local.turso_database_url
-    TURSO_AUTH_TOKEN     = turso_database_token.emdash.jwt
     TURNSTILE_SITE_KEY   = cloudflare_turnstile_widget.story_tips.id
     TURNSTILE_SECRET_KEY = cloudflare_turnstile_widget.story_tips.secret
   }

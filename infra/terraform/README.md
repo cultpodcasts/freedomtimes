@@ -128,6 +128,34 @@ pwsh scripts/terraform-plan-guard-turso.ps1 -Environment production -LoadEnvFile
 
 The guard script exits non-zero if the saved plan contains any `turso_database` destroy or replace. **Do not apply** until it passes.
 
+### Worker Turso secrets (EmDash) — not Terraform-managed
+
+**Do not** put `TURSO_DATABASE_URL` or `TURSO_AUTH_TOKEN` in `module.cloudflare_holding_page.worker_secrets`. Terraform apply pushed wrong libsql credentials to the live `freedomtimes` Worker and caused a **blank homepage** (HTTP 200, empty body) until secrets were restored from `.env.dev`.
+
+| Secret | Owner |
+|--------|--------|
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Wrangler deploy / `scripts/switch-production-turso-secrets.ps1` / `set-github-secrets.ps1` / CI workflows |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Terraform (`cloudflare_workers_secret`) |
+| Turso DBs + `turso_database_token` outputs | Terraform (for build/CI outputs only — not pushed to Worker by TF) |
+
+**One-time migration** (after config removed TURSO from `worker_secrets`):
+
+```powershell
+pwsh scripts/terraform-unmanage-worker-turso-secrets.ps1 -Environment production
+pwsh scripts/terraform-unmanage-worker-turso-secrets.ps1 -Environment staging
+```
+
+**Preflight before apply** (production):
+
+```powershell
+pwsh scripts/terraform-run.ps1 -Environment production -Operation plan -LoadEnvFiles
+pwsh scripts/terraform-plan-guard-turso.ps1 -Environment production -PlanFile tfplan
+pwsh scripts/terraform-plan-guard-worker-secrets.ps1 -Environment production -PlanFile tfplan
+pwsh scripts/terraform-run.ps1 -Environment production -Operation apply -LoadEnvFiles -UsePlanFile -PlanFile tfplan -AutoApprove
+```
+
+`terraform-run.ps1 -UsePlanFile` runs both guard scripts automatically before apply.
+
 Before any production apply that touches Turso tokens or Worker secrets, export all four production databases via WSL Turso (see [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md)):
 
 ```powershell

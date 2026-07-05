@@ -78,4 +78,3 @@ resource "cloudflare_record" "apex" {
   proxied = true
   ttl     = 1
 }
-

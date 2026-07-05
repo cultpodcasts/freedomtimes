@@ -217,6 +217,16 @@ jobs:
           fi
         continue-on-error: false
 
+      - name: Guard Turso Database Plan
+        run: |
+          set -euo pipefail
+          pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-turso.ps1" -Environment production -PlanFile tfplan
+
+      - name: Guard Worker Turso Secrets Plan
+        run: |
+          set -euo pipefail
+          pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-secrets.ps1" -Environment production -PlanFile tfplan
+
       - name: Terraform Apply
         if: (env.PRODUCTION_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.production_terraform_apply == 'true')
         timeout-minutes: 30

@@ -190,9 +190,10 @@ module "cloudflare_holding_page" {
   build_revision  = var.build_revision
   contact_email   = var.contact_email
 
+  # EmDash Turso credentials (TURSO_DATABASE_URL, TURSO_AUTH_TOKEN) are NOT managed here —
+  # Terraform apply once pushed wrong libsql URLs and caused a production outage (blank homepage).
+  # Manage those secrets via wrangler / deploy CI / switch-production-turso-secrets.ps1 only.
   worker_secrets = {
-    TURSO_DATABASE_URL   = local.turso_database_url
-    TURSO_AUTH_TOKEN     = turso_database_token.emdash.jwt
     TURNSTILE_SITE_KEY   = cloudflare_turnstile_widget.story_tips.id
     TURNSTILE_SECRET_KEY = cloudflare_turnstile_widget.story_tips.secret
   }

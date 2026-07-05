@@ -116,13 +116,82 @@ if ([string]::IsNullOrWhiteSpace($dbNames.emdash)) {
     $dbNames.emdash = "freedomtimes-emdash-production"
 }
 
+function Import-TerraformResourceIfMissing {
+    param(
+        [string]$Address,
+        [string]$Id,
+        [switch]$SkipTursoPreflight
+    )
+
+    $listed = & terraform state list 2>$null | Where-Object { $_ -eq $Address }
+    if ($listed) {
+        Write-Host "[skip] Already in state: $Address" -ForegroundColor DarkGray
+        return
+    }
+
+    Import-TerraformResource -Address $Address -Id $Id -SkipTursoPreflight:$SkipTursoPreflight
+}
+
+function Get-TerraformStateWorkerScriptName {
+    param([string]$Address)
+
+    $show = & terraform state show $Address 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    foreach ($line in $show) {
+        if ($line -match '^\s*name\s*=\s*"([^"]+)"') {
+            return $Matches[1]
+        }
+    }
+
+    return $null
+}
+
+function Sync-TerraformWorkerScriptState {
+    param(
+        [string]$ExpectedWorkerName,
+        [string]$AccountId,
+        [switch]$SkipTursoPreflight
+    )
+
+    $scriptAddr = "module.cloudflare_holding_page.cloudflare_workers_script.holding_page"
+    $stateName = Get-TerraformStateWorkerScriptName -Address $scriptAddr
+
+    if ($null -eq $stateName) {
+        Write-Host "Importing worker script $ExpectedWorkerName into Terraform state." -ForegroundColor Cyan
+        Import-TerraformResource -Address $scriptAddr -Id $ExpectedWorkerName -SkipTursoPreflight:$SkipTursoPreflight
+        return
+    }
+
+    if ($stateName -eq $ExpectedWorkerName) {
+        Write-Host "Worker script state already aligned: $ExpectedWorkerName" -ForegroundColor DarkGray
+        return
+    }
+
+    Write-Warning "Worker script name drift: state has '$stateName', live config expects '$ExpectedWorkerName'."
+    Write-Host "Re-importing worker script as $ExpectedWorkerName (live SSR worker name after -holding rename)." -ForegroundColor Cyan
+    & terraform state rm $scriptAddr
+    if ($LASTEXITCODE -ne 0) {
+        throw "terraform state rm failed for $scriptAddr"
+    }
+    Import-TerraformResource -Address $scriptAddr -Id $ExpectedWorkerName -SkipTursoPreflight:$SkipTursoPreflight
+}
+
+$accountId = [System.Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_ACCOUNT_ID", "Process")
 $zoneId = [System.Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_ZONE_ID", "Process")
 $cfToken = [System.Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_API_TOKEN", "Process")
 $routePattern = [System.Environment]::GetEnvironmentVariable("TF_VAR_ROUTE_PATTERN$suffix", "Process")
 $workerName = [System.Environment]::GetEnvironmentVariable("TF_VAR_WORKER_NAME$suffix", "Process")
 
-Write-Host "=== Turso database imports ($Environment) ===" -ForegroundColor Yellow
-if (-not $hasTursoPlatformToken) {
+$envDir = Join-Path $repoRoot "infra/terraform/environments/$Environment"
+. "$repoRoot/scripts/ensure-windows-cli-path.ps1"
+Initialize-WindowsCliPath
+Push-Location $envDir
+try {
+    Write-Host "=== Turso database imports ($Environment) ===" -ForegroundColor Yellow
+    if (-not $hasTursoPlatformToken) {
     Write-Warning "Skipping Turso database imports (no Platform API token)."
 }
 else {
@@ -132,12 +201,23 @@ else {
     }
 }
 
+Write-Host "=== Cloudflare worker script import ($Environment) ===" -ForegroundColor Yellow
+if ([string]::IsNullOrWhiteSpace($workerName)) {
+    throw "Missing TF_VAR_WORKER_NAME$suffix for worker script import."
+}
+Sync-TerraformWorkerScriptState -ExpectedWorkerName $workerName -AccountId $accountId -SkipTursoPreflight:(-not $hasTursoPlatformToken)
+
 Write-Host "=== Cloudflare worker route import ($Environment) ===" -ForegroundColor Yellow
 if ([string]::IsNullOrWhiteSpace($zoneId) -or [string]::IsNullOrWhiteSpace($cfToken) -or [string]::IsNullOrWhiteSpace($routePattern) -or [string]::IsNullOrWhiteSpace($workerName)) {
     throw "Missing Cloudflare route lookup vars (zone, token, pattern, worker name)."
 }
 
 $routeImportId = Get-CloudflareWorkerRouteImportId -ZoneId $zoneId -Pattern $routePattern -ScriptName $workerName -ApiToken $cfToken
-Import-TerraformResource -Address "module.cloudflare_holding_page.cloudflare_workers_route.holding_page[0]" -Id $routeImportId -SkipTursoPreflight
+Import-TerraformResourceIfMissing -Address "module.cloudflare_holding_page.cloudflare_workers_route.holding_page[0]" -Id $routeImportId -SkipTursoPreflight:(-not $hasTursoPlatformToken)
 
-Write-Host "Import batch completed. Run terraform plan to verify remaining drift (database tokens, worker secrets)." -ForegroundColor Green
+Write-Host "Import batch completed. Run terraform plan to verify remaining drift (database tokens, Turnstile worker secrets)." -ForegroundColor Green
+Write-Host "Note: TURSO_DATABASE_URL / TURSO_AUTH_TOKEN are wrangler-managed — run terraform-unmanage-worker-turso-secrets.ps1 if state still tracks them." -ForegroundColor DarkGray
+}
+finally {
+    Pop-Location
+}

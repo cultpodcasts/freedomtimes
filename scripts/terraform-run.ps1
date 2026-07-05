@@ -432,7 +432,18 @@ try {
             if (-not (Test-Path $PlanFile)) {
                 throw "Plan file '$PlanFile' not found. Run plan first or remove -UsePlanFile for direct apply."
             }
-            Write-Host "DEBUG: Plan file exists, applying from saved plan" -ForegroundColor DarkGray
+            Write-Host "DEBUG: Plan file exists, running safety guards before apply" -ForegroundColor DarkGray
+            $guardTursoScript = Join-Path $repoRoot "scripts/terraform-plan-guard-turso.ps1"
+            $guardWorkerSecretsScript = Join-Path $repoRoot "scripts/terraform-plan-guard-worker-secrets.ps1"
+            if (Test-Path $guardTursoScript) {
+                & $guardTursoScript -Environment $Environment -PlanFile $PlanFile
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            if (Test-Path $guardWorkerSecretsScript) {
+                & $guardWorkerSecretsScript -Environment $Environment -PlanFile $PlanFile
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            Write-Host "DEBUG: Applying from saved plan" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", $PlanFile)
             exit $exitCode
         }
