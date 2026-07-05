@@ -42,17 +42,26 @@ function Invoke-TerraformCommand {
     $verb = if ($CommandArgs.Count -gt 0) { $CommandArgs[0] } else { "<none>" }
     Write-Host "DEBUG: Executing terraform $verb with $($CommandArgs.Count - 1) args" -ForegroundColor DarkGray
 
-    & terraform @CommandArgs
+    # CRITICAL: terraform's stdout must NOT flow through this function's own output stream.
+    # Every caller does `$exitCode = Invoke-TerraformCommand ...`, and PowerShell functions
+    # implicitly return ALL uncaptured output alongside any explicit `return` value. Calling
+    # `& terraform @CommandArgs` bare (as before) meant terraform's entire stdout (plan/apply
+    # output, "Apply complete!", etc.) was bundled into $exitCode as an object array, with the
+    # real integer exit code buried as just one element. Passing that array to `exit $exitCode`
+    # then silently resolves to process exit code 0 no matter what — which is exactly how a
+    # FAILED `terraform apply` (Auth0 OIDC error and all) was previously reported as having
+    # "succeeded on first attempt". Piping through Write-Host keeps terraform's output visible
+    # on screen while keeping it out of the function's return value, so $exitCode stays a clean
+    # [int] and `exit $exitCode` reports the real result.
+    & terraform @CommandArgs | ForEach-Object { Write-Host $_ }
     $exitCode = $LASTEXITCODE
-    if ($exitCode -ne 0) {
-        return $exitCode
-    }
 
-    if (-not $?) {
+    if ($null -eq $exitCode) {
+        if ($?) { return 0 }
         return 1
     }
 
-    return 0
+    return [int]$exitCode
 }
 
 function Import-EnvFile {
