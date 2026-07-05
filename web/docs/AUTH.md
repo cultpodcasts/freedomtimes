@@ -119,6 +119,8 @@ There is **no tenant-wide Auth0 SSO session management** in this repo (no `auth0
 | ID token lifetime (`id_token_lifetime_in_seconds`) | 3,600s (1h, hardcoded) | 28,800s (8h) — matches the existing cookie `maxAge` | `modules/auth0_app` var, per staging/production login app |
 | Refresh token rotation | not configured | `rotating` / `expiring`, absolute 30d, idle 14d (`enable_refresh_token_rotation`) | `modules/auth0_app` var, per staging/production login app |
 
+The login app must be **OIDC conformant** (`oidc_conformant = true` on `auth0_client.admin_ui`) when refresh token rotation is enabled — Auth0 returns `400 Application must be OIDC Conformant when Refresh Token rotation is enabled` otherwise.
+
 **What this changes:** raising `id_token_lifetime_in_seconds` to 8h makes the ID token's lifetime match the cookie's already-declared 8-hour window, so users get the full 8 hours the app always intended instead of being forced to re-login after 1 hour. The refresh token policy backs a real silent-refresh flow (below), so once the 8-hour ID token expires, the app can extend the session for up to 14 days of activity (idle refresh token lifetime) without a full Auth0 login prompt.
 
 ### Refresh tokens (app side)

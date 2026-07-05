@@ -41,20 +41,18 @@ function Invoke-TerraformCommand {
 
     $verb = if ($CommandArgs.Count -gt 0) { $CommandArgs[0] } else { "<none>" }
     Write-Host "DEBUG: Executing terraform $verb with $($CommandArgs.Count - 1) args" -ForegroundColor DarkGray
-    $global:LASTEXITCODE = 0
-    
+
     & terraform @CommandArgs
-
-    $lastExit = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
-    if ($null -ne $lastExit) {
-        return [int]$lastExit.Value
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        return $exitCode
     }
 
-    if ($?) {
-        return 0
+    if (-not $?) {
+        return 1
     }
 
-    return 1
+    return 0
 }
 
 function Import-EnvFile {

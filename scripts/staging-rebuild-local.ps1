@@ -60,12 +60,15 @@ function Invoke-TerraformApplyWithRecovery {
 
     $apply1.Output | ForEach-Object { $_ }
 
-    if ($apply1.ExitCode -eq 0) {
-        Write-Step "Terraform apply succeeded on first attempt"
-        return
+    if ($apply1.ExitCode -ne 0) {
+        throw "Terraform apply failed (exit $($apply1.ExitCode))."
     }
 
-    throw "Terraform apply failed."
+    if ($apply1.Output -match '(?m)^Error:\s') {
+        throw "Terraform apply reported errors in output despite exit code $($apply1.ExitCode)."
+    }
+
+    Write-Step "Terraform apply succeeded on first attempt"
 }
 
 function Get-TerraformOutputRaw {
