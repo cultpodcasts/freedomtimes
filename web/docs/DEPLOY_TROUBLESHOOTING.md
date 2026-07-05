@@ -299,21 +299,30 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 
 `web/package.json` has a `version` field that was never bumped in this repo (stuck at `0.0.1` since the file was created). It is **not** currently read anywhere in the app, build, or service worker — the deployed-build identity that actually gets exposed (`/api/version.json`, `ReaderDataProvenance.astro`, `tip-source.astro`) is the **git commit SHA** baked in via `FT_BUILD_COMMIT_SHA` (`scripts/build-provenance-env.ps1` → `web/src/lib/build-provenance.ts`), not semver.
 
-Local deploy scripts now bump the `web/package.json` (and `web/package-lock.json`) **patch** version immediately before their `npm run build` step, via `scripts/bump-web-version.ps1` (`Invoke-WebVersionBump`):
+Local deploy scripts bump the `web/package.json` (and `web/package-lock.json`) **patch** version immediately before their `npm run build` step, via `scripts/bump-web-version.ps1` (`Invoke-WebVersionBump`):
 
 - `deploy-staging-workers-only.ps1`
 - `deploy-staging-worker-local.ps1`
-- `deploy-production-worker-local.ps1`
 - `staging-rebuild-local.ps1`
-- `production-rebuild-local.ps1`
 
-Pass `-SkipVersionBump` to any of these to opt out for a given run.
+**Staging bumps by default on every run** (patch: e.g. `0.0.1` → `0.0.2`). Pass `-SkipVersionBump` to opt out for a given staging run.
 
-### Why patch, why before build, why staging too
+**Production defaults the other way — no bump.** `deploy-production-worker-local.ps1` and `production-rebuild-local.ps1` ship the **same version staging already bumped** for this release unless you explicitly ask for a new one:
+
+| Script | Default | To bump anyway | To force no bump (same as default) |
+|---|---|---|---|
+| `deploy-staging-worker-local.ps1`, `deploy-staging-workers-only.ps1`, `staging-rebuild-local.ps1` | bump patch | *(default)* | `-SkipVersionBump` |
+| `deploy-production-worker-local.ps1`, `production-rebuild-local.ps1` | **no bump** (uses current `web/package.json` version) | `-BumpVersion` | `-SkipVersionBump` (no-op given the new default; kept for backward compatibility) |
+
+`-BumpVersion` and `-SkipVersionBump` are mutually exclusive on the production scripts (combining them throws).
+
+**Typical release flow:** deploy staging (bumps `0.0.1` → `0.0.2`), validate, then deploy production — production ships `0.0.2` too (no further bump), instead of the old behavior where production would bump again to `0.0.3` for the *same* release. If you need production to carry a version staging never had (e.g. a production-only hotfix), pass `-BumpVersion` on the production script.
+
+### Why patch, why before build, why the production default flipped
 
 - **Patch bump**: no existing semver convention in this repo to diverge from; patch is the least disruptive default for "a new build went out."
 - **Before build**: mirrors the existing commit-SHA provenance pattern — the artifact that gets deployed should reflect the version bump, not a build that predates it.
-- **Both staging and production**: the user-facing request was "whenever we deploy," and there is no established repo convention limiting version tracking to production only.
+- **Staging bumps, production doesn't (by default)**: a release is staged once (one patch bump) and promoted to production unchanged — bumping again on the production deploy of the *same* release made staging and production carry different versions for identical code, which was confusing. Production keeping the version staging already set matches "one version per release."
 
 ### Uncommitted by design
 

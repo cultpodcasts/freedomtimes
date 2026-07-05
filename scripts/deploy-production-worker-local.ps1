@@ -4,6 +4,7 @@ param(
     [switch]$SyncCloudflareWorkerSecrets,
     [switch]$AllowProduction,
     [switch]$DryRun,
+    [switch]$BumpVersion,
     [switch]$SkipVersionBump
 )
 
@@ -21,6 +22,13 @@ param(
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun
+
+.NOTES
+  Version bump default: this script does NOT bump web/package.json by default. Production deploy
+  is expected to ship the same version staging already bumped (see docs/DEPLOY_TROUBLESHOOTING.md
+  "Web version bump on deploy"). Pass -BumpVersion to bump anyway (e.g. a production-only hotfix
+  with no prior staging deploy this release). -SkipVersionBump is kept for backward compatibility
+  and is a no-op given the new default (combining it with -BumpVersion throws).
 #>
 
 Set-StrictMode -Version Latest
@@ -84,11 +92,16 @@ if ($SyncCloudflareWorkerSecrets) {
     }
 }
 
-if ($SkipVersionBump) {
-    Write-Step "Skipping web version bump (-SkipVersionBump)"
-} else {
+if ($BumpVersion -and $SkipVersionBump) {
+    throw "Cannot combine -BumpVersion and -SkipVersionBump."
+}
+
+if ($BumpVersion) {
+    Write-Step "Bumping web version (-BumpVersion)"
     . "$PSScriptRoot/bump-web-version.ps1"
     Invoke-WebVersionBump -RepoRoot $repoRoot | Out-Null
+} else {
+    Write-Step "Using current web/package.json version (production default: no bump; staging already bumped this release). Pass -BumpVersion to bump anyway."
 }
 
 Write-Step "Building web (npm run build)"

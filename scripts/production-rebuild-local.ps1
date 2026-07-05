@@ -2,8 +2,14 @@
 # Local production rebuild: Terraform apply -> Auth0 .env.dev sync -> Worker secret sync -> build -> wrangler deploy.
 # Preflight requires production VAPID + FCM keys in .env.dev (Assert-ProductionPushSecretsReady).
 # Troubleshooting (FCM preflight, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle): web/docs/DEPLOY_TROUBLESHOOTING.md
+#
+# Version bump default: does NOT bump web/package.json by default — production ships the same
+# version staging already bumped this release (see docs/DEPLOY_TROUBLESHOOTING.md "Web version
+# bump on deploy"). Pass -BumpVersion to bump anyway. -SkipVersionBump kept for backward
+# compatibility as a no-op; combining it with -BumpVersion throws.
 [CmdletBinding()]
 param(
+    [switch]$BumpVersion,
     [switch]$SkipVersionBump
 )
 
@@ -184,11 +190,16 @@ function Invoke-WorkerDeploy {
 }
 
 function Invoke-WorkerBuild {
-    if ($SkipVersionBump) {
-        Write-Step "Skipping web version bump (-SkipVersionBump)"
-    } else {
+    if ($BumpVersion -and $SkipVersionBump) {
+        throw "Cannot combine -BumpVersion and -SkipVersionBump."
+    }
+
+    if ($BumpVersion) {
+        Write-Step "Bumping web version (-BumpVersion)"
         . "$PSScriptRoot/bump-web-version.ps1"
         Invoke-WebVersionBump -RepoRoot $repoRoot | Out-Null
+    } else {
+        Write-Step "Using current web/package.json version (production default: no bump; staging already bumped this release). Pass -BumpVersion to bump anyway."
     }
 
     Write-Step "Building production Worker"
