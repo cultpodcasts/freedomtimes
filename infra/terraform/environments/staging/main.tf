@@ -46,9 +46,7 @@ resource "turso_database" "emdash" {
   lifecycle {
     prevent_destroy = true
     ignore_changes = [
-      db_id,
       group,
-      hostname,
       name,
     ]
   }
@@ -78,9 +76,7 @@ resource "turso_database" "scheduler" {
   lifecycle {
     prevent_destroy = true
     ignore_changes = [
-      db_id,
       group,
-      hostname,
       name,
     ]
   }
@@ -110,9 +106,7 @@ resource "turso_database" "subscriptions" {
   lifecycle {
     prevent_destroy = true
     ignore_changes = [
-      db_id,
       group,
-      hostname,
       name,
     ]
   }
@@ -142,9 +136,7 @@ resource "turso_database" "tips" {
   lifecycle {
     prevent_destroy = true
     ignore_changes = [
-      db_id,
       group,
-      hostname,
       name,
     ]
   }
@@ -282,3 +274,4 @@ resource "azurerm_api_management_custom_domain" "editorial" {
   depends_on = [time_sleep.wait_for_api_custom_hostname_dns]
 }
 */
+

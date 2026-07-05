@@ -9,6 +9,7 @@ param(
   Build and deploy staging Cloudflare Workers (web + scheduler) without Terraform.
 
 .DESCRIPTION
+  Intentionally separate from scripts/Invoke-EnvironmentRebuild.ps1 (web worker only).
   Loads Turso build credentials from repo-root .env.dev, runs npm run build in web/,
   then deploys freedomtimes-staging and freedomtimes-scheduler-staging via npx wrangler.
 

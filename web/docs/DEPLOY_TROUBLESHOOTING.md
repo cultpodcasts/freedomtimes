@@ -2,6 +2,8 @@
 
 Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, worker rename migrations). Use this when a deploy script fails before or after Terraform apply.
 
+**Shared implementation:** `scripts/Invoke-EnvironmentRebuild.ps1` — staging vs production differences are documented in its header table. Wrappers: `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, `deploy-staging-worker-local.ps1`, `deploy-production-worker-local.ps1`. `deploy-staging-workers-only.ps1` stays separate (web + scheduler, `.env.dev` only).
+
 **Related docs:**
 
 - [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) — **primary reference** for Windows Terraform PATH and WSL Turso CLI
@@ -298,7 +300,7 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 
 ## Post-deploy Worker secret verify (rebuild scripts)
 
-`staging-rebuild-local.ps1` and `production-rebuild-local.ps1` list secrets on the deployed web Worker after `wrangler deploy` and fail if any of these are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`.
+`Invoke-EnvironmentRebuild.ps1` (via `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, and worker-only wrappers when deploy runs) lists secrets on the deployed web Worker after `wrangler deploy` and fails if any of these are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`.
 
 If verify fails after a successful deploy, re-run `pwsh ./scripts/set-github-secrets.ps1 -Target Staging|Production -SyncCloudflareWorkerSecrets` (production requires `-AllowProduction`), then deploy again or put secrets manually with `npx wrangler secret put` from `web/`.
 

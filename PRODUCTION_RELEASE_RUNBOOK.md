@@ -103,6 +103,8 @@ Plan-only dry path:
 
 ### 2b. Local production rebuild (operator bypass)
 
+Implementation: `scripts/Invoke-EnvironmentRebuild.ps1 -Environment production` (wrapper: `production-rebuild-local.ps1`). Staging vs production step differences are in the shared script header.
+
 1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
 
 From repo root:
