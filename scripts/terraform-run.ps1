@@ -1,3 +1,6 @@
+# Canonical Terraform runner for staging, production, and auth0-shared.
+# Acquires a per-environment file lock (.terraform-locks/<env>.lock) so only one
+# local plan/apply/import/etc. runs at a time. See scripts/terraform-env-lock.ps1.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
@@ -27,7 +30,11 @@ $envDir = Join-Path $repoRoot "infra/terraform/environments/$Environment"
 . "$PSScriptRoot/ensure-windows-cli-path.ps1"
 Initialize-WindowsCliPath
 . "$PSScriptRoot/terraform-turso-env.ps1"
+. "$PSScriptRoot/terraform-env-lock.ps1"
 $preflightScript = Join-Path $PSScriptRoot "terraform-preflight.ps1"
+
+$requiresEnvironmentLock = @("init", "validate", "plan", "apply", "destroy", "import") -contains $Operation
+$environmentLockCaller = "terraform-run.ps1 -Environment $Environment -Operation $Operation"
 
 function Invoke-TerraformCommand {
     param([string[]]$CommandArgs)
@@ -382,6 +389,10 @@ if ($preflightCode -ne 0) {
     exit $preflightCode
 }
 
+if ($requiresEnvironmentLock) {
+    Enter-TerraformEnvironmentLock -Environment $Environment -Operation $Operation -RepoRoot $repoRoot -CallerInfo $environmentLockCaller
+}
+
 Push-Location $envDir
 try {
     Write-Host "DEBUG: Building terraform var args..." -ForegroundColor DarkGray
@@ -530,5 +541,8 @@ try {
     }
 }
 finally {
+    if ($requiresEnvironmentLock) {
+        Exit-TerraformEnvironmentLock
+    }
     Pop-Location
 }

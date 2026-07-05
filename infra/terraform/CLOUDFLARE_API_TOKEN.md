@@ -50,6 +50,18 @@ Scope zone resources to the **`freedomtimes.news`** zone only.
 
 If **Workers Domains → Edit** is not offered separately in your account UI, **Workers Routes → Edit** on the zone is sufficient for staging custom-domain bindings in current stacks.
 
+### Operational API (not Terraform-managed)
+
+These zone settings are **not** in Terraform today but are changed via the Cloudflare API during incidents (HTTP/3, HSTS, Always Use HTTPS, SSL mode reads):
+
+| Dashboard permission | Access | API / use | Why |
+|---------------------|--------|-----------|-----|
+| **Zone Settings** | Read | `GET /zones/{id}/settings/*` | Inspect `http3`, `security_header`, `always_use_https`, `ssl` |
+| **Zone Settings** | Edit | `PATCH /zones/{id}/settings/http3`, etc. | Disable HTTP/3, adjust HSTS max-age, toggle Always Use HTTPS |
+| **SSL and Certificates** | Read | `GET /zones/{id}/settings/ssl` | Confirm SSL mode and certificate status |
+
+**Read** alone is enough for diagnostics. **Edit** is required to change settings; without it the API returns **9109 Unauthorized** (HTTP 403).
+
 ### Conditional (only if enabled in tfvars)
 
 | Dashboard permission | Access | Terraform resource(s) | When |
@@ -91,6 +103,9 @@ Do not use “All zones” or “All accounts” unless you have a deliberate re
    - Zone → **Workers Routes** → **Edit** (zone: `freedomtimes.news`)
    - Zone → **Zone** → **Read** (zone: `freedomtimes.news`)
    - Zone → **Workers Domains** → **Edit** (zone: `freedomtimes.news`) — if available
+   - Zone → **Zone Settings** → **Read** (zone: `freedomtimes.news`) — incident diagnostics
+   - Zone → **Zone Settings** → **Edit** (zone: `freedomtimes.news`) — if you will PATCH HTTP/3, HSTS, etc. via API
+   - Zone → **SSL and Certificates** → **Read** (zone: `freedomtimes.news`) — SSL mode / cert status
    - (Optional) Zone → **DNS** → **Edit** — only if `manage_apex_dns_record` is true
 7. **Account resources** → Include → your Freedom Times account.
 8. **Zone resources** → Include → Specific zone → `freedomtimes.news`.
@@ -148,6 +163,7 @@ pwsh scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFile
 | Route/custom domain failures | Missing **Workers Routes** or **Workers Domains → Edit** on zone | Add zone permission; re-apply |
 | Wrangler deploy `10023` (KV) | Token OK for Terraform but not Wrangler | Add **Workers KV Storage → Edit** (CI token) |
 | Plan OK locally, apply fails in TFC | Stale token in workspace variable only | Update `TF_VAR_cloudflare_api_token` in **both** workspaces |
+| `9109 Unauthorized` on `PATCH .../settings/http3` (GET works) | Token has **Zone Settings → Read** only | Add **Zone Settings → Edit** on `freedomtimes.news`; update `.env.dev` + TFC |
 
 ## When Terraform Cloudflare resources change
 

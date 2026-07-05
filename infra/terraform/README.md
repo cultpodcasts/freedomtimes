@@ -30,6 +30,12 @@ Auth0 shared ownership rule:
 - Tenant-wide Auth0 resources (API resource server, roles, role permissions, post-login action binding) are owned by `environments/auth0-shared`.
 - Staging and production each manage only their own login application resources.
 
+## Local environment lock
+
+`scripts/terraform-run.ps1` acquires a repo-local file lock (`.terraform-locks/<environment>.lock`, gitignored) before init/plan/apply/import/destroy/validate. Only one Terraform run per environment at a time on a given machine. If a lock is held by a live process, the second run fails fast with PID, hostname, and caller details; stale locks (dead PID) are removed with a warning.
+
+Do not run parallel Terraform against the same environment from separate terminals or agents.
+
 ## Layout
 
 - environments/production: production environment entrypoint and variables
