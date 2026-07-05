@@ -34,7 +34,7 @@ node_version = "24"
 # Provide Turso management credentials via environment variables or secure workspace vars in CI/Terraform Cloud.
 # TURSO_TOKEN = "<turso-api-token>"
 # TF_VAR_TURSO_ORGANIZATION = "your-org-slug"
-# Optional:
-# TF_VAR_turso_database_group = "default"
+# Optional (must match live Turso group — wrong value causes replace plans):
+# TF_VAR_turso_database_group = "freedomtimes-production"
 # TF_VAR_turso_database_token_expiration = "90d"
 # TF_VAR_turso_database_size_limit = "1gb"

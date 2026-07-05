@@ -159,6 +159,9 @@ function Main {
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_TIPS_DATABASE_URL" -Value $productionTipsDbUrl -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_TIPS_AUTH_TOKEN" -Value $productionTipsDbToken -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "PUSH_SUBSCRIBE_PUBLIC_KEY" -Value $productionPushPublicKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "PUSH_VAPID_PUBLIC_KEY" -Value $productionPushPublicKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "PUSH_VAPID_PRIVATE_KEY" -Value $productionPushPrivateKey -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "PUSH_VAPID_SUBJECT" -Value $productionPushSubject -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SCHEDULER_DATABASE_URL" -Value $productionSchedulerDbUrl -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SCHEDULER_AUTH_TOKEN" -Value $productionSchedulerDbToken -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $productionSubscriptionsDbUrl -WhatIfOnly:$DryRun

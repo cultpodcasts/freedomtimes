@@ -136,8 +136,11 @@ Two secret sources apply to the **web** Worker:
 
 | Secret names | Set by | Purpose |
 |--------------|--------|---------|
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | **Terraform** (`cloudflare_workers_secret` in `infra/terraform/modules/cloudflare_holding_page`; Turnstile widget in each environment) | EmDash CMS Turso connection; story tips Turnstile |
-| `AUTH0_*`, `EMDASH_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_TIPS_*`, `PUSH_SUBSCRIBE_PUBLIC_KEY`, … | **`set-github-secrets.ps1`** | Auth, tips DB, subscriptions, web push subscribe |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | **Terraform** (`cloudflare_workers_secret`; Turnstile widget in each environment) | Story tips Turnstile |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | **Wrangler / deploy CI / `switch-production-turso-secrets.ps1`** — **not Terraform** | EmDash CMS Turso connection |
+| `AUTH0_*`, `EMDASH_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_TIPS_*`, `PUSH_*`, … | **`set-github-secrets.ps1`** / CI | Auth, tips DB, subscriptions, web push |
+
+**Production outage (July 2026):** Terraform apply overwrote `TURSO_*` on the live Worker with credentials from a drifted plan (wrong libsql host → HTTP 404 on every CMS query → blank homepage). Restore with `scripts/switch-production-turso-secrets.ps1`. See `infra/terraform/README.md` § Worker Turso secrets.
 
 After rename, verify EmDash Turso secrets exist on the **new** script name:
 
@@ -148,8 +151,9 @@ npx wrangler secret list --config wrangler.jsonc --env staging   # or production
 
 Expect `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. If missing:
 
-1. Re-run Terraform apply for the environment (creates/updates `cloudflare_workers_secret` for the current `worker_name`), **or**
-2. Upload manually from Terraform outputs:
+1. Production: `pwsh scripts/switch-production-turso-secrets.ps1 -AllowProduction` with verified `.env.dev` URLs/tokens, **or**
+2. Staging/production sync: `pwsh scripts/set-github-secrets.ps1 -Target Staging|Production -SyncCloudflareWorkerSecrets`, **or**
+3. Upload manually from Terraform **outputs** (build only — do not re-add TURSO to Terraform `worker_secrets`):
 
    ```powershell
    cd infra/terraform/environments/staging   # or production

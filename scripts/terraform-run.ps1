@@ -7,6 +7,7 @@ param(
     [ValidateSet("init", "validate", "plan", "apply", "destroy", "import", "output")]
     [string]$Operation,
     [switch]$LoadEnvFiles,
+    [switch]$SkipTursoPreflight,
     [string]$LockTimeout = "5m",
     [string]$PlanFile = "tfplan",
     [switch]$AutoApprove,
@@ -98,7 +99,6 @@ function Invoke-EnvRemapping {
             "TF_VAR_apim_function_key"                         = "TF_VAR_APIM_FUNCTION_KEY$suffix"
             "TF_VAR_api_custom_hostname"                       = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
             "TF_VAR_workspace_url"                             = "TF_VAR_WORKSPACE_URL$suffix"
-            "TF_VAR_api_management_allowed_origins"            = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"    = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password"  = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
             "TF_VAR_turso_database_name"                       = "TF_VAR_TURSO_DATABASE_NAME$suffix"
@@ -113,22 +113,23 @@ function Invoke-EnvRemapping {
             }
         }
 
+        Set-TerraformListEnvVar -Name "TF_VAR_api_management_allowed_origins" -SourceNames @(
+            "TF_VAR_api_management_allowed_origins",
+            "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
+        )
+
         # Keep Auth0 API audience environment-specific to avoid staging/prod cross-contamination.
         if ($Env -eq "staging") {
             $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_STAGING")
         }
         else {
-        $tursoApiTokenVarNames = if ($Env -eq "staging") {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
-        }
-        else {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN", "TURSO_PLATFORM_API_TOKEN")
-        }
             $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_PRODUCTION", "AUTH0_API_AUDIENCE")
         }
         if (-not [string]::IsNullOrWhiteSpace($audience)) {
             [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
         }
+
+        Set-TursoPlatformApiTokenForEnvironment -Environment $Env
     }
 
     if ($Env -eq "auth0-shared") {
@@ -171,12 +172,7 @@ function Build-TerraformVarArgs {
         }
     }
     else {
-        $tursoApiTokenVarNames = if ($Env -eq "staging") {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
-        }
-        else {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN", "TURSO_PLATFORM_API_TOKEN")
-        }
+        $tursoApiTokenVarNames = @("TF_VAR_turso_api_token")
         $map = [ordered]@{
             cloudflare_api_token                    = @("TF_VAR_cloudflare_api_token", "TF_VAR_CLOUDFLARE_API_TOKEN")
             cloudflare_account_id                   = @("TF_VAR_cloudflare_account_id", "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
@@ -192,7 +188,6 @@ function Build-TerraformVarArgs {
             apim_function_key                       = @("TF_VAR_apim_function_key", "TF_VAR_APIM_FUNCTION_KEY")
             api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
             workspace_url                           = @("TF_VAR_workspace_url")
-            api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
             api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
             api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
             turso_api_token                         = $tursoApiTokenVarNames
@@ -208,8 +203,7 @@ function Build-TerraformVarArgs {
     foreach ($tfVarName in $map.Keys) {
         $value = Get-FirstEnvValue -Names $map[$tfVarName]
         if (-not [string]::IsNullOrWhiteSpace($value)) {
-            $varList.Add("-var")
-            $varList.Add("$tfVarName=$value")
+            $varList.Add('-var=' + $tfVarName + '=' + $value)
         }
     }
 
@@ -369,6 +363,9 @@ $preflightArgs = @{
 if ($LoadEnvFiles) {
     $preflightArgs["LoadEnvFiles"] = $true
 }
+if ($SkipTursoPreflight) {
+    $preflightArgs["SkipTursoPreflight"] = $true
+}
 
 $global:LASTEXITCODE = 0
 & $preflightScript @preflightArgs
@@ -435,7 +432,18 @@ try {
             if (-not (Test-Path $PlanFile)) {
                 throw "Plan file '$PlanFile' not found. Run plan first or remove -UsePlanFile for direct apply."
             }
-            Write-Host "DEBUG: Plan file exists, applying from saved plan" -ForegroundColor DarkGray
+            Write-Host "DEBUG: Plan file exists, running safety guards before apply" -ForegroundColor DarkGray
+            $guardTursoScript = Join-Path $repoRoot "scripts/terraform-plan-guard-turso.ps1"
+            $guardWorkerSecretsScript = Join-Path $repoRoot "scripts/terraform-plan-guard-worker-secrets.ps1"
+            if (Test-Path $guardTursoScript) {
+                & $guardTursoScript -Environment $Environment -PlanFile $PlanFile
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            if (Test-Path $guardWorkerSecretsScript) {
+                & $guardWorkerSecretsScript -Environment $Environment -PlanFile $PlanFile
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            Write-Host "DEBUG: Applying from saved plan" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", $PlanFile)
             exit $exitCode
         }

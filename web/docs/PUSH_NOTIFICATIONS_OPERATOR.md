@@ -152,7 +152,7 @@ PUSH_PRODUCTION_ANDROID_FCM_*      →   freedomtimes-scheduler-production: PUSH
 
 **send-test** maps `.env.dev` names into the **scheduler worker shape** (`PUSH_VAPID_*`, `PUSH_ANDROID_FCM_*`, `PUSH_IOS_APNS_*`) before calling `shared/push/deliverPushNotification.mjs` — same code path as the scheduler queue consumer.
 
-**Web worker** only needs subscribe-side VAPID public key + Turso subscriptions URL/token for the subscribe API — not the private VAPID key.
+**Web worker** needs subscribe-side VAPID public key (`PUSH_SUBSCRIBE_PUBLIC_KEY`) + Turso subscriptions URL/token for the subscribe API. **Reader test push** (`POST /api/push-test-notification`) also requires full VAPID delivery keys on the web worker (`PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY`, `PUSH_VAPID_SUBJECT`) — same trio as staging; production sync was added in `set-github-secrets.ps1` and `terraform-production.yml`.
 
 ### Sync commands
 

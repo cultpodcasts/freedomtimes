@@ -4,7 +4,8 @@ param(
     [ValidateSet("staging", "production", "auth0-shared")]
     [string]$Environment,
     [string]$BaseEnvFile = ".env.dev",
-    [switch]$LoadEnvFiles
+    [switch]$LoadEnvFiles,
+    [switch]$SkipTursoPreflight
 )
 
 . "$PSScriptRoot/terraform-turso-env.ps1"
@@ -109,7 +110,6 @@ if ($LoadEnvFiles) {
             "TF_VAR_apex_dns_record_content"                  = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
             "TF_VAR_api_custom_hostname"                      = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
             "TF_VAR_workspace_url"                            = "TF_VAR_WORKSPACE_URL$suffix"
-            "TF_VAR_api_management_allowed_origins"           = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
             "TF_VAR_turso_database_name"                      = "TF_VAR_TURSO_DATABASE_NAME$suffix"
@@ -223,16 +223,38 @@ if ($missing.Count -gt 0) {
 }
 
 if ($Environment -eq "staging" -or $Environment -eq "production") {
-    $tursoApiToken = [System.Environment]::GetEnvironmentVariable("TF_VAR_turso_api_token", "Process")
-    if ([string]::IsNullOrWhiteSpace([string]$tursoApiToken)) {
-        Write-Error ("Missing Turso API token for {0}: set TURSO_TOKEN_STAGING (staging), TURSO_TOKEN (production), or TURSO_PLATFORM_API_TOKEN / TF_VAR_turso_api_token." -f $Environment)
-        exit 1
-    }
+    if (-not $SkipTursoPreflight) {
+        $tursoApiToken = [System.Environment]::GetEnvironmentVariable("TF_VAR_turso_api_token", "Process")
+        if ([string]::IsNullOrWhiteSpace([string]$tursoApiToken)) {
+            $hint = if ($Environment -eq "staging") {
+                "set TURSO_TOKEN_STAGING (preferred), TURSO_PLATFORM_API_TOKEN, or TF_VAR_turso_api_token"
+            }
+            else {
+                "set TURSO_PLATFORM_API_TOKEN or TF_VAR_turso_api_token (TURSO_TOKEN only when it is a Platform API token, not TURSO_AUTH_TOKEN / libsql JWT)"
+            }
+            Write-Error ("Missing Turso Platform API token for {0}: {1}. Turso dashboard -> Settings -> API tokens." -f $Environment, $hint)
+            exit 1
+        }
 
-    $tursoOrganization = [System.Environment]::GetEnvironmentVariable("TF_VAR_turso_organization", "Process")
-    if ([string]::IsNullOrWhiteSpace([string]$tursoOrganization)) {
-        Write-Error ("Missing Turso organization for {0}: provide TF_VAR_TURSO_ORGANIZATION." -f $Environment)
-        exit 1
+        if (-not (Test-TursoPlatformApiToken $tursoApiToken)) {
+            $shapeHint = if (Test-LooksLikeTursoDatabaseJwt $tursoApiToken) {
+                " The value looks like a libsql database JWT and failed the Turso Platform API probe."
+            }
+            else {
+                ""
+            }
+            Write-Error ("TF_VAR_turso_api_token for {0} is not a valid Turso Platform API token.{1} Turso dashboard -> Settings -> API tokens." -f $Environment, $shapeHint)
+            exit 1
+        }
+
+        $tursoOrganization = [System.Environment]::GetEnvironmentVariable("TF_VAR_turso_organization", "Process")
+        if ([string]::IsNullOrWhiteSpace([string]$tursoOrganization)) {
+            Write-Error ("Missing Turso organization for {0}: provide TF_VAR_TURSO_ORGANIZATION." -f $Environment)
+            exit 1
+        }
+    }
+    else {
+        Write-Warning "Skipping Turso Platform API token preflight check (-SkipTursoPreflight)."
     }
 }
 
