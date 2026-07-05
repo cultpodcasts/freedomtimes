@@ -1,5 +1,5 @@
 
-# Local production rebuild: Terraform apply -> Auth0 .env.dev sync -> Worker secret sync -> build -> wrangler deploy.
+# Local production rebuild: Terraform apply -> Auth0 .env.dev sync -> Worker secret sync -> build -> wrangler deploy -> verify.
 # Preflight: production VAPID + shared FCM resolution (scripts/assert-push-secrets-ready.ps1).
 # Troubleshooting (FCM preflight, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle): web/docs/DEPLOY_TROUBLESHOOTING.md
 #
@@ -149,6 +149,27 @@ function Invoke-WorkerDeploy {
     }
 }
 
+function Invoke-Verification {
+    Write-Step "Verifying production Worker secrets"
+    Push-Location $repoRoot
+    try {
+        $secretOutput = & npx wrangler secret list --config .\web\wrangler.jsonc --env production
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to list production worker secrets."
+        }
+
+        $requiredSecrets = @("AUTH0_DOMAIN", "AUTH0_CLIENT_ID", "AUTH0_CLIENT_SECRET", "EMDASH_AUTH_SECRET", "EMDASH_PREVIEW_SECRET")
+        foreach ($secretName in $requiredSecrets) {
+            if (-not ($secretOutput -match $secretName)) {
+                throw "Expected worker secret '$secretName' was not found."
+            }
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 function Invoke-WorkerBuild {
     if ($BumpVersion -and $SkipVersionBump) {
         throw "Cannot combine -BumpVersion and -SkipVersionBump."
@@ -207,6 +228,7 @@ Assert-Auth0SyncToEnv
 Invoke-SecretSync
 Invoke-WorkerBuild
 Invoke-WorkerDeploy
+Invoke-Verification
 
 Write-Step "Production rebuild complete"
 Write-Host "Worker: $(Get-TerraformOutputRaw -Name 'worker_name')"

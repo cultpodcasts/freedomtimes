@@ -296,6 +296,14 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 
 ---
 
+## Post-deploy Worker secret verify (rebuild scripts)
+
+`staging-rebuild-local.ps1` and `production-rebuild-local.ps1` list secrets on the deployed web Worker after `wrangler deploy` and fail if any of these are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`.
+
+If verify fails after a successful deploy, re-run `pwsh ./scripts/set-github-secrets.ps1 -Target Staging|Production -SyncCloudflareWorkerSecrets` (production requires `-AllowProduction`), then deploy again or put secrets manually with `npx wrangler secret put` from `web/`.
+
+---
+
 ## Web version bump on deploy
 
 ### What this is

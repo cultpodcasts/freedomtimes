@@ -113,6 +113,8 @@ pwsh ./scripts/production-rebuild-local.ps1
 
 Optional: `-BumpVersion` to bump `web/package.json` before build (default is no bump; staging usually already bumped for the release). See [web/docs/DEPLOY_TROUBLESHOOTING.md — Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
 
+
+After deploy, the script runs `wrangler secret list` on the production web Worker and asserts `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, and `EMDASH_PREVIEW_SECRET` are present (same check as `staging-rebuild-local.ps1`).
 **Prerequisites**
 
 1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
