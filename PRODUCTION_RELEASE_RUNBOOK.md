@@ -141,7 +141,7 @@ What must match before proceeding:
 3. Production manifest visibility for the touched collection.
 4. Production admin route resolution for the touched collection.
 
-This incident proved that field-level parity alone is insufficient. A collection can exist in both environments and still behave differently because collection metadata drifted or the persisted manifest cache is stale.
+This incident proved that field-level parity alone is insufficient. A collection can exist in both environments and still behave differently because collection metadata (`supports`, `source`, labels) drifted — not because of a stale manifest cache (removed in EmDash 0.9+).
 
 The schema promotion script is still useful, but it is only one part of Step 1. It diffs staging vs production, presents the required CLI commands for human review, then applies additive changes after explicit confirmation.
 
@@ -182,7 +182,7 @@ Then verify runtime visibility in production:
 
 1. `/_emdash/api/manifest` contains the collection.
 2. `/_emdash/admin/content/<collection>` resolves.
-3. If manifest visibility is wrong even though schema looks correct, clear `emdash:manifest_cache` and re-check before promoting content.
+3. If manifest visibility is wrong even though schema looks correct, compare `_emdash_collections` metadata between staging and production before promoting content (see [CONTENT_PROMOTION_RUNBOOK.md §5](web/CONTENT_PROMOTION_RUNBOOK.md#5-recover-from-collection-not-found-admin-issues)). Do **not** rely on clearing `emdash:manifest_cache` — current EmDash builds the manifest from the live DB per request.
 
 ## 4. Promote EmDash Content Changes
 

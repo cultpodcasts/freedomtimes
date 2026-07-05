@@ -6,14 +6,14 @@ This runbook documents the repeatable process for getting verified staging conte
 
 - Promote entries (for example `posts`, `pages`, `archives`) from staging to production.
 - Verify items are truly published (not draft-only).
-- Recover from stale manifest cache issues such as `Collection "archives" not found`.
+- Recover from admin "Collection not found" when schema/metadata drifted between environments (not legacy manifest cache — see §5).
 - For `archives`, validate associated media assets are present in production before go-live.
 - Prevent content corruption during promotion by using UTF-8-safe transfer and explicit staging-versus-production content checks.
 
 ## Staging Policy
 
 - Staging is publish-only for `posts` and `pages` (no drafts workflow).
-- Local staging rebuild enforces supports as `["revisions","search"]` and clears `emdash:manifest_cache`.
+- Local staging rebuild enforces `supports` as `["revisions","search"]` for `posts` and `pages` via `web/scripts/enforce-publish-only-collections.cjs` (see `scripts/Invoke-EnvironmentRebuild.ps1`).
 
 ## Prerequisites
 
@@ -111,7 +111,7 @@ Then verify runtime visibility in production:
 
 1. `/_emdash/api/manifest` contains the collection.
 2. `/_emdash/admin/content/<collection>` resolves.
-3. If schema appears correct but the collection is missing from the manifest or admin route, treat that as a manifest cache problem and fix it before any content promotion.
+3. If schema appears correct but the collection is missing from `/_emdash/api/manifest` or the admin route fails, compare `_emdash_collections` metadata (`supports`, `source`, labels) between staging and production before promoting content (see §5). EmDash **0.9+** builds the admin manifest from the live database on each request — there is no `emdash:manifest_cache` row to clear on current releases (`emdash@0.27.x`).
 
 ## 2. Confirm Staging Item Is Actually Published
 
@@ -225,28 +225,28 @@ Operational rule:
 - Do not mark an archives release complete until all referenced media records resolve in production and the corresponding archive pages render with working image/file links.
 - Do not mark an archives release complete until rendered archive text also matches staging for the promoted fields and contains no mojibake.
 
-## 5. Recover From "Collection not found" Manifest Issues
+## 5. Recover From "Collection not found" Admin Issues
 
 Symptom:
 
-- Admin route shows `Collection "archives" not found`.
-- Collection exists in `_emdash_collections`, but runtime manifest cache is stale.
+- Admin route shows `Collection "archives" not found` (or similar).
+- Row exists in `_emdash_collections`, but metadata differs from staging or the manifest API omits the collection.
+
+**EmDash 0.9+ (including `emdash@0.27.x`):** the admin manifest is built fresh from `_emdash_collections` on each admin request. There is **no** runtime `emdash:manifest_cache` options row to invalidate. Deleting a legacy `emdash:manifest_cache` row (if one survived an old upgrade) is harmless but usually unnecessary.
 
 Recovery (for the target environment database):
 
-1. Delete `emdash:manifest_cache` from `options`.
-2. Trigger one admin/API request to regenerate manifest.
+1. Compare staging vs production `_emdash_collections` for the slug: `supports`, `source`, labels, and related field rows.
+2. Fix metadata drift (schema promotion script, MCP `schema_*`, or targeted SQL on the rollback branch) — do not promote content until parity matches staging semantics.
+3. Reload `/_emdash/api/manifest` and `/_emdash/admin/content/<collection>`.
 
-Example Node one-liner (run in `web/`):
+Optional legacy cleanup (only if you confirm a pre-0.9 row still exists and want to shrink `options`):
 
-```powershell
-$env:TURSO_DATABASE_URL = "<target-env-db-url>"
-$env:TURSO_AUTH_TOKEN = "<target-env-db-token>"
-
-node -e 'const { createClient } = require("@libsql/client"); (async () => { const db = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN }); await db.execute("delete from options where name = ''emdash:manifest_cache''"); const check = await db.execute("select count(*) as c from options where name = ''emdash:manifest_cache''"); console.log("remaining=" + check.rows[0].c); })().catch((e) => { console.error(e); process.exit(1); });'
+```sql
+delete from options where name = 'emdash:manifest_cache';
 ```
 
-After this, reload admin and re-test the collection route.
+After metadata is aligned, reload admin and re-test the collection route.
 
 ## 6. Production Go-Live Checklist
 

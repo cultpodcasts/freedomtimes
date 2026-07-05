@@ -19,7 +19,6 @@ async function main() {
   await db.execute(
     "update _emdash_collections set supports = '[\"revisions\",\"search\"]', updated_at = datetime('now') where slug in ('posts', 'pages')"
   );
-  await db.execute("delete from options where name = 'emdash:manifest_cache'");
 
   const rows = await db.execute(
     "select slug, supports from _emdash_collections order by slug"
