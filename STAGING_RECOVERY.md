@@ -2,29 +2,25 @@
 
 Use this when staging is destroyed and needs to be rebuilt from local with minimal friction.
 
-Deploy failures (FCM keys, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle, Cloudflare token): **[web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)**.
+Deploy failures (FCM keys, Turso secrets after worker rename, wrangler cwd, Terraform lifecycle, Cloudflare token): **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)**.
 
 **CLI paths:** Terraform on Windows; Turso in WSL. Primary reference: **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)**.
 
-## 1. Run one-command local staging rebuild
+## 1. Run one-command local staging deploy
 
 Run from repo root:
 
 ```powershell
-.\scripts\staging-rebuild-local.ps1
+.\scripts\deploy-staging-local.ps1
 ```
 
-This script runs the full local staging flow in deterministic order:
+This runs the full local staging deploy in deterministic order. **Script matrix, flags, and step order:** [web/docs/DEPLOY.md — Local deploy scripts](web/docs/DEPLOY.md#local-deploy-scripts).
 
-- applies Terraform for staging
-- auto-recovers APIM custom-domain state drift by importing `azurerm_api_management_custom_domain.editorial[0]` when needed, then re-applies
-- verifies Terraform-created Auth0 login app credentials are synced into `.env.dev` (`AUTH0_LOGIN_APP_CLIENT_ID_STAGING`, `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`) and that client ID matches Terraform output
-- syncs Cloudflare Worker secrets using `set-github-secrets.ps1`
-- deploys Worker via Wrangler
-- deploys Function App via `func ... --build remote`
-- verifies required Worker secrets and Function triggers exist
+**Recovery-specific notes:**
 
-This replaces the old manual sequence and eliminates the common "stuck stage" around APIM custom-domain/state mismatch.
+- **Turso backup:** not included on staging full deploy. For risky staging DB work, create a rollback branch manually (`turso-create-rollback-branch.ps1` with staging database name) before deploy.
+- **Scheduler / Azure Function:** full deploy and `-WorkerOnly` do **not** deploy the scheduler worker or Azure Function App. Use `-WorkersOnly` or manual steps (§2.5) when needed.
+- **Web + scheduler without Terraform:** `deploy-staging-local.ps1 -WorkersOnly`.
 
 ## 2. If you need to run steps manually
 
@@ -127,7 +123,7 @@ Wrangler deploy with a new `name` creates a **new** Worker script; the old scrip
 
 1. Update `TF_VAR_WORKER_NAME_STAGING` / `TF_VAR_WORKER_NAME_PRODUCTION` in `.env.dev` and GitHub repo variables.
 2. Apply staging Terraform so `cloudflare_workers_domain` / `cloudflare_workers_route` point at the new script name.
-3. Deploy the app: `.\scripts\deploy-staging-workers-only.ps1` (or full `staging-rebuild-local.ps1`).
+3. Deploy the app: `.\scripts\deploy-staging-local.ps1 -WorkersOnly` (or full `deploy-staging-local.ps1`).
 4. Verify `https://staging.freedomtimes.news` serves the new Worker (`npx wrangler deployments list --config web/wrangler.jsonc --env staging`).
 5. Copy secrets to the new Worker if needed (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`).
 6. After production is migrated the same way, delete obsolete scripts in Cloudflare dashboard: **Workers & Pages → freedomtimes-holding-staging**, **freedomtimes-holding**.

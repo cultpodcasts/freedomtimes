@@ -24,7 +24,7 @@ This runbook is the single path for promoting all production-facing changes:
 2. `gh` authenticated (`gh auth status`).
 3. EmDash staging and production API tokens available.
 4. Staging validation complete for schema/content and page rendering.
-5. Turso CLI access in **WSL** for production rollback checkpoints — **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (primary reference for WSL invoke patterns).
+5. Turso CLI access in **WSL** for production rollback checkpoints — **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (primary reference for WSL invoke patterns). Required for schema/content promotion and the GitHub Actions release path; **local full production deploy** (`deploy-production-local.ps1`) creates a checkpoint automatically unless you pass `-SkipTursoBackup`.
 
 Merge rule for EmDash-dependent changes:
 
@@ -40,7 +40,9 @@ $env:EMDASH_STAGING_TOKEN = "<staging-token>"
 $env:EMDASH_PRODUCTION_TOKEN = "<production-token>"
 ```
 
-1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
+1. **Turso rollback checkpoint** — see [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes). Required before production schema/content work. Local full deploy creates it automatically unless `-SkipTursoBackup`.
+
+## 1. Create Turso rollback checkpoint (mandatory before production schema or content changes)
 
 This is mandatory before any production schema change, migration, or content promotion.
 
@@ -52,9 +54,20 @@ Why:
 
 Create a checkpoint branch from the production database before doing anything else:
 
+**GitHub Actions release path** (`production-release.ps1`) and **schema/content promotion** — run manually:
+
 ```powershell
 .\scripts\turso-create-rollback-branch.ps1 -ProductionDatabaseName <production-database-name> -AllowProduction
 ```
+
+**Local full production deploy** — automatic before Terraform apply (unless skipped):
+
+```powershell
+pwsh ./scripts/deploy-production-local.ps1
+# Opt out: pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
+```
+
+Database name defaults from `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` in `.env.dev` (fallback: `freedomtimes-emdash-production`). Turso group defaults from `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (fallback: `freedomtimes-production`). Metadata is written under `.release/rollback-branches/`.
 
 Record these with the release notes:
 
@@ -93,7 +106,7 @@ What this does:
 2. Requests Terraform apply (`production_terraform_apply=true`).
 3. Watches run completion and exits non-zero on failure.
 
-**Web version:** `terraform-production.yml` builds `web/` from whatever is already committed on `main` — this script does not bump or commit `web/package.json` for you. If you want the deployed build to carry a bumped version, bump and commit it first (`cd web && npm version patch --no-git-tag-version --allow-same-version && cd .. && git add web/package.json web/package-lock.json && git commit -m "chore: bump web version" && git push`). Of the local bypass scripts, only the **staging** ones (`deploy-staging-workers-only.ps1`, `deploy-staging-worker-local.ps1`, `staging-rebuild-local.ps1`) bump `web/package.json` automatically before their own build step (patch bump, uncommitted — pass `-SkipVersionBump` to opt out). The **production** ones (`deploy-production-worker-local.ps1`, `production-rebuild-local.ps1`) default to **no bump** — they ship the same version staging already bumped for this release; pass `-BumpVersion` to bump anyway. See [web/docs/DEPLOY_TROUBLESHOOTING.md § Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
+**Web version:** CI builds from committed `main` — no automatic bump. Local staging/production version behavior: [DEPLOY.md § Web version bump](web/docs/DEPLOY.md#web-version-bump-on-deploy). Bump and commit manually before dispatch if you want a new semver on the release build.
 
 Plan-only dry path:
 
@@ -101,30 +114,19 @@ Plan-only dry path:
 .\scripts\production-release.ps1 -TerraformMode plan -Watch -AllowProduction
 ```
 
-### 2b. Local production rebuild (operator bypass)
+### 2b. Local production deploy (operator bypass)
 
-Implementation: `scripts/Invoke-EnvironmentRebuild.ps1 -Environment production` (wrapper: `production-rebuild-local.ps1`). Staging vs production step differences are in the shared script header.
-
-1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
-
-From repo root:
+When CI is unavailable or the operator needs a local full production deploy, use **`scripts/deploy-production-local.ps1`**. **Script matrix, flags, step order, prerequisites, and troubleshooting:** [web/docs/DEPLOY.md — Local deploy scripts](web/docs/DEPLOY.md#local-deploy-scripts).
 
 ```powershell
-pwsh ./scripts/production-rebuild-local.ps1
+pwsh ./scripts/deploy-production-local.ps1
 ```
 
-Optional: `-BumpVersion` to bump `web/package.json` before build (default is no bump; staging usually already bumped for the release). See [web/docs/DEPLOY_TROUBLESHOOTING.md — Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
+**Release-specific notes (not duplicated in deploy guide):**
 
-
-After deploy, the script runs `wrangler secret list` on the production web Worker and asserts `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, and `EMDASH_PREVIEW_SECRET` are present (same check as `staging-rebuild-local.ps1`).
-**Prerequisites**
-
-1. **Turso rollback checkpoint** — same as [Section 1](#1-create-turso-rollback-checkpoint-mandatory-before-production-schema-or-content-changes) before mutating production data or schema.
-2. **Production push secrets in `.env.dev`** - Production VAPID keys plus FCM credentials (`PUSH_PRODUCTION_ANDROID_FCM_*` or `PUSH_STAGING_ANDROID_FCM_*` fallback; same as `scripts/assert-push-secrets-ready.ps1`). Staging rebuild preflight uses the same FCM checks. Run `pwsh ./scripts/populate-android-fcm-env.ps1` or copy values per [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md).
-3. **Cloudflare API token** — non-interactive Terraform and Wrangler (see [DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)).
-
-**Troubleshooting:** [web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md) (FCM preflight, Auth0 env sync, Turso secrets after worker rename, Wrangler cwd, Terraform worker lifecycle).
-
+- Prefer the CI path (§2 above) for routine releases on `main`.
+- Local full deploy auto-creates a Turso rollback checkpoint before Terraform (same intent as §1 manual checkpoint for the CI path).
+- After deploy, post-deploy secret verify runs on the production web Worker (`AUTH0_*`, `EMDASH_*`) — see canonical doc if verify fails.
 
 ## 3. Step 1: Prove Production Matches Staging Schema Semantics
 

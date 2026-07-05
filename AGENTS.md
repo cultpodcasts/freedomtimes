@@ -61,3 +61,26 @@ See **Primary guardrails §4**. Staging (`SITE_ACCESS_MODE=locked`, `staging.fre
 - To test reader flows on staging: sign in first, then open the route.
 
 Full policy: **`web/docs/STAGING_ACCESS.md`**.
+
+## Local deploy (AI agents)
+
+**Canonical reference:** **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — script decision table, flags, step order, prerequisites, and failure troubleshooting. Read the [For AI agents](web/docs/DEPLOY.md#for-ai-agents) section before running any deploy command.
+
+**Entry points only** (from repo root):
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/deploy-staging-local.ps1` | Staging deploy (full, `-WorkerOnly`, or `-WorkersOnly`) |
+| `scripts/deploy-production-local.ps1` | Local production deploy (full or `-WorkerOnly -AllowProduction`) |
+| `scripts/production-release.ps1` | CI release — dispatches GitHub Actions; not a local wrangler deploy |
+
+**Do not invoke:** `Deploy-EnvironmentCommon.ps1` (helpers only); deprecated `*-rebuild-local.ps1` (use `deploy-*-local.ps1`).
+
+**Hard rules for agents:**
+
+- Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**.
+- Full `deploy-production-local.ps1` creates a Turso rollback checkpoint via WSL before Terraform — requires authenticated Turso CLI (**Primary guardrails §7**). Do not pass `-SkipTursoBackup` unless the operator confirms a checkpoint already exists.
+- Deploy scripts ship Workers and infra; they do **not** publish EmDash content (**Primary guardrails §5** for `content_publish`).
+- On deploy failure, use the canonical doc's [Quick symptom index](web/docs/DEPLOY.md#quick-symptom-index) — do not improvise alternate script names.
+
+Context-specific runbooks (link to canonical doc for script details): [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md) (CI + promotion), [STAGING_RECOVERY.md](STAGING_RECOVERY.md) (recovery checklist).

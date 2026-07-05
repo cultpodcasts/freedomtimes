@@ -39,7 +39,7 @@
     "cap:sync:ios": "cap sync ios",
     "cap:open:android": "cap open android",
     "cap:open:ios": "cap open ios",
-    "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-workers-only.ps1"
+    "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-local.ps1 -WorkersOnly"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.0.0",
@@ -62,7 +62,8 @@
     "sharp": "^0.34.5"
   },
   "overrides": {
-    "yaml": "^2.9.0"
+    "yaml": "^2.9.0",
+    "vite": "^8.1.3"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",

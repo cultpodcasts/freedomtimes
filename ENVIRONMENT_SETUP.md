@@ -4,7 +4,7 @@ This guide documents how to manage Freedom Times environments locally and in CI/
 
 **Table of Contents:**
 - [Environment Architecture](#environment-architecture)
-- [Local Setup: Complete Teardown & Rebuild](#local-setup-complete-teardown--rebuild)
+- [Local Setup: Complete Teardown & Redeploy](#local-setup-complete-teardown--redeploy)
 - [Deploy troubleshooting](#deploy-troubleshooting)
 - [Syncing Secrets & Variables](#syncing-secrets--variables)
 - [GitHub Actions Deployment Workflow](#github-actions-deployment-workflow)
@@ -38,7 +38,7 @@ Each environment includes:
 
 ---
 
-## Local Setup: Complete Teardown & Rebuild
+## Local Setup: Complete Teardown & Redeploy
 
 ### Prerequisites
 
@@ -116,6 +116,8 @@ terraform -chdir=infra/terraform/environments/staging state list  # No output
 ---
 
 ### 2. Deploy/Setup an Environment (Local)
+
+**Preferred:** one-command deploy scripts — [web/docs/DEPLOY.md](web/docs/DEPLOY.md#local-deploy-scripts) (`deploy-staging-local.ps1`, `deploy-production-local.ps1`). The manual Terraform steps below are for debugging or partial infra work only.
 
 #### Step 1: Load Environment Variables
 
@@ -212,9 +214,9 @@ npx wrangler deploy --config wrangler.jsonc --env production
 
 ## Deploy troubleshooting
 
-When `staging-rebuild-local.ps1` or `production-rebuild-local.ps1` fails (especially **FCM preflight**, Turso secrets after worker rename, wrangler deploy path, or Terraform worker lifecycle conflicts), see **[web/docs/DEPLOY_TROUBLESHOOTING.md](web/docs/DEPLOY_TROUBLESHOOTING.md)**.
+When `deploy-staging-local.ps1` or `deploy-production-local.ps1` fails, see **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — canonical deploy reference with [decision table](web/docs/DEPLOY.md#for-ai-agents), [script matrix](web/docs/DEPLOY.md#local-deploy-scripts), and [symptom index](web/docs/DEPLOY.md#quick-symptom-index). Common failures: FCM preflight, Turso secrets after worker rename, wrangler cwd, Terraform worker lifecycle.
 
-Production rebuild **requires** `PUSH_PRODUCTION_ANDROID_FCM_*` in `.env.dev` before Terraform runs — staging-prefixed FCM keys alone are not enough for preflight (secret sync accepts staging FCM as a fallback; preflight does not).
+Production deploy preflight requires production VAPID keys plus FCM credentials — details in [DEPLOY.md § FCM keys](web/docs/DEPLOY.md#fcm-keys-deploy-preflight).
 
 ---
 
@@ -824,7 +826,15 @@ TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_PRODUCTION="https://freedomtimes.news"
 
 ## Summary: Common Tasks
 
-### I want to tear down staging and rebuild it locally
+### I want to tear down staging and redeploy it locally
+
+After teardown, prefer the one-command deploy (see [DEPLOY.md](web/docs/DEPLOY.md#local-deploy-scripts)):
+
+```powershell
+.\scripts\deploy-staging-local.ps1
+```
+
+Manual sequence (debugging only):
 
 ```bash
 # 1. Delete Action Group
@@ -833,17 +843,13 @@ az monitor action-group delete --resource-group freedomtimes-staging-rg --name "
 # 2. Destroy
 .\scripts\terraform-run.ps1 -Environment staging -Operation destroy -LoadEnvFiles -AutoApprove
 
-# 3. Re-init and apply
+# 3. Re-init and apply (or use deploy-staging-local.ps1 for apply + worker deploy)
 terraform -chdir=infra/terraform/environments/staging init
-.\scripts\terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles
+.\scripts\deploy-staging-local.ps1
 
-# 4. Sync secrets to Cloudflare
-.\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
-
-# 5. Deploy Function & Worker
-cd functions/editorial-api && npm install
-func azure functionapp publish freedomtimes-editorial-api-staging --build remote --javascript
-cd ../../web && npm run build && npx wrangler deploy --env staging
+# Alternative manual tail after terraform apply:
+# .\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
+# pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly
 ```
 
 ### I want to deploy production via GitHub Actions
@@ -861,8 +867,11 @@ Recommended pre-apply checkpoint and rollback helpers:
 > Turso CLI operations: see **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (WSL-only in this workspace).
 
 ```bash
-# Create Turso rollback checkpoint + metadata (includes git hashes)
+# GitHub Actions release path — manual checkpoint before dispatch:
 .\scripts\turso-create-rollback-branch.ps1 -ProductionDatabaseName <prod-db-name> -AllowProduction
+
+# Local full deploy — automatic unless -SkipTursoBackup:
+# pwsh ./scripts/deploy-production-local.ps1
 
 # Emergency failback: point production Worker to rollback Turso branch
 .\scripts\switch-production-turso-secrets.ps1 -DatabaseUrl <rollback-url> -AuthToken <rollback-token> -DatabaseName <rollback-db-name> -SyncGitHub -AllowProduction

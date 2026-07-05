@@ -60,8 +60,8 @@ Local automation helpers (recommended):
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment staging -LoadEnvFiles`
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-preflight.ps1 -Environment production -LoadEnvFiles`
 - **Production Worker deploy without Terraform apply** (when `.env.dev` has production Turso keys):
-   - `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` — verify Turso credential resolution
-   - `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction` — build + wrangler deploy
+   - `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` — verify Turso credential resolution
+   - `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction` — build + wrangler deploy
    - Refresh production Turso URLs/tokens in `.env.dev`: `pwsh ./scripts/sync-production-turso-env-dev.ps1`
 - Run Terraform non-interactively:
    - `powershell -ExecutionPolicy Bypass -File ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles`
@@ -74,6 +74,20 @@ Notes:
 - `terraform-run.ps1` uses `-input=false` and lock timeout flags automatically.
 - `apply` uses `tfplan` when present; otherwise pass `-AutoApprove` for direct apply.
 - `destroy` requires `-AutoApprove` to avoid interactive prompts.
+
+## Local deploy scripts
+
+**Canonical reference:** **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — decision table, flags, step order, prerequisites, and troubleshooting. AI agents: read [For AI agents](web/docs/DEPLOY.md#for-ai-agents) first.
+
+Quick entry points from repo root:
+
+```powershell
+pwsh ./scripts/deploy-staging-local.ps1              # full staging
+pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly # web + scheduler, no Terraform
+pwsh ./scripts/deploy-production-local.ps1           # full production (operator)
+```
+
+Production release via GitHub Actions: [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md) (`production-release.ps1`).
 
 ## Security Rules
 
