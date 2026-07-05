@@ -23,6 +23,7 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 **Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** — Windows-native Terraform vs WSL-only Turso CLI, PATH verification, and repo script patterns.
 
 - Quick check: `where.exe terraform` (Windows); `wsl bash -lic "turso auth whoami"` then `wsl bash -lic "turso db list"` (Turso in WSL).
+- Do not run parallel Terraform operations on the same environment (staging/production/auth0-shared); `scripts/terraform-run.ps1` enforces a per-environment file lock.
 - Auth failures: **Primary guardrails §6–§7** — STOP; do not bypass.
 - Turso backups and rollback branches: **[web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md)** (Turso backups section).
 

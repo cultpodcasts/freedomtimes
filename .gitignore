@@ -1,4 +1,5 @@
 .terraform/
+.terraform-locks/
 dist/
 **/dist/
 node_modules/
