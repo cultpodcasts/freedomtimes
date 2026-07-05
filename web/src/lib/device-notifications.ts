@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
+import { isIosWebKitBrowser, isStandalonePwa } from './browser-platform';
 import type { LastTestNotification } from './notification-diagnostics-server';
 import { SITE_DISPLAY_NAME } from './site-brand';
 
@@ -584,30 +585,6 @@ async function enableBrowserPushNotifications(
     BROWSER_PUSH_TIMEOUT_MS,
     'Timed out saving this device for notifications. Try again in a moment.',
   );
-}
-
-function isIosWebKitBrowser(): boolean {
-  if (typeof navigator === 'undefined') {
-    return false;
-  }
-
-  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-    return true;
-  }
-
-  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
-}
-
-function isStandalonePwa(): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  if (window.matchMedia('(display-mode: standalone)').matches) {
-    return true;
-  }
-
-  return (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
 function detectBrowserKind(): BrowserKind {

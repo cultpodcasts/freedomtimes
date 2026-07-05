@@ -1,12 +1,13 @@
-import type {
-  LastTestNotification,
-  NotificationDiagnosticSnapshot,
-} from './notification-diagnostics-server';
+import { isIosWebKitBrowser, isIpadOs, isStandalonePwa } from './browser-platform';
 import {
   ensureTestNotificationReceiptListener,
   getLastTestNotification,
   getNotificationSupportState,
 } from './device-notifications';
+import type {
+  LastTestNotification,
+  NotificationDiagnosticSnapshot,
+} from './notification-diagnostics-server';
 
 export type { LastTestNotification, NotificationDiagnosticSnapshot };
 
@@ -47,7 +48,7 @@ export async function collectNotificationDiagnostics(
     pushManagerSupported,
     hasPushSubscription: Boolean(pushSubscription),
     pushEndpointHost: readPushEndpointHost(pushSubscription),
-    isStandalonePwa: detectStandalonePwa(),
+    isStandalonePwa: isStandalonePwa(),
     vapidConfigured: publicKey.trim().length > 0,
     buttonDisabled: supportState.buttonDisabled,
     buttonLabel: supportState.buttonLabel.slice(0, 80),
@@ -106,17 +107,13 @@ function readPushEndpointHost(subscription: PushSubscription | null): string | n
   }
 }
 
-function detectStandalonePwa(): boolean {
-  if (window.matchMedia('(display-mode: standalone)').matches) {
-    return true;
-  }
-
-  return (navigator as Navigator & { standalone?: boolean }).standalone === true;
-}
-
 function detectPlatformType(): NotificationDiagnosticSnapshot['platformType'] {
   if (typeof navigator === 'undefined') {
     return 'unknown';
+  }
+
+  if (isIosWebKitBrowser()) {
+    return isIpadOs() ? 'tablet' : 'mobile';
   }
 
   const ua = navigator.userAgent;
@@ -149,8 +146,23 @@ function parseBrowserInfo(): { family: NotificationDiagnosticSnapshot['browserFa
   if (/\bEdg\//.test(userAgent)) {
     return { family: 'edge', versionMajor: parseMajorVersionFromUa(userAgent, /\bEdg\/(\d+)/) };
   }
+  if (/\bEdgiOS\//.test(userAgent)) {
+    return { family: 'edge', versionMajor: parseMajorVersionFromUa(userAgent, /\bEdgiOS\/(\d+)/) };
+  }
   if (/\bFirefox\//.test(userAgent)) {
     return { family: 'firefox', versionMajor: parseMajorVersionFromUa(userAgent, /\bFirefox\/(\d+)/) };
+  }
+  if (/\bFxiOS\//.test(userAgent)) {
+    return { family: 'firefox', versionMajor: parseMajorVersionFromUa(userAgent, /\bFxiOS\/(\d+)/) };
+  }
+  if (/\bCriOS\//.test(userAgent)) {
+    return { family: 'chrome', versionMajor: parseMajorVersionFromUa(userAgent, /\bCriOS\/(\d+)/) };
+  }
+  if (/\bOPiOS\//.test(userAgent)) {
+    return { family: 'other', versionMajor: parseMajorVersionFromUa(userAgent, /\bOPiOS\/(\d+)/) };
+  }
+  if (/\bGSA\//.test(userAgent)) {
+    return { family: 'other', versionMajor: parseMajorVersionFromUa(userAgent, /\bGSA\/(\d+)/) };
   }
   if (/\bSafari\//.test(userAgent) && !/\b(Chromium|Chrome|Edg)\//.test(userAgent)) {
     return { family: 'safari', versionMajor: parseMajorVersionFromUa(userAgent, /\bVersion\/(\d+)/) };
@@ -169,7 +181,7 @@ function parseOsInfo(): { family: NotificationDiagnosticSnapshot['osFamily'] } {
   if (/android/i.test(ua)) {
     return { family: 'android' };
   }
-  if (/iphone|ipad|ipod/i.test(ua)) {
+  if (isIosWebKitBrowser()) {
     return { family: 'ios' };
   }
   if (/win/i.test(platform) || /windows/i.test(ua)) {
