@@ -27,6 +27,8 @@ $script:DeploySecretSyncScript = $null
 $script:DeployTerraformEnvDir = $null
 $script:DeployBaseEnvPath = $null
 $script:DeployCommonScriptRoot = $PSScriptRoot
+
+. "$PSScriptRoot/assert-push-secrets-ready.ps1"
 $script:DeployWebBuildStartedAt = $null
 
 function Initialize-DeployEnvironment {
@@ -46,7 +48,6 @@ function Initialize-DeployEnvironment {
 
     . "$PSScriptRoot/ensure-windows-cli-path.ps1"
     Initialize-WindowsCliPath
-    . "$PSScriptRoot/assert-push-secrets-ready.ps1"
 }
 
 function Write-DeployStep {
