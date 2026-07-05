@@ -199,6 +199,7 @@ module "auth0_app" {
   api_identifier        = var.auth0_api_identifier
   api_name              = "freedomtimes-api"
   workspace_url         = var.workspace_url
+  extra_workspace_urls  = var.extra_workspace_urls
   extra_callback_urls   = var.auth0_extra_callback_urls
   roles_claim_namespace = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   auth0_domain          = var.auth0_domain

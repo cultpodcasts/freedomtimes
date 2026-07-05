@@ -195,6 +195,12 @@ variable "workspace_url" {
   default     = "https://freedomtimes.news"
 }
 
+variable "extra_workspace_urls" {
+  description = "Additional workspace base URLs for Auth0 callbacks, logout, and origins (e.g. staging)"
+  type        = list(string)
+  default     = []
+}
+
 variable "auth0_extra_callback_urls" {
   description = "Additional Auth0 callback URLs for production, such as native mobile deep links"
   type        = list(string)
