@@ -84,7 +84,7 @@ $hasTursoPlatformToken = -not [string]::IsNullOrWhiteSpace($tursoPlatformToken)
 if (-not $hasTursoPlatformToken) {
     Write-Warning @"
 No valid Turso Platform API token in .env.dev (TURSO_PLATFORM_API_TOKEN / TF_VAR_turso_api_token).
-Database JWTs in TURSO_TOKEN or TURSO_PLATFORM_API_TOKEN are skipped. Set a Platform API token from Turso dashboard -> Settings -> API tokens, then re-run this script.
+Candidates are validated with a Turso Platform API probe (GET /v1/organizations). Database JWTs (e.g. TURSO_AUTH_TOKEN) fail that probe and are skipped. Set a Platform API token from Turso dashboard -> Settings -> API tokens, then re-run this script.
 Cloudflare-only imports can proceed with -SkipTursoPreflight.
 "@
 }

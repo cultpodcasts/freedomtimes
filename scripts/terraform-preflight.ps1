@@ -237,8 +237,14 @@ if ($Environment -eq "staging" -or $Environment -eq "production") {
             exit 1
         }
 
-        if (Test-LooksLikeTursoDatabaseJwt $tursoApiToken) {
-            Write-Error ("TF_VAR_turso_api_token for {0} looks like a libsql database JWT. Terraform requires a Turso Platform API token (Turso dashboard -> Settings -> API tokens)." -f $Environment)
+        if (-not (Test-TursoPlatformApiToken $tursoApiToken)) {
+            $shapeHint = if (Test-LooksLikeTursoDatabaseJwt $tursoApiToken) {
+                " The value looks like a libsql database JWT and failed the Turso Platform API probe."
+            }
+            else {
+                ""
+            }
+            Write-Error ("TF_VAR_turso_api_token for {0} is not a valid Turso Platform API token.{1} Turso dashboard -> Settings -> API tokens." -f $Environment, $shapeHint)
             exit 1
         }
 
