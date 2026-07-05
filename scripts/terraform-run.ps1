@@ -7,6 +7,7 @@ param(
     [ValidateSet("init", "validate", "plan", "apply", "destroy", "import", "output")]
     [string]$Operation,
     [switch]$LoadEnvFiles,
+    [switch]$SkipTursoPreflight,
     [string]$LockTimeout = "5m",
     [string]$PlanFile = "tfplan",
     [switch]$AutoApprove,
@@ -118,17 +119,13 @@ function Invoke-EnvRemapping {
             $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_STAGING")
         }
         else {
-        $tursoApiTokenVarNames = if ($Env -eq "staging") {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
-        }
-        else {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN", "TURSO_PLATFORM_API_TOKEN")
-        }
             $audience = Get-FirstEnvValue -Names @("AUTH0_API_AUDIENCE_PRODUCTION", "AUTH0_API_AUDIENCE")
         }
         if (-not [string]::IsNullOrWhiteSpace($audience)) {
             [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
         }
+
+        Set-TursoPlatformApiTokenForEnvironment -Environment $Env
     }
 
     if ($Env -eq "auth0-shared") {
@@ -171,12 +168,7 @@ function Build-TerraformVarArgs {
         }
     }
     else {
-        $tursoApiTokenVarNames = if ($Env -eq "staging") {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
-        }
-        else {
-            @("TF_VAR_turso_api_token", "TURSO_TOKEN", "TURSO_PLATFORM_API_TOKEN")
-        }
+        $tursoApiTokenVarNames = @("TF_VAR_turso_api_token")
         $map = [ordered]@{
             cloudflare_api_token                    = @("TF_VAR_cloudflare_api_token", "TF_VAR_CLOUDFLARE_API_TOKEN")
             cloudflare_account_id                   = @("TF_VAR_cloudflare_account_id", "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
@@ -368,6 +360,9 @@ $preflightArgs = @{
 }
 if ($LoadEnvFiles) {
     $preflightArgs["LoadEnvFiles"] = $true
+}
+if ($SkipTursoPreflight) {
+    $preflightArgs["SkipTursoPreflight"] = $true
 }
 
 $global:LASTEXITCODE = 0

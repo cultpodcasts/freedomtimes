@@ -362,6 +362,9 @@ jobs:
           TURSO_TIPS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
           TURSO_TIPS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_auth_token }}
           PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
         run: |
           set -euo pipefail
@@ -377,6 +380,9 @@ jobs:
             TURSO_TIPS_DATABASE_URL_VALUE
             TURSO_TIPS_AUTH_TOKEN_VALUE
             PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE
+            PUSH_VAPID_PUBLIC_KEY_VALUE
+            PUSH_VAPID_PRIVATE_KEY_VALUE
+            PUSH_VAPID_SUBJECT_VALUE
             EMDASH_AUTH_SECRET_VALUE
           )
 
@@ -604,6 +610,9 @@ jobs:
           TURSO_TIPS_DATABASE_URL_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
           TURSO_TIPS_AUTH_TOKEN_VALUE: ${{ steps.tf_outputs.outputs.tips_turso_auth_token }}
           PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PUBLIC_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_VAPID_PRIVATE_KEY_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
+          PUSH_VAPID_SUBJECT_VALUE: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}
           EMDASH_AUTH_SECRET_VALUE: ${{ secrets.EMDASH_AUTH_SECRET_PRODUCTION }}
           EMDASH_PREVIEW_SECRET_VALUE: ${{ secrets.EMDASH_PREVIEW_SECRET_PRODUCTION }}
         run: |
@@ -624,6 +633,9 @@ jobs:
           printf '%s' "$TURSO_TIPS_DATABASE_URL_VALUE" | npx wrangler secret put TURSO_TIPS_DATABASE_URL --config wrangler.jsonc --env production
           printf '%s' "$TURSO_TIPS_AUTH_TOKEN_VALUE" | npx wrangler secret put TURSO_TIPS_AUTH_TOKEN --config wrangler.jsonc --env production
           printf '%s' "$PUSH_SUBSCRIBE_PUBLIC_KEY_VALUE" | npx wrangler secret put PUSH_SUBSCRIBE_PUBLIC_KEY --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_VAPID_PUBLIC_KEY_VALUE" | npx wrangler secret put PUSH_VAPID_PUBLIC_KEY --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_VAPID_PRIVATE_KEY_VALUE" | npx wrangler secret put PUSH_VAPID_PRIVATE_KEY --config wrangler.jsonc --env production
+          printf '%s' "$PUSH_VAPID_SUBJECT_VALUE" | npx wrangler secret put PUSH_VAPID_SUBJECT --config wrangler.jsonc --env production
           printf '%s' "$EMDASH_AUTH_SECRET_VALUE" | npx wrangler secret put EMDASH_AUTH_SECRET --config wrangler.jsonc --env production
 
           if [ -n "${EMDASH_PREVIEW_SECRET_VALUE:-}" ]; then

@@ -1,5 +1,16 @@
 Set-StrictMode -Version Latest
 
+function Test-LooksLikeTursoDatabaseJwt {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+
+    $v = $Value.Trim()
+    return $v.StartsWith("eyJ") -and ($v.Split(".").Count -ge 3)
+}
+
 function Get-TursoPlatformApiTokenCandidateNames {
     param([string]$Environment)
 
@@ -14,9 +25,9 @@ function Get-TursoPlatformApiTokenCandidateNames {
 
     if ($Environment -eq "production") {
         return @(
-            "TURSO_TOKEN",
             "TURSO_PLATFORM_API_TOKEN",
-            "TF_VAR_turso_api_token"
+            "TF_VAR_turso_api_token",
+            "TURSO_TOKEN"
         )
     }
 
@@ -49,6 +60,11 @@ function Set-TursoPlatformApiTokenForEnvironment {
     foreach ($name in $candidates) {
         $value = Get-FirstProcessEnvValue -Names @($name)
         if ([string]::IsNullOrWhiteSpace($value)) {
+            continue
+        }
+
+        if (Test-LooksLikeTursoDatabaseJwt $value) {
+            Write-Warning "${name} looks like a libsql database JWT, not a Turso Platform API token; skipping for Terraform."
             continue
         }
 

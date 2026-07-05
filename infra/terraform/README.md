@@ -100,6 +100,15 @@ Important for this repository:
 
 ## Troubleshooting
 
+### Turso provider auth (Platform API token)
+
+Terraform requires a **Turso Platform API token** (`TF_VAR_turso_api_token`), not a libsql database JWT.
+
+- Local `.env.dev`: prefer `TURSO_PLATFORM_API_TOKEN` or `TF_VAR_turso_api_token` for production; `TURSO_TOKEN_STAGING` for staging.
+- Database JWTs (`TURSO_AUTH_TOKEN`, `TURSO_*_AUTH_TOKEN`, values starting with `eyJ`) must **not** be placed in `TURSO_TOKEN` or `TURSO_PLATFORM_API_TOKEN` — scripts skip them and preflight fails with a clear error.
+- Import existing databases: `terraform import turso_database.emdash '<org>/<database-name>'` (see [turso_database import](https://registry.terraform.io/providers/jpedroh/turso/latest/docs/resources/database#import)).
+- Recover drift: `pwsh scripts/import-production-terraform-drift.ps1` (after Platform API token is set).
+
 ### Provider auth failures
 
 - Auth0 provider: set `TF_VAR_auth0_domain`, `TF_VAR_auth0_management_client_id`, and `TF_VAR_auth0_management_client_secret`.
