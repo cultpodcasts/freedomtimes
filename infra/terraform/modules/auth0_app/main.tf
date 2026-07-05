@@ -20,6 +20,8 @@ resource "auth0_client" "admin_ui" {
   custom_login_page_on = false
   is_first_party       = true
 
+  oidc_conformant      = true
+
   jwt_configuration {
     alg                 = var.jwt_signing_alg
     lifetime_in_seconds = var.id_token_lifetime_in_seconds
