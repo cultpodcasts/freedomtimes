@@ -1,7 +1,8 @@
 
 [CmdletBinding()]
 param(
-    [switch]$SyncCloudflareWorkerSecrets
+    [switch]$SyncCloudflareWorkerSecrets,
+    [switch]$SkipVersionBump
 )
 
 Set-StrictMode -Version Latest
@@ -59,6 +60,13 @@ if ($SyncCloudflareWorkerSecrets) {
     if ($LASTEXITCODE -ne 0) {
         throw "Cloudflare Worker secret sync failed."
     }
+}
+
+if ($SkipVersionBump) {
+    Write-Step "Skipping web version bump (-SkipVersionBump)"
+} else {
+    . "$PSScriptRoot/bump-web-version.ps1"
+    Invoke-WebVersionBump -RepoRoot $repoRoot | Out-Null
 }
 
 Write-Step "Building web (npm run build)"

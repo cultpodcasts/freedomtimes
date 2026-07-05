@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
+import { isIosWebKitBrowser, isStandalonePwa } from './browser-platform';
 import type { LastTestNotification } from './notification-diagnostics-server';
 import { SITE_DISPLAY_NAME } from './site-brand';
 
@@ -30,6 +31,20 @@ type BrowserNotificationMessages = {
   permissionTimeout: string;
   blocked: string;
   dismissed: string;
+};
+
+/** iOS WebKit browsers require a Home Screen PWA before web push works (iOS 16.4+). */
+const IOS_HOME_SCREEN_INSTALL_MESSAGES: Record<BrowserKind, string> = {
+  safari:
+    'In Safari, tap Share, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  chrome:
+    'In Chrome, tap the Share icon in the address bar, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  edge:
+    'In Edge, open the menu (⋯), tap Share, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  firefox:
+    'In Firefox, tap Share in the address bar (or open the menu and tap Share), choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  other:
+    'Use your browser\'s Share or menu option to choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
 };
 
 const BROWSER_NOTIFICATION_MESSAGES: Record<BrowserKind, BrowserNotificationMessages> = {
@@ -109,6 +124,7 @@ const BUTTON_DISABLED_REASON = {
   pushUnsupported: 'Push messaging not supported',
   vapidMissing: 'Push configuration missing on this site',
   androidPushMissing: 'Android push is not configured in this app build',
+  iosRequiresHomeScreen: 'On iPhone and iPad, add this site to your Home Screen first',
 } as const;
 
 type NativeAppConfigPlugin = {
@@ -177,6 +193,17 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
       buttonDisabledReason: BUTTON_DISABLED_REASON.vapidMissing,
       buttonLabel: BUTTON_LABEL_ENABLE,
       message: 'Notifications are waiting on the staging VAPID public key.',
+      testNotificationAvailable: false,
+    };
+  }
+
+  if (isIosWebKitBrowser() && !isStandalonePwa()) {
+    return {
+      supported: false,
+      buttonDisabled: true,
+      buttonDisabledReason: BUTTON_DISABLED_REASON.iosRequiresHomeScreen,
+      buttonLabel: BUTTON_LABEL_ENABLE,
+      message: getIosHomeScreenRequiredMessage(),
       testNotificationAvailable: false,
     };
   }
@@ -588,6 +615,13 @@ function detectBrowserKind(): BrowserKind {
 
 function browserNotificationMessages(): BrowserNotificationMessages {
   return BROWSER_NOTIFICATION_MESSAGES[detectBrowserKind()];
+}
+
+function getIosHomeScreenRequiredMessage(): string {
+  return (
+    `On iPhone and iPad, notifications only work after adding ${SITE_DISPLAY_NAME} to your Home Screen. ` +
+    IOS_HOME_SCREEN_INSTALL_MESSAGES[detectBrowserKind()]
+  );
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {

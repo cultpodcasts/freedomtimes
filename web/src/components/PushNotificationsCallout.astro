@@ -310,9 +310,10 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		testNotificationAvailable = state.testNotificationAvailable;
 		currentSupportMessage = state.message;
 
-		// Keep the enable control visible whenever the reader is not already subscribed,
-		// including disabled/greyed-out states, so the reason is inspectable and reportable.
-		const showEnable = currentUiMode !== 'subscribed';
+		// Hide the enable control when notifications cannot work on this device/browser
+		// (unsupported dead-ends) or when already subscribed. Instructional copy and
+		// "Report a problem" remain available; denied/blocked still shows a disabled button.
+		const showEnable = currentUiMode !== 'subscribed' && currentUiMode !== 'unsupported';
 		const showSubscribed = currentUiMode === 'subscribed';
 		const showTroubleshooting = currentUiMode === 'subscribed'
 			|| currentUiMode === 'denied'

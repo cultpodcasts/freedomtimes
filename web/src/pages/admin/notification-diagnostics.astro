@@ -346,10 +346,18 @@ if (session instanceof Response) {
 		`;
 	}
 
+	function browserBadgeLabel(snapshot) {
+		if (!snapshot) {
+			return 'Unknown';
+		}
+		const family = formatLabel(snapshot.browserFamily);
+		return snapshot.browserVersionMajor ? `${family} ${snapshot.browserVersionMajor}` : family;
+	}
+
 	function renderReport(report) {
 		const snapshot = report.snapshot;
 		const permission = snapshot?.notificationPermission || 'unknown';
-		const browser = snapshot ? formatLabel(snapshot.browserFamily) : 'Unknown';
+		const browser = browserBadgeLabel(snapshot);
 		const os = snapshot ? formatLabel(snapshot.osFamily) : 'Unknown';
 		const userNote = report.userNote?.trim();
 		const buttonSummary = buttonStateSummary(snapshot);
@@ -361,6 +369,10 @@ if (session instanceof Response) {
 			: 'Test: not attempted';
 		const status = report.status || 'new';
 		const safeStatus = ['new', 'reviewed', 'archived'].includes(status) ? status : 'new';
+		const standaloneBadge =
+			snapshot && typeof snapshot.isStandalonePwa === 'boolean'
+				? `<span class="badge ${snapshot.isStandalonePwa ? 'badge--ok' : 'badge--warn'}">Home Screen: ${snapshot.isStandalonePwa ? 'Yes' : 'No'}</span>`
+				: '';
 
 		return `
 			<section class="diag-card" role="listitem" data-report-id="${escapeHtml(report.id)}" data-status="${escapeHtml(safeStatus)}">
@@ -373,6 +385,7 @@ if (session instanceof Response) {
 						<span class="badge badge--muted">${escapeHtml(browser)}</span>
 						<span class="badge badge--muted">${escapeHtml(os)}</span>
 						${snapshot?.platformType ? `<span class="badge badge--muted">${escapeHtml(formatLabel(snapshot.platformType))}</span>` : ''}
+						${standaloneBadge}
 					</div>
 					<div class="diag-card__actions">
 						${renderActionButton('reviewed', 'Mark reviewed', safeStatus)}

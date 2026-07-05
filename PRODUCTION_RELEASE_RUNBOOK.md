@@ -93,6 +93,8 @@ What this does:
 2. Requests Terraform apply (`production_terraform_apply=true`).
 3. Watches run completion and exits non-zero on failure.
 
+**Web version:** `terraform-production.yml` builds `web/` from whatever is already committed on `main` — this script does not bump or commit `web/package.json` for you. If you want the deployed build to carry a bumped version, bump and commit it first (`cd web && npm version patch --no-git-tag-version --allow-same-version && cd .. && git add web/package.json web/package-lock.json && git commit -m "chore: bump web version" && git push`). The local bypass scripts (`deploy-staging-workers-only.ps1`, `deploy-staging-worker-local.ps1`, `deploy-production-worker-local.ps1`, `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`) bump `web/package.json` automatically before their own build step (patch bump, uncommitted — pass `-SkipVersionBump` to opt out). See [web/docs/DEPLOY_TROUBLESHOOTING.md § Web version bump on deploy](web/docs/DEPLOY_TROUBLESHOOTING.md#web-version-bump-on-deploy).
+
 Plan-only dry path:
 
 ```powershell

@@ -1,7 +1,9 @@
 # Local staging rebuild: Terraform apply -> Auth0 sync -> publish-only enforcement -> secret sync -> build -> deploy -> verify.
 # Preflight requires staging VAPID keys only (no FCM). Troubleshooting: web/docs/DEPLOY_TROUBLESHOOTING.md
 [CmdletBinding()]
-param()
+param(
+    [switch]$SkipVersionBump
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -236,6 +238,13 @@ function Invoke-SecretSync {
 }
 
 function Invoke-WorkerBuild {
+    if ($SkipVersionBump) {
+        Write-Step "Skipping web version bump (-SkipVersionBump)"
+    } else {
+        . "$PSScriptRoot/bump-web-version.ps1"
+        Invoke-WebVersionBump -RepoRoot $repoRoot | Out-Null
+    }
+
     Write-Step "Building staging Worker"
 
     # Set build-time env vars required by astro.config.ts from Terraform outputs

@@ -21,6 +21,7 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 - [Wrangler deploy working directory](#wrangler-deploy-working-directory)
 - [Terraform worker script lifecycle](#terraform-worker-script-lifecycle)
 - [Cloudflare API token vs Wrangler OAuth](#cloudflare-api-token-vs-wrangler-oauth)
+- [Web version bump on deploy](#web-version-bump-on-deploy)
 - [Quick symptom index](#quick-symptom-index)
 
 ---
@@ -289,6 +290,45 @@ npx wrangler whoami
 - `Workers KV Storage:Edit` (staging binds `SESSION` KV — without this, deploy fails with API error `10023`)
 
 Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../scripts/set-github-secrets.md#cloudflare-token-permissions-ci).
+
+---
+
+## Web version bump on deploy
+
+### What this is
+
+`web/package.json` has a `version` field that was never bumped in this repo (stuck at `0.0.1` since the file was created). It is **not** currently read anywhere in the app, build, or service worker — the deployed-build identity that actually gets exposed (`/api/version.json`, `ReaderDataProvenance.astro`, `tip-source.astro`) is the **git commit SHA** baked in via `FT_BUILD_COMMIT_SHA` (`scripts/build-provenance-env.ps1` → `web/src/lib/build-provenance.ts`), not semver.
+
+Local deploy scripts now bump the `web/package.json` (and `web/package-lock.json`) **patch** version immediately before their `npm run build` step, via `scripts/bump-web-version.ps1` (`Invoke-WebVersionBump`):
+
+- `deploy-staging-workers-only.ps1`
+- `deploy-staging-worker-local.ps1`
+- `deploy-production-worker-local.ps1`
+- `staging-rebuild-local.ps1`
+- `production-rebuild-local.ps1`
+
+Pass `-SkipVersionBump` to any of these to opt out for a given run.
+
+### Why patch, why before build, why staging too
+
+- **Patch bump**: no existing semver convention in this repo to diverge from; patch is the least disruptive default for "a new build went out."
+- **Before build**: mirrors the existing commit-SHA provenance pattern — the artifact that gets deployed should reflect the version bump, not a build that predates it.
+- **Both staging and production**: the user-facing request was "whenever we deploy," and there is no established repo convention limiting version tracking to production only.
+
+### Uncommitted by design
+
+The bump is **not** committed or pushed automatically. It lands in the working tree the same way any other local build output does. Commit it yourself if you want it to persist:
+
+```powershell
+git add web/package.json web/package-lock.json
+git commit -m "chore: bump web version"
+```
+
+If you run a local deploy script repeatedly without committing in between, the version keeps incrementing from whatever is currently in the working tree (e.g. `0.0.1` → `0.0.2` → `0.0.3` across consecutive staging test deploys). That is expected — `git checkout -- web/package.json web/package-lock.json` resets it if you want a clean baseline.
+
+### GitHub Actions path (`terraform-production.yml` / `terraform-staging.yml`) is not wired up
+
+The **official** production path (`scripts/production-release.ps1 -AllowProduction`, per [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md)) dispatches `terraform-production.yml`, which builds `web/` from whatever is committed on `main` — it does not bump or commit anything. Doing so automatically would require the workflow to commit-and-push a version bump back to `main` (a `contents: write` permission change plus a bot-authored commit on every apply), which was judged out of scope for this change given the version field has no current runtime consumer. `production-release.ps1` prints a reminder to bump-and-commit `web/package.json` manually before dispatch if you want the deployed build to carry a new version. Revisit this if/when the version field is wired into `build-provenance.ts` for display.
 
 ---
 
