@@ -131,6 +131,8 @@ Push notifications on this site are **reader** article alerts only (`scheduler-w
 
 When **GitHub Actions deploys are broken or untrusted**, use **local PowerShell + wrangler + Terraform only**. Do **not** rely on `gh workflow run`, pushes to `main`, or CI to apply tips infra or deploy the Worker.
 
+**Deploy scripts and flags:** [DEPLOY.md — Local deploy scripts](./DEPLOY.md#local-deploy-scripts). For tips rollout, typical path is Terraform apply → sync env → tips migrations → `-WorkersOnly` deploy.
+
 ### Local paths (no GitHub)
 
 | Step | Command / script | Needs GitHub? |
@@ -140,17 +142,14 @@ When **GitHub Actions deploys are broken or untrusted**, use **local PowerShell 
 | Write Turso URLs into `.env.dev` | `pwsh scripts/sync-staging-turso-env-dev.ps1` | No |
 | Tips DB migrations | `cd web; npm run tips:db:deploy:staging` | No |
 | Subscriptions diagnostics (if needed) | `cd web; npm run subscriptions:db:migrate:staging` | No |
-| Push secrets to Cloudflare Workers | `pwsh scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging` | No (GitHub sync is optional; this flag talks to Cloudflare API only) |
-| Build + deploy web + scheduler | `pwsh scripts/deploy-staging-workers-only.ps1` | No |
-| Same deploy + secret sync in one go | `pwsh scripts/deploy-staging-workers-only.ps1 -SyncCloudflareWorkerSecrets` | No |
-| Full staging rebuild (Terraform + secrets + deploy) | `pwsh scripts/staging-rebuild-local.ps1` | No |
-| Web Worker only (Terraform outputs for build) | `pwsh scripts/deploy-staging-worker-local.ps1` | No |
-| From `web/`: npm alias for workers deploy | `npm run deploy:staging:workers` | No |
+| Push secrets to Cloudflare Workers | `pwsh scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging` | No |
+| Build + deploy web + scheduler | `pwsh scripts/deploy-staging-local.ps1 -WorkersOnly` | No |
+| Full staging deploy (Terraform + secrets + deploy) | `pwsh scripts/deploy-staging-local.ps1` | No |
 
 **Prerequisites in repo-root `.env.dev`:**
 
 - **`TURSO_TOKEN_STAGING`** (preferred for staging Terraform; same as GitHub secret) or `TURSO_PLATFORM_API_TOKEN` / `TF_VAR_turso_api_token` — Turso **Platform** API token (not a database JWT).
-- `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, Cloudflare API token (wrangler auth), existing EmDash Turso build keys (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`) for `deploy-staging-workers-only.ps1`.
+- `TF_VAR_CLOUDFLARE_ACCOUNT_ID`, Cloudflare API token (wrangler auth), existing EmDash Turso build keys (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`) for `deploy-staging-local.ps1 -WorkersOnly`.
 - After tips Terraform apply + sync: `TURSO_STAGING_TIPS_DB_URL`, `TURSO_STAGING_TIPS_DB_TOKEN`.
 
 ### Copy-paste: story tips on staging (local only)
@@ -178,7 +177,7 @@ pwsh scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging
 # 5) Deploy code (uncommitted local tree is fine)
 $env:FT_BUILD_COMMIT_SHA = (git rev-parse HEAD)
 $env:GITHUB_REPOSITORY = 'cultpodcasts/freedomtimes'
-pwsh scripts/deploy-staging-workers-only.ps1
+pwsh scripts/deploy-staging-local.ps1 -WorkersOnly
 
 # 6) Verify
 npx wrangler secret list --config .\web\wrangler.jsonc --env staging
@@ -236,4 +235,4 @@ Client error handling (`submit-a-tip.astro`): expected statuses **400 / 403 / 42
 4. **Migrate** - `cd web && npm run tips:db:deploy:staging` (staging) or `npm run tips:db:deploy` (production).
 5. **Worker secrets** - `pwsh scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging` (local; auth and Turso tips; does not require GitHub Actions).
 6. **Turnstile** - set by Terraform apply (step 2): widget + `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` on the web Worker. Import existing dashboard widgets if needed (`infra/terraform/README.md`).
-7. **Deploy web Worker** - `pwsh scripts/deploy-staging-workers-only.ps1` (local); verify `/submit-a-tip` and `/tip-source`.
+7. **Deploy web Worker** - `pwsh scripts/deploy-staging-local.ps1 -WorkersOnly` (local); verify `/submit-a-tip` and `/tip-source`.

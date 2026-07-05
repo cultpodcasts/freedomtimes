@@ -13,7 +13,7 @@ This runbook documents the repeatable process for getting verified staging conte
 ## Staging Policy
 
 - Staging is publish-only for `posts` and `pages` (no drafts workflow).
-- Local staging rebuild enforces `supports` as `["revisions","search"]` for `posts` and `pages` via `web/scripts/enforce-publish-only-collections.cjs` (see `scripts/Invoke-EnvironmentRebuild.ps1`).
+- Local staging deploy enforces `supports` as `["revisions","search"]` for `posts` and `pages` via `web/scripts/enforce-publish-only-collections.cjs` (step in full `deploy-staging-local.ps1` — see [DEPLOY.md](docs/DEPLOY.md#local-deploy-scripts)).
 
 ## Prerequisites
 

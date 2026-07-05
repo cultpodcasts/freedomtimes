@@ -39,7 +39,7 @@ terraform -version
 
 - **`scripts/terraform-run.ps1`** — loads `ensure-windows-cli-path.ps1` at startup.
 - **`scripts/sync-staging-turso-env-dev.ps1`**, **`scripts/sync-production-turso-env-dev.ps1`** — use `Resolve-TerraformExecutable`.
-- Rebuild/deploy scripts that call `terraform output` directly also load the helper.
+- **`scripts/deploy-staging-local.ps1`**, **`scripts/deploy-production-local.ps1`** — local deploy entry points; see [web/docs/DEPLOY.md](../web/docs/DEPLOY.md) (canonical deploy reference). Shared helpers: `Deploy-EnvironmentCommon.ps1` (dot-sourced only).
 
 Preflight and apply:
 
@@ -92,6 +92,7 @@ turso db list
 | Script / doc | Role |
 |--------------|------|
 | **`scripts/turso-create-rollback-branch.ps1`** | WSL by default (`$HOME/.turso/turso` via `wsl bash -lc`); pass `-UseNativeTurso` only if `turso` is on Windows PATH |
+| **`scripts/deploy-production-local.ps1`** | Full deploy invokes rollback checkpoint before Terraform (unless `-SkipTursoBackup`, `-WorkerOnly`, or `-DryRun`) |
 | **`scripts/turso-create-rollback-branch-wsl.sh`** | Run from WSL; prepends `~/.turso` to `PATH` |
 | **`web/CONTENT_PROMOTION_RUNBOOK.md`** | Turso backups, export commands, rollback branches |
 | **`AGENTS.md`** | Points agents to WSL Turso for database backups |
@@ -108,4 +109,4 @@ Terraform talks to Turso through the **Turso provider** and **Platform API token
 | `turso db export` / `turso db list` | WSL | `wsl bash -lic "turso db list"` |
 | Turso tokens in `.env.dev` | Windows (HTTP + Terraform outputs) | `pwsh scripts/sync-staging-turso-env-dev.ps1` |
 
-See also: [LOCAL_DEV_REQUIREMENTS.md](../LOCAL_DEV_REQUIREMENTS.md), [infra/terraform/README.md](../infra/terraform/README.md).
+See also: [LOCAL_DEV_REQUIREMENTS.md](../LOCAL_DEV_REQUIREMENTS.md), [web/docs/DEPLOY.md](../web/docs/DEPLOY.md), [infra/terraform/README.md](../infra/terraform/README.md).

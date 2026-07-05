@@ -39,7 +39,7 @@
     "cap:sync:ios": "cap sync ios",
     "cap:open:android": "cap open android",
     "cap:open:ios": "cap open ios",
-    "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-workers-only.ps1"
+    "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-local.ps1 -WorkersOnly"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.0.0",

@@ -4,6 +4,8 @@ Terraform baseline for Freedom Times infrastructure.
 
 Terraform is not required for local application development. Local work can run with non-Terraform tooling (for example, Wrangler/app runtime). Terraform is the source of truth for managed environment deployment.
 
+**Local deploy scripts** (Terraform apply + Worker deploy from repo root): **[web/docs/DEPLOY.md](../../web/docs/DEPLOY.md)**. Use `terraform-run.ps1` alone only when you need plan/apply without a Worker build.
+
 ## Current Scope
 
 - Cloudflare holding page worker
@@ -140,7 +142,7 @@ The guard script exits non-zero if the saved plan contains any `turso_database` 
 
 | Secret | Owner |
 |--------|--------|
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Wrangler deploy / `scripts/switch-production-turso-secrets.ps1` / `set-github-secrets.ps1` / CI workflows |
+| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Wrangler deploy / local deploy scripts (`deploy-staging-local.ps1`, `deploy-production-local.ps1`) / `switch-production-turso-secrets.ps1` / `set-github-secrets.ps1` / CI workflows — see [web/docs/DEPLOY.md](../../web/docs/DEPLOY.md) |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Terraform (`cloudflare_workers_secret`) |
 | Turso DBs + `turso_database_token` outputs | Terraform (for build/CI outputs only — not pushed to Worker by TF) |
 

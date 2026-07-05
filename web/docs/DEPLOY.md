@@ -1,23 +1,178 @@
-# Deploy troubleshooting — staging and production
+# Deploy guide — staging and production
 
-Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, worker rename migrations). Use this when a deploy script fails before or after Terraform apply.
+**Canonical reference** for local deploy scripts, CI release path, prerequisites, and deploy failure troubleshooting. Other docs link here for script matrices and step order — do not duplicate them elsewhere.
 
-**Shared implementation:** `scripts/Invoke-EnvironmentRebuild.ps1` — staging vs production differences are documented in its header table. Wrappers: `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, `deploy-staging-worker-local.ps1`, `deploy-production-worker-local.ps1`. `deploy-staging-workers-only.ps1` stays separate (web + scheduler, `.env.dev` only).
+**Related docs (context-specific only):**
 
-**Related docs:**
+| Doc | Use for |
+|-----|---------|
+| [AGENTS.md](../../AGENTS.md) | AI guardrails (MCP, Turso auth, production publish) |
+| [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) | Windows Terraform PATH; WSL Turso CLI invoke patterns |
+| [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) | CI release workflow (`production-release.ps1`), schema/content promotion |
+| [STAGING_RECOVERY.md](../../STAGING_RECOVERY.md) | Staging teardown/recovery checklist, worker rename |
+| [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) | Secret sync categories, FCM credential prep |
+| [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) | Full `.env.dev` push key reference |
+| [scripts/set-github-secrets.md](../../scripts/set-github-secrets.md) | Cloudflare token permissions for CI |
 
-- [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) — **primary reference** for Windows Terraform PATH and WSL Turso CLI
-- [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) — secret sync and FCM credential prep
-- [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) — full `.env.dev` push key reference
-- [STAGING_RECOVERY.md](../../STAGING_RECOVERY.md) — one-command staging rebuild and worker rename checklist
-- [scripts/set-github-secrets.md](../../scripts/set-github-secrets.md) — Cloudflare token permissions for CI
+---
+
+## For AI agents
+
+Read **`AGENTS.md`** first, then this section, then run **one** script from the decision table below.
+
+**Script entry points (repo root, `pwsh`):**
+
+| Script | When |
+|--------|------|
+| `scripts/deploy-staging-local.ps1` | Staging infra + web, or flags below |
+| `scripts/deploy-production-local.ps1` | Local full production deploy or `-WorkerOnly` hotfix |
+| `scripts/production-release.ps1` | **CI path only** — dispatches `terraform-production.yml` (not a local wrangler deploy) |
+
+**Not entry points — do not invoke directly:**
+
+- `scripts/Deploy-EnvironmentCommon.ps1` — dot-sourced helpers only
+- `scripts/terraform-run.ps1` — Terraform only; local deploy scripts call this internally on full deploy
+
+**Guardrails before you run anything:**
+
+1. **Production deploy** — Do not run `deploy-production-local.ps1` or `production-release.ps1` unless the operator explicitly asked in this chat. Production infra deploy is operator-controlled; **EmDash `content_publish`** is a separate hard rule (push notifications).
+2. **Turso CLI (WSL)** — Full production deploy needs `wsl bash -lic "turso auth whoami"`. On auth failure: **STOP**; tell operator to run `wsl bash -lic "turso auth login"`. Do not bypass with Platform API unless operator approves.
+3. **Turso rollback checkpoint** — `deploy-production-local.ps1` (full deploy) creates one **before** Terraform. Do not pass `-SkipTursoBackup` unless the operator says a fresh checkpoint already exists.
+4. **EmDash content/schema** — Deploy scripts do not promote CMS content. Use EmDash MCP for stored PT JSON; see `AGENTS.md` § EmDash MCP.
+5. **CLI auth** — On wrangler, gh, terraform, or turso auth failure: **STOP**, name the CLI and auth command, wait for operator.
+
+### Which script for which goal
+
+```
+Need to deploy?
+├── Staging
+│   ├── Infra changed (Terraform, Auth0, Turnstile, routes) → deploy-staging-local.ps1 (full)
+│   ├── App code only, web Worker → deploy-staging-local.ps1 -WorkerOnly
+│   └── App code, web + scheduler (no Terraform) → deploy-staging-local.ps1 -WorkersOnly
+├── Production (operator asked)
+│   ├── Infra + web, local → deploy-production-local.ps1 (auto Turso checkpoint)
+│   └── Web Worker hotfix only → deploy-production-local.ps1 -WorkerOnly -AllowProduction
+└── Official release on main (CI) → production-release.ps1 -AllowProduction
+    (manual Turso checkpoint first — see PRODUCTION_RELEASE_RUNBOOK §1)
+```
+
+| Goal | Command |
+|------|---------|
+| Full staging (Terraform + web worker) | `pwsh ./scripts/deploy-staging-local.ps1` |
+| Staging web worker only | `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly` |
+| Staging web + scheduler (no Terraform) | `pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly` |
+| Full production local (Terraform + web; auto Turso checkpoint) | `pwsh ./scripts/deploy-production-local.ps1` |
+| Production web worker only | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction` |
+| Verify production Turso creds without deploy | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
+| CI production release (not local wrangler) | `pwsh ./scripts/production-release.ps1 -TerraformMode apply -Watch -AllowProduction` |
+
+When a deploy **fails**, use the [Quick symptom index](#quick-symptom-index) and sections below — do not switch scripts unless the decision table says a different entry point fits the goal.
+
+---
+
+## Local deploy scripts
+
+Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCommon.ps1` (dot-sourced only — **not** an entry point). The step matrix is also in that file's header comment.
+
+### Quick reference
+
+| Script | Use when | Terraform | Workers deployed | Default version bump |
+|--------|----------|-----------|------------------|----------------------|
+| `deploy-staging-local.ps1` | Full staging (infra + web) | Yes | Web (`freedomtimes-staging`) | Patch bump |
+| `deploy-staging-local.ps1 -WorkerOnly` | Web worker only; infra already applied | No | Web | Patch bump |
+| `deploy-staging-local.ps1 -WorkersOnly` | App code; web + scheduler | No | Web + scheduler | Patch bump |
+| `deploy-production-local.ps1` | Full production (infra + web) | Yes | Web (`freedomtimes`) | No bump |
+| `deploy-production-local.ps1 -WorkerOnly` | Production web only | No | Web | No bump |
+
+**Production Turso rollback:** full deploy (default) creates a rollback checkpoint via WSL Turso CLI **before** Terraform apply. Skipped for `-WorkerOnly`, `-DryRun`, or `-SkipTursoBackup`. Metadata path is logged under `.release/rollback-branches/`.
+
+**CI / release path (not local deploy):** `production-release.ps1` dispatches `terraform-production.yml` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). Rollback checkpoint remains a **manual** prerequisite before dispatch (Section 1).
+
+### Prerequisites (all local deploy scripts)
+
+- Repo-root `.env.dev` populated (see [`.env.dev.example`](../../.env.dev.example), [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md))
+- `pwsh` (PowerShell 7+), Node/npm in `web/`, wrangler auth (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
+- Push secret preflight runs first on staging and production deploy scripts (VAPID + FCM — see [FCM keys (deploy preflight)](#fcm-keys-deploy-preflight))
+
+### `deploy-staging-local.ps1`
+
+**Flags:** `-WorkerOnly`, `-WorkersOnly`, `-SkipVersionBump`, `-SyncCloudflareWorkerSecrets`
+
+**Full deploy (default) — step order:**
+
+1. Push secrets preflight (`Assert-StagingPushSecretsReady`)
+2. Terraform apply (`terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove`)
+3. Verify Auth0 staging credentials in `.env.dev` match Terraform output
+4. Enforce publish-only collection `supports` for `posts` / `pages` (EmDash SQL)
+5. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`)
+6. Bump `web/package.json` patch version (unless `-SkipVersionBump`)
+7. Build (`npm run build` in `web/`; Turso creds from Terraform outputs)
+8. Deploy web worker (`npx wrangler deploy --config .\web\wrangler.jsonc --env staging` from repo root)
+9. Post-deploy secret verify (required Auth0 + EmDash secrets on worker)
+
+**`-WorkerOnly`:** skips steps 2–5 unless `-SyncCloudflareWorkerSecrets` (then step 5 runs with `CLOUDFLARE_ACCOUNT_ID` bootstrap from `.env.dev`). Turso build creds still read from Terraform outputs. Runs steps 1, 6–9. Does **not** deploy the scheduler worker or Azure Function App.
+
+**`-WorkersOnly`:** skips steps 2–5 unless `-SyncCloudflareWorkerSecrets` (then step 5 runs). Loads Turso build creds from `.env.dev` only (not Terraform). Runs push preflight, optional secret sync, version bump, build, fresh-build check, web deploy (with staging wrangler vars), and scheduler deploy. No post-deploy secret verify.
+
+`-WorkerOnly` and `-WorkersOnly` are mutually exclusive.
+
+```powershell
+pwsh ./scripts/deploy-staging-local.ps1
+pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump
+pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SyncCloudflareWorkerSecrets
+pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly
+pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecrets
+```
+
+### `deploy-production-local.ps1`
+
+**Flags:** `-WorkerOnly`, `-AllowProduction` (required with `-WorkerOnly`), `-BumpVersion`, `-SkipVersionBump`, `-SyncCloudflareWorkerSecrets`, `-SkipTursoBackup`, `-DryRun`
+
+**Full deploy (default) — step order:**
+
+1. Push secrets preflight (`Assert-ProductionPushSecretsReady`)
+2. Turso production rollback checkpoint (`turso-create-rollback-branch.ps1` via WSL; skipped with `-SkipTursoBackup`)
+3. Terraform apply
+4. Write Auth0 production credentials from Terraform output into `.env.dev`, then verify
+5. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction`)
+6. Build (no version bump unless `-BumpVersion`)
+7. Deploy web worker (`--env production`)
+8. Post-deploy secret verify
+
+**`-WorkerOnly`:** requires `-AllowProduction`. Skips Turso backup, Terraform, and Auth0 sync unless `-SyncCloudflareWorkerSecrets`. Resolves Turso build creds via `resolve-turso-build-credentials.ps1` (Terraform output → `.env.dev` → derived URL). `-DryRun` stops after credential resolution (no build or deploy).
+
+```powershell
+pwsh ./scripts/deploy-production-local.ps1
+pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
+pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction
+pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun
+pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SyncCloudflareWorkerSecrets
+```
+
+### `Deploy-EnvironmentCommon.ps1`
+
+Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only. Contains shared step functions and the step matrix table in the file header. **Do not invoke directly.**
+
+### When NOT to use these scripts
+
+| Situation | Use instead |
+|-----------|-------------|
+| EmDash content promotion staging → production | [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) + EmDash MCP |
+| Schema-only changes without Worker deploy | EmDash CLI / MCP; optional `terraform-run.ps1` if infra changed |
+| Terraform plan/validate only (no deploy) | `scripts/terraform-run.ps1 -Operation plan\|validate` |
+| Official production release on `main` | `production-release.ps1` — [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) |
+| Staging destroyed / recovery checklist | [STAGING_RECOVERY.md](../../STAGING_RECOVERY.md) (calls `deploy-staging-local.ps1`) |
+| Secret sync only (no build/deploy) | `set-github-secrets.ps1 -SyncCloudflareWorkerSecrets` |
 
 ---
 
 ## Table of contents
 
+- [For AI agents](#for-ai-agents)
+- [Local deploy scripts](#local-deploy-scripts)
+- [When NOT to use these scripts](#when-not-to-use-these-scripts) *(in Local deploy scripts section)*
 - [EmDash MCP failure (AI agents)](#emdash-mcp-failure-ai-agents)
-- [FCM keys (staging and production rebuild preflight)](#fcm-keys-staging-and-production-rebuild-preflight)
+- [FCM keys (deploy preflight)](#fcm-keys-deploy-preflight)
 - [Auth0 env sync skipped](#auth0-env-sync-skipped)
 - [Turso EmDash secrets after worker rename](#turso-emdash-secrets-after-worker-rename)
 - [Production deploy without Terraform apply](#production-deploy-without-terraform-apply)
@@ -25,6 +180,7 @@ Known issues encountered during local rebuild/deploy (`staging-rebuild-local.ps1
 - [Terraform worker script lifecycle](#terraform-worker-script-lifecycle)
 - [Cloudflare API token vs Wrangler OAuth](#cloudflare-api-token-vs-wrangler-oauth)
 - [Web version bump on deploy](#web-version-bump-on-deploy)
+- [Turso rollback checkpoint (production deploy)](#turso-rollback-checkpoint-production-deploy)
 - [Quick symptom index](#quick-symptom-index)
 
 ---
@@ -46,11 +202,11 @@ Canonical policy: **`AGENTS.md`** § *Primary guardrails* §1; **`web/docs/PLAN_
 
 ---
 
-## FCM keys (staging and production rebuild preflight)
+## FCM keys (deploy preflight)
 
 ### What happened (Jul 2026 production deploy)
 
-`production-rebuild-local.ps1` failed immediately at preflight:
+`deploy-production-local.ps1` failed immediately at preflight:
 
 ```text
 Missing required production push secret values in .env.dev:
@@ -67,12 +223,12 @@ Production preflight now accepts `PUSH_STAGING_ANDROID_FCM_*` when production-pr
 
 | Stage | Script / step | Required `.env.dev` keys | FCM required? |
 |-------|---------------|--------------------------|---------------|
-| **Staging rebuild** | `Assert-StagingPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Staging VAPID keys **plus** same FCM resolution as production (`PUSH_PRODUCTION_ANDROID_FCM_*` or `PUSH_STAGING_ANDROID_FCM_*`) | **Yes** (preflight only; staging worker sync still does not push FCM) |
-| **Production rebuild preflight** | `Assert-ProductionPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Production VAPID keys **plus** `PUSH_PRODUCTION_ANDROID_FCM_*` **or** `PUSH_STAGING_ANDROID_FCM_*` (same fallback as secret sync) | **Yes** |
+| **Staging deploy preflight** | `Assert-StagingPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Staging VAPID keys **plus** same FCM resolution as production (`PUSH_PRODUCTION_ANDROID_FCM_*` or `PUSH_STAGING_ANDROID_FCM_*`) | **Yes** (preflight only; staging worker sync still does not push FCM) |
+| **Production deploy preflight** | `Assert-ProductionPushSecretsReady` (via `scripts/assert-push-secrets-ready.ps1`) | Production VAPID keys **plus** `PUSH_PRODUCTION_ANDROID_FCM_*` **or** `PUSH_STAGING_ANDROID_FCM_*` (same fallback as secret sync) | **Yes** |
 | **Production secret sync** | `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets` | Prefer `PUSH_PRODUCTION_ANDROID_FCM_*`; **accepts** `PUSH_STAGING_ANDROID_FCM_*` as fallback | Yes — mapped to scheduler worker `PUSH_ANDROID_FCM_*` |
 | **Runtime Android push** | `freedomtimes-scheduler-production` queue consumer | Worker secrets `PUSH_ANDROID_FCM_PROJECT_ID`, `PUSH_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_ANDROID_FCM_PRIVATE_KEY` | Yes — missing → `Android push delivery is not configured` on publish/send-test |
 
-**Preflight alignment:** Staging and production rebuild scripts dot-source `scripts/assert-push-secrets-ready.ps1`. Both run the same FCM key resolution (production-prefixed first, then staging fallback). Staging rebuild surfaces missing FCM credentials before production deploy. `Assert-ProductionPushSecretsReady` accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (same order as `set-github-secrets.ps1`). Preflight emits a warning recommending `populate-android-fcm-env.ps1` or `PUSH_PRODUCTION_ANDROID_FCM_*` for clarity; VAPID key prefixes remain environment-specific (staging vs production).
+**Preflight alignment:** `deploy-staging-local.ps1` and `deploy-production-local.ps1` dot-source `scripts/assert-push-secrets-ready.ps1`. Both run the same FCM key resolution (production-prefixed first, then staging fallback). Staging deploy preflight surfaces missing FCM credentials before production deploy. `Assert-ProductionPushSecretsReady` accepts `PUSH_STAGING_ANDROID_FCM_*` when production-prefixed FCM keys are absent (same order as `set-github-secrets.ps1`). Preflight emits a warning recommending `populate-android-fcm-env.ps1` or `PUSH_PRODUCTION_ANDROID_FCM_*` for clarity; VAPID key prefixes remain environment-specific (staging vs production).
 
 Production preflight also requires production VAPID delivery keys:
 
@@ -86,7 +242,7 @@ All three layers reject unresolved template values matching `<...>` (regex `^<[^
 
 | Layer | When it throws |
 |-------|----------------|
-| `production-rebuild-local.ps1` / `staging-rebuild-local.ps1` preflight | Missing key or placeholder value |
+| `deploy-production-local.ps1` / `deploy-staging-local.ps1` preflight | Missing key or placeholder value |
 | `set-github-secrets.ps1` (`Set-WorkerSecret`, `Set-GhSecret`, `Set-GhVariable`) | Placeholder value at sync time |
 | Deploy itself | Does not re-check — bad values would land on the worker if preflight/sync guards were bypassed |
 
@@ -117,8 +273,8 @@ Full key mapping (`.env.dev` → worker secret names): [PUSH_NOTIFICATIONS_OPERA
 ```powershell
 # 1. Populate production-prefixed FCM keys (see above)
 
-# 2. Re-run production rebuild
-pwsh scripts/production-rebuild-local.ps1
+# 2. Re-run production deploy
+pwsh scripts/deploy-production-local.ps1
 ```
 
 If preflight passes but Android push still fails after deploy:
@@ -182,9 +338,9 @@ Expect `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. If missing:
 
 ### What happened
 
-`deploy-production-worker-local.ps1` used to require non-null Terraform outputs for `turso_database_url` and `turso_database_auth_token`. After adding scheduler, subscriptions, and tips Turso databases, production workspace outputs for **URLs** (and most tokens) can be **null** until `terraform apply` runs — even when databases already exist and credentials live in `.env.dev`.
+`deploy-production-local.ps1 -WorkerOnly` used to require non-null Terraform outputs for `turso_database_url` and `turso_database_auth_token`. After adding scheduler, subscriptions, and tips Turso databases, production workspace outputs for **URLs** (and most tokens) can be **null** until `terraform apply` runs — even when databases already exist and credentials live in `.env.dev`.
 
-Staging avoids this with `deploy-staging-workers-only.ps1`, which loads `.env.dev` only.
+Staging avoids this with `deploy-staging-local.ps1 -WorkersOnly`, which loads `.env.dev` only.
 
 ### Fix (no terraform apply)
 
@@ -200,10 +356,10 @@ Staging avoids this with `deploy-staging-workers-only.ps1`, which loads `.env.de
 3. Verify credential resolution without building or deploying:
 
    ```powershell
-   pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun
+   pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun
    ```
 
-`deploy-production-worker-local.ps1` now uses `scripts/resolve-turso-build-credentials.ps1`: Terraform output first, then `.env.dev`, then derived `libsql://` URL from a production host suffix plus `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` (default `freedomtimes-emdash-production`).
+`deploy-production-local.ps1 -WorkerOnly` now uses `scripts/resolve-turso-build-credentials.ps1`: Terraform output first, then `.env.dev`, then derived `libsql://` URL from a production host suffix plus `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` (default `freedomtimes-emdash-production`).
 
 ---
 
@@ -211,7 +367,7 @@ Staging avoids this with `deploy-staging-workers-only.ps1`, which loads `.env.de
 
 ### What happened
 
-`production-rebuild-local.ps1` and `staging-rebuild-local.ps1` deploy from **repo root**:
+`deploy-production-local.ps1` and `deploy-staging-local.ps1` deploy from **repo root**:
 
 ```powershell
 npx wrangler deploy --config .\web\wrangler.jsonc --env production
@@ -279,7 +435,7 @@ $env:CLOUDFLARE_API_TOKEN = "<token-from-env-dev>"
 $env:CLOUDFLARE_ACCOUNT_ID = "<TF_VAR_CLOUDFLARE_ACCOUNT_ID from .env.dev>"
 ```
 
-`staging-rebuild-local.ps1` sets `CLOUDFLARE_ACCOUNT_ID` from `.env.dev` when unset so `set-github-secrets.ps1` / wrangler secret put can run non-interactively.
+`deploy-staging-local.ps1` sets `CLOUDFLARE_ACCOUNT_ID` from `.env.dev` when unset so `set-github-secrets.ps1` / wrangler secret put can run non-interactively.
 
 Verify auth:
 
@@ -298,9 +454,9 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 
 ---
 
-## Post-deploy Worker secret verify (rebuild scripts)
+## Post-deploy Worker secret verify (local deploy scripts)
 
-`Invoke-EnvironmentRebuild.ps1` (via `staging-rebuild-local.ps1`, `production-rebuild-local.ps1`, and worker-only wrappers when deploy runs) lists secrets on the deployed web Worker after `wrangler deploy` and fails if any of these are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`.
+`Deploy-EnvironmentCommon.ps1` (via `deploy-staging-local.ps1`, `deploy-production-local.ps1`, and `-WorkerOnly` when deploy runs) lists secrets on the deployed web Worker after `wrangler deploy` and fails if any of these are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`. Skipped for `-WorkersOnly`.
 
 If verify fails after a successful deploy, re-run `pwsh ./scripts/set-github-secrets.ps1 -Target Staging|Production -SyncCloudflareWorkerSecrets` (production requires `-AllowProduction`), then deploy again or put secrets manually with `npx wrangler secret put` from `web/`.
 
@@ -314,18 +470,16 @@ If verify fails after a successful deploy, re-run `pwsh ./scripts/set-github-sec
 
 Local deploy scripts bump the `web/package.json` (and `web/package-lock.json`) **patch** version immediately before their `npm run build` step, via `scripts/bump-web-version.ps1` (`Invoke-WebVersionBump`):
 
-- `deploy-staging-workers-only.ps1`
-- `deploy-staging-worker-local.ps1`
-- `staging-rebuild-local.ps1`
+- `deploy-staging-local.ps1` (full deploy, `-WorkerOnly`, and `-WorkersOnly`)
 
 **Staging bumps by default on every run** (patch: e.g. `0.0.1` → `0.0.2`). Pass `-SkipVersionBump` to opt out for a given staging run.
 
-**Production defaults the other way — no bump.** `deploy-production-worker-local.ps1` and `production-rebuild-local.ps1` ship the **same version staging already bumped** for this release unless you explicitly ask for a new one:
+**Production defaults the other way — no bump.** `deploy-production-local.ps1 -WorkerOnly` and `deploy-production-local.ps1` ship the **same version staging already bumped** for this release unless you explicitly ask for a new one:
 
 | Script | Default | To bump anyway | To force no bump (same as default) |
 |---|---|---|---|
-| `deploy-staging-worker-local.ps1`, `deploy-staging-workers-only.ps1`, `staging-rebuild-local.ps1` | bump patch | *(default)* | `-SkipVersionBump` |
-| `deploy-production-worker-local.ps1`, `production-rebuild-local.ps1` | **no bump** (uses current `web/package.json` version) | `-BumpVersion` | `-SkipVersionBump` (no-op given the new default; kept for backward compatibility) |
+| `deploy-staging-local.ps1`, `deploy-staging-local.ps1 -WorkerOnly`, `deploy-staging-local.ps1 -WorkersOnly` | bump patch | *(default)* | `-SkipVersionBump` |
+| `deploy-production-local.ps1 -WorkerOnly`, `deploy-production-local.ps1` | **no bump** (uses current `web/package.json` version) | `-BumpVersion` | `-SkipVersionBump` (no-op given the new default; kept for backward compatibility) |
 
 `-BumpVersion` and `-SkipVersionBump` are mutually exclusive on the production scripts (combining them throws).
 
@@ -374,19 +528,60 @@ WARNING: Auth0 env sync skipped: The property 'module' cannot be found on this o
 
 | Path | Behavior |
 |------|----------|
-| **`production-rebuild-local.ps1`** | Still reads `terraform output -raw auth0_app_client_id` / `auth0_app_client_secret` and updates `.env.dev` after apply, then runs `Assert-Auth0SyncToEnv`. Rebuild could succeed even when terraform-run sync was skipped. |
-| **`staging-rebuild-local.ps1`** | Relied on terraform-run sync only; a skipped sync could leave stale Auth0 keys until fixed. |
-| **After fix** | terraform-run uses the same `terraform output -raw` outputs as the rebuild scripts. Successful apply should log `Synced AUTH0_LOGIN_APP_CLIENT_ID_* ... from terraform outputs` with no skip warning. |
+| **`deploy-production-local.ps1`** | Reads `terraform output -raw auth0_app_client_id` / `auth0_app_client_secret` and updates `.env.dev` after apply, then runs `Assert-Auth0SyncToEnv`. Full production deploy can succeed even when terraform-run sync was skipped. |
+| **`deploy-staging-local.ps1`** | Relied on terraform-run sync only; a skipped sync could leave stale Auth0 keys until fixed. |
+| **After fix** | terraform-run uses the same `terraform output -raw` outputs as the deploy scripts. Successful apply should log `Synced AUTH0_LOGIN_APP_CLIENT_ID_* ... from terraform outputs` with no skip warning. |
 
 If sync still warns about missing outputs, run `terraform output` in `infra/terraform/environments/<staging|production>` and confirm `auth0_app_client_id` / `auth0_app_client_secret` exist after apply.
 
+---
+
+## Turso rollback checkpoint (production deploy)
+
+### When it runs
+
+`deploy-production-local.ps1` **full deploy** (default) calls `scripts/turso-create-rollback-branch.ps1` **before** Terraform apply. Creates a full Turso copy of the production EmDash database and writes metadata JSON under `.release/rollback-branches/`.
+
+| Mode | Turso backup |
+|------|----------------|
+| Full deploy (default) | **Yes** — before Terraform |
+| `-SkipTursoBackup` | Skipped (operator override when a fresh checkpoint already exists) |
+| `-WorkerOnly` | Skipped |
+| `-DryRun` | Skipped |
+| Staging (`deploy-staging-local.ps1`) | **No** — create manually if needed before risky staging DB work |
+
+Database name: `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` from `.env.dev` (default `freedomtimes-emdash-production`). Group: `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (default `freedomtimes-production`).
+
+**GitHub Actions path** (`production-release.ps1`) does **not** create a checkpoint — run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) manually before dispatch.
+
+### Turso auth failure (WSL)
+
+If deploy stops with *Turso CLI is not authenticated in WSL*:
+
+```powershell
+wsl bash -lic "turso auth login"
+wsl bash -lic "turso auth whoami"
+```
+
+Then retry deploy. Per **AGENTS.md**, do not bypass with Platform API or other workarounds unless the operator explicitly approves an alternate path.
+
+### Fix and retry
+
+```powershell
+pwsh ./scripts/deploy-production-local.ps1
+# Or if checkpoint already exists for this release:
+pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
+```
+
+---
 
 ## Quick symptom index
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); production-rebuild has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
-| `Failed to read terraform output 'turso_database_url'` during `deploy-production-worker-local.ps1` | Production Turso URL outputs null in Terraform state (new DB resources not applied) while `.env.dev` lacks production EmDash keys | Populate `TURSO_PRODUCTION_EMDASH_DB_URL` / `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (or production `TURSO_SUBSCRIPTIONS_*` URLs for host-suffix derivation) in `.env.dev`; run `pwsh ./scripts/sync-production-turso-env-dev.ps1`; verify with `pwsh ./scripts/deploy-production-worker-local.ps1 -AllowProduction -DryRun` |
+| `Turso CLI is not authenticated in WSL` during production deploy | WSL Turso not logged in | `wsl bash -lic "turso auth login"`; see [Turso rollback checkpoint](#turso-rollback-checkpoint-production-deploy) |
+| `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); `deploy-production-local.ps1` has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
+| `Failed to read terraform output 'turso_database_url'` during `deploy-production-local.ps1 -WorkerOnly` | Production Turso URL outputs null in Terraform state (new DB resources not applied) while `.env.dev` lacks production EmDash keys | Populate `TURSO_PRODUCTION_EMDASH_DB_URL` / `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (or production `TURSO_SUBSCRIPTIONS_*` URLs for host-suffix derivation) in `.env.dev`; run `pwsh ./scripts/sync-production-turso-env-dev.ps1`; verify with `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
 | `Missing required production push secret values` (FCM labels mention production **or** staging) | No FCM keys at all in `.env.dev` | Run `populate-android-fcm-env.ps1` or set `PUSH_STAGING_ANDROID_FCM_*` / `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |
 | `Refusing to sync placeholder value for Worker secret` | Secret sync hit a template value | Same as above |

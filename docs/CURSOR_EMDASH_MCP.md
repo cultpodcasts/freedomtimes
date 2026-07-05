@@ -119,6 +119,6 @@ Expect `Proxy established successfully` (Ctrl+C to stop).
 | Doc | Topic |
 |-----|--------|
 | `AGENTS.md` | MCP-only guardrail for AI agents |
-| `web/docs/DEPLOY_TROUBLESHOOTING.md` | Symptom → fix table (links here) |
+| `web/docs/DEPLOY.md` | Canonical deploy reference + symptom index (links here) |
 | `web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md` | MCP vs CLI for Portable Text |
 | `scripts/set-emdash-mcp-tokens.ps1` | PAT env var setup |

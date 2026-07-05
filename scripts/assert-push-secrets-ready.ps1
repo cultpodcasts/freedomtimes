@@ -1,5 +1,5 @@
 # Shared push secret preflight for local rebuild scripts (staging + production).
-# Dot-source from staging-rebuild-local.ps1 and production-rebuild-local.ps1.
+# Dot-source from Deploy-EnvironmentCommon.ps1 (deploy-staging-local.ps1 / deploy-production-local.ps1).
 # FCM resolution matches production secret sync: PUSH_PRODUCTION_ANDROID_FCM_* or PUSH_STAGING_ANDROID_FCM_* fallback.
 
 Set-StrictMode -Version Latest

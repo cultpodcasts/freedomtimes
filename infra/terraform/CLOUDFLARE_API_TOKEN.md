@@ -4,7 +4,7 @@ Operator guide for the scoped Cloudflare API token used by Terraform in this rep
 
 Terraform is the source of truth for Cloudflare resources listed below. Wrangler deploys Worker **bundle** content; Terraform owns script metadata, routes/custom domains, Worker secrets it manages, and Turnstile widgets.
 
-See also: [README.md](./README.md), [web/docs/DEPLOY_TROUBLESHOOTING.md](../../web/docs/DEPLOY_TROUBLESHOOTING.md) (Wrangler + combined CI token notes).
+See also: [README.md](./README.md), [web/docs/DEPLOY.md](../../web/docs/DEPLOY.md) (Wrangler + combined CI token notes).
 
 ## Where the token value lives
 

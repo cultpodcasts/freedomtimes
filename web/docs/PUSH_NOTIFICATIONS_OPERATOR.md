@@ -124,7 +124,7 @@ Verify with `npm run subscriptions:compare-vapid-keys`.
 
 **Staging scheduler does not send Android FCM.** Native Android subscriptions live in the **production** subscriptions DB; use `--target production` for Android `send-test`.
 
-**Deploy note:** `production-rebuild-local.ps1` preflight requires `PUSH_PRODUCTION_ANDROID_FCM_*` (not staging fallbacks). See [DEPLOY_TROUBLESHOOTING.md § FCM keys](./DEPLOY_TROUBLESHOOTING.md#fcm-keys-production-deploy-preflight).
+**Deploy note:** `deploy-production-local.ps1` preflight requires production VAPID keys plus FCM credentials. Prerequisites and fix steps: [DEPLOY.md § FCM keys](./DEPLOY.md#fcm-keys-deploy-preflight) and [Local deploy scripts](./DEPLOY.md#local-deploy-scripts).
 
 **send-test FCM fallback (local only):** when `--target production`, if `PUSH_PRODUCTION_ANDROID_FCM_*` are unset, send-test accepts `PUSH_STAGING_ANDROID_FCM_*` (same Firebase project). When `--target staging`, the reverse fallback also applies — but Android rows on staging are uncommon.
 
