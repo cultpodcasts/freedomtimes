@@ -32,6 +32,20 @@ type BrowserNotificationMessages = {
   dismissed: string;
 };
 
+/** iOS WebKit browsers require a Home Screen PWA before web push works (iOS 16.4+). */
+const IOS_HOME_SCREEN_INSTALL_MESSAGES: Record<BrowserKind, string> = {
+  safari:
+    'In Safari, tap Share, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  chrome:
+    'In Chrome, tap the Share icon in the address bar, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  edge:
+    'In Edge, open the menu (⋯), tap Share, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  firefox:
+    'In Firefox, tap Share in the address bar (or open the menu and tap Share), choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+  other:
+    'Use your browser\'s Share or menu option to choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+};
+
 const BROWSER_NOTIFICATION_MESSAGES: Record<BrowserKind, BrowserNotificationMessages> = {
   edge: {
     permissionPrompt:
@@ -188,9 +202,7 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
       buttonDisabled: true,
       buttonDisabledReason: BUTTON_DISABLED_REASON.iosRequiresHomeScreen,
       buttonLabel: BUTTON_LABEL_ENABLE,
-      message:
-        `On iPhone and iPad, notifications only work after adding ${SITE_DISPLAY_NAME} to your Home Screen. ` +
-        'In Safari, tap Share, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
+      message: getIosHomeScreenRequiredMessage(),
       testNotificationAvailable: false,
     };
   }
@@ -626,6 +638,13 @@ function detectBrowserKind(): BrowserKind {
 
 function browserNotificationMessages(): BrowserNotificationMessages {
   return BROWSER_NOTIFICATION_MESSAGES[detectBrowserKind()];
+}
+
+function getIosHomeScreenRequiredMessage(): string {
+  return (
+    `On iPhone and iPad, notifications only work after adding ${SITE_DISPLAY_NAME} to your Home Screen. ` +
+    IOS_HOME_SCREEN_INSTALL_MESSAGES[detectBrowserKind()]
+  );
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
