@@ -14,11 +14,16 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 
 5. **No production publish without explicit ask.** Never run production `content_publish`, `promote-post-staging-to-production.mjs`, or equivalent unless the operator **explicitly asks in that chat**. Production publish sends **push notifications** — irreversible.
 
+6. **CLI authentication — IF NOT AUTHENTICATED YOU MUST STOP.** When any required CLI reports an auth failure (not logged in, invalid token, permission denied): **STOP immediately.** Name the CLI, give the exact auth command for that tool, tell the operator to authenticate and confirm when ready, then **wait**. **Never** silently fall back to alternate APIs, unauthenticated endpoints, or skip the step unless the operator **explicitly** approves an alternate path in that same session. Applies to **wrangler**, **gh**, **turso**, **emdash login**, **terraform** / provider tokens, **cloudflare**, etc.
+
+7. **Turso CLI (WSL) — IF TURSO AUTH FAILS WE DO NOT BYPASS.** When `wsl bash -lic "turso auth whoami"` fails or reports not logged in: **STOP immediately.** Tell the operator: *"Turso CLI is not authenticated in WSL. Run `wsl bash -lic \"turso auth login\"`, complete login, then tell me when ready."* Then **wait**. **Never** use Platform API or other workarounds for backup/export/import that require an authenticated Turso CLI unless the operator **explicitly** approves an alternate path in that same session. See **`docs/CLI_PATHS_WINDOWS.md`**.
+
 ## CLI paths (Windows vs WSL)
 
 **Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** — Windows-native Terraform vs WSL-only Turso CLI, PATH verification, and repo script patterns.
 
-- Quick check: `where.exe terraform` (Windows); `wsl bash -lic "turso db list"` (Turso in WSL).
+- Quick check: `where.exe terraform` (Windows); `wsl bash -lic "turso auth whoami"` then `wsl bash -lic "turso db list"` (Turso in WSL).
+- Auth failures: **Primary guardrails §6–§7** — STOP; do not bypass.
 - Turso backups and rollback branches: **[web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md)** (Turso backups section).
 
 ## EmDash: MCP only for schema and content (hard rule)

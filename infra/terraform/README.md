@@ -140,6 +140,8 @@ Backups land under `.release/backups/production-<timestamp>/` (gitignored).
 
 ### Provider auth failures
 
+**AI agents:** if any CLI or provider auth fails, **STOP** — see **[../../AGENTS.md](../../AGENTS.md)** § *Primary guardrails* (CLI authentication, Turso CLI).
+
 - Auth0 provider: set `TF_VAR_auth0_domain`, `TF_VAR_auth0_management_client_id`, and `TF_VAR_auth0_management_client_secret`.
 - Cloudflare provider: set `TF_VAR_cloudflare_api_token`, `TF_VAR_cloudflare_account_id`, and `TF_VAR_cloudflare_zone_id`.
 - Turso provider: set `TF_VAR_turso_api_token` and `TF_VAR_turso_organization`.
