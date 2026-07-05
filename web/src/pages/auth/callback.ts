@@ -1,8 +1,6 @@
 import type { APIRoute } from 'astro';
 import {
-  ACCESS_TOKEN_COOKIE,
-  CSRF_COOKIE,
-  SESSION_COOKIE,
+  clearAuthCookies,
   exchangeCodeForTokens,
   getAuthFlowCookieName,
   getAuthRedirectUri,
@@ -10,11 +8,14 @@ import {
   getCookieDomainForHost,
   getRoleClaimDebug,
   getAuthConfig,
-  getPostLoginPath,
+  getReturnToCookieName,
   makeState,
   getStateCookieName,
   hasStaffLoginRole,
   isNativeAuthFlow,
+  resolvePostLoginRedirect,
+  sanitizeReturnToPath,
+  setAuthCookies,
   verifyIdToken,
 } from '../../lib/auth';
 
@@ -27,17 +28,22 @@ export const GET: APIRoute = async (ctx) => {
   const code = ctx.url.searchParams.get('code');
   const expectedState = ctx.cookies.get(getStateCookieName())?.value;
   const usesNativeAuth = isNativeAuthFlow(ctx.cookies.get(getAuthFlowCookieName())?.value);
+  // Single-use: read now, then wipe below regardless of outcome so a stale value never leaks
+  // into an unrelated future login.
+  const returnTo = sanitizeReturnToPath(ctx.cookies.get(getReturnToCookieName())?.value);
 
   console.info('[auth.callback] callback received', {
     requestId,
     hasCode: Boolean(code),
     hasState: Boolean(stateParam),
     hasStateCookie: Boolean(expectedState),
+    returnTo,
   });
 
   for (const deleteOptions of deleteOptionsList) {
     ctx.cookies.delete(getStateCookieName(), deleteOptions);
     ctx.cookies.delete(getAuthFlowCookieName(), deleteOptions);
+    ctx.cookies.delete(getReturnToCookieName(), deleteOptions);
   }
 
   if (!code || !stateParam || !expectedState || stateParam !== expectedState) {
@@ -53,7 +59,7 @@ export const GET: APIRoute = async (ctx) => {
 
   try {
     const redirectUri = getAuthRedirectUri(ctx.url.origin, usesNativeAuth);
-    const { idToken, accessToken } = await exchangeCodeForTokens({ code, redirectUri, config });
+    const { idToken, accessToken, refreshToken } = await exchangeCodeForTokens({ code, redirectUri, config });
     const payload = await verifyIdToken(idToken, config);
 
     if (!hasStaffLoginRole(payload)) {
@@ -63,68 +69,37 @@ export const GET: APIRoute = async (ctx) => {
         decodedPayload: payload,
         roleDebug: getRoleClaimDebug(payload),
       });
-      for (const deleteOptions of deleteOptionsList) {
-        ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
-        ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-        ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
-      }
+      clearAuthCookies(ctx.cookies, deleteOptionsList);
       return ctx.redirect('/?denied=1');
     }
 
-    const csrfToken = makeState();
-
     // Clear any older host-only/domain-scoped auth cookies before issuing a fresh session.
-    for (const deleteOptions of deleteOptionsList) {
-      ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
-      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-      ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
+    clearAuthCookies(ctx.cookies, deleteOptionsList);
+
+    setAuthCookies(ctx.cookies, {
+      idToken,
+      accessToken,
+      refreshToken,
+      csrfToken: makeState(),
+      cookieDomain,
+    });
+
+    if (!refreshToken) {
+      // Should not happen once login.ts requests offline_access, but silent-refresh simply
+      // won't be available for this session if Auth0 ever omits it.
+      console.warn('[auth.callback] token exchange did not return a refresh_token', { requestId });
     }
 
+    console.info('[auth.callback] login successful', { requestId, returnTo });
 
-    // Set session cookie (id token)
-    ctx.cookies.set(SESSION_COOKIE, idToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 8,
-      ...(cookieDomain ? { domain: cookieDomain } : {}),
-    });
-
-    // Set access token as HttpOnly cookie for API calls (not JS-readable)
-    ctx.cookies.set(ACCESS_TOKEN_COOKIE, accessToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 30,
-      ...(cookieDomain ? { domain: cookieDomain } : {}),
-    });
-
-    // CSRF token is JS-readable by design for double-submit protection on mutation requests.
-    ctx.cookies.set(CSRF_COOKIE, csrfToken, {
-      httpOnly: false,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 8,
-      ...(cookieDomain ? { domain: cookieDomain } : {}),
-    });
-
-    console.info('[auth.callback] login successful', { requestId });
-
-    return ctx.redirect(getPostLoginPath(payload));
+    return ctx.redirect(resolvePostLoginRedirect(returnTo, payload));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[auth.callback] login failed during token exchange/verification', {
       requestId,
       message,
     });
-    for (const deleteOptions of deleteOptionsList) {
-      ctx.cookies.delete(SESSION_COOKIE, deleteOptions);
-      ctx.cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
-      ctx.cookies.delete(CSRF_COOKIE, deleteOptions);
-    }
+    clearAuthCookies(ctx.cookies, deleteOptionsList);
     return ctx.redirect('/?denied=1');
   }
 };

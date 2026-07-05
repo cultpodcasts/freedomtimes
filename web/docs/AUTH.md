@@ -41,7 +41,7 @@ After login, `admin` and `editor` users go to `/homepage`.
 
 ## Auth0 scope and consent
 
-- Login requests `scope=openid` for minimal identity claims.
+- Login requests `scope=openid offline_access` — `offline_access` is required for Auth0 to issue a `refresh_token` alongside the ID/access tokens.
 - Login also requests the configured API audience so Auth0 issues an API access token stored in an HttpOnly cookie.
 - First-party consent is skipped via Terraform (`skip_consent_for_verifiable_first_party_clients = true`); users should not see a consent screen during normal login.
 - For the Android Capacitor shell, Auth0 must allow the native callback URL `news.freedomtimes.app://auth/callback`.
@@ -52,12 +52,16 @@ After login, `admin` and `editor` users go to `/homepage`.
 |---|---|
 | `ft_session` | HttpOnly ID token |
 | `ft_access_token` | HttpOnly API access token |
+| `ft_refresh` | HttpOnly refresh token — used for silent re-authentication once `ft_session` expires (see [Refresh tokens](#refresh-tokens-app-side) below) |
 | `ft_csrf` | JS-readable CSRF token |
+
+All auth cookies share the same `HttpOnly` (except `ft_csrf`), `Secure`, `SameSite=Lax`, `path=/`, and domain policy (`getCookieDomainForHost` — host-only unless `COOKIE_BASE_DOMAIN` matches).
 
 **Stale-cookie protections:**
 
-- Callback and logout clear both host-only and domain-scoped auth cookie variants.
-- `/signed-in` clears auth cookies and redirects to `/auth/login` when the session token is expired.
+- Callback and logout clear both host-only and domain-scoped auth cookie variants (including `ft_refresh`).
+- `requireEditorialSession` attempts a silent `ft_refresh` exchange before clearing cookies and redirecting to `/auth/login` when the session token is expired (see below).
+- `/signed-in` clears auth cookies and redirects to `/auth/login` when the session token is expired and no refresh was possible.
 - `/signed-in` detects duplicate `ft_session` values in the `Cookie` header, clears auth cookies, and forces a clean login.
 
 **Role denial:** If the callback token verifies but the required role claim is missing, auth cookies are cleared and the user is redirected to `/?denied=1`.
@@ -69,7 +73,7 @@ Use this when validating login on staging at [https://staging.freedomtimes.news]
 **Expected sequence:**
 
 1. `GET /auth/login`
-2. Redirect to Auth0 authorize endpoint (Authorization Code flow, scope `openid`, API audience requested)
+2. Redirect to Auth0 authorize endpoint (Authorization Code flow, scope `openid offline_access`, API audience requested)
 3. `GET /auth/callback?code=...&state=...`
 4. Role check passes for `admin` or `editor`
 5. Redirect to `GET /homepage`, or `GET /signed-in` for the admin test page
@@ -99,51 +103,37 @@ npx wrangler tail freedomtimes-staging --format pretty
 
 ## Session lifetime (Terraform)
 
-The re-sign-in interval a user actually experiences is set by **three layers**, from most to least binding:
+There is **no tenant-wide Auth0 SSO session management** in this repo (no `auth0_tenant` resource). The long-session path is **application-level refresh tokens**, not a tenant SSO cookie. The re-sign-in interval a user actually experiences is set by **two layers**, from most to least binding:
 
 | Layer | What it controls | Where |
 |---|---|---|
-| ID token `exp` (JWT claim) | `verifyIdToken()` runs on **every** protected page/API request (`editorial-session.ts`, `signed-in.astro`) and redirects to `/auth/login` the moment the token's `exp` has passed — regardless of the cookie's own `maxAge` | Terraform: `auth0_client.admin_ui.jwt_configuration.lifetime_in_seconds` (`infra/terraform/modules/auth0_app/main.tf`, `var.id_token_lifetime_in_seconds`) |
-| `ft_session` / `ft_csrf` cookie `maxAge` | Browser stops sending the cookie at all once this expires (a hard floor on top of the token's own `exp`) | App code: `web/src/pages/auth/callback.ts` (`maxAge: 60 * 60 * 8`) |
-| Auth0 tenant SSO session (`session_lifetime` / `idle_session_lifetime`) | Whether a silent redirect to Auth0's `/authorize` (e.g. after the ID token above expires) can re-issue a fresh token **without** showing a login prompt | Terraform: `auth0_tenant.main` (`infra/terraform/environments/auth0-shared/main.tf`) — tenant-wide, not per-app |
+| ID token `exp` (JWT claim) | `verifyIdToken()` runs on **every** protected page/API request (`editorial-session.ts`, `signed-in.astro`). Once `exp` has passed, the app tries a silent refresh (below) before redirecting to `/auth/login` | Terraform: `auth0_client.admin_ui.jwt_configuration.lifetime_in_seconds` (`infra/terraform/modules/auth0_app/main.tf`, `var.id_token_lifetime_in_seconds`, default 28,800s / 8h) |
+| `ft_session` / `ft_csrf` / `ft_refresh` cookie `maxAge` | Browser stops sending each cookie once its own `maxAge` elapses | App code: `web/src/lib/auth.ts` (`SESSION_COOKIE`/`CSRF_COOKIE` 8h, `REFRESH_TOKEN_COOKIE` matches `refresh_token_idle_lifetime_seconds`, default 14d) |
 
 **Before this change:** `jwt_configuration.lifetime_in_seconds` was hardcoded to `3600` (1 hour), while the `ft_session` cookie declared an 8-hour `maxAge`. The ID token's own `exp` was the real bottleneck — the cookie's 8-hour window was mostly theoretical because `verifyIdToken()` rejected the token as expired after 1 hour and forced a fresh Auth0 login.
 
-**Default path (Terraform, this repo):** Per-application settings on the staging/production login apps are always managed: **8-hour ID token** (`id_token_lifetime_in_seconds`, matching the existing `ft_session` cookie `maxAge`) and **refresh token rotation policy** on the Auth0 application (`enable_refresh_token_rotation`, absolute/idle lifetimes). That is the default session story—no tenant-wide Auth0 SSO session changes unless you opt in.
+**Current (Terraform, this repo):** Per-application settings on the staging/production login apps are always managed: **8-hour ID token** (`id_token_lifetime_in_seconds`, matching the existing `ft_session` cookie `maxAge`) and a **rotating, expiring refresh token policy** on the Auth0 application (`enable_refresh_token_rotation`, default `true`; 30d absolute / 14d idle lifetimes).
 
-**Tenant SSO session (opt-in):** `manage_tenant_session_lifetime` in `environments/auth0-shared/variables.tf` defaults to **`false`**, so `auth0_tenant.main` is **not** created and Auth0's existing tenant `session_lifetime` / `idle_session_lifetime` stay as-is. Set `manage_tenant_session_lifetime = true` (and import `auth0_tenant.main` before first apply) only when you intentionally want Terraform to set tenant-wide SSO lifetimes (defaults in vars: 336h / 168h).
-
-| Setting | Was | Now (default) | Managed by |
+| Setting | Was | Now | Managed by |
 |---|---|---|---|
-| ID token lifetime (`id_token_lifetime_in_seconds`) | 3,600s (1h, hardcoded) | 28,800s (8h) - matches the existing cookie `maxAge` | `modules/auth0_app` var, per staging/production login app |
+| ID token lifetime (`id_token_lifetime_in_seconds`) | 3,600s (1h, hardcoded) | 28,800s (8h) — matches the existing cookie `maxAge` | `modules/auth0_app` var, per staging/production login app |
 | Refresh token rotation | not configured | `rotating` / `expiring`, absolute 30d, idle 14d (`enable_refresh_token_rotation`) | `modules/auth0_app` var, per staging/production login app |
-| Auth0 tenant `session_lifetime` | Auth0 default (unchanged) | 336h (14d) **only if** `manage_tenant_session_lifetime = true` | `environments/auth0-shared` (`auth0_tenant.main`, count) |
-| Auth0 tenant `idle_session_lifetime` | Auth0 default (unchanged) | 168h (7d) **only if** `manage_tenant_session_lifetime = true` | `environments/auth0-shared` (`auth0_tenant.main`, count) |
 
-**What this actually changes today:** raising `id_token_lifetime_in_seconds` to 8h is a real, immediate fix - it makes the ID token's lifetime match the cookie's already-declared 8-hour window, so users get the full 8 hours the app always intended instead of being forced to re-login after 1 hour. If you opt in to tenant session management, the `session_lifetime`/`idle_session_lifetime` bump makes any *fresh* `/auth/login` → Auth0 `/authorize` round trip (e.g. once the 8-hour token/cookie has expired) more likely to complete silently via Auth0's own SSO cookie, without a password/Google prompt.
+**What this changes:** raising `id_token_lifetime_in_seconds` to 8h makes the ID token's lifetime match the cookie's already-declared 8-hour window, so users get the full 8 hours the app always intended instead of being forced to re-login after 1 hour. The refresh token policy backs a real silent-refresh flow (below), so once the 8-hour ID token expires, the app can extend the session for up to 14 days of activity (idle refresh token lifetime) without a full Auth0 login prompt.
 
-**Refresh tokens (Terraform vs app):** Refresh token rotation and lifetimes are configured in Terraform on the login application, but they **do not extend sessions by themselves**. `web/src/pages/auth/login.ts` still requests only `scope=openid` (no `offline_access`), and `exchangeCodeForTokens()` never calls the `refresh_token` grant — so no refresh token is ever issued or used today. To get a true "days-long session without any Auth0 redirect" experience, a follow-up change would need to:
+### Refresh tokens (app side)
 
-1. Add `offline_access` to the `scope` in `login.ts`.
-2. Store the returned `refresh_token` in a new `HttpOnly` cookie with a `maxAge` matching `refresh_token_idle_lifetime_seconds`.
-3. Add a silent-refresh path (e.g. in `editorial-session.ts` or a new `/auth/refresh` route) that exchanges the refresh token for a new ID/access token pair when `verifyIdToken()` reports expiry, before falling back to a full `/auth/login` redirect.
+Auth0-side refresh token policy alone does nothing unless the app actually requests, stores, and uses a refresh token. This repo does:
 
-That is deliberately **out of scope** for this Terraform-only change; the settings above just make it available to implement later without another Auth0-side change.
+1. **`web/src/pages/auth/login.ts`** requests `scope=openid offline_access` — `offline_access` is what makes Auth0 include a `refresh_token` in the token response.
+2. **`web/src/pages/auth/callback.ts`** stores the returned `refresh_token` in a new `HttpOnly`, `Secure`, `SameSite=Lax` cookie (`ft_refresh`, `REFRESH_TOKEN_COOKIE` in `auth.ts`), `maxAge` matching `refresh_token_idle_lifetime_seconds` (default 14 days), same `path=/` and domain policy as the other auth cookies.
+3. **`web/src/lib/editorial-session.ts`** (`requireEditorialSession`) attempts a silent refresh before forcing a login redirect: when the `ft_session` ID token is missing or fails `verifyIdToken()` (typically `exp` expiry), it reads `ft_refresh`, calls `exchangeRefreshTokenForTokens()` (grant_type `refresh_token` against `/oauth/token`) in `web/src/lib/auth.ts`, re-verifies the new ID token, and — if it still carries a valid editorial role — reissues all four auth cookies (Auth0 rotation returns a new `refresh_token` on every use). Only if there is no refresh cookie, or the refresh exchange/role-check fails, are cookies cleared and the user redirected to `/auth/login`.
+
+This is deliberately **not** a separate `/auth/refresh` route: the refresh happens transparently inside the same request that discovered the expired token, so a protected page/API call either succeeds (session silently extended) or falls back to the login redirect in one round trip.
 
 ### Applying these changes
 
-Tenant-wide settings (`auth0_tenant.main`) are new in `environments/auth0-shared`; **import the existing tenant first** so unrelated settings (friendly name, flags, support email, etc.) are not reset:
-
-```powershell
-pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation init -LoadEnvFiles
-pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation import -LoadEnvFiles -ImportAddress auth0_tenant.main -ImportId auth0-shared-tenant
-# placeholder ImportId; auth0_tenant import is ID-passthrough and not read back from Auth0
-pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation plan -LoadEnvFiles
-# review the plan: expect changes to session_lifetime / idle_session_lifetime only
-pwsh scripts/terraform-run.ps1 -Environment auth0-shared -Operation apply -LoadEnvFiles
-```
-
-Then plan/apply staging and production as usual (module changes only — no import needed, `auth0_client.admin_ui` already exists in state):
+Plan/apply staging and production as usual (module changes only — no import needed, `auth0_client.admin_ui` already exists in state):
 
 ```powershell
 pwsh scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFiles
