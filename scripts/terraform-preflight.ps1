@@ -110,7 +110,6 @@ if ($LoadEnvFiles) {
             "TF_VAR_apex_dns_record_content"                  = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
             "TF_VAR_api_custom_hostname"                      = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
             "TF_VAR_workspace_url"                            = "TF_VAR_WORKSPACE_URL$suffix"
-            "TF_VAR_api_management_allowed_origins"           = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
             "TF_VAR_turso_database_name"                      = "TF_VAR_TURSO_DATABASE_NAME$suffix"

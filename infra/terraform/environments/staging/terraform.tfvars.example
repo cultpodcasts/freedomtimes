@@ -38,7 +38,7 @@ node_version = "24"
 # TURSO_TOKEN = "<turso-api-token>"
 # TF_VAR_TURSO_ORGANIZATION = "your-org-slug"
 # Optional:
-# TF_VAR_turso_database_group = "default"
+# TF_VAR_turso_database_group = "freedomtimes-staging"
 # TF_VAR_turso_database_token_expiration = "90d"
 # TF_VAR_turso_database_size_limit = "1gb"
 # TF_VAR_scheduler_turso_database_name = "freedomtimes-scheduler-staging"

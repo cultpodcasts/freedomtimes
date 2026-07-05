@@ -109,6 +109,35 @@ Terraform requires a **Turso Platform API token** (`TF_VAR_turso_api_token`), no
 - Import existing databases: `terraform import turso_database.emdash '<org>/<database-name>'` (see [turso_database import](https://registry.terraform.io/providers/jpedroh/turso/latest/docs/resources/database#import)).
 - Recover drift: `pwsh scripts/import-production-terraform-drift.ps1` (after Platform API token is set).
 
+### Turso database safety (production)
+
+**Never apply a production Terraform plan that destroys or replaces `turso_database` resources.** A `-/+` (replace) on `turso_database` can delete live data.
+
+Common cause after import: **`group` drift** — state has the live group (e.g. `freedomtimes-production`) while config resolves to `default` when `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` / `TF_VAR_turso_database_group` is unset. The provider treats `group` changes as **forces replacement**.
+
+Guardrails in this repo:
+
+- `lifecycle { prevent_destroy = true }` and `ignore_changes` on imported database attributes (`group`, `name`, `hostname`, `db_id`) in `environments/production/main.tf` and `environments/staging/main.tf`.
+- Defaults: production `turso_database_group = "freedomtimes-production"`, staging `"freedomtimes-staging"`.
+- Preflight after plan:
+
+```powershell
+pwsh scripts/terraform-run.ps1 -Environment production -Operation plan -LoadEnvFiles
+pwsh scripts/terraform-plan-guard-turso.ps1 -Environment production -LoadEnvFiles -RunPlan
+```
+
+The guard script exits non-zero if the saved plan contains any `turso_database` destroy or replace. **Do not apply** until it passes.
+
+Before any production apply that touches Turso tokens or Worker secrets, export all four production databases via WSL Turso (see [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md)):
+
+```powershell
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$dir = ".release/backups/production-$stamp"
+wsl bash -lc "export PATH=`"`$HOME/.turso:`$PATH`"; mkdir -p $dir; for db in freedomtimes-emdash-production freedomtimes-scheduler-production freedomtimes-subscriptions-production freedomtimes-tips-production; do `$HOME/.turso/turso db export `$db --output-file $dir/`${db}-$stamp.db; done"
+```
+
+Backups land under `.release/backups/production-<timestamp>/` (gitignored).
+
 ### Provider auth failures
 
 - Auth0 provider: set `TF_VAR_auth0_domain`, `TF_VAR_auth0_management_client_id`, and `TF_VAR_auth0_management_client_secret`.

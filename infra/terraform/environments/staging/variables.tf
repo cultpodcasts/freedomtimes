@@ -57,9 +57,9 @@ variable "tips_turso_database_name" {
 }
 
 variable "turso_database_group" {
-  description = "Optional Turso group for staging EmDash database"
+  description = "Turso group for staging EmDash database (must match the live database group to avoid replace plans)"
   type        = string
-  default     = ""
+  default     = "freedomtimes-staging"
 }
 
 variable "scheduler_turso_database_group" {

@@ -83,6 +83,59 @@ function Get-FirstProcessEnvValue {
     return ""
 }
 
+function ConvertTo-TerraformListVarValue {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $Value
+    }
+
+    $trimmed = $Value.Trim().Trim([char]0xFEFF)
+    if ($trimmed.StartsWith('"') -and $trimmed.EndsWith('"')) {
+        $trimmed = $trimmed.Substring(1, $trimmed.Length - 2).Trim()
+    }
+
+    if ($trimmed.StartsWith("[") -and $trimmed.EndsWith("]")) {
+        $inner = $trimmed.Substring(1, $trimmed.Length - 2).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($inner) -and $inner.StartsWith('"')) {
+            return $trimmed
+        }
+
+        if ([string]::IsNullOrWhiteSpace($inner)) {
+            return "[]"
+        }
+
+        return ConvertTo-TerraformListVarValue -Value $inner
+    }
+
+    $items = @(
+        $trimmed -split "," | ForEach-Object { $_.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    )
+    if ($items.Count -eq 0) {
+        return "[]"
+    }
+
+    $quoted = $items | ForEach-Object {
+        '"' + ($_ -replace '"', '\"') + '"'
+    }
+    return "[" + ($quoted -join ",") + "]"
+}
+
+function Set-TerraformListEnvVar {
+    param(
+        [string]$Name,
+        [string[]]$SourceNames
+    )
+
+    $raw = Get-FirstProcessEnvValue -Names $SourceNames
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return
+    }
+
+    $normalized = ConvertTo-TerraformListVarValue -Value $raw
+    [System.Environment]::SetEnvironmentVariable($Name, $normalized, "Process")
+}
+
 function Set-TursoPlatformApiTokenForEnvironment {
     param([string]$Environment)
 

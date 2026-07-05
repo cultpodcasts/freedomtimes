@@ -99,7 +99,6 @@ function Invoke-EnvRemapping {
             "TF_VAR_apim_function_key"                         = "TF_VAR_APIM_FUNCTION_KEY$suffix"
             "TF_VAR_api_custom_hostname"                       = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
             "TF_VAR_workspace_url"                             = "TF_VAR_WORKSPACE_URL$suffix"
-            "TF_VAR_api_management_allowed_origins"            = "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
             "TF_VAR_api_custom_hostname_certificate_base64"    = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
             "TF_VAR_api_custom_hostname_certificate_password"  = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
             "TF_VAR_turso_database_name"                       = "TF_VAR_TURSO_DATABASE_NAME$suffix"
@@ -113,6 +112,11 @@ function Invoke-EnvRemapping {
                 [System.Environment]::SetEnvironmentVariable($target, $src, "Process")
             }
         }
+
+        Set-TerraformListEnvVar -Name "TF_VAR_api_management_allowed_origins" -SourceNames @(
+            "TF_VAR_api_management_allowed_origins",
+            "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS$suffix"
+        )
 
         # Keep Auth0 API audience environment-specific to avoid staging/prod cross-contamination.
         if ($Env -eq "staging") {
@@ -184,7 +188,6 @@ function Build-TerraformVarArgs {
             apim_function_key                       = @("TF_VAR_apim_function_key", "TF_VAR_APIM_FUNCTION_KEY")
             api_custom_hostname                     = @("TF_VAR_api_custom_hostname")
             workspace_url                           = @("TF_VAR_workspace_url")
-            api_management_allowed_origins          = @("TF_VAR_api_management_allowed_origins")
             api_custom_hostname_certificate_base64  = @("TF_VAR_api_custom_hostname_certificate_base64")
             api_custom_hostname_certificate_password = @("TF_VAR_api_custom_hostname_certificate_password")
             turso_api_token                         = $tursoApiTokenVarNames
@@ -200,8 +203,7 @@ function Build-TerraformVarArgs {
     foreach ($tfVarName in $map.Keys) {
         $value = Get-FirstEnvValue -Names $map[$tfVarName]
         if (-not [string]::IsNullOrWhiteSpace($value)) {
-            $varList.Add("-var")
-            $varList.Add("$tfVarName=$value")
+            $varList.Add('-var=' + $tfVarName + '=' + $value)
         }
     }
 

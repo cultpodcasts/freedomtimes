@@ -42,6 +42,16 @@ resource "turso_database" "emdash" {
   organization_name = var.turso_organization
   name              = var.turso_database_name
   group             = local.turso_database_group
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      db_id,
+      group,
+      hostname,
+      name,
+    ]
+  }
 }
 
 resource "turso_database_configuration" "emdash" {
@@ -64,6 +74,16 @@ resource "turso_database" "scheduler" {
   organization_name = var.turso_organization
   name              = var.scheduler_turso_database_name
   group             = local.scheduler_turso_database_group
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      db_id,
+      group,
+      hostname,
+      name,
+    ]
+  }
 }
 
 resource "turso_database_configuration" "scheduler" {
@@ -86,6 +106,16 @@ resource "turso_database" "subscriptions" {
   organization_name = var.turso_organization
   name              = var.subscriptions_turso_database_name
   group             = local.subscriptions_turso_database_group
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      db_id,
+      group,
+      hostname,
+      name,
+    ]
+  }
 }
 
 resource "turso_database_configuration" "subscriptions" {
@@ -108,6 +138,16 @@ resource "turso_database" "tips" {
   organization_name = var.turso_organization
   name              = var.tips_turso_database_name
   group             = local.tips_turso_database_group
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes = [
+      db_id,
+      group,
+      hostname,
+      name,
+    ]
+  }
 }
 
 resource "turso_database_configuration" "tips" {
