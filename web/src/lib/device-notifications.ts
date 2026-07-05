@@ -109,6 +109,7 @@ const BUTTON_DISABLED_REASON = {
   pushUnsupported: 'Push messaging not supported',
   vapidMissing: 'Push configuration missing on this site',
   androidPushMissing: 'Android push is not configured in this app build',
+  iosRequiresHomeScreen: 'On iPhone and iPad, add this site to your Home Screen first',
 } as const;
 
 type NativeAppConfigPlugin = {
@@ -177,6 +178,19 @@ export async function getNotificationSupportState(publicKey: string): Promise<No
       buttonDisabledReason: BUTTON_DISABLED_REASON.vapidMissing,
       buttonLabel: BUTTON_LABEL_ENABLE,
       message: 'Notifications are waiting on the staging VAPID public key.',
+      testNotificationAvailable: false,
+    };
+  }
+
+  if (isIosWebKitBrowser() && !isStandalonePwa()) {
+    return {
+      supported: false,
+      buttonDisabled: true,
+      buttonDisabledReason: BUTTON_DISABLED_REASON.iosRequiresHomeScreen,
+      buttonLabel: BUTTON_LABEL_ENABLE,
+      message:
+        `On iPhone and iPad, notifications only work after adding ${SITE_DISPLAY_NAME} to your Home Screen. ` +
+        'In Safari, tap Share, choose "Add to Home Screen," then open the site from that icon and enable notifications there.',
       testNotificationAvailable: false,
     };
   }
@@ -558,6 +572,30 @@ async function enableBrowserPushNotifications(
     BROWSER_PUSH_TIMEOUT_MS,
     'Timed out saving this device for notifications. Try again in a moment.',
   );
+}
+
+function isIosWebKitBrowser(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+
+  if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    return true;
+  }
+
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+}
+
+function isStandalonePwa(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if (window.matchMedia('(display-mode: standalone)').matches) {
+    return true;
+  }
+
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
 function detectBrowserKind(): BrowserKind {
