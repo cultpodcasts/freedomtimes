@@ -124,13 +124,17 @@ function Main {
                 "PUSH_PRODUCTION_IOS_APNS_TEAM_ID",
                 "PUSH_PRODUCTION_IOS_APNS_KEY_ID",
                 "PUSH_PRODUCTION_IOS_APNS_PRIVATE_KEY",
-                "PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID"
+                "PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID",
+                "EMDASH_AUTH_SECRET_PRODUCTION",
+                "EMDASH_PREVIEW_SECRET_PRODUCTION"
             ) -OverlayPath $productionEnvPath -TargetLabel "Production"
             $productionEnvValues = Merge-EnvValues -Base $baseEnvValues -Override $productionOverlayValues
             $productionAuth0Domain = Get-EnvValue -Values $productionEnvValues -Keys @("AUTH0_DOMAIN", "TF_VAR_auth0_domain")
             Write-Host "[LOG] Setting AUTH0_DOMAIN for production: '$productionAuth0Domain'" -ForegroundColor Magenta
             $productionClientId = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION for production Worker secret sync."
             $productionClientSecret = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION") -ErrorMessage "Missing AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION for production Worker secret sync."
+            $productionEmdashAuthSecret = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("EMDASH_AUTH_SECRET_PRODUCTION") -ErrorMessage "Missing EMDASH_AUTH_SECRET_PRODUCTION for production Worker secret sync."
+            $productionEmdashPreviewSecret = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("EMDASH_PREVIEW_SECRET_PRODUCTION") -ErrorMessage "Missing EMDASH_PREVIEW_SECRET_PRODUCTION for production Worker secret sync."
             $productionPushPublicKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY")
             $productionPushPrivateKey = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_VAPID_PRIVATE_KEY")
             $productionPushSubject = Get-EnvValue -Values $productionEnvValues -Keys @("PUSH_PRODUCTION_VAPID_SUBJECT")
@@ -150,10 +154,12 @@ function Main {
             $productionSchedulerDbUrl = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_URL", "TURSO_SCHEDULER_DATABASE_URL") -ErrorMessage "Missing production scheduler Turso URL: set TURSO_PRODUCTION_SCHEDULER_DB_URL or TURSO_SCHEDULER_DATABASE_URL for production scheduler Worker secret sync."
             $productionSchedulerDbToken = Get-EnvValueOrThrow -Values $productionEnvValues -Keys @("TURSO_PRODUCTION_SCHEDULER_DB_TOKEN", "TURSO_SCHEDULER_AUTH_TOKEN") -ErrorMessage "Missing production scheduler Turso token: set TURSO_PRODUCTION_SCHEDULER_DB_TOKEN or TURSO_SCHEDULER_AUTH_TOKEN for production scheduler Worker secret sync."
             Write-Host "[LOG] TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY are managed by Terraform (infra/terraform apply); skipping Worker sync for Turnstile." -ForegroundColor Gray
-            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID and AUTH0_CLIENT_SECRET for production" -ForegroundColor Yellow
+            Write-Host "[DEBUG] Will set AUTH0_CLIENT_ID, AUTH0_CLIENT_SECRET, EMDASH_AUTH_SECRET, EMDASH_PREVIEW_SECRET for production" -ForegroundColor Yellow
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_DOMAIN" -Value $productionAuth0Domain -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_ID" -Value $productionClientId -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "AUTH0_CLIENT_SECRET" -Value $productionClientSecret -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "EMDASH_AUTH_SECRET" -Value $productionEmdashAuthSecret -WhatIfOnly:$DryRun
+            Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "EMDASH_PREVIEW_SECRET" -Value $productionEmdashPreviewSecret -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_SUBSCRIPTIONS_DATABASE_URL" -Value $productionSubscriptionsDbUrl -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_SUBSCRIPTIONS_AUTH_TOKEN" -Value $productionSubscriptionsDbToken -WhatIfOnly:$DryRun
             Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name "TURSO_TIPS_DATABASE_URL" -Value $productionTipsDbUrl -WhatIfOnly:$DryRun
