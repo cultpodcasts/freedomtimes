@@ -479,7 +479,7 @@ Privacy is a primary architectural value for Freedom Times. Reader-facing commit
 
 - **No reader IP collection:** The application does not collect or retain visitor IP addresses for ordinary readership (Cloudflare may see IPs at the edge for DDoS protection; the app layer does not persist them).
 - **Coarse geo-location only:** Non-personally identifiable country- or region-level signals may be used to optimise service delivery; precise location is not collected or associated with individuals.
-- **Aggregate usage metrics:** Page-view counts, broad browser/OS classes, and similar aggregates may be collected without per-user or per-device linkage.
+- **Aggregate usage metrics:** Page-view counts, broad browser/OS classes, and similar aggregates may be collected without per-user or per-device linkage. Public site page views (homepage, articles, other reader HTML) are aggregated via Cloudflare Workers Analytics Engine (path, country, bot flag only) and shown on locked `/admin/analytics` — see [web/docs/ADMIN_ANALYTICS.md](web/docs/ADMIN_ANALYTICS.md).
 - **Cookies:** First-party cookies are limited to essential operation (PWA shell, CSRF) and **editorial auth only** (Auth0 session cookies for editors/admins — §4.6). Reader cookies do not track behaviour across the site; there are no third-party tracking or ad-tech cookies.
 - **Do Not Track:** The site honours consumer Do Not Track preferences where applicable; there is no cross-site behavioural tracking to disable.
 - **No third-party trackers or ad-tech scripts** on public pages.

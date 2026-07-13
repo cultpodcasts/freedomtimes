@@ -11,6 +11,8 @@ Terraform is not required for local application development. Local work can run 
 - Cloudflare holding page worker
 - Worker route attachment to a configured zone pattern
 - Cloudflare Turnstile widgets for story tips (`/submit-a-tip`) with Worker secrets `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`
+- Cloudflare Analytics Engine page-view dataset id + `PAGE_VIEWS` binding (output `page_views_dataset`; see `web/docs/ADMIN_ANALYTICS.md`)
+- Worker secret `CLOUDFLARE_ANALYTICS_API_TOKEN` from required operator token `ANALYTICS_CF_TOKEN` (Terraform does not mint analytics tokens)
 - Auth0 application and RBAC resources
 - Turso databases for EmDash, scheduler, push subscriptions, and reader tips
 - Environment entrypoints for `production` and `staging`

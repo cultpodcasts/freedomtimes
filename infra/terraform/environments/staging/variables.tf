@@ -14,6 +14,23 @@ variable "cloudflare_zone_id" {
   type        = string
 }
 
+variable "cloudflare_analytics_api_token" {
+  description = "Required Account Analytics Read token pushed as Worker secret CLOUDFLARE_ANALYTICS_API_TOKEN. Local -LoadEnvFiles house name: ANALYTICS_CF_TOKEN (also TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN). Terraform does not mint analytics tokens. Do NOT set this to TF_VAR_CLOUDFLARE_API_TOKEN."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = trimspace(var.cloudflare_analytics_api_token) != ""
+    error_message = "cloudflare_analytics_api_token is required. Set ANALYTICS_CF_TOKEN in .env.dev (or TF_VAR_cloudflare_analytics_api_token / TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN). Terraform does not mint analytics API tokens."
+  }
+}
+
+variable "page_views_dataset" {
+  description = "Workers Analytics Engine dataset name for public page views (also Terraform output page_views_dataset). Must match wrangler.jsonc staging analytics_engine_datasets.dataset."
+  type        = string
+  default     = "freedomtimes_staging_page_views"
+}
+
 variable "azure_location" {
   description = "Azure region for editorial API resources"
   type        = string

@@ -8,7 +8,7 @@ Editorial authentication is **same-origin** on the Cloudflare Worker: Auth0 sess
 |---|---|
 | `/` | Public holding page |
 | `/homepage` | Protected broadsheet homepage (`admin` or `editor` role) |
-| `/admin` | Protected staff hub (`admin` role only) — tips desk, push diagnostics, EmDash CMS link |
+| `/admin` | Protected staff hub (`admin` role only) — public site traffic / page views (Cloudflare aggregates), tips desk, push diagnostics, EmDash CMS link |
 | `/admin/tips` | Protected story tips desk (`admin` role only) — see [STORY_TIPS_OPERATOR.md](./STORY_TIPS_OPERATOR.md) |
 | `/auth/login` | Starts Auth0 Authorization Code flow |
 | `/auth/callback` | Exchanges code, enforces roles, sets cookies |
@@ -34,7 +34,7 @@ Role detection checks `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` when configured, or
 
 | Role | Access |
 |------|--------|
-| `admin` | EmDash CMS, broadsheet homepage, all Freedom Times `/admin/*` tools (tips desk, push diagnostics) |
+| `admin` | EmDash CMS, broadsheet homepage, all Freedom Times `/admin/*` tools (public site traffic, tips desk, push diagnostics) |
 | `editor` | EmDash CMS, broadsheet homepage (no Freedom Times `/admin` hub) |
 
 After login, `admin` and `editor` users go to `/homepage`.

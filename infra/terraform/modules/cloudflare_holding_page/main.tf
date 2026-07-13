@@ -25,7 +25,17 @@ resource "cloudflare_workers_script" "holding_page" {
   compatibility_date = var.worker_compatibility_date
   logpush    = true
 
-  # Wrangler owns deployed Worker bundle content and runtime metadata; Terraform manages name/routing.
+  # Terraform owns the Analytics Engine dataset name + binding identity.
+  # Wrangler must use the same dataset string (see terraform output page_views_dataset).
+  dynamic "analytics_engine_binding" {
+    for_each = trimspace(var.page_views_dataset) != "" ? [1] : []
+    content {
+      name    = var.page_views_binding_name
+      dataset = var.page_views_dataset
+    }
+  }
+
+  # Wrangler owns deployed Worker bundle content and most runtime metadata; Terraform manages name/routing/AE identity.
   lifecycle {
     ignore_changes = [
       content,
@@ -37,6 +47,7 @@ resource "cloudflare_workers_script" "holding_page" {
       plain_text_binding,
       r2_bucket_binding,
       kv_namespace_binding,
+      # analytics_engine_binding is NOT ignored — Terraform is source of truth for PAGE_VIEWS dataset id
     ]
   }
 }

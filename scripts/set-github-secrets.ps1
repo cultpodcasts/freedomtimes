@@ -202,6 +202,9 @@ function Main {
         # See ENVIRONMENT_SETUP.md "Syncing Secrets & Variables" for the complete categorization rationale.
         $secrets = @(
             "TF_VAR_CLOUDFLARE_API_TOKEN",
+            # Required Account Analytics Read token (local house name ANALYTICS_CF_TOKEN accepted below).
+            # Terraform does not mint analytics tokens — sync this for CI apply.
+            "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN",
             "TF_VAR_CLOUDFLARE_ACCOUNT_ID",
             "TF_VAR_CLOUDFLARE_ZONE_ID",
             "TF_VAR_AUTH0_DOMAIN",
@@ -246,7 +249,12 @@ function Main {
         )
         Write-Host "  Syncing secrets..." -ForegroundColor Gray
         foreach ($name in $secrets) {
-            $value = Get-EnvValue -Values $baseEnvValues -Keys @($name)
+            $keys = @($name)
+            if ($name -eq "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN") {
+                # Prefer explicit TF_VAR name; fall back to house name ANALYTICS_CF_TOKEN.
+                $keys = @("TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN", "ANALYTICS_CF_TOKEN")
+            }
+            $value = Get-EnvValue -Values $baseEnvValues -Keys $keys
             Set-GhSecret -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun
         }
 

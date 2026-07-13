@@ -1,0 +1,450 @@
+---
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { requireAdminDashboardSession } from '../../lib/admin-dashboard-session';
+import {
+	loadAdminAnalytics,
+	parseAnalyticsPathFilter,
+	parseAnalyticsRange,
+	type AnalyticsRange,
+} from '../../lib/page-view-analytics';
+
+export const prerender = false;
+
+const session = await requireAdminDashboardSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+
+if (session instanceof Response) {
+	return session;
+}
+
+const range = parseAnalyticsRange(Astro.url.searchParams.get('range'));
+const includeBots = Astro.url.searchParams.get('includeBots') === '1';
+const selectedPath = parseAnalyticsPathFilter(Astro.url.searchParams.get('path'));
+const analytics = await loadAdminAnalytics({
+	range,
+	excludeBots: !includeBots,
+	path: selectedPath,
+});
+
+const ranges: { id: AnalyticsRange; label: string }[] = [
+	{ id: '1d', label: '1 day' },
+	{ id: '1w', label: '1 week' },
+	{ id: '1m', label: '1 month' },
+];
+
+function analyticsHref(opts: {
+	range?: AnalyticsRange;
+	includeBots?: boolean;
+	path?: string | null;
+}): string {
+	const params = new URLSearchParams();
+	params.set('range', opts.range ?? range);
+	if (opts.includeBots ?? includeBots) {
+		params.set('includeBots', '1');
+	}
+	const path = opts.path === undefined ? selectedPath : opts.path;
+	if (path) {
+		params.set('path', path);
+	}
+	return `/admin/analytics?${params.toString()}`;
+}
+---
+
+<Layout
+	title="Site traffic"
+	description="Public page view analytics for Freedom Times."
+	canonicalUrl={Astro.url.href}
+>
+	<Header section="Site traffic" isAdmin={true} isSignedIn={true} />
+	<article class="analytics-admin">
+		<p class="back">
+			<a href="/admin">← Admin</a>
+		</p>
+		<h1>Site traffic</h1>
+		<p class="lede">
+			Signed in as {session.displayName}. Public page views for the reader site — homepage, articles
+			(<code>/posts/…</code>), archives, and other reader HTML pages.
+		</p>
+
+		<section class="analytics" aria-labelledby="analytics-heading">
+			<div class="analytics__header">
+				<h2 id="analytics-heading" class="visually-hidden">Public page views</h2>
+				<p class="analytics__eyebrow">Public page views</p>
+				<p class="analytics__meta">
+					This page is the viewer only; <code>/admin</code>, APIs, and EmDash are not counted.
+					Backend Cloudflare Analytics Engine aggregates (no frontend tracker). Path, country, and
+					bot flag only — no IPs or User-Agents stored. Retention ~3 months. Click a top page to
+					see its country breakdown.
+				</p>
+			</div>
+
+			<nav class="analytics__ranges" aria-label="Public page view timeframe">
+				{ranges.map((item) => (
+					<a
+						href={analyticsHref({ range: item.id })}
+						class:list={['analytics__range', { 'is-active': item.id === range }]}
+						aria-current={item.id === range ? 'page' : undefined}
+					>
+						{item.label}
+					</a>
+				))}
+			</nav>
+
+			<p class="analytics__filters">
+				{includeBots ? (
+					<>
+						Including likely bots.{' '}
+						<a href={analyticsHref({ includeBots: false })}>Hide bots</a>
+					</>
+				) : (
+					<>
+						Likely bots hidden by default.{' '}
+						<a href={analyticsHref({ includeBots: true })}>Include bots</a>
+					</>
+				)}
+				{' · '}
+				<span>{analytics.totalViews.toLocaleString()} public page views in this window</span>
+			</p>
+
+			{analytics.error ? (
+				<p class="analytics__notice" role="status">
+					{analytics.error}
+				</p>
+			) : null}
+
+			{!analytics.error && analytics.configured && analytics.totalViews === 0 ? (
+				<p class="analytics__notice" role="status">
+					No public page views in this window yet. After deploy, hit a public HTML page on this
+					environment; writes go to dataset <code>{analytics.dataset}</code>.
+				</p>
+			) : null}
+
+			<div class="analytics__grid">
+				<div class="analytics__panel">
+					<h3>Top public pages</h3>
+					{analytics.topPages.length === 0 ? (
+						<p class="analytics__empty">No page data.</p>
+					) : (
+						<table>
+							<thead>
+								<tr>
+									<th scope="col">Path</th>
+									<th scope="col">Views</th>
+								</tr>
+							</thead>
+							<tbody>
+								{analytics.topPages.map((row) => {
+									const isSelected = selectedPath === row.key;
+									return (
+										<tr class:list={{ 'is-selected': isSelected }}>
+											<td>
+												<a
+													href={analyticsHref({ path: isSelected ? null : row.key })}
+													class="analytics__path-link"
+													aria-current={isSelected ? 'true' : undefined}
+												>
+													<code>{row.key}</code>
+												</a>
+											</td>
+											<td>{row.views.toLocaleString()}</td>
+										</tr>
+									);
+								})}
+							</tbody>
+						</table>
+					)}
+					{selectedPath ? (
+						<p class="analytics__hint">
+							Showing countries for <code>{selectedPath}</code>.{' '}
+							<a href={analyticsHref({ path: null })}>Clear selection</a>
+						</p>
+					) : (
+						<p class="analytics__hint">Select a path to break down views by country.</p>
+					)}
+				</div>
+
+				<div class="analytics__panel">
+					<h3>By country</h3>
+					{analytics.countries.length === 0 ? (
+						<p class="analytics__empty">No country data.</p>
+					) : (
+						<table>
+							<thead>
+								<tr>
+									<th scope="col">Country</th>
+									<th scope="col">Views</th>
+								</tr>
+							</thead>
+							<tbody>
+								{analytics.countries.map((row) => (
+									<tr>
+										<td><code>{row.key}</code></td>
+										<td>{row.views.toLocaleString()}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					)}
+				</div>
+			</div>
+
+			{selectedPath ? (
+				<div class="analytics__panel analytics__panel--drilldown">
+					<h3>
+						Countries for <code>{selectedPath}</code>
+					</h3>
+					{analytics.pathCountries.length === 0 ? (
+						<p class="analytics__empty">No country data for this path in this window.</p>
+					) : (
+						<table>
+							<thead>
+								<tr>
+									<th scope="col">Country</th>
+									<th scope="col">Views</th>
+								</tr>
+							</thead>
+							<tbody>
+								{analytics.pathCountries.map((row) => (
+									<tr>
+										<td><code>{row.key}</code></td>
+										<td>{row.views.toLocaleString()}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					)}
+				</div>
+			) : null}
+		</section>
+	</article>
+</Layout>
+
+<style>
+	.analytics-admin {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	.back {
+		margin: 0 0 1rem;
+		font-size: 0.92rem;
+	}
+
+	.back a {
+		color: #0044bb;
+		text-decoration: none;
+		font-weight: 600;
+	}
+
+	.back a:hover,
+	.back a:focus-visible {
+		text-decoration: underline;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+	}
+
+	.lede {
+		margin: 0 0 2rem;
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
+
+	.lede code {
+		font-size: 0.9em;
+	}
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	.analytics {
+		margin: 0;
+		padding: 1.25rem 1.35rem 1.5rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 8px;
+		background: #fafafa;
+	}
+
+	.analytics__eyebrow {
+		margin: 0 0 0.55rem;
+		font-size: 0.82rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: #0044bb;
+	}
+
+	.analytics__meta {
+		margin: 0 0 1rem;
+		font-size: 0.92rem;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
+
+	.analytics__meta code {
+		font-size: 0.85em;
+	}
+
+	.analytics__ranges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin: 0 0 0.85rem;
+	}
+
+	.analytics__range {
+		display: inline-block;
+		padding: 0.35rem 0.75rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 6px;
+		background: #fff;
+		color: inherit;
+		text-decoration: none;
+		font-size: 0.9rem;
+		font-weight: 600;
+	}
+
+	.analytics__range.is-active {
+		border-color: #0044bb;
+		color: #0044bb;
+		box-shadow: 0 0 0 1px rgba(0, 68, 187, 0.2);
+	}
+
+	.analytics__filters {
+		margin: 0 0 1rem;
+		font-size: 0.9rem;
+		line-height: 1.5;
+		color: var(--text-secondary);
+	}
+
+	.analytics__filters a {
+		color: #0044bb;
+	}
+
+	.analytics__notice {
+		margin: 0 0 1rem;
+		padding: 0.75rem 0.9rem;
+		border-left: 3px solid #c45c00;
+		background: #fff7ef;
+		font-size: 0.92rem;
+		line-height: 1.5;
+	}
+
+	.analytics__notice code {
+		font-size: 0.85em;
+	}
+
+	.analytics__grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+		gap: 1.25rem;
+	}
+
+	.analytics__panel h3 {
+		margin: 0 0 0.65rem;
+		font-size: 1rem;
+		font-weight: 700;
+	}
+
+	.analytics__panel h3 code {
+		font-size: 0.9em;
+		font-weight: 600;
+		word-break: break-all;
+	}
+
+	.analytics__panel--drilldown {
+		margin-top: 1.25rem;
+		padding-top: 1.15rem;
+		border-top: 1px solid var(--border-subtle);
+	}
+
+	.analytics__empty {
+		margin: 0;
+		font-size: 0.92rem;
+		color: var(--text-secondary);
+	}
+
+	.analytics__hint {
+		margin: 0.75rem 0 0;
+		font-size: 0.86rem;
+		line-height: 1.45;
+		color: var(--text-secondary);
+	}
+
+	.analytics__hint a {
+		color: #0044bb;
+	}
+
+	.analytics__hint code {
+		font-size: 0.9em;
+		word-break: break-all;
+	}
+
+	.analytics__panel table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.92rem;
+	}
+
+	.analytics__panel th,
+	.analytics__panel td {
+		padding: 0.4rem 0.35rem;
+		border-bottom: 1px solid var(--border-subtle);
+		text-align: left;
+		vertical-align: top;
+	}
+
+	.analytics__panel th:last-child,
+	.analytics__panel td:last-child {
+		text-align: right;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.analytics__panel tr.is-selected td {
+		background: rgba(0, 68, 187, 0.06);
+	}
+
+	.analytics__path-link {
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.analytics__path-link:hover,
+	.analytics__path-link:focus-visible {
+		color: #0044bb;
+		text-decoration: underline;
+	}
+
+	.analytics__path-link[aria-current='true'] {
+		color: #0044bb;
+		font-weight: 600;
+	}
+
+	.analytics__panel code {
+		font-size: 0.86em;
+		word-break: break-all;
+	}
+</style>

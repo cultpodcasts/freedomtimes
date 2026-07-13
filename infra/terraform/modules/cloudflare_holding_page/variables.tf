@@ -72,3 +72,15 @@ variable "worker_compatibility_date" {
   type        = string
   default     = "2026-03-29"
 }
+
+variable "page_views_dataset" {
+  description = "Workers Analytics Engine dataset name for public page-view ingest (SQL table name). Empty disables the binding."
+  type        = string
+  default     = ""
+}
+
+variable "page_views_binding_name" {
+  description = "Worker env binding name for the page-views Analytics Engine dataset"
+  type        = string
+  default     = "PAGE_VIEWS"
+}

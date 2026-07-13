@@ -129,3 +129,13 @@ output "turnstile_site_key" {
   description = "Cloudflare Turnstile site key for story tips (staging)"
   value       = cloudflare_turnstile_widget.story_tips.id
 }
+
+output "page_views_dataset" {
+  description = "Analytics Engine dataset name (SQL table id) for public page views — wire Wrangler PAGE_VIEWS / PAGE_VIEWS_DATASET to this"
+  value       = module.cloudflare_holding_page.page_views_dataset
+}
+
+output "page_views_binding_name" {
+  description = "Worker Analytics Engine binding name for public page views"
+  value       = module.cloudflare_holding_page.page_views_binding_name
+}

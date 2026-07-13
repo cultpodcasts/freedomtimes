@@ -95,6 +95,21 @@ if ($LoadEnvFiles) {
             [System.Environment]::SetEnvironmentVariable($targetKey, $sourceValue, "Process")
         }
     }
+
+    # Required analytics token: ANALYTICS_CF_TOKEN → TF_VAR_cloudflare_analytics_api_token.
+    # Terraform does not mint analytics API tokens.
+    $analyticsNames = @(
+        "TF_VAR_cloudflare_analytics_api_token",
+        "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN",
+        "ANALYTICS_CF_TOKEN"
+    )
+    foreach ($analyticsName in $analyticsNames) {
+        $analyticsValue = [System.Environment]::GetEnvironmentVariable($analyticsName, "Process")
+        if (-not [string]::IsNullOrWhiteSpace($analyticsValue)) {
+            [System.Environment]::SetEnvironmentVariable("TF_VAR_cloudflare_analytics_api_token", $analyticsValue, "Process")
+            break
+        }
+    }
 }
 
 # Remap environment-specific vars from suffixed keys in .env.dev to the
@@ -190,6 +205,7 @@ $requiredByEnvironment = @{
     "TF_VAR_cloudflare_api_token",
     "TF_VAR_cloudflare_account_id",
     "TF_VAR_cloudflare_zone_id",
+    "TF_VAR_cloudflare_analytics_api_token",
     "TF_VAR_route_pattern",
     "TF_VAR_auth0_api_identifier"
     )
@@ -197,6 +213,7 @@ $requiredByEnvironment = @{
         "TF_VAR_cloudflare_api_token",
         "TF_VAR_cloudflare_account_id",
         "TF_VAR_cloudflare_zone_id",
+        "TF_VAR_cloudflare_analytics_api_token",
         "TF_VAR_route_pattern",
         "TF_VAR_auth0_api_identifier"
     )
