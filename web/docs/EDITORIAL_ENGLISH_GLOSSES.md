@@ -8,6 +8,7 @@ Use this for **Freedom Times** pieces that cite French media, institutions, or u
 
 - Do not use bold: no markdown `**…**`, no HTML `<strong>`, and no Portable Text `strong` marks in article body or excerpt (calmer typographic voice).
 - Italics are fine: `<em>`, markdown `*…*`, and PT `em` marks for light emphasis, titles of works, and glosses.
+- **Smart (typographic) quotes:** use **“…”** and **‘…’** in English body copy, attributed quotes, citation headline link text, and captions — not straight ASCII `"` / `'`. Possessives and contractions take a curly apostrophe (**’**, U+2019): *St Andrew’s*, *Soami’s*. Foreign blockquotes keep source punctuation (`« … »`, etc.). Roundups: sibling **`freedomtimes-agents`** repo [WEEKLY_REPORT_WRITING_GUIDE.md § Typographic quotes](../../../freedomtimes-agents/docs/WEEKLY_REPORT_WRITING_GUIDE.md#typographic-quotes-smart-quotes).
 
 ---
 
