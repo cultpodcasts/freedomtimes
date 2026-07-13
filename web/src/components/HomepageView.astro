@@ -122,6 +122,40 @@ function subjectColorTokens(subject: string): { bg: string; border: string; text
   };
 }
 
+/**
+ * Prepare homepage dek text for CSS line-clamp.
+ * Typographic apostrophes (U+2019 / U+02BC) are break opportunities in Chromium,
+ * so "Rome's" can wrap as "Rome" / "'s". Normalize to ASCII `'` for display only —
+ * do not insert Word Joiners (U+2060); those break -webkit-line-clamp ellipsis and
+ * cause mid-word / mid-fragment clipping under overflow:hidden.
+ *
+ * Hard-sliced CMS excerpts often end mid-word (e.g. "Rome's sc"). When the text
+ * does not end in sentence punctuation, back up to the last whitespace and append
+ * an ellipsis so the visible dek never stops mid-fragment.
+ */
+function prepareDek(value: string): string {
+  let text = value.trim().replace(/[\u2019\u02BC]/g, "'");
+  if (!text) return text;
+
+  // Already ends with sentence punctuation or an ellipsis — leave alone.
+  if (/[.!?…]$/.test(text) || /\.\.\.$/.test(text)) {
+    return text;
+  }
+
+  // Truncated fragment: back up to last whitespace (prefer word boundary).
+  const lastSpace = text.lastIndexOf(' ');
+  if (lastSpace > 0) {
+    text = text.slice(0, lastSpace).trimEnd();
+  }
+
+  // Strip dangling punctuation left by the slice, then append ellipsis.
+  text = text.replace(/[,;:—\-–]+$/u, '').trimEnd();
+  if (!text.endsWith('…') && !text.endsWith('...')) {
+    text = `${text}…`;
+  }
+  return text;
+}
+
 const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
   status: 'published',
   limit: 12,
@@ -144,7 +178,7 @@ const stories: Story[] = postEntries.map((entry) => {
     : 'Untitled post';
 
   const dek = typeof data.excerpt === 'string' && data.excerpt.length > 0
-    ? data.excerpt
+    ? prepareDek(data.excerpt)
     : null;
   const subjects = readSubjects(data.subjects);
 
@@ -207,7 +241,7 @@ const socialImage = '/social/homepage-og.png';
                   })}
                 </ul>
               )}
-              {lead.dek && <p>{lead.dek}</p>}
+              {lead.dek && <p class="story-dek">{lead.dek}</p>}
               {lead.updatedAt && <p class="meta">Updated {new Date(lead.updatedAt).toLocaleString()}</p>}
             </a>
           </article>
@@ -231,7 +265,7 @@ const socialImage = '/social/homepage-og.png';
                     })}
                   </ul>
                 )}
-                {secondLead.dek && <p>{secondLead.dek}</p>}
+                {secondLead.dek && <p class="story-dek">{secondLead.dek}</p>}
                 {secondLead.updatedAt && <p class="meta">Updated {new Date(secondLead.updatedAt).toLocaleString()}</p>}
               </a>
             ) : (
@@ -264,7 +298,7 @@ const socialImage = '/social/homepage-og.png';
                         })}
                       </ul>
                     )}
-                    {story.dek && <p>{story.dek}</p>}
+                    {story.dek && <p class="story-dek">{story.dek}</p>}
                   </a>
                 </article>
               ))
@@ -301,13 +335,35 @@ const socialImage = '/social/homepage-og.png';
     padding: 0 var(--page-padding-side) 4rem;
   }
 
+  /*
+   * Desktop: lead + remaining (`.rail`) on the left; exactly one story
+   * (`.secondary`) on the right. Matches pre-clamp auto-placement.
+   * Dek clamps: LHS 5 lines, RHS 6 (narrower column).
+   */
+  .lead {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .secondary {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .rail {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
   article {
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
 
   .story-card {
     position: relative;
+    min-width: 0;
   }
 
   .story-card-link {
@@ -316,6 +372,7 @@ const socialImage = '/social/homepage-og.png';
     color: inherit;
     text-decoration: none;
     height: 100%;
+    min-width: 0;
   }
 
   .story-image {
@@ -398,6 +455,28 @@ const socialImage = '/social/homepage-og.png';
     line-height: 1.5;
   }
 
+  /* LHS (lead + `.rail` stack): 5 lines. RHS (`.secondary`): 6. Ellipsis from line-clamp only. */
+  .story-dek {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 5;
+    line-clamp: 5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* Wrap on spaces; break only if a single token exceeds the line width */
+    word-break: normal;
+    overflow-wrap: break-word;
+    hyphens: none;
+  }
+
+  .secondary .story-dek {
+    -webkit-line-clamp: 6;
+    line-clamp: 6;
+  }
+
   .meta {
     margin-top: auto;
     font-family: 'Inter', sans-serif;
@@ -430,6 +509,9 @@ const socialImage = '/social/homepage-og.png';
   .rail {
     display: grid;
     gap: 2rem;
+  }
+
+  .secondary {
     padding-left: 2rem;
     border-left: 1px solid #eeeeee;
   }
@@ -443,11 +525,19 @@ const socialImage = '/social/homepage-og.png';
     .front-grid {
       grid-template-columns: 1fr 1fr;
     }
+    .lead,
+    .secondary,
+    .rail {
+      grid-column: auto;
+      grid-row: auto;
+    }
+    .secondary {
+      padding-left: 0;
+      border-left: none;
+    }
     .rail {
       grid-column: 1 / -1;
       grid-template-columns: repeat(2, 1fr);
-      padding-left: 0;
-      border-left: none;
       border-top: 1px solid #eeeeee;
       padding-top: 2rem;
     }

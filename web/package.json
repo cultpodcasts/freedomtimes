@@ -1,7 +1,7 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.3",
+  "version": "0.0.12",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -50,12 +50,12 @@
     "@capacitor/core": "^8.4.1",
     "@capacitor/ios": "^8.4.1",
     "@capacitor/push-notifications": "^8.1.1",
-    "@emdash-cms/cloudflare": "^0.27.0",
+    "@emdash-cms/cloudflare": "^0.29.0",
     "@libsql/client": "^0.17.4",
     "@libsql/kysely-libsql": "^0.4.1",
     "astro": "^7.0.2",
     "drizzle-orm": "^0.45.2",
-    "emdash": "^0.27.0",
+    "emdash": "^0.29.0",
     "jose": "^6.2.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -82,9 +82,9 @@
   "allowScripts": {
     "better-sqlite3@12.9.0": true,
     "sharp@0.34.5": true,
-    "workerd@1.20260623.1": true,
     "esbuild@0.27.7": true,
     "esbuild@0.28.1": true,
-    "esbuild@0.25.12": true
+    "esbuild@0.25.12": true,
+    "workerd@1.20260701.1": true
   }
 }
