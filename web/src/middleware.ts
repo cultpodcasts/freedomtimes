@@ -1,6 +1,8 @@
 import { defineMiddleware } from 'astro:middleware';
 import { env as cfEnv } from 'cloudflare:workers';
 
+import { recordPageView } from './lib/page-view-analytics';
+
 enum PathMode {
   Exact = 'exact',
   StartsWith = 'startsWith',
@@ -167,9 +169,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // EmDash handles its own auth and token validation for these routes.
   // Locked staging: NOTHING else is public — reader routes use authorizeReaderApiRequest /
   // requireReaderPageSession (see PUBLIC_READER_PATHS in auth.ts).
+  // EmDash/OAuth bypass traffic is never recorded as public page views.
   if (isAuthBypassPath(path)) {
     return next();
   }
 
-  return next();
+  const response = await next();
+  // Site analytics: public HTML page views (home, articles, reader pages) only.
+  // Aggregates (path / country / bot flag) for /admin/analytics — not analytics of /admin itself.
+  // No IPs, UA, or cookies stored. Analytics Engine writes are non-blocking.
+  recordPageView(context.request, response);
+  return response;
 });

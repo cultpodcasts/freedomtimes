@@ -34,6 +34,9 @@ locals {
   scheduler_turso_database_url = format("libsql://%s", turso_database.scheduler.hostname)
   subscriptions_turso_database_url = format("libsql://%s", turso_database.subscriptions.hostname)
   tips_turso_database_url = format("libsql://%s", turso_database.tips.hostname)
+  # Operator-provided Account Analytics Read token only (ANALYTICS_CF_TOKEN via -LoadEnvFiles).
+  # Terraform never mints analytics tokens and never falls back to var.cloudflare_api_token.
+  page_views_analytics_api_token = var.cloudflare_analytics_api_token
 }
 
 resource "turso_database" "emdash" {
@@ -182,12 +185,15 @@ module "cloudflare_holding_page" {
   build_revision  = var.build_revision
   contact_email   = var.contact_email
 
-  # EmDash Turso credentials (TURSO_DATABASE_URL, TURSO_AUTH_TOKEN) are NOT managed here —
-  # Terraform apply once pushed wrong libsql URLs and caused a production outage (blank homepage).
-  # Manage those secrets via wrangler / deploy CI / switch-production-turso-secrets.ps1 only.
+  # EmDash Turso credentials are wrangler/deploy-managed - not Terraform.
+  # Site analytics: Terraform owns PAGE_VIEWS dataset id (output page_views_dataset).
+  # CLOUDFLARE_ACCOUNT_ID + PAGE_VIEWS_DATASET are wrangler env vars (must match TF output for dataset).
+  # Only the query token is a Terraform Worker secret (cannot share a binding name with a wrangler var).
+  page_views_dataset = var.page_views_dataset
   worker_secrets = {
-    TURNSTILE_SITE_KEY   = cloudflare_turnstile_widget.story_tips.id
-    TURNSTILE_SECRET_KEY = cloudflare_turnstile_widget.story_tips.secret
+    TURNSTILE_SITE_KEY             = cloudflare_turnstile_widget.story_tips.id
+    TURNSTILE_SECRET_KEY           = cloudflare_turnstile_widget.story_tips.secret
+    CLOUDFLARE_ANALYTICS_API_TOKEN = local.page_views_analytics_api_token
   }
 }
 

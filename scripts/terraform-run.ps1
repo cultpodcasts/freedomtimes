@@ -102,6 +102,17 @@ function Invoke-EnvRemapping {
         }
     }
 
+    # Required analytics Worker secret: ANALYTICS_CF_TOKEN → var.cloudflare_analytics_api_token.
+    # Terraform does not mint analytics API tokens.
+    $analyticsOverride = Get-FirstEnvValue -Names @(
+        "TF_VAR_cloudflare_analytics_api_token",
+        "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN",
+        "ANALYTICS_CF_TOKEN"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($analyticsOverride)) {
+        [System.Environment]::SetEnvironmentVariable("TF_VAR_cloudflare_analytics_api_token", $analyticsOverride, "Process")
+    }
+
     # Environment-specific suffix → unsuffixed TF_VAR names
     if ($Env -eq "staging" -or $Env -eq "production") {
         $suffix = if ($Env -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
@@ -119,6 +130,7 @@ function Invoke-EnvRemapping {
             "TF_VAR_turso_database_group"                      = "TF_VAR_TURSO_DATABASE_GROUP$suffix"
             "TF_VAR_turso_database_token_expiration"           = "TF_VAR_TURSO_DATABASE_TOKEN_EXPIRATION$suffix"
             "TF_VAR_turso_database_size_limit"                 = "TF_VAR_TURSO_DATABASE_SIZE_LIMIT$suffix"
+            "TF_VAR_page_views_dataset"                        = "TF_VAR_PAGE_VIEWS_DATASET$suffix"
         }
         foreach ($target in $envSpecific.Keys) {
             $src = [System.Environment]::GetEnvironmentVariable($envSpecific[$target], "Process")
@@ -189,6 +201,7 @@ function Build-TerraformVarArgs {
         $tursoApiTokenVarNames = @("TF_VAR_turso_api_token")
         $map = [ordered]@{
             cloudflare_api_token                    = @("TF_VAR_cloudflare_api_token", "TF_VAR_CLOUDFLARE_API_TOKEN")
+            cloudflare_analytics_api_token          = @("TF_VAR_cloudflare_analytics_api_token", "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN", "ANALYTICS_CF_TOKEN")
             cloudflare_account_id                   = @("TF_VAR_cloudflare_account_id", "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
             cloudflare_zone_id                      = @("TF_VAR_cloudflare_zone_id", "TF_VAR_CLOUDFLARE_ZONE_ID")
             auth0_domain                            = @("TF_VAR_auth0_domain", "TF_VAR_AUTH0_DOMAIN")
@@ -210,6 +223,7 @@ function Build-TerraformVarArgs {
             turso_database_group                    = @("TF_VAR_turso_database_group")
             turso_database_token_expiration         = @("TF_VAR_turso_database_token_expiration")
             turso_database_size_limit               = @("TF_VAR_turso_database_size_limit")
+            page_views_dataset                      = @("TF_VAR_page_views_dataset", "TF_VAR_PAGE_VIEWS_DATASET")
         }
     }
 

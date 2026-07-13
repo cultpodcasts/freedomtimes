@@ -19,8 +19,19 @@
 		"API_BASE_URL": "https://local.freedomtimes.news/editorial",
 		"COOKIE_BASE_DOMAIN": "freedomtimes.news",
 		"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles",
-		"API_UPSTREAM_MODE": "apim"
+		"API_UPSTREAM_MODE": "apim",
+		"CLOUDFLARE_ACCOUNT_ID": "bae3f835f19899c6eee1ec48f2d658cf",
+		// Local-only dataset; staging/production dataset ids come from terraform output page_views_dataset
+		"PAGE_VIEWS_DATASET": "freedomtimes_page_views_local"
 	},
+	// Aggregate page views of public reader HTML — see web/docs/ADMIN_ANALYTICS.md
+	// Staging/production dataset names must match terraform output `page_views_dataset`
+	"analytics_engine_datasets": [
+		{
+			"binding": "PAGE_VIEWS",
+			"dataset": "freedomtimes_page_views_local"
+		}
+	],
 	// Default (production) config
 	"env": {
 		"production": {
@@ -41,13 +52,23 @@
 					"bucket_name": "freedomtimes-media-production"
 				}
 			],
+			"analytics_engine_datasets": [
+				{
+					"binding": "PAGE_VIEWS",
+					// Must match: terraform -chdir=infra/terraform/environments/production output -raw page_views_dataset
+					"dataset": "freedomtimes_page_views"
+				}
+			],
 			"vars": {
 				"SITE_ACCESS_MODE": "public",
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
 				"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles",
-				"API_UPSTREAM_MODE": "apim"
+				"API_UPSTREAM_MODE": "apim",
+				"CLOUDFLARE_ACCOUNT_ID": "bae3f835f19899c6eee1ec48f2d658cf",
+				// Must match terraform output page_views_dataset (TF pushes CLOUDFLARE_ANALYTICS_API_TOKEN as secret only)
+				"PAGE_VIEWS_DATASET": "freedomtimes_page_views"
 			}
 		},
 		"staging": {
@@ -68,13 +89,23 @@
 					"bucket_name": "freedomtimes-media-staging"
 				}
 			],
+			"analytics_engine_datasets": [
+				{
+					"binding": "PAGE_VIEWS",
+					// Must match: terraform -chdir=infra/terraform/environments/staging output -raw page_views_dataset
+					"dataset": "freedomtimes_staging_page_views"
+				}
+			],
 			"vars": {
 				"SITE_ACCESS_MODE": "locked",
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
 				"AUTH0_ROLES_CLAIM_NAMESPACE": "https://freedomtimes.news/roles",
-				"API_UPSTREAM_MODE": "apim"
+				"API_UPSTREAM_MODE": "apim",
+				"CLOUDFLARE_ACCOUNT_ID": "bae3f835f19899c6eee1ec48f2d658cf",
+				// Must match terraform output page_views_dataset (TF pushes CLOUDFLARE_ANALYTICS_API_TOKEN as secret only)
+				"PAGE_VIEWS_DATASET": "freedomtimes_staging_page_views"
 			}
 		}
 	}

@@ -4,7 +4,7 @@ Operator guide for the scoped Cloudflare API token used by Terraform in this rep
 
 Terraform is the source of truth for Cloudflare resources listed below. Wrangler deploys Worker **bundle** content; Terraform owns script metadata, routes/custom domains, Worker secrets it manages, and Turnstile widgets.
 
-See also: [README.md](./README.md), [web/docs/DEPLOY.md](../../web/docs/DEPLOY.md) (Wrangler + combined CI token notes).
+See also: [README.md](./README.md), [web/docs/DEPLOY.md](../../web/docs/DEPLOY.md) (Wrangler + combined CI token notes), [web/docs/ADMIN_ANALYTICS.md](../../web/docs/ADMIN_ANALYTICS.md).
 
 ## Where the token value lives
 
@@ -33,10 +33,18 @@ These permissions match **active** `cloudflare_*` resources in `infra/terraform/
 
 | Dashboard permission | Access | Terraform resource(s) | Why |
 |---------------------|--------|----------------------|-----|
-| **Workers Scripts** | Edit | `cloudflare_workers_script`, `cloudflare_workers_secret` | Create/update Worker script shell; push secrets (`TURSO_*`, `TURNSTILE_*`, …) |
+| **Workers Scripts** | Edit | `cloudflare_workers_script`, `cloudflare_workers_secret` | Create/update Worker script shell; push secrets (`TURNSTILE_*`, `PAGE_VIEWS_DATASET`, …); Analytics Engine binding |
 | **Turnstile** | Edit | `cloudflare_turnstile_widget.story_tips` | Create/manage Turnstile widgets for `/submit-a-tip` per environment |
 
 `cloudflare_workers_domain` (staging custom domain binding) is managed through the Workers platform; **Workers Scripts → Edit** covers it in practice.
+
+**Account Analytics → Read is not required on this Terraform edit token.** Admin `/admin/analytics` SQL uses a **separate** operator-provided Account Analytics Read token (`ANALYTICS_CF_TOKEN`) — see [Analytics query token](#analytics-query-token) below.
+
+### User permissions
+
+**User → API Tokens → Edit is not required.** Terraform does **not** create Cloudflare API tokens (`cloudflare_api_token` / `permission_groups`).
+
+Dashboard and API labels differ slightly: custom-token UI often shows **API Tokens → Edit**; permission group / API docs use **API Tokens Write** — ignore those unless you change Terraform to mint tokens again.
 
 ### Zone permissions
 
@@ -80,6 +88,21 @@ These are **not** used by current Terraform Cloudflare resources but are often n
 | **Workers R2 Storage → Edit** | Wrangler deploy when R2 bindings change (media bucket) |
 
 Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions (CI)](../../scripts/set-github-secrets.md#cloudflare-token-permissions-ci).
+
+## Analytics query token
+
+Worker secret `CLOUDFLARE_ANALYTICS_API_TOKEN` comes **only** from an operator-provided **Account Analytics Read** token. Terraform does **not** mint analytics API tokens.
+
+1. Create a custom Cloudflare API token with **Account → Account Analytics → Read**, scoped to the Freedom Times account.
+2. Store it in `.env.dev` as house name **`ANALYTICS_CF_TOKEN=...`** (preferred), or as `TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN` / `TF_VAR_cloudflare_analytics_api_token`.
+3. Run Terraform with `-LoadEnvFiles`. Preflight requires the mapped `TF_VAR_cloudflare_analytics_api_token`; apply fails validation if empty.
+
+Terraform then:
+
+- Pushes that value as Worker secret `CLOUDFLARE_ANALYTICS_API_TOKEN`
+- Still manages dataset id / `PAGE_VIEWS` binding (outputs `page_views_dataset`, `page_views_binding_name`)
+
+**Do not** reuse `TF_VAR_CLOUDFLARE_API_TOKEN` as the Worker SQL query secret. Terraform never falls back to the edit/super-token for analytics.
 
 ## Token scope (account + zone)
 
@@ -160,6 +183,7 @@ pwsh scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFile
 |---------|--------------|-----|
 | `Authentication error (10000)` creating `cloudflare_turnstile_widget` | Token missing **Turnstile → Edit** | Add permission; update `.env.dev` + TFC workspace var; re-apply |
 | `Authentication error (10000)` on Worker script/secret | Missing **Workers Scripts → Edit** | Same |
+| Auth failure / missing `TF_VAR_cloudflare_analytics_api_token` | `ANALYTICS_CF_TOKEN` not set in `.env.dev` | Create Account Analytics Read token; set `ANALYTICS_CF_TOKEN`; re-run with `-LoadEnvFiles` |
 | Route/custom domain failures | Missing **Workers Routes** or **Workers Domains → Edit** on zone | Add zone permission; re-apply |
 | Wrangler deploy `10023` (KV) | Token OK for Terraform but not Wrangler | Add **Workers KV Storage → Edit** (CI token) |
 | Plan OK locally, apply fails in TFC | Stale token in workspace variable only | Update `TF_VAR_cloudflare_api_token` in **both** workspaces |

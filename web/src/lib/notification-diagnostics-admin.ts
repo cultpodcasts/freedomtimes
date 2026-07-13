@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { count, desc, eq } from 'drizzle-orm';
 
 import type { NotificationDiagnosticSnapshot } from './notification-diagnostics-server';
 import {
@@ -48,6 +48,17 @@ export async function listNotificationDiagnostics(params: {
           .limit(limit);
 
   return rows.map(mapNotificationDiagnosticRow);
+}
+
+export async function countNotificationDiagnostics(
+  status: NotificationDiagnosticStatus = 'new',
+): Promise<number> {
+  const { db } = createSubscriptionsDb();
+  const rows = await db
+    .select({ value: count() })
+    .from(notificationDiagnosticsTable)
+    .where(eq(notificationDiagnosticsTable.status, status));
+  return rows[0]?.value ?? 0;
 }
 
 export async function getNotificationDiagnostic(

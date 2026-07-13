@@ -69,19 +69,22 @@ Shared helpers live in `web/src/lib/admin-session.ts` (`requireAdminPageSession`
 
 ### Admin dashboard (`/admin`)
 
-The staff hub at `/admin` shows a tile grid for signed-in admins:
+The staff hub at `/admin` is a tile grid for signed-in admins. **Site traffic** opens `/admin/analytics` (homepage, articles, and other reader HTML — Cloudflare Analytics Engine; see [ADMIN_ANALYTICS.md](./ADMIN_ANALYTICS.md)). Admin tools themselves are not counted as page views.
 
 | Tile | Route |
 |------|-------|
+| Site traffic | `/admin/analytics` |
 | Story tips desk | `/admin/tips` |
 | Push diagnostics | `/admin/notification-diagnostics` |
 | EmDash CMS | `/_emdash/admin` |
 
-The header **Admin** link is shown only for admins and points here.
+The header **Admin** link is shown only for admins and points to the hub.
 
 | Route | Required role | Page helper | API helper |
 |-------|---------------|-------------|------------|
 | `/admin` | `admin` | `requireAdminDashboardSession()` | — |
+| `/admin/analytics` | `admin` | `requireAdminDashboardSession()` | loads via `loadAdminAnalytics` |
+| `/api/admin/analytics` | `admin` | — | `authorizeAdminApiRequest()` + `hasAdminRole` |
 | `/admin/tips` | `admin` | `requireTipsSession()` | — |
 | `/api/admin/story-tips` | `admin` | — | `authorizeTipsApiRequest()` |
 | `/api/admin/story-tips/:id` | `admin` | — | `authorizeTipsApiRequest()` |

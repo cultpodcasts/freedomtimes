@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { count, desc, eq } from 'drizzle-orm';
 
 import {
   createTipsDb,
@@ -50,6 +50,15 @@ export async function listStoryTips(params: {
         .limit(limit);
 
   return rows.map(mapStoryTipRow);
+}
+
+export async function countStoryTips(status: StoryTipStatus = 'new'): Promise<number> {
+  const { db } = createTipsDb();
+  const rows = await db
+    .select({ value: count() })
+    .from(storyTipsTable)
+    .where(eq(storyTipsTable.status, status));
+  return rows[0]?.value ?? 0;
 }
 
 export async function getStoryTip(id: string): Promise<StoryTipRecord | null> {

@@ -2,6 +2,8 @@
 import Header from '../../components/Header.astro';
 import Layout from '../../layouts/Layout.astro';
 import { requireAdminDashboardSession } from '../../lib/admin-dashboard-session';
+import { countNotificationDiagnostics } from '../../lib/notification-diagnostics-admin';
+import { countStoryTips } from '../../lib/story-tips-admin';
 
 export const prerender = false;
 
@@ -16,21 +18,50 @@ if (session instanceof Response) {
 	return session;
 }
 
-const tiles = [
+const [newTipsCount, newDiagnosticsCount] = await Promise.all([
+	countStoryTips('new').catch((error) => {
+		console.error('[admin] new tips count failed', error);
+		return null as number | null;
+	}),
+	countNotificationDiagnostics('new').catch((error) => {
+		console.error('[admin] new diagnostics count failed', error);
+		return null as number | null;
+	}),
+]);
+
+function formatNewCount(count: number): string {
+	return `${count} new`;
+}
+
+const tiles: {
+	title: string;
+	href: string;
+	description: string;
+	newCount: number | null;
+}[] = [
+	{
+		title: 'Site traffic',
+		href: '/admin/analytics',
+		description: 'Public page views — top pages, countries, and bot filters for the reader site.',
+		newCount: null,
+	},
 	{
 		title: 'Story tips desk',
 		href: '/admin/tips',
 		description: 'Review and triage reader story tips from the dedicated tips database.',
+		newCount: newTipsCount,
 	},
 	{
 		title: 'Push diagnostics',
 		href: '/admin/notification-diagnostics',
 		description: 'Review reader-submitted push notification troubleshooting reports.',
+		newCount: newDiagnosticsCount,
 	},
 	{
 		title: 'EmDash CMS',
 		href: '/_emdash/admin',
 		description: 'Edit posts, pages, and media in the editorial content management system.',
+		newCount: null,
 	},
 ];
 ---
@@ -44,14 +75,26 @@ const tiles = [
 	<article class="admin-dashboard">
 		<h1>Admin</h1>
 		<p class="lede">
-			Signed in as {session.displayName}. Choose a tool below.
+			Signed in as {session.displayName}. Choose a staff tool below.
 		</p>
 
 		<ul class="tile-grid">
 			{tiles.map((tile) => (
 				<li>
 					<a class="tile" href={tile.href}>
-						<h2 class="tile__title">{tile.title}</h2>
+						<div class="tile__heading">
+							<h2 class="tile__title">{tile.title}</h2>
+							{tile.newCount != null ? (
+								<span
+									class:list={[
+										'tile__count',
+										{ 'tile__count--alert': tile.newCount > 0 },
+									]}
+								>
+									{formatNewCount(tile.newCount)}
+								</span>
+							) : null}
+						</div>
 						<p class="tile__description">{tile.description}</p>
 						<span class="tile__cta">Open</span>
 					</a>
@@ -88,15 +131,24 @@ const tiles = [
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
 		gap: 1rem;
+		align-items: stretch;
 		margin: 0;
 		padding: 0;
 		list-style: none;
 	}
 
+	/* Flex item host so row height follows content; avoids height:100% collapsing the grid row. */
+	.tile-grid > li {
+		display: flex;
+		min-width: 0;
+	}
+
 	.tile {
 		display: flex;
 		flex-direction: column;
-		height: 100%;
+		flex: 1 1 auto;
+		width: 100%;
+		box-sizing: border-box;
 		padding: 1.25rem 1.35rem;
 		border: 1px solid var(--border-subtle);
 		border-radius: 8px;
@@ -118,13 +170,42 @@ const tiles = [
 		box-shadow: 0 0 0 3px rgba(0, 68, 187, 0.25);
 	}
 
-	.tile__title {
+	.tile__heading {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 0.5rem 0.75rem;
 		margin: 0 0 0.65rem;
+	}
+
+	.tile__title {
+		margin: 0;
 		font-family: 'Playfair Display', Georgia, serif;
 		font-size: 1.35rem;
 		font-weight: 800;
 		line-height: 1.2;
 		color: var(--text-primary);
+	}
+
+	.tile__count {
+		display: inline-block;
+		padding: 0.18rem 0.55rem;
+		border-radius: 999px;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.72rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		line-height: 1.4;
+		background: #f0f0f0;
+		color: #555555;
+		white-space: nowrap;
+	}
+
+	.tile__count--alert {
+		background: #fce8e8;
+		color: #7a1a1a;
 	}
 
 	.tile__description {
