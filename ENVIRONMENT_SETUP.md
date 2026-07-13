@@ -298,6 +298,7 @@ If you also need GitHub Actions to hold the same values, run:
 
 **Secrets synced (from `.env.dev`):**
 - `TF_VAR_CLOUDFLARE_API_TOKEN`
+- `TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN` (also accepts house name `ANALYTICS_CF_TOKEN`)
 - `TF_VAR_CLOUDFLARE_ACCOUNT_ID`
 - `TF_VAR_CLOUDFLARE_ZONE_ID`
 - `TF_VAR_AUTH0_DOMAIN`
@@ -332,6 +333,8 @@ If you also need GitHub Actions to hold the same values, run:
 - `TF_VAR_WORKSPACE_URL_PRODUCTION`
 - `TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING`
 - `TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_PRODUCTION`
+- `TF_VAR_PAGE_VIEWS_DATASET_STAGING` (Analytics Engine dataset id; prefers `terraform output page_views_dataset`)
+- `TF_VAR_PAGE_VIEWS_DATASET_PRODUCTION`
 
 ---
 

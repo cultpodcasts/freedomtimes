@@ -148,6 +148,12 @@ Admin charts call the **Analytics Engine SQL API** (`POST /accounts/{account_id}
 
 **Required:** set house name `ANALYTICS_CF_TOKEN` in `.env.dev` (or `TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN`). `-LoadEnvFiles` maps it to `var.cloudflare_analytics_api_token`. Preflight and Terraform validation fail if empty. Terraform does **not** mint analytics API tokens. Details: `infra/terraform/CLOUDFLARE_API_TOKEN.md`.
 
+**GitHub / CI:** `scripts/set-github-secrets.ps1 -SyncGitHubSecretsAndVars -AllowProduction` syncs:
+- secret `TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN` (from `ANALYTICS_CF_TOKEN`)
+- variables `TF_VAR_PAGE_VIEWS_DATASET_STAGING` / `TF_VAR_PAGE_VIEWS_DATASET_PRODUCTION` (prefer terraform output `page_views_dataset`, else `.env.dev`, else documented defaults)
+
+CI Terraform workflows pass those as `TF_VAR_page_views_dataset`.
+
 **Never** set `CLOUDFLARE_ANALYTICS_API_TOKEN` from the Terraform Edit/super-token. Terraform does not fall back to `var.cloudflare_api_token` for this secret.
 
 Do **not** use `wrangler secret put` as the primary path for the analytics token — Terraform owns it.

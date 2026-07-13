@@ -130,6 +130,7 @@ function Invoke-EnvRemapping {
             "TF_VAR_turso_database_group"                      = "TF_VAR_TURSO_DATABASE_GROUP$suffix"
             "TF_VAR_turso_database_token_expiration"           = "TF_VAR_TURSO_DATABASE_TOKEN_EXPIRATION$suffix"
             "TF_VAR_turso_database_size_limit"                 = "TF_VAR_TURSO_DATABASE_SIZE_LIMIT$suffix"
+            "TF_VAR_page_views_dataset"                        = "TF_VAR_PAGE_VIEWS_DATASET$suffix"
         }
         foreach ($target in $envSpecific.Keys) {
             $src = [System.Environment]::GetEnvironmentVariable($envSpecific[$target], "Process")
@@ -222,6 +223,7 @@ function Build-TerraformVarArgs {
             turso_database_group                    = @("TF_VAR_turso_database_group")
             turso_database_token_expiration         = @("TF_VAR_turso_database_token_expiration")
             turso_database_size_limit               = @("TF_VAR_turso_database_size_limit")
+            page_views_dataset                      = @("TF_VAR_page_views_dataset", "TF_VAR_PAGE_VIEWS_DATASET")
         }
     }
 

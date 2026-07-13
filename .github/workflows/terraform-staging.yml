@@ -50,6 +50,8 @@ jobs:
       TF_VAR_workspace_url: ${{ vars.TF_VAR_WORKSPACE_URL_STAGING }}
       TF_VAR_auth0_api_identifier: ${{ vars.AUTH0_API_AUDIENCE_STAGING }}
       TF_VAR_api_management_allowed_origins: ${{ vars.TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING }}
+      # Matches terraform output page_views_dataset; synced via scripts/set-github-secrets.ps1
+      TF_VAR_page_views_dataset: ${{ vars.TF_VAR_PAGE_VIEWS_DATASET_STAGING || 'freedomtimes_staging_page_views' }}
       TF_VAR_auth0_domain: ${{ secrets.TF_VAR_AUTH0_DOMAIN }}
       TF_VAR_auth0_management_client_id: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID || secrets.TF_VAR_AUTH0_CLIENT_ID }}
       TF_VAR_auth0_management_client_secret: ${{ secrets.TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET || secrets.TF_VAR_AUTH0_CLIENT_SECRET }}

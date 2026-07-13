@@ -281,11 +281,20 @@ function Main {
             "TF_VAR_WORKSPACE_URL_STAGING",
             "TF_VAR_WORKSPACE_URL_PRODUCTION",
             "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_STAGING",
-            "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_PRODUCTION"
+            "TF_VAR_API_MANAGEMENT_ALLOWED_ORIGINS_PRODUCTION",
+            # Analytics Engine dataset ids (TF output page_views_dataset). Non-secret; CI maps to TF_VAR_page_views_dataset.
+            "TF_VAR_PAGE_VIEWS_DATASET_STAGING",
+            "TF_VAR_PAGE_VIEWS_DATASET_PRODUCTION"
         )
         Write-Host "  Syncing variables..." -ForegroundColor Gray
         foreach ($name in $variables) {
             $value = Get-EnvValue -Values $baseEnvValues -Keys @($name)
+            if ($name -eq "TF_VAR_PAGE_VIEWS_DATASET_STAGING") {
+                $value = Get-PageViewsDatasetId -Environment "staging" -EnvValues $baseEnvValues -RepoRoot $repoRoot
+            }
+            elseif ($name -eq "TF_VAR_PAGE_VIEWS_DATASET_PRODUCTION") {
+                $value = Get-PageViewsDatasetId -Environment "production" -EnvValues $baseEnvValues -RepoRoot $repoRoot
+            }
             Set-GhVariable -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun
         }
         Write-Host "`nGitHub secrets and variables synced." -ForegroundColor Green
@@ -343,6 +352,62 @@ function Get-EnvValue {
         }
     }
     return $Default
+}
+
+function Get-TerraformOutputRaw {
+    param(
+        [string]$EnvironmentDir,
+        [string]$OutputName
+    )
+    if (-not (Test-Path $EnvironmentDir)) {
+        return ""
+    }
+    $previousLocation = Get-Location
+    try {
+        Set-Location $EnvironmentDir
+        $raw = & terraform output -raw $OutputName 2>$null
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$raw)) {
+            return ""
+        }
+        return ([string]$raw).Trim()
+    }
+    catch {
+        return ""
+    }
+    finally {
+        Set-Location $previousLocation
+    }
+}
+
+function Get-PageViewsDatasetId {
+    param(
+        [ValidateSet("staging", "production")]
+        [string]$Environment,
+        [hashtable]$EnvValues,
+        [string]$RepoRoot
+    )
+    # Prefer live Terraform output (source of truth), then .env.dev, then TF variable defaults.
+    $tfDir = Join-Path $RepoRoot "infra/terraform/environments/$Environment"
+    $fromTf = Get-TerraformOutputRaw -EnvironmentDir $tfDir -OutputName "page_views_dataset"
+    if (-not [string]::IsNullOrWhiteSpace($fromTf)) {
+        Write-Host "  [page_views_dataset/$Environment] from terraform output" -ForegroundColor Gray
+        return $fromTf
+    }
+
+    $suffix = if ($Environment -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
+    $fromEnv = Get-EnvValue -Values $EnvValues -Keys @(
+        "TF_VAR_PAGE_VIEWS_DATASET$suffix",
+        "PAGE_VIEWS_DATASET$suffix",
+        "TF_VAR_page_views_dataset$suffix"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
+        Write-Host "  [page_views_dataset/$Environment] from .env.dev" -ForegroundColor Gray
+        return $fromEnv
+    }
+
+    $fallback = if ($Environment -eq "staging") { "freedomtimes_staging_page_views" } else { "freedomtimes_page_views" }
+    Write-Host "  [page_views_dataset/$Environment] using documented default $fallback" -ForegroundColor Gray
+    return $fallback
 }
 
 function Get-EnvValueOrThrow {
