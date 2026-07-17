@@ -4,7 +4,10 @@ import { getEmDashEntry } from 'emdash';
 import EmDashContentView from '../components/EmDashContentView.astro';
 import HomepageView from '../components/HomepageView.astro';
 import { isLockedSiteAccess, SESSION_COOKIE } from '../lib/auth';
-import { requireEditorialSession } from '../lib/editorial-session';
+import {
+	getOptionalEditorialSession,
+	requireEditorialSession,
+} from '../lib/editorial-session';
 
 const slug = Astro.params.slug;
 if (!slug) {
@@ -24,6 +27,13 @@ let resolvedIsPreview = false;
 let resolvedLabel = 'Page';
 let resolvedCollectionKey: 'pages' | 'posts' | null = null;
 
+const sessionContext = {
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+};
+
 if (isHomepage) {
 	if (isLocked) {
 		const token = Astro.cookies.get(SESSION_COOKIE)?.value;
@@ -32,12 +42,7 @@ if (isHomepage) {
 			return Astro.rewrite('/');
 		}
 
-		const session = await requireEditorialSession({
-			cookies: Astro.cookies,
-			url: Astro.url,
-			request: Astro.request,
-			redirect: Astro.redirect,
-		});
+		const session = await requireEditorialSession(sessionContext);
 
 		if (session instanceof Response) {
 			return Astro.rewrite('/?denied=1');
@@ -47,12 +52,7 @@ if (isHomepage) {
 		isSignedIn = true;
 	}
 } else if (isLocked) {
-	const session = await requireEditorialSession({
-		cookies: Astro.cookies,
-		url: Astro.url,
-		request: Astro.request,
-		redirect: Astro.redirect,
-	});
+	const session = await requireEditorialSession(sessionContext);
 
 	if (session instanceof Response) {
 		return session;
@@ -61,6 +61,13 @@ if (isHomepage) {
 	displayName = session.displayName;
 	isAdmin = session.isAdmin;
 	isSignedIn = true;
+} else {
+	const session = await getOptionalEditorialSession(sessionContext);
+	if (session) {
+		displayName = session.displayName;
+		isAdmin = session.isAdmin;
+		isSignedIn = true;
+	}
 }
 
 if (!isHomepage) {

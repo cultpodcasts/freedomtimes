@@ -2,7 +2,10 @@
 import Header from '../components/Header.astro';
 import Layout from '../layouts/Layout.astro';
 import ReaderDataProvenance from '../components/ReaderDataProvenance.astro';
-import { requireReaderPageSession } from '../lib/editorial-session';
+import {
+	getOptionalEditorialSession,
+	requireReaderPageSession,
+} from '../lib/editorial-session';
 import {
 	MIN_BODY_LENGTH,
 	MAX_BODY_LENGTH,
@@ -25,12 +28,16 @@ const simulateMode = resolveStoryTipSimulateMode(
 	Astro.url,
 );
 
+const sessionContext = {
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+};
+
 const session = await requireReaderPageSession(
 	{
-		cookies: Astro.cookies,
-		url: Astro.url,
-		request: Astro.request,
-		redirect: Astro.redirect,
+		...sessionContext,
 		pathname: Astro.url.pathname,
 	},
 	{
@@ -43,6 +50,19 @@ if (session instanceof Response) {
 	return session;
 }
 
+let isAdmin = false;
+let isSignedIn = false;
+if (session) {
+	isAdmin = session.isAdmin;
+	isSignedIn = true;
+} else {
+	const optional = await getOptionalEditorialSession(sessionContext);
+	if (optional) {
+		isAdmin = optional.isAdmin;
+		isSignedIn = true;
+	}
+}
+
 const turnstileSiteKey = readTurnstileSiteKey();
 ---
 
@@ -51,7 +71,7 @@ const turnstileSiteKey = readTurnstileSiteKey();
 	description="Send an anonymous or identified story tip to the freedom times editorial team."
 	canonicalUrl={Astro.url.href}
 >
-	<Header section="Submit a tip" />
+	<Header section="Submit a tip" isAdmin={isAdmin} isSignedIn={isSignedIn} />
 	<article class="tip-page">
 		<h1>Submit a tip</h1>
 		<p class="lede">

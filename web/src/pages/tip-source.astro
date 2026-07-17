@@ -9,14 +9,18 @@ import {
   githubBlobUrl,
   githubCommitUrl,
 } from '../lib/build-provenance';
-import { requireReaderPageSession } from '../lib/editorial-session';
+import { requireReaderPageSession, getOptionalEditorialSession } from '../lib/editorial-session';
+
+const sessionContext = {
+  cookies: Astro.cookies,
+  url: Astro.url,
+  request: Astro.request,
+  redirect: Astro.redirect,
+};
 
 const session = await requireReaderPageSession(
   {
-    cookies: Astro.cookies,
-    url: Astro.url,
-    request: Astro.request,
-    redirect: Astro.redirect,
+    ...sessionContext,
     pathname: Astro.url.pathname,
   },
   {
@@ -29,6 +33,19 @@ if (session instanceof Response) {
   return session;
 }
 
+let isAdmin = false;
+let isSignedIn = false;
+if (session) {
+  isAdmin = session.isAdmin;
+  isSignedIn = true;
+} else {
+  const optional = await getOptionalEditorialSession(sessionContext);
+  if (optional) {
+    isAdmin = optional.isAdmin;
+    isSignedIn = true;
+  }
+}
+
 const provenance = buildProvenancePayload();
 const commitUrl = githubCommitUrl();
 const shortSha = formatShortCommitSha();
@@ -39,7 +56,7 @@ const shortSha = formatShortCommitSha();
 	description="Verify which open-source commit handles story tips and notification diagnostics on this deployment."
 	canonicalUrl={Astro.url.href}
 >
-	<Header section="Source verification" />
+	<Header section="Source verification" isAdmin={isAdmin} isSignedIn={isSignedIn} />
 	<article class="source-page">
 		<h1>Verify what runs on this site</h1>
 		<p class="lede">

@@ -10,7 +10,7 @@ import PortableLink from "../components/PortableLink.astro";
 import EntryHeader from "./content/EntryHeader.astro";
 import EntryMedia from "./content/EntryMedia.astro";
 import EntryBody from "./content/EntryBody.astro";
-import { getHomePath, readOptionalEnv } from "../lib/auth";
+import { getHomePath } from "../lib/auth";
 import {
 	buildPortableRenderNodes,
 	parseLegacyTextContent,
@@ -41,8 +41,7 @@ const {
 	isSignedIn?: boolean;
 };
 
-const siteAccessMode = readOptionalEnv("SITE_ACCESS_MODE").trim().toLowerCase();
-const resolvedIsSignedIn = isSignedIn ?? siteAccessMode !== "public";
+const resolvedIsSignedIn = isSignedIn ?? false;
 const {
 	title,
 	summaryParagraphs,

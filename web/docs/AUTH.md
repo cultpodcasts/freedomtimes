@@ -107,21 +107,22 @@ There is **no tenant-wide Auth0 SSO session management** in this repo (no `auth0
 
 | Layer | What it controls | Where |
 |---|---|---|
-| ID token `exp` (JWT claim) | `verifyIdToken()` runs on **every** protected page/API request (`editorial-session.ts`, `signed-in.astro`). Once `exp` has passed, the app tries a silent refresh (below) before redirecting to `/auth/login` | Terraform: `auth0_client.admin_ui.jwt_configuration.lifetime_in_seconds` (`infra/terraform/modules/auth0_app/main.tf`, `var.id_token_lifetime_in_seconds`, default 28,800s / 8h) |
-| `ft_session` / `ft_csrf` / `ft_refresh` cookie `maxAge` | Browser stops sending each cookie once its own `maxAge` elapses | App code: `web/src/lib/auth.ts` (`SESSION_COOKIE`/`CSRF_COOKIE` 8h, `REFRESH_TOKEN_COOKIE` matches `refresh_token_idle_lifetime_seconds`, default 14d) |
+| ID token `exp` (JWT claim) | `verifyIdToken()` runs on **every** protected page/API request (`editorial-session.ts`, `signed-in.astro`). Once `exp` has passed, the app tries a silent refresh (below) before redirecting to `/auth/login` | Terraform: `auth0_client.admin_ui.jwt_configuration.lifetime_in_seconds` (`infra/terraform/modules/auth0_app/main.tf`, `var.id_token_lifetime_in_seconds`, default 86,400s / 24h) |
+| `ft_session` / `ft_csrf` / `ft_refresh` cookie `maxAge` | Browser stops sending each cookie once its own `maxAge` elapses | App code: `web/src/lib/auth.ts` (`SESSION_COOKIE`/`CSRF_COOKIE` 24h, `REFRESH_TOKEN_COOKIE` matches `refresh_token_idle_lifetime_seconds`, default 14d) |
 
-**Before this change:** `jwt_configuration.lifetime_in_seconds` was hardcoded to `3600` (1 hour), while the `ft_session` cookie declared an 8-hour `maxAge`. The ID token's own `exp` was the real bottleneck — the cookie's 8-hour window was mostly theoretical because `verifyIdToken()` rejected the token as expired after 1 hour and forced a fresh Auth0 login.
+**Before the 8h alignment:** `jwt_configuration.lifetime_in_seconds` was hardcoded to `3600` (1 hour), while the `ft_session` cookie declared an 8-hour `maxAge`. The ID token's own `exp` was the real bottleneck — the cookie's 8-hour window was mostly theoretical because `verifyIdToken()` rejected the token as expired after 1 hour and forced a fresh Auth0 login.
 
-**Current (Terraform, this repo):** Per-application settings on the staging/production login apps are always managed: **8-hour ID token** (`id_token_lifetime_in_seconds`, matching the existing `ft_session` cookie `maxAge`) and a **rotating, expiring refresh token policy** on the Auth0 application (`enable_refresh_token_rotation`, default `true`; 30d absolute / 14d idle lifetimes).
+**Current (Terraform + app, this repo):** Per-application settings on the staging/production login apps are always managed: **24-hour ID token** (`id_token_lifetime_in_seconds`, matching the `ft_session` cookie `maxAge`) and a **rotating, expiring refresh token policy** on the Auth0 application (`enable_refresh_token_rotation`, default `true`; 30d absolute / 14d idle lifetimes).
 
 | Setting | Was | Now | Managed by |
 |---|---|---|---|
-| ID token lifetime (`id_token_lifetime_in_seconds`) | 3,600s (1h, hardcoded) | 28,800s (8h) — matches the existing cookie `maxAge` | `modules/auth0_app` var, per staging/production login app |
-| Refresh token rotation | not configured | `rotating` / `expiring`, absolute 30d, idle 14d (`enable_refresh_token_rotation`) | `modules/auth0_app` var, per staging/production login app |
+| ID token lifetime (`id_token_lifetime_in_seconds`) | 28,800s (8h) | 86,400s (24h) — matches `SESSION_COOKIE_MAX_AGE_SECONDS` | `modules/auth0_app` var, per staging/production login app |
+| `ft_session` / `ft_csrf` cookie `maxAge` | 8h | 24h | `web/src/lib/auth.ts` |
+| Refresh token rotation | rotating / expiring, absolute 30d, idle 14d | unchanged | `modules/auth0_app` var, per staging/production login app |
 
 The login app must be **OIDC conformant** (`oidc_conformant = true` on `auth0_client.admin_ui`) when refresh token rotation is enabled — Auth0 returns `400 Application must be OIDC Conformant when Refresh Token rotation is enabled` otherwise.
 
-**What this changes:** raising `id_token_lifetime_in_seconds` to 8h makes the ID token's lifetime match the cookie's already-declared 8-hour window, so users get the full 8 hours the app always intended instead of being forced to re-login after 1 hour. The refresh token policy backs a real silent-refresh flow (below), so once the 8-hour ID token expires, the app can extend the session for up to 14 days of activity (idle refresh token lifetime) without a full Auth0 login prompt.
+**What this changes:** raising `id_token_lifetime_in_seconds` to 24h (and matching the cookie `maxAge`) gives staff a full day before the ID token expires. After that, silent refresh via `ft_refresh` can extend the session for up to 14 days of activity (idle refresh token lifetime) without a full Auth0 login prompt.
 
 ### Refresh tokens (app side)
 
