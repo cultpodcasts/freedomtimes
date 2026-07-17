@@ -1,12 +1,22 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
 import { isLockedSiteAccess, SESSION_COOKIE } from '../lib/auth';
-import { requireEditorialSession } from '../lib/editorial-session';
+import {
+  getOptionalEditorialSession,
+  requireEditorialSession,
+} from '../lib/editorial-session';
 
 const isLocked = isLockedSiteAccess();
 
 let isAdmin = false;
 let isSignedIn = false;
+
+const sessionContext = {
+  cookies: Astro.cookies,
+  url: Astro.url,
+  request: Astro.request,
+  redirect: Astro.redirect,
+};
 
 if (isLocked) {
   const token = Astro.cookies.get(SESSION_COOKIE)?.value;
@@ -17,12 +27,7 @@ if (isLocked) {
     return Astro.rewrite('/');
   }
 
-  const session = await requireEditorialSession({
-    cookies: Astro.cookies,
-    url: Astro.url,
-    request: Astro.request,
-    redirect: Astro.redirect,
-  });
+  const session = await requireEditorialSession(sessionContext);
 
   if (session instanceof Response) {
     return Astro.rewrite('/?denied=1');
@@ -30,6 +35,12 @@ if (isLocked) {
 
   isAdmin = session.isAdmin;
   isSignedIn = true;
+} else {
+  const session = await getOptionalEditorialSession(sessionContext);
+  if (session) {
+    isAdmin = session.isAdmin;
+    isSignedIn = true;
+  }
 }
 ---
 

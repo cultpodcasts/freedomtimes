@@ -77,13 +77,13 @@ variable "enable_machine_to_machine_grant" {
 # app's ft_session cookie and verifyIdToken() exp check.
 
 variable "id_token_lifetime_in_seconds" {
-  description = "ID token lifetime (seconds) for the login app client (jwt_configuration.lifetime_in_seconds). Governs how long the ft_session cookie's token stays valid before every protected request (verifyIdToken) forces a fresh Auth0 login. Auth0 tenant default for new Regular Web Apps is 36000s (10h); this repo previously hardcoded 3600s (1h)."
+  description = "ID token lifetime (seconds) for the login app client (jwt_configuration.lifetime_in_seconds). Governs how long the ft_session cookie's token stays valid before verifyIdToken requires a silent refresh (or a fresh Auth0 login). Matches SESSION_COOKIE_MAX_AGE_SECONDS in web/src/lib/auth.ts."
   type        = number
-  default     = 28800 # 8 hours - matches the existing ft_session/ft_csrf cookie maxAge (60*60*8) in web/src/pages/auth/callback.ts
+  default     = 86400 # 24 hours - matches ft_session/ft_csrf cookie maxAge (60*60*24) in web/src/lib/auth.ts
 }
 
 variable "enable_refresh_token_rotation" {
-  description = "Configure a rotating, expiring refresh_token policy on the login app client. The refresh_token grant is already requested (see local.login_app_grant_types); this only sets Auth0-side rotation/lifetime policy. NOTE: the web app does not currently request the offline_access scope or call the refresh_token grant, so this alone does not extend user-visible sessions until app code adds a silent-refresh flow — see web/docs/AUTH.md."
+  description = "Configure a rotating, expiring refresh_token policy on the login app client. The web app requests offline_access and uses silent refresh in editorial-session.ts — see web/docs/AUTH.md."
   type        = bool
   default     = true
 }

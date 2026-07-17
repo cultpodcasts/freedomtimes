@@ -44,7 +44,11 @@ const homePath = getHomePath();
 					Admin
 				</a>
 			)}
-			{isSignedIn && <a href="/auth/logout">Sign out</a>}
+			{isSignedIn ? (
+				<a href="/auth/logout">Sign out</a>
+			) : (
+				<a href={`/auth/login?next=${encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`)}`}>Sign in</a>
+			)}
 		</div>
 		
 		{section && (

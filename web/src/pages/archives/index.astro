@@ -4,7 +4,10 @@ import { getEmDashCollection } from 'emdash';
 import Layout from '../../layouts/Layout.astro';
 import Header from '../../components/Header.astro';
 import { readOptionalEnv } from '../../lib/auth';
-import { requireEditorialSession } from '../../lib/editorial-session';
+import {
+	getOptionalEditorialSession,
+	requireEditorialSession,
+} from '../../lib/editorial-session';
 
 type ArchiveCard = {
 	slug: string;
@@ -95,13 +98,15 @@ const isLocked = siteAccessMode !== 'public';
 let isAdmin = false;
 let isSignedIn = false;
 
+const sessionContext = {
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+};
+
 if (isLocked) {
-	const session = await requireEditorialSession({
-		cookies: Astro.cookies,
-		url: Astro.url,
-		request: Astro.request,
-		redirect: Astro.redirect,
-	});
+	const session = await requireEditorialSession(sessionContext);
 
 	if (session instanceof Response) {
 		return session;
@@ -109,6 +114,12 @@ if (isLocked) {
 
 	isAdmin = session.isAdmin;
 	isSignedIn = true;
+} else {
+	const session = await getOptionalEditorialSession(sessionContext);
+	if (session) {
+		isAdmin = session.isAdmin;
+		isSignedIn = true;
+	}
 }
 
 const { entries, error } = await getEmDashCollection('archives', {

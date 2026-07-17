@@ -17,7 +17,7 @@ const NATIVE_AUTH_CALLBACK_URL = 'news.freedomtimes.app://auth/callback';
 export const RETURN_TO_COOKIE_MAX_AGE_SECONDS = 600;
 
 /** Matches `jwt_configuration.lifetime_in_seconds` (`id_token_lifetime_in_seconds`) in `infra/terraform/modules/auth0_app`. */
-export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 8; // 8 hours
+export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24; // 24 hours
 export const ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 30; // 30 minutes
 /** Matches `refresh_token_idle_lifetime_seconds` default in `infra/terraform/modules/auth0_app`. */
 export const REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days

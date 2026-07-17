@@ -128,6 +128,34 @@ export async function requireEditorialSession(
 	return context.redirect('/');
 }
 
+/**
+ * Soft session probe for public-page nav chrome (Sign in / Sign out / Admin).
+ * Returns a session when cookies are valid (or silently refreshable); never redirects
+ * and does not clear cookies on failure — protected routes still use requireEditorialSession.
+ */
+export async function getOptionalEditorialSession(
+	context: EditorialSessionContext,
+): Promise<EditorialSession | null> {
+	const requestId = context.request.headers.get('cf-ray') ?? crypto.randomUUID();
+	const token = context.cookies.get(SESSION_COOKIE)?.value;
+
+	if (token) {
+		try {
+			const payload = await verifyIdToken(token, getAuthConfig());
+			if (hasEditorialRole(payload)) {
+				return buildSession(payload, requestId);
+			}
+			return null;
+		} catch {
+			// Fall through to silent refresh when the ID token is expired/invalid.
+		}
+	} else if (!context.cookies.get(REFRESH_TOKEN_COOKIE)?.value) {
+		return null;
+	}
+
+	return tryRefreshSession(context, requestId);
+}
+
 export async function authorizeEditorialApiRequest(params: {
 	cookies: AstroCookies;
 	request: Request;
