@@ -32,7 +32,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Auth0 Capacitor callback (custom scheme). -->
+            <!--
+              Custom scheme deep links (news.freedomtimes.app://…).
+              - Auth0: /auth/callback
+              - EmDash magic link (Capacitor Android email): /auth/magic-link/verify
+            -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -42,6 +46,10 @@
                 <data
                     android:host="auth"
                     android:pathPrefix="/callback"
+                    android:scheme="@string/custom_url_scheme" />
+                <data
+                    android:host="auth"
+                    android:pathPrefix="/magic-link/verify"
                     android:scheme="@string/custom_url_scheme" />
             </intent-filter>
 

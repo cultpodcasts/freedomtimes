@@ -100,7 +100,7 @@ keytool -list -v -keystore <prod.jks> -alias <ANDROID_PRODUCTION_SIGNING_KEY_ALI
 
 **Play App Signing caveat:** If the app is published via Google Play with Play App Signing enabled, store-installed builds are signed with Google’s **app signing key**, not necessarily the upload key / CI staging key. Copy the **App signing key certificate** SHA-256 from Play Console → App integrity and add it as another fingerprint. Until then, DAL only covers sideload/CI builds signed with the staging (or future upload) key.
 
-Until a distinct production/Play cert is added, release builds that fall back to the **staging** keystore already match the staging fingerprint listed there. DAL verifies HTTPS App Links (`android:autoVerify="true"`). Auth0 still uses the custom scheme `news.freedomtimes.app://auth/callback`. EmDash magic-link **delivery** does not need DAL; **opening** `https://freedomtimes.news/_emdash/...` in the app does. See [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md).
+Until a distinct production/Play cert is added, release builds that fall back to the **staging** keystore already match the staging fingerprint listed there. DAL verifies HTTPS App Links (`android:autoVerify="true"`). Custom scheme `news.freedomtimes.app://` is used for Auth0 (`…/auth/callback`) and for EmDash Capacitor Android magic links (`…/auth/magic-link/verify`). EmDash magic-link **delivery** does not need DAL; **opening** `https://freedomtimes.news/_emdash/...` in the app does. See [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md).
 
 ### App Links (HTTPS) — what is registered
 
@@ -133,7 +133,9 @@ curl.exe -sS https://freedomtimes.news/.well-known/assetlinks.json
 # After install: domain verification (Android 12+)
 adb shell pm get-app-links news.freedomtimes.app
 
-# Cold-open an *unwrapped* magic-link path (fresh token; Safe Links wrappers skip App Links)
+# Cold-open an *unwrapped* magic-link path (fresh unused token; Safe Links wrappers skip App Links).
+# Reusing a token already opened in Firefox / prefetched by Safe Links → login?error=invalid_link.
+# See EMDASH_CLOUDFLARE_EMAIL.md § single-use + Safe Links.
 adb shell am start -a android.intent.action.VIEW -d "https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=YOUR_FRESH_TOKEN"
 ```
 

@@ -7,6 +7,7 @@ import emdash from 'emdash/astro';
 import { r2 } from '@emdash-cms/cloudflare';
 import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
 import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
+import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
 if (!process.env.TURSO_DATABASE_URL) {
   throw new Error('TURSO_DATABASE_URL is required for build');
@@ -73,7 +74,11 @@ export default defineConfig({
       external: ['cloudflare:workers'],
       noExternal: ['@libsql/kysely-libsql', '@libsql/client', '@libsql/client/web'],
     },
-    plugins: [cloudflareOptimizeDepsBuildFix()],
+    plugins: [
+      cloudflareOptimizeDepsBuildFix(),
+      // EmDash has no magic-link URL builder — rewrite email href for Capacitor Android.
+      magicLinkAndroidSchemePlugin(),
+    ],
     build: {
       // EmDash admin PluginRegistry client bundle is ~7.5 MB (all CMS field plugins); splitting needs emdash lazy routes.
       chunkSizeWarningLimit: 8192,
@@ -88,6 +93,8 @@ export default defineConfig({
       // Official Cloudflare Email Sending provider for EmDash magic links / invites.
       // Activate under Admin → Extensions, then Settings → Email after deploy.
       // Requires Worker send_email binding EMAIL (wrangler.jsonc) + domain onboard.
+      // Capacitor Android: magic-link Sign-in button uses news.freedomtimes.app://…
+      // (see magicLinkAndroidSchemePlugin + native-android-magic-link.ts).
       plugins: [
         cloudflareEmail({
           from: { email: 'noreply@freedomtimes.news', name: SITE_DISPLAY_NAME },

@@ -2,10 +2,15 @@ import { App } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 
+import {
+  NATIVE_ANDROID_COOKIE,
+  NATIVE_APP_COOKIE,
+  resolveAndroidMagicLinkHttpsUrl,
+} from './native-android-magic-link';
+
 const APP_SCHEME = 'news.freedomtimes.app';
 const APP_CALLBACK_HOST = 'auth';
 const APP_CALLBACK_PATH = '/callback';
-const NATIVE_APP_COOKIE = 'ft_native_app';
 const LOGIN_PATH = '/auth/login';
 const NATIVE_LOGIN_PATH = '/auth/login?native=1';
 
@@ -20,7 +25,12 @@ declare global {
 
 function setNativeAppCookie(): void {
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${NATIVE_APP_COOKIE}=1; Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+  const base = `Path=/; Max-Age=31536000; SameSite=Lax${secure}`;
+  document.cookie = `${NATIVE_APP_COOKIE}=1; ${base}`;
+  // Capacitor Android only — drives custom-scheme magic-link emails (not Chrome UA).
+  if (Capacitor.getPlatform() === 'android') {
+    document.cookie = `${NATIVE_ANDROID_COOKIE}=1; ${base}`;
+  }
 }
 
 function isLoginPath(url: URL): boolean {
@@ -162,6 +172,16 @@ async function handleAppOpenUrl(appUrl: string): Promise<void> {
   if (auth0Callback) {
     await Browser.close().catch(() => undefined);
     window.location.replace(auth0Callback);
+    return;
+  }
+
+  // Custom-scheme magic link from email → HTTPS verify in this WebView.
+  const magicLinkHttps = resolveAndroidMagicLinkHttpsUrl(appUrl, window.location.origin);
+  if (magicLinkHttps) {
+    await Browser.close().catch(() => undefined);
+    if (!alreadyAtUrl(magicLinkHttps)) {
+      window.location.replace(magicLinkHttps);
+    }
     return;
   }
 
