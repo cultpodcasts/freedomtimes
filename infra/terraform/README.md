@@ -36,8 +36,8 @@ Do **not** mutate Worker bindings/secrets with one-off `npx wrangler` commands.
 
 | Env | Status |
 |-----|--------|
-| Staging | **Applied** (import `workers_custom_domain` + in-place `EMAIL`/`secret_text` bindings). `migrations_v5_cloudflare.tf` removed after apply. |
-| Production | Plan-only until explicit operator ask (move `cloudflare_record` → `dns_record` + bindings) |
+| Staging | **Applied** (import `workers_custom_domain` + in-place `EMAIL`/`secret_text` bindings). `migrations_v5_cloudflare.tf` removed after apply. First apply omitted `keep_assets` / Wrangler `plain_text`+`assets` in `keep_bindings` and broke `/auth/login` until Worker rollback; module now sets `keep_assets = true` and keeps `assets`/`plain_text`. |
+| Production | Plan-only until explicit operator ask (move `cloudflare_record` → `dns_record` + bindings) — only after the `keep_assets` fix is in the applied module |
 
 Orphaned v4 `cloudflare_workers_secret` / `cloudflare_workers_domain` addresses were removed from remote state before apply (Cloudflare objects left in place; `secret_text` / custom domain are TF-owned after apply).
 

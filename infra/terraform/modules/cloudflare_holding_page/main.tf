@@ -16,8 +16,8 @@ locals {
   route_hostname = split("/", var.route_pattern)[0]
   is_subdomain   = length(split(".", local.route_hostname)) > 2
 
-  # Terraform-owned bindings. Wrangler still owns KV/R2 (and the live Astro bundle content).
-  # keep_bindings below preserves those Wrangler binding types across TF script metadata updates.
+  # Terraform-owned bindings. Wrangler owns KV/R2/plain_text/ASSETS and the live Astro bundle.
+  # keep_assets + keep_bindings preserve Wrangler-owned pieces across TF script metadata updates.
   page_views_bindings = trimspace(var.page_views_dataset) != "" ? [
     {
       name    = var.page_views_binding_name
@@ -60,9 +60,14 @@ resource "cloudflare_workers_script" "holding_page" {
 
   bindings = local.worker_bindings
 
-  # Preserve Wrangler-owned binding kinds when Terraform updates TF-owned bindings/secrets.
+  # Wrangler owns the Astro/EmDash Worker bundle + static assets + wrangler.jsonc vars.
+  # Without these, a TF bindings-only upload drops ASSETS / plain_text and breaks SSR
+  # routes (staging symptom: GET /auth/login → HTTP 400 "Missing slug").
+  keep_assets = true
   keep_bindings = [
+    "assets",
     "kv_namespace",
+    "plain_text",
     "r2_bucket",
   ]
 

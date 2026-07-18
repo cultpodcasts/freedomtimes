@@ -22,11 +22,13 @@ Docs upstream: [Deploy to Cloudflare → Email](https://docs.emdashcms.com/deplo
 
 | Concern | Owner | Notes |
 |---------|--------|--------|
-| Worker **bundle** (Astro/EmDash code) | Wrangler deploy | `deploy-*-local.ps1` / CI |
+| Worker **bundle** (Astro/EmDash code) + static assets | Wrangler deploy | `deploy-*-local.ps1` / CI |
 | `send_email` binding `EMAIL` | **Terraform** (`cloudflare_workers_script` bindings, provider **~> 5.22**) | Declared in `modules/cloudflare_holding_page`. Mirror in [`web/wrangler.jsonc`](../wrangler.jsonc) so Worker **deploy** does not strip it. |
 | `PAGE_VIEWS` analytics_engine | Terraform | Same script resource; dataset id from tfvars / output |
 | `TURNSTILE_*`, `CLOUDFLARE_ANALYTICS_API_TOKEN` | Terraform | `secret_text` bindings (replaces removed v4 `cloudflare_workers_secret`) |
-| KV `SESSION` / R2 `MEDIA` | Wrangler | Preserved across TF updates via `keep_bindings` |
+| KV `SESSION` / R2 `MEDIA` / Wrangler `plain_text` vars / `ASSETS` | Wrangler | Preserved across TF updates via `keep_bindings` (`kv_namespace`, `r2_bucket`, `plain_text`, `assets`) **and** `keep_assets = true` |
+
+**Do not** apply Terraform Worker-script binding updates without `keep_assets = true` and those `keep_bindings` entries. A bindings-only upload that drops Assets / Wrangler `plain_text` vars corrupts SSR routing (observed: `GET /auth/login` → HTTP 400 `Missing slug`). After any bad TF upload, recover with a Wrangler Worker redeploy (or roll back to the last Wrangler deployment version).
 | Email Sending **domain onboard** (`freedomtimes.news`) | Operator (dashboard) | **Still no** first-class TF resource for Sending onboard (only `email_routing_*` exists). Creates `cf-bounce.*` DNS; does **not** replace apex Email Routing MX. |
 | Apex Email Routing redirects | Existing dashboard setup (outside this repo) | Coexists with Sending — keep redirects intact |
 | `_dmarc` / Sending DNS | Operator review after onboard | Prefer soft `p=none` if Cloudflare proposes `p=reject` before you are ready |
