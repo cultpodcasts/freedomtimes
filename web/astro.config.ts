@@ -104,8 +104,8 @@ export default defineConfig({
       // Official Cloudflare Email Sending provider for EmDash magic links / invites.
       // Activate under Admin → Extensions, then Settings → Email after deploy.
       // Requires Worker send_email binding EMAIL (wrangler.jsonc) + domain onboard.
-      // Capacitor Android: magic-link Sign-in button uses news.freedomtimes.app://…
-      // (see magicLinkAndroidSchemePlugin + native-android-magic-link.ts).
+      // Capacitor Android: magic-link Sign-in button uses HTTPS lander
+      // /auth/native-magic-link (see magicLinkAndroidSchemePlugin + native-android-magic-link.ts).
       plugins: [
         cloudflareEmail({
           from: { email: 'noreply@freedomtimes.news', name: SITE_DISPLAY_NAME },

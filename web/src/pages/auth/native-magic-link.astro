@@ -1,0 +1,169 @@
+---
+/**
+ * HTTPS lander for Capacitor Android magic-link emails.
+ *
+ * GET only renders HTML (Safe Links / scanners do not burn the single-use token).
+ * Token is consumed when the user opens the app (custom scheme → verify) or taps
+ * “Continue in browser” (HTTPS EmDash verify).
+ */
+import { buildMagicLinkLanderTargets } from '../../lib/native-android-magic-link';
+
+export const prerender = false;
+
+const token = (Astro.url.searchParams.get('token') ?? '').trim();
+const ftOrigin = Astro.url.searchParams.get('ft_origin');
+const redirect = Astro.url.searchParams.get('redirect');
+
+const targets = token
+  ? buildMagicLinkLanderTargets({
+      token,
+      ftOrigin,
+      redirect,
+      pageOrigin: Astro.url.origin,
+    })
+  : null;
+
+// Already inside Capacitor WebView (App Link opened this lander) → verify now.
+const cookieHeader = Astro.request.headers.get('cookie') ?? '';
+const inNativeShell =
+  /(?:^|;\s*)ft_native_android=1(?:;|$)/.test(cookieHeader)
+  || /(?:^|;\s*)ft_native_app=1(?:;|$)/.test(cookieHeader);
+
+if (targets && inNativeShell) {
+  return Astro.redirect(targets.httpsVerify, 302);
+}
+
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>{targets ? 'Open Freedom Times' : 'Sign-in link invalid'}</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0f1419;
+        --fg: #f4f1ea;
+        --muted: #b8b0a4;
+        --accent: #c45c26;
+        --accent-fg: #fff;
+        --border: rgba(244, 241, 234, 0.18);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, 'Times New Roman', serif;
+        background: radial-gradient(120% 80% at 50% -10%, #2a3340 0%, var(--bg) 55%);
+        color: var(--fg);
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+      }
+      main {
+        width: min(28rem, 100%);
+        text-align: center;
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0 0 0.75rem;
+        letter-spacing: 0.01em;
+      }
+      p {
+        margin: 0 0 1.25rem;
+        color: var(--muted);
+        line-height: 1.45;
+        font-size: 1rem;
+      }
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      a.button {
+        display: block;
+        text-decoration: none;
+        padding: 0.85rem 1.1rem;
+        border-radius: 0.35rem;
+        font-family: system-ui, sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      a.primary {
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+      a.secondary {
+        background: transparent;
+        color: var(--fg);
+        border: 1px solid var(--border);
+      }
+      .hint {
+        margin-top: 1.25rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      {targets ? (
+        <>
+          <h1>Freedom Times</h1>
+          <p>Continue signing in to EmDash. Prefer the app if you have it installed.</p>
+          <div class="actions">
+            <a class="button primary" id="open-app" href={targets.deepLink}>
+              Open in Freedom Times
+            </a>
+            <a class="button secondary" id="continue-browser" href={targets.httpsVerify}>
+              Continue in browser
+            </a>
+          </div>
+          <p class="hint">If the app does not open, use Continue in browser.</p>
+          <script is:inline define:vars={{ deepLink: targets.deepLink, httpsVerify: targets.httpsVerify }}>
+            (function () {
+              // Capacitor WebView (cookie miss / cold App Link): verify in-app.
+              try {
+                if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function'
+                  && window.Capacitor.isNativePlatform()) {
+                  location.replace(httpsVerify);
+                  return;
+                }
+              } catch (_) { /* ignore */ }
+
+              // Attempt custom scheme once; email clients never see this href.
+              var attempted = false;
+              function tryOpenApp() {
+                if (attempted) return;
+                attempted = true;
+                try {
+                  location.href = deepLink;
+                } catch (_) { /* ignore */ }
+              }
+
+              // Hidden iframe + delayed assign — common pattern for custom schemes.
+              try {
+                var frame = document.createElement('iframe');
+                frame.style.display = 'none';
+                frame.src = deepLink;
+                document.body.appendChild(frame);
+              } catch (_) { /* ignore */ }
+
+              setTimeout(tryOpenApp, 50);
+            })();
+          </script>
+        </>
+      ) : (
+        <>
+          <h1>Sign-in link invalid</h1>
+          <p>This magic link is missing a token. Request a new link from EmDash login in the app.</p>
+        </>
+      )}
+    </main>
+  </body>
+</html>

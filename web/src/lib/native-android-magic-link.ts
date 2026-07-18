@@ -4,10 +4,13 @@
  * EmDash `@emdash-cms/auth` `sendMagicLink` builds a fixed HTTPS verify URL from
  * `config.baseUrl` with no URL-builder hook (see packages/auth magic-link/index.ts).
  * Freedom Times rewrites that href in the outbound email when the *send* request
- * came from the Capacitor Android shell, so Outlook Safe Links / Firefox do not
- * consume the single-use token before the app opens.
+ * came from the Capacitor Android shell to an HTTPS **lander** that does not
+ * consume the token on GET (Safe Links / scanners can prefetch safely). The
+ * lander then bridges to the custom scheme or HTTPS verify on a human click.
  *
- * Scheme reuses Auth0’s custom protocol:
+ * Email (Capacitor Android):
+ *   https://{origin}/auth/native-magic-link?token=…&ft_origin=…
+ * App open (custom scheme, after lander / Open app):
  *   news.freedomtimes.app://auth/magic-link/verify?token=…
  * → app loads https://{origin}/_emdash/api/auth/magic-link/verify?token=…
  */
@@ -18,6 +21,8 @@ export const NATIVE_APP_COOKIE = 'ft_native_app';
 export const NATIVE_APP_PACKAGE = 'news.freedomtimes.app';
 
 export const MAGIC_LINK_VERIFY_PATH = '/_emdash/api/auth/magic-link/verify';
+/** HTTPS lander in email — does not call EmDash verify until the user continues. */
+export const MAGIC_LINK_LANDER_PATH = '/auth/native-magic-link';
 /** Deep-link path under host `auth` (alongside Auth0 `/callback`). */
 export const MAGIC_LINK_DEEP_LINK_PATH = '/magic-link/verify';
 
@@ -62,11 +67,14 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function isAllowedMagicLinkOrigin(hostname: string): boolean {
+  return hostname === 'freedomtimes.news' || hostname === 'staging.freedomtimes.news';
+}
+
 /**
- * Build the custom-scheme URL EmDash would have sent as HTTPS.
- * Preserves `token` (and any other query params such as `redirect`).
+ * Parse an EmDash HTTPS verify URL; returns null when shape/host/token are wrong.
  */
-export function toAndroidMagicLinkDeepLink(httpsVerifyUrl: string): string | null {
+export function parseMagicLinkHttpsVerifyUrl(httpsVerifyUrl: string): URL | null {
   let parsed: URL;
   try {
     parsed = new URL(httpsVerifyUrl);
@@ -78,7 +86,43 @@ export function toAndroidMagicLinkDeepLink(httpsVerifyUrl: string): string | nul
     return null;
   }
 
+  if (!isAllowedMagicLinkOrigin(parsed.hostname)) {
+    return null;
+  }
+
   if (!parsed.searchParams.get('token')) {
+    return null;
+  }
+
+  return parsed;
+}
+
+/**
+ * HTTPS lander URL for email (clickable in Outlook/Gmail; GET does not verify).
+ */
+export function toAndroidMagicLinkLanderUrl(httpsVerifyUrl: string): string | null {
+  const parsed = parseMagicLinkHttpsVerifyUrl(httpsVerifyUrl);
+  if (!parsed) {
+    return null;
+  }
+
+  const lander = new URL(MAGIC_LINK_LANDER_PATH, parsed.origin);
+  lander.searchParams.set('token', parsed.searchParams.get('token')!);
+  lander.searchParams.set('ft_origin', parsed.origin);
+  const redirect = parsed.searchParams.get('redirect');
+  if (redirect) {
+    lander.searchParams.set('redirect', redirect);
+  }
+  return lander.toString();
+}
+
+/**
+ * Build the custom-scheme URL used by the lander “Open app” button / auto-bridge.
+ * Preserves `token` (and any other query params such as `redirect`).
+ */
+export function toAndroidMagicLinkDeepLink(httpsVerifyUrl: string): string | null {
+  const parsed = parseMagicLinkHttpsVerifyUrl(httpsVerifyUrl);
+  if (!parsed) {
     return null;
   }
 
@@ -122,11 +166,7 @@ export function resolveAndroidMagicLinkHttpsUrl(
   if (originParam) {
     try {
       const originUrl = new URL(originParam);
-      if (
-        originUrl.protocol === 'https:'
-        && (originUrl.hostname === 'freedomtimes.news'
-          || originUrl.hostname === 'staging.freedomtimes.news')
-      ) {
+      if (originUrl.protocol === 'https:' && isAllowedMagicLinkOrigin(originUrl.hostname)) {
         origin = originUrl.origin;
       }
     } catch {
@@ -144,8 +184,102 @@ export function resolveAndroidMagicLinkHttpsUrl(
 }
 
 /**
+ * When App Links open the HTTPS lander inside Capacitor, jump straight to verify
+ * (already in-app — no need for the custom-scheme hop).
+ */
+export function resolveMagicLinkLanderToHttpsVerify(
+  appUrl: string,
+  fallbackOrigin: string,
+): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(appUrl);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== 'https:' || !isAllowedMagicLinkOrigin(parsed.hostname)) {
+    return null;
+  }
+
+  if (parsed.pathname !== MAGIC_LINK_LANDER_PATH) {
+    return null;
+  }
+
+  const token = parsed.searchParams.get('token');
+  if (!token) {
+    return null;
+  }
+
+  const originParam = parsed.searchParams.get('ft_origin');
+  let origin = parsed.origin || fallbackOrigin;
+  if (originParam) {
+    try {
+      const originUrl = new URL(originParam);
+      if (originUrl.protocol === 'https:' && isAllowedMagicLinkOrigin(originUrl.hostname)) {
+        origin = originUrl.origin;
+      }
+    } catch {
+      // keep lander origin / fallback
+    }
+  }
+
+  const https = new URL(MAGIC_LINK_VERIFY_PATH, origin);
+  https.searchParams.set('token', token);
+  const redirect = parsed.searchParams.get('redirect');
+  if (redirect) {
+    https.searchParams.set('redirect', redirect);
+  }
+  return https.toString();
+}
+
+/**
+ * Build lander deep-link + verify URLs from query params (lander page).
+ */
+export function buildMagicLinkLanderTargets(params: {
+  token: string;
+  ftOrigin?: string | null;
+  redirect?: string | null;
+  pageOrigin: string;
+}): { deepLink: string; httpsVerify: string; origin: string } | null {
+  const token = params.token.trim();
+  if (!token) {
+    return null;
+  }
+
+  let origin = params.pageOrigin;
+  if (params.ftOrigin) {
+    try {
+      const originUrl = new URL(params.ftOrigin);
+      if (originUrl.protocol === 'https:' && isAllowedMagicLinkOrigin(originUrl.hostname)) {
+        origin = originUrl.origin;
+      }
+    } catch {
+      // keep pageOrigin
+    }
+  }
+
+  if (!isAllowedMagicLinkOrigin(new URL(origin).hostname)) {
+    return null;
+  }
+
+  const https = new URL(MAGIC_LINK_VERIFY_PATH, origin);
+  https.searchParams.set('token', token);
+  if (params.redirect) {
+    https.searchParams.set('redirect', params.redirect);
+  }
+
+  const deepLink = toAndroidMagicLinkDeepLink(https.toString());
+  if (!deepLink) {
+    return null;
+  }
+
+  return { deepLink, httpsVerify: https.toString(), origin };
+}
+
+/**
  * Rewrite HTTPS magic-link verify URLs in email text/html to the Android
- * custom scheme. No-op when the request is not Capacitor Android.
+ * HTTPS lander. No-op when the request is not Capacitor Android.
  */
 export function wrapMagicLinkEmailForAndroidRequest<T extends EmailMessageLike>(
   message: T,
@@ -166,7 +300,7 @@ export function wrapMagicLinkEmailForAndroidRequest<T extends EmailMessageLike>(
       'gi',
     );
 
-    return body.replace(pattern, (match) => toAndroidMagicLinkDeepLink(match) ?? match);
+    return body.replace(pattern, (match) => toAndroidMagicLinkLanderUrl(match) ?? match);
   };
 
   return {

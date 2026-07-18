@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 import {
   isCapacitorAndroidMagicLinkRequest,
   resolveAndroidMagicLinkHttpsUrl,
+  resolveMagicLinkLanderToHttpsVerify,
   toAndroidMagicLinkDeepLink,
+  toAndroidMagicLinkLanderUrl,
   wrapMagicLinkEmailForAndroidRequest,
 } from '../src/lib/native-android-magic-link.ts';
 import {
@@ -23,10 +25,30 @@ describe('native-android-magic-link', () => {
     );
   });
 
+  it('builds HTTPS lander URL with token and ft_origin', () => {
+    const https =
+      'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=abc123';
+    const lander = toAndroidMagicLinkLanderUrl(https);
+    assert.equal(
+      lander,
+      'https://freedomtimes.news/auth/native-magic-link?token=abc123&ft_origin=https%3A%2F%2Ffreedomtimes.news',
+    );
+  });
+
   it('resolves deep link back to HTTPS verify', () => {
     const deep =
       'news.freedomtimes.app://auth/magic-link/verify?token=abc123&ft_origin=https%3A%2F%2Ffreedomtimes.news';
     const https = resolveAndroidMagicLinkHttpsUrl(deep, 'https://staging.freedomtimes.news');
+    assert.equal(
+      https,
+      'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=abc123',
+    );
+  });
+
+  it('resolves HTTPS lander App Link to verify', () => {
+    const lander =
+      'https://freedomtimes.news/auth/native-magic-link?token=abc123&ft_origin=https%3A%2F%2Ffreedomtimes.news';
+    const https = resolveMagicLinkLanderToHttpsVerify(lander, 'https://staging.freedomtimes.news');
     assert.equal(
       https,
       'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=abc123',
@@ -52,7 +74,7 @@ describe('native-android-magic-link', () => {
     assert.equal(isCapacitorAndroidMagicLinkRequest(request), false);
   });
 
-  it('rewrites email HTML Sign-in href for Capacitor Android', () => {
+  it('rewrites email HTML Sign-in href to HTTPS lander for Capacitor Android', () => {
     const request = new Request('https://freedomtimes.news/_emdash/api/auth/magic-link/send', {
       method: 'POST',
       headers: { cookie: 'ft_native_android=1' },
@@ -61,11 +83,15 @@ describe('native-android-magic-link', () => {
       <a href="https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=tok">Sign in</a>
     `;
     const out = wrapMagicLinkEmailForAndroidRequest({ to: 'a@b.c', subject: 'x', html }, request);
-    assert.match(out.html ?? '', /news\.freedomtimes\.app:\/\/auth\/magic-link\/verify\?token=tok/);
+    assert.match(
+      out.html ?? '',
+      /https:\/\/freedomtimes\.news\/auth\/native-magic-link\?token=tok&ft_origin=https%3A%2F%2Ffreedomtimes\.news/,
+    );
+    assert.doesNotMatch(out.html ?? '', /news\.freedomtimes\.app:\/\//);
     assert.doesNotMatch(out.html ?? '', /href="https:\/\/freedomtimes\.news\/_emdash/);
   });
 
-  it('leaves HTTPS links for non-native requests', () => {
+  it('leaves HTTPS verify links for non-native requests', () => {
     const request = new Request('https://freedomtimes.news/_emdash/api/auth/magic-link/send', {
       method: 'POST',
     });

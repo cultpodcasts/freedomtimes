@@ -6,6 +6,7 @@ import {
   NATIVE_ANDROID_COOKIE,
   NATIVE_APP_COOKIE,
   resolveAndroidMagicLinkHttpsUrl,
+  resolveMagicLinkLanderToHttpsVerify,
 } from './native-android-magic-link';
 import { claimCapacitorLaunchUrl } from './native-launch-url';
 
@@ -184,12 +185,22 @@ async function handleAppOpenUrl(appUrl: string): Promise<void> {
     return;
   }
 
-  // Custom-scheme magic link from email → HTTPS verify in this WebView.
+  // Custom-scheme magic link from lander “Open app” → HTTPS verify in this WebView.
   const magicLinkHttps = resolveAndroidMagicLinkHttpsUrl(appUrl, window.location.origin);
   if (magicLinkHttps) {
     await Browser.close().catch(() => undefined);
     if (!alreadyAtUrl(magicLinkHttps)) {
       window.location.replace(magicLinkHttps);
+    }
+    return;
+  }
+
+  // HTTPS lander opened via App Links → skip the HTML hop; verify in-app now.
+  const landerVerify = resolveMagicLinkLanderToHttpsVerify(appUrl, window.location.origin);
+  if (landerVerify) {
+    await Browser.close().catch(() => undefined);
+    if (!alreadyAtUrl(landerVerify)) {
+      window.location.replace(landerVerify);
     }
     return;
   }

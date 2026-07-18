@@ -101,32 +101,42 @@ https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=<opaque>
 
 (The Sign-in button `href` and the plain-text link are the same URL.)
 
-### Capacitor Android — custom scheme (Freedom Times)
+### Capacitor Android — HTTPS lander + custom scheme (Freedom Times)
 
-When the magic-link **send** request comes from the Capacitor Android app, Freedom Times rewrites that href in the outbound email to the Auth0-shared custom scheme:
+When the magic-link **send** request comes from the Capacitor Android app, Freedom Times rewrites the email Sign-in href to an HTTPS **lander** (email clients require `https://`; bare `news.freedomtimes.app://…` hrefs fail silently in Outlook/Gmail):
 
 ```text
-news.freedomtimes.app://auth/magic-link/verify?token=<opaque>&ft_origin=https%3A%2F%2Ffreedomtimes.news
+https://freedomtimes.news/auth/native-magic-link?token=<opaque>&ft_origin=https%3A%2F%2Ffreedomtimes.news
 ```
 
 | Piece | Value |
 |-------|--------|
-| Scheme | `news.freedomtimes.app` (same as Auth0 `…://auth/callback`) |
-| Host / path | `auth` / `/magic-link/verify` |
+| Path | `/auth/native-magic-link` |
 | Query | `token` (required); `ft_origin` (issuing HTTPS origin); optional `redirect` |
+
+The lander **GET does not call EmDash verify** (Safe Links / scanner prefetch cannot burn the single-use token). It shows:
+
+1. **Open in Freedom Times** → `news.freedomtimes.app://auth/magic-link/verify?token=…&ft_origin=…` (same Auth0-shared scheme as `…://auth/callback`)
+2. **Continue in browser** → `https://…/_emdash/api/auth/magic-link/verify?token=…`
+
+It also auto-attempts the custom scheme once via JS.
 
 **Detection (prefer Capacitor signal, not bare Android UA):**
 
 1. Cookie `ft_native_android=1` — set by [`native-auth-bridge.ts`](../src/lib/native-auth-bridge.ts) when `Capacitor.getPlatform() === 'android'`
 2. Else cookie `ft_native_app=1` **and** (`X-Requested-With: news.freedomtimes.app` or Android UA)
 
-Chrome on Android without those cookies still gets the HTTPS link.
+Chrome on Android without those cookies still gets the direct HTTPS verify link (no lander rewrite).
 
-**Flow:** email tap → Android VIEW intent → Capacitor `appUrlOpen` → bridge maps custom scheme → WebView `GET` HTTPS verify (session cookie in the app jar).
+**Flows:**
 
-Implementation: Vite transform of EmDash’s `magic-link/send` email callback ([`magic-link-android-scheme-plugin.ts`](../src/vite/magic-link-android-scheme-plugin.ts) + [`native-android-magic-link.ts`](../src/lib/native-android-magic-link.ts)). AndroidManifest intent-filter includes `pathPrefix="/magic-link/verify"`.
+| Path | What happens |
+|------|----------------|
+| Email → lander (browser) → Open app | Custom scheme VIEW → Capacitor `appUrlOpen` → bridge → WebView `GET` HTTPS verify |
+| Email → lander via App Links (app installed) | Bridge / lander detects native shell → HTTPS verify in WebView (skips custom-scheme hop) |
+| Email → lander → Continue in browser | HTTPS verify in that browser’s cookie jar |
 
-**Caveats:** some email clients strip or refuse unknown custom schemes; Outlook Safe Links typically does **not** rewrite non-http(s) URLs the same way (so the token is less likely to be prefetched), but clients may still show the link as plain text. HTTPS App Links remain as a fallback for non-Android / desktop mail.
+Implementation: Vite transform of EmDash’s `magic-link/send` email callback ([`magic-link-android-scheme-plugin.ts`](../src/vite/magic-link-android-scheme-plugin.ts) + [`native-android-magic-link.ts`](../src/lib/native-android-magic-link.ts) + [`native-magic-link.astro`](../src/pages/auth/native-magic-link.astro)). AndroidManifest intent-filter includes `pathPrefix="/magic-link/verify"` for the custom-scheme hop.
 
 On success the verify handler sets Astro session cookie **`astro-session`** (HttpOnly, Secure, SameSite=Lax, Path=/, Max-Age 14d → KV binding `SESSION`) and redirects to `/_emdash/admin`. Middleware may rewrite that success 302 into a **200 HTML lander** (same Set-Cookie + `location.replace`) for Capacitor WebView reliability.
 
@@ -209,7 +219,7 @@ Microsoft Safe Links and similar scanners often **HTTP GET** the rewritten targe
 - Best isolation: copy the **unwrapped** `https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=…` from the mail source (or Safe Links `url=` query) and cold-open it with `adb` (below) **before** any other client GETs it.
 - Long-press → **Open with** Freedom Times only helps if the token is still unused.
 
-There is no Freedom Times knobs for multi-use TTL. Mitigations if scanners keep burning tokens: M365 allowlist, Gmail for staff tests, or a future human-click lander (GET returns HTML; only POST/confirm consumes) — would be custom or an EmDash upstream change.
+There is no Freedom Times knobs for multi-use TTL. Capacitor Android emails use the **HTTPS lander** above (GET does not verify). Desktop / non-native emails still link straight to EmDash verify — M365 allowlist or Gmail remains useful for those.
 
 ### Capacitor App Link path (query string)
 
@@ -217,14 +227,18 @@ There is no Freedom Times knobs for multi-use TTL. Mitigations if scanners keep 
 
 ### Operator: verify with a fresh unused token
 
-**A — Custom scheme (Capacitor Android email path)**
+**A — HTTPS lander (Capacitor Android email path)**
 
 1. Open `/_emdash/admin/login` **inside the Capacitor Android app** (so `ft_native_android=1` is set).
 2. Request a **new** magic link; do not open it yet.
-3. Confirm the email Sign-in button is `news.freedomtimes.app://auth/magic-link/verify?token=…` (not `https://…`).
-4. Tap the link (or cold-open with adb). Expect the app to open and land in `/_emdash/admin` signed in.
+3. Confirm the email Sign-in button is `https://freedomtimes.news/auth/native-magic-link?token=…` (not bare `news.freedomtimes.app://…`, and not direct `/_emdash/.../verify`).
+4. Tap the link. Expect the lander (or App Link → in-app verify) then `/_emdash/admin` signed in.
 
 ```powershell
+# Lander (same shape as email — Safe Links can GET this without burning the token)
+adb shell am start -a android.intent.action.VIEW -d "https://freedomtimes.news/auth/native-magic-link?token=YOUR_FRESH_TOKEN&ft_origin=https%3A%2F%2Ffreedomtimes.news"
+
+# Custom-scheme hop (lander “Open app” button)
 adb shell am start -a android.intent.action.VIEW -d "news.freedomtimes.app://auth/magic-link/verify?token=YOUR_FRESH_TOKEN&ft_origin=https%3A%2F%2Ffreedomtimes.news"
 ```
 
@@ -241,7 +255,7 @@ adb shell am start -a android.intent.action.VIEW -d "https://freedomtimes.news/_
 4. Expect redirect into `/_emdash/admin` (signed in), **not** login with `invalid_link`.
 5. Optional negative check: run the **same** `adb` command again → should show `invalid_link` (proves single-use).
 
-**Deploy notes:** email rewrite + bridge handler ship with the **web Worker**. The AndroidManifest magic-link intent-filter needs an **APK rebuild** (once) to register `…://auth/magic-link/verify`.
+**Deploy notes:** email rewrite + lander + bridge handler ship with the **web Worker**. The AndroidManifest magic-link intent-filter needs an **APK rebuild** (once) to register `…://auth/magic-link/verify`.
 
 Asset Links / install notes: [ANDROID_CAPACITOR_BUILD.md](./ANDROID_CAPACITOR_BUILD.md) § App Links.
 

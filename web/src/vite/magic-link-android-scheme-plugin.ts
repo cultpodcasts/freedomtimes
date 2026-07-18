@@ -1,6 +1,7 @@
 /**
  * Vite transform: wrap EmDash magic-link send so Capacitor Android emails use
- * `news.freedomtimes.app://auth/magic-link/verify?…` instead of HTTPS.
+ * an HTTPS lander (`/auth/native-magic-link?…`) instead of a bare custom-scheme
+ * href (email clients often strip/ignore `news.freedomtimes.app://…`).
  *
  * Upstream `sendMagicLink` hardcodes:
  *   new URL("/_emdash/api/auth/magic-link/verify", config.baseUrl)
