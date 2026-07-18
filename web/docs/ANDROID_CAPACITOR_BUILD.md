@@ -47,9 +47,18 @@ From the **repository root**:
 
 ### Digital Asset Links (`assetlinks.json`)
 
-`GET https://freedomtimes.news/.well-known/assetlinks.json` (and staging) publishes package `news.freedomtimes.app` with SHA-256 fingerprints for the debug keystore and staging signing cert (`ANDROID_STAGING_SIGNING_*` in repo-root `.env.dev`).
+`GET https://freedomtimes.news/.well-known/assetlinks.json` (and staging) publishes package `news.freedomtimes.app` with SHA-256 fingerprints for the default debug keystore and the staging signing cert (`ANDROID_STAGING_SIGNING_*` in repo-root `.env.dev`).
 
-**Production fingerprint:** not in the file yet — `ANDROID_PRODUCTION_SIGNING_*` is not configured locally (placeholders in `.env.dev.example`). When you have a production keystore:
+**CI / sideload APK (verified):** The Capacitor Android workflow only builds **debug** APKs signed with staging secrets (`ANDROID_STAGING_SIGNING_*`). The last successful artifact before Actions breakage — run [`24776062850`](https://github.com/cultpodcasts/freedomtimes/actions/runs/24776062850), artifact `capacitor-android-debug-apk` (2026-04-22) — fingerprints as:
+
+| Field | Value |
+|-------|--------|
+| Signer DN | `CN=Freedom Times Staging, OU=Engineering, O=Freedom Times, L=London, ST=London, C=GB` |
+| SHA-256 | `D9:A6:A7:73:0F:F0:6F:ED:F6:B3:41:0C:4A:F0:3A:48:58:71:63:8F:E3:49:C7:28:79:F5:12:98:B4:6F:14:60` |
+
+That matches the staging fingerprint already in `web/src/pages/.well-known/assetlinks.json.ts`. There are **no** GitHub Releases and **no** production-signed APK/AAB artifacts. `ANDROID_PRODUCTION_SIGNING_*` is still placeholders in `.env.dev.example` (not set locally).
+
+**When you later add a dedicated production/upload keystore:**
 
 1. Put all four `ANDROID_PRODUCTION_SIGNING_*` values in `.env.dev` (and GitHub secrets if CI signs release APKs).
 2. Extract SHA-256 (colon-separated, as keytool prints):
@@ -61,7 +70,9 @@ keytool -list -v -keystore <prod.jks> -alias <ANDROID_PRODUCTION_SIGNING_KEY_ALI
 
 3. Add that fingerprint to `sha256_cert_fingerprints` in `web/src/pages/.well-known/assetlinks.json.ts` and deploy the Worker.
 
-Until then, release builds that fall back to the **staging** keystore already match the staging fingerprint listed there. DAL is for verified HTTPS App Links / WebView credential association — **not** required for browser PWA, Auth0 custom-scheme auth, or EmDash magic links. See [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md).
+**Play App Signing caveat:** If the app is published via Google Play with Play App Signing enabled, store-installed builds are signed with Google’s **app signing key**, not necessarily the upload key / CI staging key. Copy the **App signing key certificate** SHA-256 from Play Console → App integrity and add it as another fingerprint. Until then, DAL only covers sideload/CI builds signed with the staging (or future upload) key.
+
+Until a distinct production/Play cert is added, release builds that fall back to the **staging** keystore already match the staging fingerprint listed there. DAL is for verified HTTPS App Links / WebView credential association — **not** required for browser PWA, Auth0 custom-scheme auth, or EmDash magic links. See [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md).
 
 
 ## Launcher icons from `favicon.svg`

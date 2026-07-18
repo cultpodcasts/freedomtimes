@@ -86,5 +86,5 @@ If any break, restore Routing rules / MX before continuing EmDash tests.
 
 ## Related
 
-- Android Digital Asset Links: `GET /.well-known/assetlinks.json` ([`assetlinks.json.ts`](../src/pages/.well-known/assetlinks.json.ts)) — optional for App Links; **not** required for magic link. Production SHA-256 write-up: [ANDROID_CAPACITOR_BUILD.md](./ANDROID_CAPACITOR_BUILD.md).
+- Android Digital Asset Links: `GET /.well-known/assetlinks.json` ([`assetlinks.json.ts`](../src/pages/.well-known/assetlinks.json.ts)) — optional for App Links; **not** required for magic link. CI/sideload SHA-256 is the staging cert (verified from GH artifact); Play App Signing / dedicated production keystore notes: [ANDROID_CAPACITOR_BUILD.md](./ANDROID_CAPACITOR_BUILD.md).
 - Auth0 `/admin` and custom-scheme `news.freedomtimes.app://auth/callback` are separate from EmDash auth.
