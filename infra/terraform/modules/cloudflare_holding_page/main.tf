@@ -99,10 +99,9 @@ resource "cloudflare_workers_route" "holding_page" {
 }
 
 # Subdomain: Custom Domain binding — Cloudflare manages DNS automatically.
-# Provider v5 renamed cloudflare_workers_domain → cloudflare_workers_custom_domain
-# without MoveState support from the v4 plural type already in our state. Leave the
-# live binding in Cloudflare (destroy = false); each environment imports via
-# import {} (see environments/*/migrations_v5_cloudflare.tf) on first apply.
+# Provider v5: cloudflare_workers_domain → cloudflare_workers_custom_domain
+# (no MoveState from our prior plural type). Staging imported via migrations
+# file (removed after apply). Live Cloudflare binding was never destroyed.
 removed {
   from = cloudflare_workers_domain.holding_page
 

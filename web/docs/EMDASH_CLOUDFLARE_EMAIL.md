@@ -32,15 +32,51 @@ Docs upstream: [Deploy to Cloudflare → Email](https://docs.emdashcms.com/deplo
 | `_dmarc` / Sending DNS | Operator review after onboard | Prefer soft `p=none` if Cloudflare proposes `p=reject` before you are ready |
 | EmDash plugin activation | Operator (EmDash UI) | Cannot be Terraform'd |
 
-## One-time operator steps (after merge)
+## Onboard Email Sending (apex `freedomtimes.news`)
 
-1. **Terraform apply** staging (then production) — provider v5 migration + `EMAIL` binding. Plan first; do not apply until reviewed.
-2. **Onboard Email Sending** for `freedomtimes.news`  
-   Cloudflare dashboard → **Compute** → **Email Service** → **Email Sending** → **Onboard Domain** → apex.  
-   Confirm existing Email Routing redirects still work (`privacy@`, etc.).
-3. **Deploy** the web Worker (staging first) so the Astro bundle + wrangler.jsonc bindings match.  
-   Do not mutate bindings via one-off `npx wrangler` commands.
-4. **Activate in EmDash** (per environment):  
+Email **Routing** (inbound: `newsroom@` / `privacy@` / `socialmedia@` / `developer@` → Outlook) and Email **Sending** (outbound magic links) are separate products. Onboarding Sending does **not** remove Routing redirects.
+
+### Dashboard path
+
+1. Sign in to [Cloudflare Dashboard](https://dash.cloudflare.com) → account that owns `freedomtimes.news`.
+2. Open **Email** (or **Compute** → **Email Service**, depending on UI) → **Email Sending**.
+3. **Onboard Domain** (or **Get started**) → choose apex **`freedomtimes.news`** (not a `mail.` subdomain).
+4. Allow Cloudflare to add / propose DNS records. Confirm before switching DMARC to reject (see below).
+
+### DNS you should expect
+
+| Record | Purpose | Notes |
+|--------|---------|--------|
+| `cf-bounce.<something>.freedomtimes.news` (or similar) | Bounce / feedback handling for Sending | Cloudflare-managed; leave in place |
+| DKIM (`*._domainkey…`) | Authenticate outbound From | Required for deliverability |
+| Optional SPF / BIMI | Per Cloudflare wizard | Do not drop existing Routing MX |
+| `_dmarc` | Policy for the domain | If Cloudflare suggests `p=reject`, prefer **`p=none`** (or `p=quarantine`) until magic-link and newsroom mail look healthy |
+
+**Do not** delete apex MX / Email Routing rules while onboarding Sending.
+
+### From address
+
+Outbound EmDash mail uses **`noreply@freedomtimes.news`**. That address must be allowed on the Worker `send_email` binding (already set in Terraform + `wrangler.jsonc` as `allowed_sender_addresses`). After Sending is onboarded, Cloudflare will treat that From as authorized for the apex.
+
+### Coexistence checklist (Routing)
+
+After onboard, quickly confirm Routing still delivers:
+
+- `privacy@freedomtimes.news`
+- `newsroom@freedomtimes.news`
+- `socialmedia@freedomtimes.news`
+- `developer@freedomtimes.news`
+
+If any break, restore Routing rules / MX before continuing EmDash tests.
+
+## Operator sequence (staging → production)
+
+1. **Terraform apply** (staging done for PR #77; production only when explicitly asked) — attaches `EMAIL` + `secret_text` bindings.
+2. **Onboard Email Sending** for apex (section above) — dashboard one-time; applies to the zone (both staging Worker and production Worker send as apex From).
+3. **Deploy** the web Worker so the Astro/`cloudflareEmail()` bundle is live (staging first):  
+   `.\scripts\deploy-staging-local.ps1` (or CI).  
+   Terraform attach of `EMAIL` alone does not ship app code; deploy ships the plugin. Keep `wrangler.jsonc` `send_email` in sync so deploy does not strip the TF-owned binding.
+4. **Activate in EmDash** (per environment hostname):  
    - Sign in to `/_emdash/admin` (desktop passkey)  
    - **Admin → Extensions** → activate **Cloudflare Email**  
    - **Settings → Email** → select that provider  
@@ -48,5 +84,5 @@ Docs upstream: [Deploy to Cloudflare → Email](https://docs.emdashcms.com/deplo
 
 ## Related
 
-- Android Digital Asset Links: `GET /.well-known/assetlinks.json` ([`assetlinks.json.ts`](../src/pages/.well-known/assetlinks.json.ts)) — optional for App Links / passkey WebView spikes; **not** required for magic link.
+- Android Digital Asset Links: `GET /.well-known/assetlinks.json` ([`assetlinks.json.ts`](../src/pages/.well-known/assetlinks.json.ts)) — optional for App Links; **not** required for magic link. Production SHA-256 write-up: [ANDROID_CAPACITOR_BUILD.md](./ANDROID_CAPACITOR_BUILD.md).
 - Auth0 `/admin` and custom-scheme `news.freedomtimes.app://auth/callback` are separate from EmDash auth.

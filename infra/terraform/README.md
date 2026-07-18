@@ -34,14 +34,12 @@ Do **not** mutate Worker bindings/secrets with one-off `npx wrangler` commands.
 
 ### One-time provider v5 apply (this PR)
 
-Plans (do not apply until operator asks):
+| Env | Status |
+|-----|--------|
+| Staging | **Applied** (import `workers_custom_domain` + in-place `EMAIL`/`secret_text` bindings). `migrations_v5_cloudflare.tf` removed after apply. |
+| Production | Plan-only until explicit operator ask (move `cloudflare_record` → `dns_record` + bindings) |
 
-| Env | Expected plan shape |
-|-----|---------------------|
-| Staging | Import `workers_custom_domain` (`migrations_v5_cloudflare.tf`) + in-place `workers_script` bindings (`EMAIL` + `secret_text`) |
-| Production | Move `cloudflare_record` → `cloudflare_dns_record` + in-place `workers_script` bindings |
-
-After a successful staging apply, delete `environments/staging/migrations_v5_cloudflare.tf`. Orphaned v4 `cloudflare_workers_secret` / `cloudflare_workers_domain` addresses were already removed from remote state (Cloudflare objects left in place; `secret_text` / custom domain become TF-owned on apply).
+Orphaned v4 `cloudflare_workers_secret` / `cloudflare_workers_domain` addresses were removed from remote state before apply (Cloudflare objects left in place; `secret_text` / custom domain are TF-owned after apply).
 
 ## Environment Separation Rule
 
