@@ -3,8 +3,9 @@
  * HTTPS lander for Capacitor Android magic-link emails.
  *
  * GET only renders HTML (Safe Links / scanners do not burn the single-use token).
- * Token is consumed when the user opens the app (custom scheme → verify) or taps
- * “Continue in browser” (HTTPS EmDash verify).
+ * Token is consumed exactly once when navigation reaches EmDash verify:
+ *   - In Capacitor WebView / App Link: JS `location.replace(verify)` once
+ *   - In external browser: human tap on one button (no auto dual-fire)
  */
 import { buildMagicLinkLanderTargets } from '../../lib/native-android-magic-link';
 
@@ -23,16 +24,8 @@ const targets = token
     })
   : null;
 
-// Already inside Capacitor WebView (App Link opened this lander) → verify now.
-const cookieHeader = Astro.request.headers.get('cookie') ?? '';
-const inNativeShell =
-  /(?:^|;\s*)ft_native_android=1(?:;|$)/.test(cookieHeader)
-  || /(?:^|;\s*)ft_native_app=1(?:;|$)/.test(cookieHeader);
-
-if (targets && inNativeShell) {
-  return Astro.redirect(targets.httpsVerify, 302);
-}
-
+// Do not server-302 to verify when native cookies are present: that skips the
+// sessionStorage claim and lets getLaunchUrl(lander) re-fire verify after success.
 Astro.response.headers.set('Cache-Control', 'no-store');
 ---
 
@@ -108,6 +101,7 @@ Astro.response.headers.set('Cache-Control', 'no-store');
         font-size: 0.85rem;
         color: var(--muted);
       }
+      [hidden] { display: none !important; }
     </style>
   </head>
   <body>
@@ -115,8 +109,8 @@ Astro.response.headers.set('Cache-Control', 'no-store');
       {targets ? (
         <>
           <h1>Freedom Times</h1>
-          <p>Continue signing in to EmDash. Prefer the app if you have it installed.</p>
-          <div class="actions">
+          <p id="lander-copy">Continue signing in to EmDash. Prefer the app if you have it installed.</p>
+          <div class="actions" id="lander-actions">
             <a class="button primary" id="open-app" href={targets.deepLink}>
               Open in Freedom Times
             </a>
@@ -124,37 +118,84 @@ Astro.response.headers.set('Cache-Control', 'no-store');
               Continue in browser
             </a>
           </div>
-          <p class="hint">If the app does not open, use Continue in browser.</p>
-          <script is:inline define:vars={{ deepLink: targets.deepLink, httpsVerify: targets.httpsVerify }}>
+          <p class="hint" id="lander-hint">If the app does not open, use Continue in browser.</p>
+          <script is:inline define:vars={{
+            deepLink: targets.deepLink,
+            httpsVerify: targets.httpsVerify,
+            landerUrl: Astro.url.href,
+          }}>
             (function () {
-              // Capacitor WebView (cookie miss / cold App Link): verify in-app.
-              try {
-                if (window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function'
-                  && window.Capacitor.isNativePlatform()) {
-                  location.replace(httpsVerify);
-                  return;
-                }
-              } catch (_) { /* ignore */ }
+              var HANDLED_KEY = 'ft_capacitor_launch_url_handled';
 
-              // Attempt custom scheme once; email clients never see this href.
-              var attempted = false;
-              function tryOpenApp() {
-                if (attempted) return;
-                attempted = true;
+              function readHandled() {
                 try {
-                  location.href = deepLink;
+                  var raw = sessionStorage.getItem(HANDLED_KEY);
+                  if (!raw) return [];
+                  if (raw.charAt(0) === '[') {
+                    var parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed.filter(function (x) { return typeof x === 'string'; }) : [];
+                  }
+                  return [raw];
+                } catch (_) {
+                  return [];
+                }
+              }
+
+              function markHandled(urls) {
+                try {
+                  var set = {};
+                  readHandled().forEach(function (u) { set[u] = true; });
+                  urls.forEach(function (u) { if (u) set[u] = true; });
+                  sessionStorage.setItem(HANDLED_KEY, JSON.stringify(Object.keys(set)));
                 } catch (_) { /* ignore */ }
               }
 
-              // Hidden iframe + delayed assign — common pattern for custom schemes.
-              try {
-                var frame = document.createElement('iframe');
-                frame.style.display = 'none';
-                frame.src = deepLink;
-                document.body.appendChild(frame);
-              } catch (_) { /* ignore */ }
+              function isNativeShell() {
+                try {
+                  if (window.Capacitor
+                    && typeof window.Capacitor.isNativePlatform === 'function'
+                    && window.Capacitor.isNativePlatform()) {
+                    return true;
+                  }
+                } catch (_) { /* ignore */ }
+                // Cold App Link: Capacitor global can lag the first inline script.
+                // MainActivity appends this UA marker in the native WebView only.
+                try {
+                  return /FreedomTimesCapacitorApp\/Android/i.test(navigator.userAgent || '');
+                } catch (_) {
+                  return false;
+                }
+              }
 
-              setTimeout(tryOpenApp, 50);
+              // Already inside Capacitor (App Link opened this lander) → verify once.
+              // Mark lander + verify + deep-link so bridge getLaunchUrl cannot re-GET verify.
+              if (isNativeShell()) {
+                markHandled([landerUrl, httpsVerify, deepLink]);
+                var copy = document.getElementById('lander-copy');
+                var actions = document.getElementById('lander-actions');
+                var hint = document.getElementById('lander-hint');
+                if (copy) copy.textContent = 'Signing you in…';
+                if (actions) actions.hidden = true;
+                if (hint) hint.hidden = true;
+                location.replace(httpsVerify);
+                return;
+              }
+
+              // External browser: buttons only — never auto-fire deep link AND verify
+              // (Outlook Safe Links / scanners GET this page; auto-navigation risks
+              // double consumption when the app also opens).
+              var openApp = document.getElementById('open-app');
+              var continueBrowser = document.getElementById('continue-browser');
+              if (openApp) {
+                openApp.addEventListener('click', function () {
+                  markHandled([landerUrl, httpsVerify, deepLink]);
+                });
+              }
+              if (continueBrowser) {
+                continueBrowser.addEventListener('click', function () {
+                  markHandled([landerUrl, httpsVerify, deepLink]);
+                });
+              }
             })();
           </script>
         </>

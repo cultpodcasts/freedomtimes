@@ -12,6 +12,8 @@ import {
 import {
   CAPACITOR_LAUNCH_URL_HANDLED_KEY,
   claimCapacitorLaunchUrl,
+  collectMagicLinkLaunchAliases,
+  markCapacitorLaunchUrlsHandled,
 } from '../src/lib/native-launch-url.ts';
 
 describe('native-android-magic-link', () => {
@@ -103,29 +105,31 @@ describe('native-android-magic-link', () => {
 });
 
 describe('claimCapacitorLaunchUrl', () => {
-  it('allows the first claim and blocks the same URL afterward', () => {
+  function memoryStorage() {
     const store = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value);
+    return {
+      store,
+      storage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          store.set(key, value);
+        },
       },
     };
+  }
+
+  it('allows the first claim and blocks the same URL afterward', () => {
+    const { store, storage } = memoryStorage();
     const url =
       'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=once';
     assert.equal(claimCapacitorLaunchUrl(url, storage), true);
-    assert.equal(store.get(CAPACITOR_LAUNCH_URL_HANDLED_KEY), url);
+    const raw = store.get(CAPACITOR_LAUNCH_URL_HANDLED_KEY) ?? '';
+    assert.match(raw, /token=once/);
     assert.equal(claimCapacitorLaunchUrl(url, storage), false);
   });
 
   it('allows a different launch URL after the first', () => {
-    const store = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => store.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        store.set(key, value);
-      },
-    };
+    const { storage } = memoryStorage();
     assert.equal(
       claimCapacitorLaunchUrl(
         'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=a',
@@ -139,6 +143,62 @@ describe('claimCapacitorLaunchUrl', () => {
         storage,
       ),
       true,
+    );
+  });
+
+  it('blocks getLaunchUrl(lander) after lander JS marked aliases (double-burn guard)', () => {
+    const { storage } = memoryStorage();
+    const lander =
+      'https://freedomtimes.news/auth/native-magic-link?token=once&ft_origin=https%3A%2F%2Ffreedomtimes.news';
+    const verify =
+      'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=once';
+    const deep =
+      'news.freedomtimes.app://auth/magic-link/verify?token=once&ft_origin=https%3A%2F%2Ffreedomtimes.news';
+
+    // Lander page path: mark then location.replace(verify) — does not use claim().
+    markCapacitorLaunchUrlsHandled([lander, verify, deep], storage);
+
+    // Bridge init on /_emdash/admin after successful verify still sees lander launch URL.
+    assert.equal(
+      claimCapacitorLaunchUrl(lander, storage, {
+        fallbackOrigin: 'https://freedomtimes.news',
+      }),
+      false,
+    );
+  });
+
+  it('collects lander/verify/deep aliases for one token', () => {
+    const lander =
+      'https://freedomtimes.news/auth/native-magic-link?token=abc&ft_origin=https%3A%2F%2Ffreedomtimes.news';
+    const aliases = collectMagicLinkLaunchAliases(lander, 'https://freedomtimes.news');
+    assert.ok(aliases.includes(lander));
+    assert.ok(
+      aliases.includes(
+        'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=abc',
+      ),
+    );
+    assert.ok(
+      aliases.some((u) => u.startsWith('news.freedomtimes.app://auth/magic-link/verify')),
+    );
+  });
+
+  it('claiming the lander also blocks a later verify App Link for the same token', () => {
+    const { storage } = memoryStorage();
+    const lander =
+      'https://freedomtimes.news/auth/native-magic-link?token=z&ft_origin=https%3A%2F%2Ffreedomtimes.news';
+    assert.equal(
+      claimCapacitorLaunchUrl(lander, storage, {
+        fallbackOrigin: 'https://freedomtimes.news',
+      }),
+      true,
+    );
+    assert.equal(
+      claimCapacitorLaunchUrl(
+        'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=z',
+        storage,
+        { fallbackOrigin: 'https://freedomtimes.news' },
+      ),
+      false,
     );
   });
 });

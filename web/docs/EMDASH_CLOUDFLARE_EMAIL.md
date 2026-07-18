@@ -114,12 +114,14 @@ https://freedomtimes.news/auth/native-magic-link?token=<opaque>&ft_origin=https%
 | Path | `/auth/native-magic-link` |
 | Query | `token` (required); `ft_origin` (issuing HTTPS origin); optional `redirect` |
 
-The lander **GET does not call EmDash verify** (Safe Links / scanner prefetch cannot burn the single-use token). It shows:
+The lander **GET does not call EmDash verify** (Safe Links / scanner prefetch cannot burn the single-use token).
 
-1. **Open in Freedom Times** → `news.freedomtimes.app://auth/magic-link/verify?token=…&ft_origin=…` (same Auth0-shared scheme as `…://auth/callback`)
-2. **Continue in browser** → `https://…/_emdash/api/auth/magic-link/verify?token=…`
+| Client | Behaviour |
+|--------|-----------|
+| Capacitor WebView / App Link | Skip the button UI; `location.replace` HTTPS verify **once**. Mark lander + verify + deep-link aliases in `sessionStorage` first so `getLaunchUrl` cannot re-GET verify after success. |
+| External browser | Show buttons only (no auto deep-link / no auto verify). **Open in Freedom Times** → custom scheme; **Continue in browser** → HTTPS verify. |
 
-It also auto-attempts the custom scheme once via JS.
+Do **not** server-302 the lander to verify when native cookies are present — that skipped the `sessionStorage` claim and caused a second verify (`invalid_link`).
 
 **Detection (prefer Capacitor signal, not bare Android UA):**
 
@@ -132,9 +134,9 @@ Chrome on Android without those cookies still gets the direct HTTPS verify link 
 
 | Path | What happens |
 |------|----------------|
-| Email → lander (browser) → Open app | Custom scheme VIEW → Capacitor `appUrlOpen` → bridge → WebView `GET` HTTPS verify |
-| Email → lander via App Links (app installed) | Bridge / lander detects native shell → HTTPS verify in WebView (skips custom-scheme hop) |
-| Email → lander → Continue in browser | HTTPS verify in that browser’s cookie jar |
+| Email → lander (browser) → Open app | Human tap only → custom scheme VIEW → Capacitor `appUrlOpen` → bridge → WebView `GET` HTTPS verify **once** |
+| Email → lander via App Links (app installed) | Lander detects native shell → `location.replace` HTTPS verify **once** (skips custom-scheme hop; aliases claimed so bridge cannot re-verify) |
+| Email → lander → Continue in browser | Human tap → HTTPS verify in that browser’s cookie jar |
 
 Implementation: Vite transform of EmDash’s `magic-link/send` email callback ([`magic-link-android-scheme-plugin.ts`](../src/vite/magic-link-android-scheme-plugin.ts) + [`native-android-magic-link.ts`](../src/lib/native-android-magic-link.ts) + [`native-magic-link.astro`](../src/pages/auth/native-magic-link.astro)). AndroidManifest intent-filter includes `pathPrefix="/magic-link/verify"` for the custom-scheme hop.
 
@@ -153,7 +155,9 @@ Signing into Auth0 does **not** sign into EmDash. After a magic-link CMS sign-in
 
 Capacitor’s `App.getLaunchUrl()` returns the cold-start VIEW intent for the **whole process**. FT `Layout` re-inits the native auth bridge on every full page load. Without a guard, visiting `/admin` after a successful App Link magic-link open would `location.replace` the **same** verify URL again → single-use token already deleted → EmDash login (`invalid_link`) with “Passkeys Not Available Here”.
 
-Fix: [`native-launch-url.ts`](../src/lib/native-launch-url.ts) claims the launch URL once in `sessionStorage` before navigating. A **new** magic-link URL (different token) still claims and navigates.
+**Double-burn variant (lander App Link):** email opens `/auth/native-magic-link` inside the app → lander JS verifies once → EmDash loads the bridge → `getLaunchUrl()` still returns the **lander** URL → bridge mapped lander→verify again → `invalid_link` (operator saw the intermediary page, then the error).
+
+Fix: [`native-launch-url.ts`](../src/lib/native-launch-url.ts) claims **all aliases** for the same token (lander + HTTPS verify + custom-scheme deep link) in `sessionStorage`. The lander marks those aliases before `location.replace(verify)`. A **new** magic-link URL (different token) still claims and navigates.
 
 ### Capacitor bug: warm App Link leaves EmDash “Check your email” (fixed on this branch)
 

@@ -221,7 +221,14 @@ async function handleAppOpenUrl(appUrl: string): Promise<void> {
 }
 
 function tryHandleAppOpenUrl(url: string): boolean {
-  if (!url || !claimCapacitorLaunchUrl(url, sessionStorageOrNull())) {
+  // Claim lander + verify + deep-link aliases together so a successful lander→verify
+  // cannot be followed by getLaunchUrl(lander) re-GETting verify (invalid_link).
+  if (
+    !url
+    || !claimCapacitorLaunchUrl(url, sessionStorageOrNull(), {
+      fallbackOrigin: window.location.origin,
+    })
+  ) {
     return false;
   }
   void handleAppOpenUrl(url);
