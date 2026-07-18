@@ -162,6 +162,7 @@ resource "turso_database_token" "tips" {
 resource "cloudflare_turnstile_widget" "story_tips" {
   account_id = var.cloudflare_account_id
   name       = "Freedom Times story tips (production)"
+  # Provider v5 requires a list (not set), alphabetical order to avoid drift.
   domains    = ["freedomtimes.news", "www.freedomtimes.news"]
   mode       = "managed"
   region     = "world"
@@ -188,10 +189,11 @@ module "cloudflare_holding_page" {
   # EmDash Turso credentials are wrangler/deploy-managed - not Terraform.
   # Site analytics: Terraform owns PAGE_VIEWS dataset id (output page_views_dataset).
   # CLOUDFLARE_ACCOUNT_ID + PAGE_VIEWS_DATASET are wrangler env vars (must match TF output for dataset).
-  # Only the query token is a Terraform Worker secret (cannot share a binding name with a wrangler var).
+  # Worker secrets are secret_text bindings on cloudflare_workers_script (provider v5).
+  # EMAIL send_email binding is Terraform-owned (keep wrangler.jsonc in sync).
   page_views_dataset = var.page_views_dataset
   worker_secrets = {
-    TURNSTILE_SITE_KEY             = cloudflare_turnstile_widget.story_tips.id
+    TURNSTILE_SITE_KEY             = cloudflare_turnstile_widget.story_tips.sitekey
     TURNSTILE_SECRET_KEY           = cloudflare_turnstile_widget.story_tips.secret
     CLOUDFLARE_ANALYTICS_API_TOKEN = local.page_views_analytics_api_token
   }
@@ -246,7 +248,7 @@ module "azure_editorial_api" {
   }
 }
 
-resource "cloudflare_record" "api_custom_hostname" {
+resource "cloudflare_dns_record" "api_custom_hostname" {
   count = length(trimspace(var.api_custom_hostname)) > 0 && length(trimspace(var.api_custom_hostname_certificate_base64)) > 0 && length(trimspace(var.api_custom_hostname_certificate_password)) > 0 && module.azure_editorial_api.api_gateway_hostname != null ? 1 : 0
 
   zone_id = var.cloudflare_zone_id
@@ -255,7 +257,6 @@ resource "cloudflare_record" "api_custom_hostname" {
   content = module.azure_editorial_api.api_gateway_hostname
   proxied = var.api_custom_hostname_proxied
   ttl     = 1
-  allow_overwrite = true
 }
 
 resource "time_sleep" "wait_for_api_custom_hostname_dns" {
@@ -263,7 +264,7 @@ resource "time_sleep" "wait_for_api_custom_hostname_dns" {
 
   create_duration = "90s"
 
-  depends_on = [cloudflare_record.api_custom_hostname]
+  depends_on = [cloudflare_dns_record.api_custom_hostname]
 }
 
 resource "azurerm_api_management_custom_domain" "editorial" {

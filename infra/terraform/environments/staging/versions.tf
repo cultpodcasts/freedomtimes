@@ -1,18 +1,18 @@
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.7.0"
 
-   cloud {
-     organization = "freedomtimes"
-  
-     workspaces {
-       name = "freedomtimes-staging"
-     }
-   }
+  cloud {
+    organization = "freedomtimes"
+
+    workspaces {
+      name = "freedomtimes-staging"
+    }
+  }
 
   required_providers {
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.22"
     }
     auth0 = {
       source  = "auth0/auth0"

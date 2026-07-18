@@ -15,73 +15,112 @@ locals {
   # e.g. "example.com/*" -> hostname "example.com", is_subdomain false
   route_hostname = split("/", var.route_pattern)[0]
   is_subdomain   = length(split(".", local.route_hostname)) > 2
+
+  # Terraform-owned bindings. Wrangler still owns KV/R2 (and the live Astro bundle content).
+  # keep_bindings below preserves those Wrangler binding types across TF script metadata updates.
+  page_views_bindings = trimspace(var.page_views_dataset) != "" ? [
+    {
+      name    = var.page_views_binding_name
+      type    = "analytics_engine"
+      dataset = var.page_views_dataset
+    }
+  ] : []
+
+  send_email_bindings = var.enable_send_email ? [
+    {
+      name                      = var.send_email_binding_name
+      type                      = "send_email"
+      allowed_sender_addresses  = var.send_email_allowed_sender_addresses
+    }
+  ] : []
+
+  secret_text_bindings = [
+    for name, value in var.worker_secrets : {
+      name = name
+      type = "secret_text"
+      text = value
+    }
+  ]
+
+  worker_bindings = jsondecode(jsonencode(concat(
+    local.page_views_bindings,
+    local.send_email_bindings,
+    local.secret_text_bindings,
+  )))
 }
 
 resource "cloudflare_workers_script" "holding_page" {
-  account_id = var.account_id
-  name       = var.worker_name
-  content    = local.worker_script
-  module     = true
+  account_id  = var.account_id
+  script_name = var.worker_name
+  content     = local.worker_script
+  # Module syntax Worker (matches previous module = true).
+  main_module = "worker.js"
   compatibility_date = var.worker_compatibility_date
   logpush    = true
 
-  # Terraform owns the Analytics Engine dataset name + binding identity.
-  # Wrangler must use the same dataset string (see terraform output page_views_dataset).
-  dynamic "analytics_engine_binding" {
-    for_each = trimspace(var.page_views_dataset) != "" ? [1] : []
-    content {
-      name    = var.page_views_binding_name
-      dataset = var.page_views_dataset
-    }
-  }
+  bindings = local.worker_bindings
 
-  # Wrangler owns deployed Worker bundle content and most runtime metadata; Terraform manages name/routing/AE identity.
-  # send_email (EMAIL) is declared in web/wrangler.jsonc — Cloudflare provider 4.x has no send_email binding schema
-  # (see web/docs/EMDASH_CLOUDFLARE_EMAIL.md). Do not strip it via ad-hoc wrangler binding edits.
+  # Preserve Wrangler-owned binding kinds when Terraform updates TF-owned bindings/secrets.
+  keep_bindings = [
+    "kv_namespace",
+    "r2_bucket",
+  ]
+
+  # Wrangler owns deployed Worker bundle content and most runtime metadata.
+  # Terraform owns: PAGE_VIEWS analytics_engine, EMAIL send_email, and secret_text worker secrets.
   lifecycle {
     ignore_changes = [
       content,
-      module,
+      main_module,
       compatibility_date,
       compatibility_flags,
       logpush,
-      tags,
-      plain_text_binding,
-      r2_bucket_binding,
-      kv_namespace_binding,
+      observability,
     ]
-    # analytics_engine_binding is NOT ignored — Terraform is source of truth for PAGE_VIEWS dataset id
   }
 }
 
-resource "cloudflare_workers_secret" "script_secrets" {
-  for_each = toset(nonsensitive(keys(var.worker_secrets)))
+# v4 cloudflare_workers_secret was removed in provider v5. Leave existing Secrets-API
+# entries in Cloudflare (destroy = false) while secret_text bindings above become source of truth.
+removed {
+  from = cloudflare_workers_secret.script_secrets
 
-  account_id  = var.account_id
-  script_name = cloudflare_workers_script.holding_page.name
-  name        = each.value
-  secret_text = var.worker_secrets[each.value]
+  lifecycle {
+    destroy = false
+  }
 }
 
 resource "cloudflare_workers_route" "holding_page" {
   count = local.is_subdomain ? 0 : 1
 
-  zone_id     = var.zone_id
-  pattern     = var.route_pattern
-  script_name = cloudflare_workers_script.holding_page.name
+  zone_id = var.zone_id
+  pattern = var.route_pattern
+  script  = cloudflare_workers_script.holding_page.script_name
 }
 
-# Subdomain: use Custom Domain binding — Cloudflare manages DNS automatically
-resource "cloudflare_workers_domain" "holding_page" {
+# Subdomain: Custom Domain binding — Cloudflare manages DNS automatically.
+# Provider v5 renamed cloudflare_workers_domain → cloudflare_workers_custom_domain
+# without MoveState support from the v4 plural type already in our state. Leave the
+# live binding in Cloudflare (destroy = false); each environment imports via
+# import {} (see environments/*/migrations_v5_cloudflare.tf) on first apply.
+removed {
+  from = cloudflare_workers_domain.holding_page
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+resource "cloudflare_workers_custom_domain" "holding_page" {
   count = local.is_subdomain ? 1 : 0
 
   account_id = var.account_id
   zone_id    = var.zone_id
   hostname   = local.route_hostname
-  service    = cloudflare_workers_script.holding_page.name
+  service    = cloudflare_workers_script.holding_page.script_name
 }
 
-resource "cloudflare_record" "apex" {
+resource "cloudflare_dns_record" "apex" {
   count = var.manage_apex_dns_record ? 1 : 0
 
   zone_id = var.zone_id
@@ -90,4 +129,9 @@ resource "cloudflare_record" "apex" {
   content = var.apex_dns_record_content
   proxied = true
   ttl     = 1
+}
+
+moved {
+  from = cloudflare_record.apex
+  to   = cloudflare_dns_record.apex
 }

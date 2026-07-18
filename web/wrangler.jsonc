@@ -36,8 +36,8 @@
 	"env": {
 		"production": {
 			"name": "freedomtimes",
-			// EmDash cloudflareEmail() — declare here so wrangler deploy does not strip the binding.
-			// Cloudflare Terraform provider 4.x cannot express send_email; see web/docs/EMDASH_CLOUDFLARE_EMAIL.md.
+			// EmDash cloudflareEmail() — keep in sync with Terraform send_email binding EMAIL
+			// (modules/cloudflare_holding_page). Deploy must not strip TF-owned bindings.
 			"send_email": [
 				{
 					"name": "EMAIL",
@@ -81,7 +81,7 @@
 		},
 		"staging": {
 			"name": "freedomtimes-staging",
-			// EmDash cloudflareEmail() — same apex From as production (staging has no mail MX).
+			// EmDash cloudflareEmail() — keep in sync with Terraform send_email binding EMAIL.
 			"send_email": [
 				{
 					"name": "EMAIL",

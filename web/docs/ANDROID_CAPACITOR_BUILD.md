@@ -47,9 +47,22 @@ From the **repository root**:
 
 ### Digital Asset Links (`assetlinks.json`)
 
-`GET https://freedomtimes.news/.well-known/assetlinks.json` (and staging) publishes package `news.freedomtimes.app` with SHA-256 fingerprints for the debug keystore and staging signing cert. Add the production release fingerprint when `ANDROID_PRODUCTION_SIGNING_*` exists (see `web/src/pages/.well-known/assetlinks.json.ts`).
+`GET https://freedomtimes.news/.well-known/assetlinks.json` (and staging) publishes package `news.freedomtimes.app` with SHA-256 fingerprints for the debug keystore and staging signing cert (`ANDROID_STAGING_SIGNING_*` in repo-root `.env.dev`).
 
-DAL is for verified HTTPS App Links / WebView credential association — **not** required for browser PWA, Auth0 custom-scheme auth, or EmDash magic links. See [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md).
+**Production fingerprint:** not in the file yet — `ANDROID_PRODUCTION_SIGNING_*` is not configured locally (placeholders in `.env.dev.example`). When you have a production keystore:
+
+1. Put all four `ANDROID_PRODUCTION_SIGNING_*` values in `.env.dev` (and GitHub secrets if CI signs release APKs).
+2. Extract SHA-256 (colon-separated, as keytool prints):
+
+```powershell
+# After materializing the JKS from ANDROID_PRODUCTION_SIGNING_KEYSTORE_BASE64:
+keytool -list -v -keystore <prod.jks> -alias <ANDROID_PRODUCTION_SIGNING_KEY_ALIAS>
+```
+
+3. Add that fingerprint to `sha256_cert_fingerprints` in `web/src/pages/.well-known/assetlinks.json.ts` and deploy the Worker.
+
+Until then, release builds that fall back to the **staging** keystore already match the staging fingerprint listed there. DAL is for verified HTTPS App Links / WebView credential association — **not** required for browser PWA, Auth0 custom-scheme auth, or EmDash magic links. See [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md).
+
 
 ## Launcher icons from `favicon.svg`
 
