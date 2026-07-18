@@ -38,7 +38,7 @@ Successful **GET** responses that return **HTML** (`2xx`) for public reader path
 | `/archives`, `/archives/{slug}` | Archives |
 | `/submit-a-tip`, `/tip-source` | Public reader HTML utilities |
 
-Article identity is the request pathname (e.g. `/posts/weekly-summary-13-july-2026`) — query strings and hashes are stripped; trailing slashes normalized. Homepage aliases (`/` ↔ `/homepage`) are collapsed to `getHomePath()` on write and coalesced on read so Top pages shows one row.
+Article identity is the request pathname (e.g. `/posts/weekly-summary-13-july-2026`) — query strings and hashes are stripped; trailing slashes normalized. Homepage aliases (`/` ↔ `/homepage`) are collapsed to `getHomePath()` on write. On production read, historical `/homepage` rows are merged into `/` in application code (Analytics Engine SQL does not support `CASE WHEN`). Locked staging keeps `/homepage` as the Top pages key.
 
 ### Excluded (never written)
 

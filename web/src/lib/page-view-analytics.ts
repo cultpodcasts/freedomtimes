@@ -207,13 +207,32 @@ export function canonicalizeTrackedPath(pathname: string): string {
   return path;
 }
 
-/** SQL expression that maps stored homepage aliases to the canonical key for this env. */
-function sqlCanonicalPathKeyExpr(): string {
+/**
+ * Production: merge historical `/homepage` rows into `/` after query.
+ * Analytics Engine SQL does not support CASE WHEN — coalesce in app code instead.
+ * Locked staging keeps `/homepage` as its own key (canonical newsroom path).
+ */
+export function coalesceHomepagePathRows(rows: PageViewStatRow[]): PageViewStatRow[] {
   if (isLockedSiteAccess()) {
-    return 'blob1';
+    return rows
+      .filter((row) => row.key)
+      .sort((a, b) => b.views - a.views)
+      .slice(0, TOP_LIMIT);
   }
-  // Production: historical `/homepage` rows + new `/` writes → one Top pages row.
-  return "CASE WHEN blob1 = '/homepage' THEN '/' ELSE blob1 END";
+
+  const merged = new Map<string, number>();
+  for (const row of rows) {
+    const key = row.key === '/homepage' ? '/' : row.key;
+    if (!key) {
+      continue;
+    }
+    merged.set(key, (merged.get(key) ?? 0) + row.views);
+  }
+
+  return [...merged.entries()]
+    .map(([key, views]) => ({ key, views }))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, TOP_LIMIT);
 }
 
 /** SQL predicate matching a selected path, including production homepage aliases. */
@@ -388,19 +407,20 @@ export async function loadAdminAnalytics(params: {
 
   const botFilter = excludeBots ? "AND blob3 = '0'" : '';
   const interval = RANGE_INTERVAL[params.range];
-
-  const pathKeyExpr = sqlCanonicalPathKeyExpr();
+  // Fetch one extra row on production so `/` + `/homepage` can merge without
+  // dropping another top path when both aliases appear in the window.
+  const topPagesSqlLimit = isLockedSiteAccess() ? TOP_LIMIT : TOP_LIMIT + 1;
 
   const topPagesSql = `
 SELECT
-  ${pathKeyExpr} AS key,
+  blob1 AS key,
   SUM(_sample_interval) AS views
 FROM ${dataset}
 WHERE timestamp > NOW() - ${interval}
   ${botFilter}
 GROUP BY key
 ORDER BY views DESC
-LIMIT ${TOP_LIMIT}
+LIMIT ${topPagesSqlLimit}
 FORMAT JSON
 `.trim();
 
@@ -458,7 +478,7 @@ FORMAT JSON
       selectedPath,
       configured: true,
       dataset,
-      topPages: topPages.map(normalizeStatRow).filter((row) => row.key),
+      topPages: coalesceHomepagePathRows(topPages.map(normalizeStatRow)),
       countries: countries.map(normalizeStatRow).filter((row) => row.key),
       pathCountries: pathCountries.map(normalizeStatRow).filter((row) => row.key),
       totalViews: Number(totals[0]?.views ?? 0) || 0,

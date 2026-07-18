@@ -12,15 +12,15 @@ import {
 
 export const prerender = false;
 
-const session = await requireAdminDashboardSession({
+const auth = await requireAdminDashboardSession({
 	cookies: Astro.cookies,
 	url: Astro.url,
 	request: Astro.request,
 	redirect: Astro.redirect,
 });
 
-if (session instanceof Response) {
-	return session;
+if (auth instanceof Response) {
+	return auth;
 }
 
 const range = parseAnalyticsRange(Astro.url.searchParams.get('range'));
@@ -87,10 +87,6 @@ function analyticsHref(opts: {
 			<a href="/admin">← Admin</a>
 		</p>
 		<h1>Site traffic</h1>
-		<p class="lede">
-			Signed in as {session.displayName}. Public page views for the reader site — homepage, articles
-			(<code>/posts/…</code>), archives, and other reader HTML pages.
-		</p>
 
 		<section class="analytics" aria-labelledby="analytics-heading">
 			<div class="analytics__header">
@@ -300,23 +296,12 @@ function analyticsHref(opts: {
 	}
 
 	h1 {
-		margin: 0 0 1rem;
+		margin: 0 0 1.5rem;
 		font-family: 'Playfair Display', Georgia, serif;
 		font-weight: 900;
 		font-size: clamp(2rem, 4vw, 3rem);
 		line-height: 1;
 		letter-spacing: -0.02em;
-	}
-
-	.lede {
-		margin: 0 0 2rem;
-		font-size: 1.05rem;
-		line-height: 1.65;
-		color: var(--text-secondary);
-	}
-
-	.lede code {
-		font-size: 0.9em;
 	}
 
 	.visually-hidden {

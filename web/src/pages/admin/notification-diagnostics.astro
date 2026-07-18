@@ -5,15 +5,15 @@ import { requireNotificationDiagnosticsSession } from '../../lib/notification-di
 
 export const prerender = false;
 
-const session = await requireNotificationDiagnosticsSession({
+const auth = await requireNotificationDiagnosticsSession({
 	cookies: Astro.cookies,
 	url: Astro.url,
 	request: Astro.request,
 	redirect: Astro.redirect,
 });
 
-if (session instanceof Response) {
-	return session;
+if (auth instanceof Response) {
+	return auth;
 }
 ---
 
@@ -25,9 +25,7 @@ if (session instanceof Response) {
 	<Header section="Push diagnostics" isAdmin={true} isSignedIn={true} />
 	<article class="diagnostics-admin">
 		<h1>Push notification diagnostics</h1>
-		<p class="lede">
-			Signed in as {session.displayName}. Reports are stored in the subscriptions database — not in EmDash.
-		</p>
+		<p class="lede">Reports are stored in the subscriptions database — not in EmDash.</p>
 
 		<div class="toolbar">
 			<label class="toolbar__filter">
