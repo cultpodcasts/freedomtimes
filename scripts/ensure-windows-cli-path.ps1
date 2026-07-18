@@ -62,6 +62,10 @@ function Resolve-TerraformExecutable {
         }
     }
 
+    # where.exe exit 1 when missing must not poison the caller's process exit code
+    # if a later best-effort path succeeds or the caller falls back.
+    $global:LASTEXITCODE = 0
+
     throw @"
 terraform executable not found.
 Install: winget install Hashicorp.Terraform

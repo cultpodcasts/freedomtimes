@@ -29,6 +29,10 @@ $script:DeployBaseEnvPath = $null
 $script:DeployCommonScriptRoot = $PSScriptRoot
 
 . "$PSScriptRoot/assert-push-secrets-ready.ps1"
+# Must be script-scoped: dotsourcing inside Initialize-DeployEnvironment would define
+# Resolve-TerraformExecutable only in that function's local scope, then drop it on return
+# (production -WorkerOnly then failed on the post-deploy Get-DeployWorkerName print).
+. "$PSScriptRoot/ensure-windows-cli-path.ps1"
 $script:DeployWebBuildStartedAt = $null
 
 function Initialize-DeployEnvironment {
@@ -46,7 +50,6 @@ function Initialize-DeployEnvironment {
     $script:DeployTerraformEnvDir = Join-Path $script:DeployRepoRoot "infra/terraform/environments/$Environment"
     $script:DeployBaseEnvPath = Join-Path $script:DeployRepoRoot ".env.dev"
 
-    . "$PSScriptRoot/ensure-windows-cli-path.ps1"
     Initialize-WindowsCliPath
 }
 
@@ -268,11 +271,18 @@ function Get-DeployWorkerName {
         return Get-DeployTerraformOutputRaw -Name "worker_name"
     }
 
-    . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
-    $terraformExe = Resolve-TerraformExecutable
-    $workerName = Try-TerraformOutputRaw -TerraformExe $terraformExe -TerraformEnvDir $script:DeployTerraformEnvDir -OutputName "worker_name"
-    if (-not [string]::IsNullOrWhiteSpace($workerName)) {
-        return $workerName
+    # Production -WorkerOnly: best-effort name for display. Never fail the deploy
+    # after wrangler succeeded — terraform output is optional here.
+    try {
+        . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
+        $terraformExe = Resolve-TerraformExecutable
+        $workerName = Try-TerraformOutputRaw -TerraformExe $terraformExe -TerraformEnvDir $script:DeployTerraformEnvDir -OutputName "worker_name"
+        if (-not [string]::IsNullOrWhiteSpace($workerName)) {
+            return $workerName
+        }
+    }
+    catch {
+        # Fall through to env / default. Callers print this after a successful deploy.
     }
 
     $workerFromEnv = [Environment]::GetEnvironmentVariable("TF_VAR_WORKER_NAME_PRODUCTION", "Process")

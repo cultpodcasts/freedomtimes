@@ -70,7 +70,7 @@ elseif ($SyncCloudflareWorkerSecrets) {
 if ($DryRun) {
     Write-DeployStep "Dry run complete — skipping build and deploy"
     Write-Host "Worker name (display): $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
-    return
+    exit 0
 }
 
 Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
@@ -79,3 +79,6 @@ Invoke-DeployWorkerSecretVerification
 
 Write-DeployStep "Production deploy complete"
 Write-Host "Worker: $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
+# Native helpers (where.exe / terraform output probes) can leave LASTEXITCODE non-zero
+# even after a successful wrangler deploy; force a clean success exit.
+exit 0
