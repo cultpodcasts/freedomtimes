@@ -9,6 +9,9 @@ const NATIVE_APP_COOKIE = 'ft_native_app';
 const LOGIN_PATH = '/auth/login';
 const NATIVE_LOGIN_PATH = '/auth/login?native=1';
 
+/** Hosts registered for HTTPS App Links (AndroidManifest + assetlinks.json). */
+const APP_LINK_HOSTS = new Set(['freedomtimes.news', 'staging.freedomtimes.news']);
+
 declare global {
   interface Window {
     __ftNativeAuthBridgeInitialized?: boolean;
@@ -94,7 +97,7 @@ function installNativeLoginInterceptor(): void {
   });
 }
 
-function resolveWebCallbackUrl(appUrl: string): string | null {
+function resolveAuth0WebCallbackUrl(appUrl: string): string | null {
   let parsedUrl: URL;
 
   try {
@@ -116,16 +119,59 @@ function resolveWebCallbackUrl(appUrl: string): string | null {
   return callbackUrl.toString();
 }
 
-async function handleAuthCallback(appUrl: string): Promise<void> {
-  const callbackUrl = resolveWebCallbackUrl(appUrl);
+/**
+ * HTTPS App Link (or paste/open-with) → load that URL in the Capacitor WebView.
+ * Critical for EmDash magic links: must hit `/_emdash/api/auth/magic-link/verify?token=…`
+ * so the session cookie lands in the WebView jar, not Firefox.
+ */
+function resolveHttpsAppLinkUrl(appUrl: string): string | null {
+  let parsedUrl: URL;
 
-  if (!callbackUrl) {
+  try {
+    parsedUrl = new URL(appUrl);
+  } catch {
+    return null;
+  }
+
+  if (parsedUrl.protocol !== 'https:' || !APP_LINK_HOSTS.has(parsedUrl.hostname)) {
+    return null;
+  }
+
+  return parsedUrl.toString();
+}
+
+function alreadyAtUrl(target: string): boolean {
+  try {
+    const next = new URL(target);
+    const current = new URL(window.location.href);
+    return (
+      current.href === next.href
+      || (
+        current.origin === next.origin
+        && current.pathname === next.pathname
+        && current.search === next.search
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function handleAppOpenUrl(appUrl: string): Promise<void> {
+  const auth0Callback = resolveAuth0WebCallbackUrl(appUrl);
+  if (auth0Callback) {
+    await Browser.close().catch(() => undefined);
+    window.location.replace(auth0Callback);
     return;
   }
 
-  // Close the system browser (Chrome Custom Tabs) before navigating the WebView.
-  await Browser.close().catch(() => undefined);
-  window.location.replace(callbackUrl);
+  const httpsTarget = resolveHttpsAppLinkUrl(appUrl);
+  if (!httpsTarget || alreadyAtUrl(httpsTarget)) {
+    return;
+  }
+
+  // Consume magic-link token / open deep path inside the WebView cookie jar.
+  window.location.replace(httpsTarget);
 }
 
 export async function initializeNativeAuthBridge(): Promise<void> {
@@ -140,8 +186,10 @@ export async function initializeNativeAuthBridge(): Promise<void> {
 
   const launchUrl = await App.getLaunchUrl();
   if (launchUrl?.url) {
-    await handleAuthCallback(launchUrl.url);
+    await handleAppOpenUrl(launchUrl.url);
   }
 
-  await App.addListener('appUrlOpen', ({ url }) => handleAuthCallback(url));
+  await App.addListener('appUrlOpen', ({ url }) => {
+    void handleAppOpenUrl(url);
+  });
 }

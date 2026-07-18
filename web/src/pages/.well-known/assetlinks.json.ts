@@ -23,9 +23,11 @@ import type { APIRoute } from 'astro';
  * - Google Play App Signing cert from Play Console if store installs are re-signed
  *   by Google (add that fingerprint too; upload-key alone is not enough for Play).
  *
- * Empty or wrong fingerprints do not break browser PWA, Auth0 `/admin`, EmDash,
- * custom-scheme deep links (`news.freedomtimes.app://auth/callback`), or Email Routing.
- * They only fail Android App Links / DAL verification until corrected.
+ * Empty or wrong fingerprints do not break browser PWA, Auth0 `/admin`, EmDash
+ * email delivery, custom-scheme deep links (`news.freedomtimes.app://auth/callback`),
+ * or Email Routing. They only fail Android App Links / DAL verification until
+ * corrected — without a match, `android:autoVerify` for
+ * `https://freedomtimes.news` / `https://staging.freedomtimes.news` stays unverified.
  */
 const ASSET_LINKS = [
   {

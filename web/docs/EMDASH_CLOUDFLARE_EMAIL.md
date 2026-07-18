@@ -84,7 +84,54 @@ If any break, restore Routing rules / MX before continuing EmDash tests.
    - **Settings → Email** → select that provider  
 5. **Test magic link** from the Android app (or any client without passkeys).
 
+## Magic link URL (what EmDash sends)
+
+EmDash emails a verify URL on the **site origin** that issued the login (production example):
+
+```text
+https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=<opaque>
+```
+
+On success the verify handler sets an **EmDash session cookie** for that host and redirects (typically to `/` or `/_emdash/admin`). That is why operators often land on the **site apex** after clicking.
+
+## Android App Links (registered)
+
+The Capacitor Android shell registers HTTPS App Links for:
+
+| Host | Paths |
+|------|--------|
+| `freedomtimes.news` | entire host (includes magic-link verify) |
+| `staging.freedomtimes.news` | entire host (debug / staging builds) |
+
+See `web/android/app/src/main/AndroidManifest.xml` (`android:autoVerify="true"`) and `GET /.well-known/assetlinks.json` (package `news.freedomtimes.app` + staging/debug SHA-256; Play signing cert still separate — [ANDROID_CAPACITOR_BUILD.md](./ANDROID_CAPACITOR_BUILD.md)).
+
+When Android delivers a **VIEW** intent for those HTTPS URLs, Capacitor fires `appUrlOpen` / `getLaunchUrl`. [`native-auth-bridge.ts`](../src/lib/native-auth-bridge.ts) loads that exact URL in the **WebView** so the magic-link token is consumed in the app cookie jar (opening the app to the homepage without the verify URL would leave you logged out).
+
+### Outlook Safe Links (primary reason Firefox opens today)
+
+Operator-observed wrapped link:
+
+```text
+https://emea01.safelinks.protection.outlook.com/?url=https%3A%2F%2Ffreedomtimes.news%2F_emdash%2Fapi%2Fauth%2Fmagic-link%2Fverify%3Ftoken%3D…
+```
+
+Decoded target is the EmDash verify URL above. What happens on tap:
+
+1. The **initial** VIEW is for `safelinks.protection.outlook.com` — Android App Links for `freedomtimes.news` **cannot** claim that click.
+2. Safe Links redirects into whatever browser already owns the navigation (often **Firefox**).
+3. EmDash verify runs **in Firefox**, sets cookies in **Firefox’s jar**, then redirects to `https://freedomtimes.news/` — still in Firefox.
+4. App Links do **not** steal an in-browser redirect or mid-tab navigation. They apply when Android creates a **new VIEW** for a matching HTTPS URL (Gmail “Open with”, long-press → Freedom Times, `adb`, copy/paste unwrap, etc.).
+5. Opening the Capacitor app **after** Firefox already completed verify does **not** copy the session — WebView and Firefox are separate cookie jars. Staff still need to complete magic link **inside** the app (or use another client that opens the unwrapped URL in the app).
+
+**Practical testing with Outlook mail:**
+
+- Long-press the link → **Open with** / choose Freedom Times (if offered), or copy link → unwrap the `url=` query param → open `https://freedomtimes.news/_emdash/...` via App Links.
+- Prefer a mailbox without Safe Links wrapping (Gmail, or M365 Safe Links bypass for `freedomtimes.news` / `*/_emdash/api/auth/magic-link/*` if you control the tenant).
+- Accept browser EmDash CMS login for desktop/passkey; App Links are for native open-with, not a full fix for Safe Links→Firefox alone.
+
+Verification steps (`adb`, Asset Links status): [ANDROID_CAPACITOR_BUILD.md](./ANDROID_CAPACITOR_BUILD.md) § App Links.
+
 ## Related
 
-- Android Digital Asset Links: `GET /.well-known/assetlinks.json` ([`assetlinks.json.ts`](../src/pages/.well-known/assetlinks.json.ts)) — optional for App Links; **not** required for magic link. CI/sideload SHA-256 is the staging cert (verified from GH artifact); Play App Signing / dedicated production keystore notes: [ANDROID_CAPACITOR_BUILD.md](./ANDROID_CAPACITOR_BUILD.md).
-- Auth0 `/admin` and custom-scheme `news.freedomtimes.app://auth/callback` are separate from EmDash auth.
+- Android Digital Asset Links: `GET /.well-known/assetlinks.json` ([`assetlinks.json.ts`](../src/pages/.well-known/assetlinks.json.ts)) — required for **verified** App Links (`autoVerify`); not required for EmDash email delivery itself.
+- Auth0 `/admin` still uses custom-scheme `news.freedomtimes.app://auth/callback` (separate from EmDash magic links).

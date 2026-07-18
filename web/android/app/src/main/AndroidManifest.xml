@@ -32,6 +32,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Auth0 Capacitor callback (custom scheme). -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -42,6 +43,23 @@
                     android:host="auth"
                     android:pathPrefix="/callback"
                     android:scheme="@string/custom_url_scheme" />
+            </intent-filter>
+
+            <!--
+              HTTPS App Links for Freedom Times (verified via /.well-known/assetlinks.json).
+              Covers EmDash magic-link verify (/_emdash/api/auth/magic-link/verify) and
+              site paths so Android can offer/open the Capacitor app for VIEW intents.
+              Does not intercept in-browser navigations after Outlook Safe Links
+              (safelinks.protection.outlook.com → Firefox stays in Firefox).
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="https" android:host="freedomtimes.news" />
+                <data android:scheme="https" android:host="staging.freedomtimes.news" />
             </intent-filter>
 
             <!-- FCM notification tap when a payload sets click_action (legacy / third-party senders). -->
