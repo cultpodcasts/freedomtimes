@@ -17,6 +17,30 @@ Terraform is not required for local application development. Local work can run 
 - Turso databases for EmDash, scheduler, push subscriptions, and reader tips
 - Environment entrypoints for `production` and `staging`
 
+### EmDash Cloudflare Email
+
+Magic-link delivery for `/_emdash/admin` uses Cloudflare Email Sending + Worker `send_email` binding `EMAIL`. See **[web/docs/EMDASH_CLOUDFLARE_EMAIL.md](../../web/docs/EMDASH_CLOUDFLARE_EMAIL.md)**.
+
+| Piece | Status |
+|-------|--------|
+| EmDash `cloudflareEmail()` plugin | App config (`web/astro.config.ts`) |
+| Cloudflare provider | **~> 5.22** (staging + production) |
+| `send_email` → `EMAIL` | **Terraform-owned** on `cloudflare_workers_script` bindings; mirrored in `web/wrangler.jsonc` |
+| Worker secrets (`TURNSTILE_*`, analytics token) | Terraform `secret_text` bindings (v4 `cloudflare_workers_secret` removed) |
+| Email Sending domain onboard (`freedomtimes.news`) | Operator dashboard one-time (creates `cf-bounce.*`; keeps apex Email Routing redirects) |
+| EmDash UI activate provider | Operator (Admin → Extensions → Settings → Email) |
+
+Do **not** mutate Worker bindings/secrets with one-off `npx wrangler` commands.
+
+### One-time provider v5 apply (this PR)
+
+| Env | Status |
+|-----|--------|
+| Staging | **Applied** (import `workers_custom_domain` + in-place `EMAIL`/`secret_text` bindings). `migrations_v5_cloudflare.tf` removed after apply. First apply omitted `keep_assets` / Wrangler `plain_text`+`assets` in `keep_bindings` and broke `/auth/login` until Worker rollback; module now sets `keep_assets = true` and keeps `assets`/`plain_text`. |
+| Production | Plan-only until explicit operator ask (move `cloudflare_record` → `dns_record` + bindings) — only after the `keep_assets` fix is in the applied module |
+
+Orphaned v4 `cloudflare_workers_secret` / `cloudflare_workers_domain` addresses were removed from remote state before apply (Cloudflare objects left in place; `secret_text` / custom domain are TF-owned after apply).
+
 ## Environment Separation Rule
 
 Terraform must maintain strict separation between staging and production for all providers (Cloudflare, Auth0, Turso).
@@ -69,7 +93,7 @@ CI / Wrangler on the same token may also need Workers KV Storage → Edit (and R
 
 ### Turnstile widgets
 
-Each environment creates a `cloudflare_turnstile_widget` and pushes `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` to the web Worker via `cloudflare_workers_secret`. Staging domains: `staging.freedomtimes.news`. Production domains: `freedomtimes.news`, `www.freedomtimes.news`.
+Each environment creates a `cloudflare_turnstile_widget` and pushes `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` to the web Worker via Terraform `secret_text` bindings. Staging domains: `staging.freedomtimes.news`. Production domains: `freedomtimes.news`, `www.freedomtimes.news`.
 
 If a widget already exists in the Cloudflare dashboard, import it instead of creating a duplicate:
 
@@ -145,7 +169,7 @@ The guard script exits non-zero if the saved plan contains any `turso_database` 
 | Secret | Owner |
 |--------|--------|
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Wrangler deploy / local deploy scripts (`deploy-staging-local.ps1`, `deploy-production-local.ps1`) / `switch-production-turso-secrets.ps1` / `set-github-secrets.ps1` / CI workflows — see [web/docs/DEPLOY.md](../../web/docs/DEPLOY.md) |
-| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Terraform (`cloudflare_workers_secret`) |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Terraform (`secret_text` bindings on `cloudflare_workers_script`) |
 | Turso DBs + `turso_database_token` outputs | Terraform (for build/CI outputs only — not pushed to Worker by TF) |
 
 **One-time migration** (after config removed TURSO from `worker_secrets`):

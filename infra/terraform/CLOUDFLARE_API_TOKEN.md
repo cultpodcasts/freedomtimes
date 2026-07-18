@@ -33,10 +33,10 @@ These permissions match **active** `cloudflare_*` resources in `infra/terraform/
 
 | Dashboard permission | Access | Terraform resource(s) | Why |
 |---------------------|--------|----------------------|-----|
-| **Workers Scripts** | Edit | `cloudflare_workers_script`, `cloudflare_workers_secret` | Create/update Worker script shell; push secrets (`TURNSTILE_*`, `PAGE_VIEWS_DATASET`, …); Analytics Engine binding |
+| **Workers Scripts** | Edit | `cloudflare_workers_script` | Create/update Worker script shell; TF-owned bindings (`PAGE_VIEWS`, `EMAIL`, `secret_text` secrets); Analytics Engine + send_email |
 | **Turnstile** | Edit | `cloudflare_turnstile_widget.story_tips` | Create/manage Turnstile widgets for `/submit-a-tip` per environment |
 
-`cloudflare_workers_domain` (staging custom domain binding) is managed through the Workers platform; **Workers Scripts → Edit** covers it in practice.
+`cloudflare_workers_custom_domain` (staging custom domain binding) is managed through the Workers platform; **Workers Scripts → Edit** covers it in practice.
 
 **Account Analytics → Read is not required on this Terraform edit token.** Admin `/admin/analytics` SQL uses a **separate** operator-provided Account Analytics Read token (`ANALYTICS_CF_TOKEN`) — see [Analytics query token](#analytics-query-token) below.
 
@@ -54,7 +54,7 @@ Scope zone resources to the **`freedomtimes.news`** zone only.
 |---------------------|--------|----------------------|-----|
 | **Workers Routes** | Edit | `cloudflare_workers_route` | Attach Worker to apex route pattern (production: `freedomtimes.news/*`) |
 | **Zone** | Read | (provider) | Resolve zone ID and read zone metadata during plan/apply |
-| **Workers Domains** | Edit | `cloudflare_workers_domain` | Bind Worker to custom hostname (staging: `staging.freedomtimes.news`) |
+| **Workers Domains** | Edit | `cloudflare_workers_custom_domain` | Bind Worker to custom hostname (staging: `staging.freedomtimes.news`) |
 
 If **Workers Domains → Edit** is not offered separately in your account UI, **Workers Routes → Edit** on the zone is sufficient for staging custom-domain bindings in current stacks.
 
@@ -74,9 +74,9 @@ These zone settings are **not** in Terraform today but are changed via the Cloud
 
 | Dashboard permission | Access | Terraform resource(s) | When |
 |---------------------|--------|----------------------|------|
-| **DNS** | Edit | `cloudflare_record.apex` | `manage_apex_dns_record = true` in environment tfvars |
+| **DNS** | Edit | `cloudflare_dns_record.apex` | `manage_apex_dns_record = true` in environment tfvars |
 
-`cloudflare_record` for Azure APIM custom hostnames in `main.tf` is **commented out** — do not add DNS Edit unless that block is re-enabled.
+`cloudflare_dns_record` for Azure APIM custom hostnames in `main.tf` is **commented out** — do not add DNS Edit unless that block is re-enabled.
 
 ### Not required for Terraform-only apply
 
@@ -198,3 +198,15 @@ rg 'resource "cloudflare_' infra/terraform
 ```
 
 Then adjust the token and link from [README.md](./README.md).
+
+### Email Sending (EmDash magic links)
+
+EmDash uses Cloudflare Email Sending via Worker binding `EMAIL` (`send_email`). See [web/docs/EMDASH_CLOUDFLARE_EMAIL.md](../../web/docs/EMDASH_CLOUDFLARE_EMAIL.md).
+
+| Need | How |
+|------|-----|
+| Onboard `freedomtimes.news` for Sending | Dashboard (or `wrangler email sending enable` by an **operator** — not an agent binding edit). Creates `cf-bounce.*` DNS; does not replace apex Email Routing MX. **No TF resource** for Sending onboard yet. |
+| Worker `EMAIL` binding | **Terraform** (`cloudflare_workers_script` bindings, provider ~> 5.22). Mirrored in `web/wrangler.jsonc`. |
+| Worker secrets (Turnstile, analytics token) | Terraform `secret_text` bindings on the same script resource |
+
+Existing apex **Email Routing** redirects stay as-is. Review `_dmarc` after onboard (prefer soft `p=none` until ready for stricter policy).

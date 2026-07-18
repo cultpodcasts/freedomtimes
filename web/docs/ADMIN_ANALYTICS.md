@@ -13,8 +13,9 @@ On `/admin/analytics` (Auth0 `admin` role), **Site traffic / Public page views**
 | Metric | Notes |
 |--------|--------|
 | Top public pages | Paths ranked by approximate view count (e.g. `/`, `/posts/{slug}`, `/{page-slug}`). Click a path to drill into countries for that page. |
-| By country | Site-wide ISO country codes from Cloudflare edge (`cf.country`) |
-| Page × country | When `?path=` is set (or a top page is selected), country breakdown for that path only |
+| By country | Site-wide countries from Cloudflare edge (`cf.country`); UI shows flag + English name (ISO code in tooltip) |
+| Page × country | When `?path=` is set (or a top page is selected), the **same** country panel swaps to that path’s breakdown (no third table) |
+| Layout | Desktop/tablet: pages left, countries right. Mobile: Pages \| Countries segmented control; selecting a path opens Countries with ← Pages |
 | Timeframes | `1d` (1 day), `1w` (7 days), `1m` (30 days) |
 | Bots | Flagged on write; **hidden by default** on `/admin/analytics` (`?includeBots=1` to include) |
 
@@ -30,14 +31,14 @@ Successful **GET** responses that return **HTML** (`2xx`) for public reader path
 
 | Path pattern | Meaning |
 |--------------|---------|
-| `/` | Public homepage (**production** only; rewrite to newsroom) |
-| `/homepage` | Newsroom home (**locked staging**; production home is `/`) |
+| `/` | Public homepage (**production** canonical; `index.astro` rewrites to newsroom) |
+| `/homepage` | Newsroom home (**locked staging** canonical). On production, direct `/homepage` hits are **aliased to `/`** in analytics (same page) |
 | `/posts/{slug}` | Article / post |
 | `/{slug}` | CMS page (EmDash `pages` or fallback post lookup) |
 | `/archives`, `/archives/{slug}` | Archives |
 | `/submit-a-tip`, `/tip-source` | Public reader HTML utilities |
 
-Article identity is the request pathname (e.g. `/posts/weekly-summary-13-july-2026`) — query strings and hashes are stripped; trailing slashes normalized.
+Article identity is the request pathname (e.g. `/posts/weekly-summary-13-july-2026`) — query strings and hashes are stripped; trailing slashes normalized. Homepage aliases (`/` ↔ `/homepage`) are collapsed to `getHomePath()` on write. On production read, historical `/homepage` rows are merged into `/` in application code (Analytics Engine SQL does not support `CASE WHEN`). Locked staging keeps `/homepage` as the Top pages key.
 
 ### Excluded (never written)
 

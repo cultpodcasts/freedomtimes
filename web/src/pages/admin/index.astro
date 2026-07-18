@@ -7,15 +7,15 @@ import { countStoryTips } from '../../lib/story-tips-admin';
 
 export const prerender = false;
 
-const session = await requireAdminDashboardSession({
+const auth = await requireAdminDashboardSession({
 	cookies: Astro.cookies,
 	url: Astro.url,
 	request: Astro.request,
 	redirect: Astro.redirect,
 });
 
-if (session instanceof Response) {
-	return session;
+if (auth instanceof Response) {
+	return auth;
 }
 
 const [newTipsCount, newDiagnosticsCount] = await Promise.all([
@@ -60,7 +60,8 @@ const tiles: {
 	{
 		title: 'EmDash CMS',
 		href: '/_emdash/admin',
-		description: 'Edit posts, pages, and media in the editorial content management system.',
+		description:
+			'Edit posts, pages, and media. Separate EmDash login (magic link on Android). After CMS sign-in, stay on /_emdash/admin.',
 		newCount: null,
 	},
 ];
@@ -74,9 +75,7 @@ const tiles: {
 	<Header section="Admin" isAdmin={true} isSignedIn={true} />
 	<article class="admin-dashboard">
 		<h1>Admin</h1>
-		<p class="lede">
-			Signed in as {session.displayName}. Choose a staff tool below.
-		</p>
+		<p class="lede">Choose a staff tool below.</p>
 
 		<ul class="tile-grid">
 			{tiles.map((tile) => (

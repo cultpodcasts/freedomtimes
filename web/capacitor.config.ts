@@ -34,6 +34,9 @@ const config: CapacitorConfig = {
     url: serverUrl,
     cleartext: usesCleartext,
     androidScheme: usesCleartext ? 'http' : 'https',
+    // Allow App Link / cross-env navigations (magic-link verify on prod while
+    // CAPACITOR_SERVER_URL may be staging, and vice versa).
+    allowNavigation: ['freedomtimes.news', 'staging.freedomtimes.news'],
   },
   android: {
     allowMixedContent: usesCleartext,

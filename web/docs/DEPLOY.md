@@ -12,6 +12,7 @@
 | [STAGING_RECOVERY.md](../../STAGING_RECOVERY.md) | Staging teardown/recovery checklist, worker rename |
 | [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) | Secret sync categories, FCM credential prep |
 | [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) | Full `.env.dev` push key reference |
+| [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md) | EmDash magic links via Cloudflare Email Sending (`EMAIL` binding) |
 | [scripts/set-github-secrets.md](../../scripts/set-github-secrets.md) | Cloudflare token permissions for CI |
 
 ---

@@ -61,7 +61,7 @@ variable "contact_email" {
 }
 
 variable "worker_secrets" {
-  description = "Map of Worker secret name to secret value for this script"
+  description = "Map of Worker secret name to secret value (applied as secret_text bindings; replaces removed cloudflare_workers_secret)"
   type        = map(string)
   default     = {}
   sensitive   = true
@@ -83,4 +83,22 @@ variable "page_views_binding_name" {
   description = "Worker env binding name for the page-views Analytics Engine dataset"
   type        = string
   default     = "PAGE_VIEWS"
+}
+
+variable "enable_send_email" {
+  description = "Whether to attach the EmDash Cloudflare Email send_email binding (EMAIL)"
+  type        = bool
+  default     = true
+}
+
+variable "send_email_binding_name" {
+  description = "Worker env binding name for send_email (must match cloudflareEmail() binding)"
+  type        = string
+  default     = "EMAIL"
+}
+
+variable "send_email_allowed_sender_addresses" {
+  description = "Allowed From addresses for the send_email binding"
+  type        = list(string)
+  default     = ["noreply@freedomtimes.news"]
 }

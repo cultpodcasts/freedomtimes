@@ -1,0 +1,210 @@
+---
+/**
+ * HTTPS lander for Capacitor Android magic-link emails.
+ *
+ * GET only renders HTML (Safe Links / scanners do not burn the single-use token).
+ * Token is consumed exactly once when navigation reaches EmDash verify:
+ *   - In Capacitor WebView / App Link: JS `location.replace(verify)` once
+ *   - In external browser: human tap on one button (no auto dual-fire)
+ */
+import { buildMagicLinkLanderTargets } from '../../lib/native-android-magic-link';
+
+export const prerender = false;
+
+const token = (Astro.url.searchParams.get('token') ?? '').trim();
+const ftOrigin = Astro.url.searchParams.get('ft_origin');
+const redirect = Astro.url.searchParams.get('redirect');
+
+const targets = token
+  ? buildMagicLinkLanderTargets({
+      token,
+      ftOrigin,
+      redirect,
+      pageOrigin: Astro.url.origin,
+    })
+  : null;
+
+// Do not server-302 to verify when native cookies are present: that skips the
+// sessionStorage claim and lets getLaunchUrl(lander) re-fire verify after success.
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>{targets ? 'Open Freedom Times' : 'Sign-in link invalid'}</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #0f1419;
+        --fg: #f4f1ea;
+        --muted: #b8b0a4;
+        --accent: #c45c26;
+        --accent-fg: #fff;
+        --border: rgba(244, 241, 234, 0.18);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Georgia, 'Times New Roman', serif;
+        background: radial-gradient(120% 80% at 50% -10%, #2a3340 0%, var(--bg) 55%);
+        color: var(--fg);
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+      }
+      main {
+        width: min(28rem, 100%);
+        text-align: center;
+      }
+      h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0 0 0.75rem;
+        letter-spacing: 0.01em;
+      }
+      p {
+        margin: 0 0 1.25rem;
+        color: var(--muted);
+        line-height: 1.45;
+        font-size: 1rem;
+      }
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+      }
+      a.button {
+        display: block;
+        text-decoration: none;
+        padding: 0.85rem 1.1rem;
+        border-radius: 0.35rem;
+        font-family: system-ui, sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      a.primary {
+        background: var(--accent);
+        color: var(--accent-fg);
+      }
+      a.secondary {
+        background: transparent;
+        color: var(--fg);
+        border: 1px solid var(--border);
+      }
+      .hint {
+        margin-top: 1.25rem;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      {targets ? (
+        <>
+          <h1>Freedom Times</h1>
+          <p id="lander-copy">Continue signing in to EmDash. Prefer the app if you have it installed.</p>
+          <div class="actions" id="lander-actions">
+            <a class="button primary" id="open-app" href={targets.deepLink}>
+              Open in Freedom Times
+            </a>
+            <a class="button secondary" id="continue-browser" href={targets.httpsVerify}>
+              Continue in browser
+            </a>
+          </div>
+          <p class="hint" id="lander-hint">If the app does not open, use Continue in browser.</p>
+          <script is:inline define:vars={{
+            deepLink: targets.deepLink,
+            httpsVerify: targets.httpsVerify,
+            landerUrl: Astro.url.href,
+          }}>
+            (function () {
+              var HANDLED_KEY = 'ft_capacitor_launch_url_handled';
+
+              function readHandled() {
+                try {
+                  var raw = sessionStorage.getItem(HANDLED_KEY);
+                  if (!raw) return [];
+                  if (raw.charAt(0) === '[') {
+                    var parsed = JSON.parse(raw);
+                    return Array.isArray(parsed) ? parsed.filter(function (x) { return typeof x === 'string'; }) : [];
+                  }
+                  return [raw];
+                } catch (_) {
+                  return [];
+                }
+              }
+
+              function markHandled(urls) {
+                try {
+                  var set = {};
+                  readHandled().forEach(function (u) { set[u] = true; });
+                  urls.forEach(function (u) { if (u) set[u] = true; });
+                  sessionStorage.setItem(HANDLED_KEY, JSON.stringify(Object.keys(set)));
+                } catch (_) { /* ignore */ }
+              }
+
+              function isNativeShell() {
+                try {
+                  if (window.Capacitor
+                    && typeof window.Capacitor.isNativePlatform === 'function'
+                    && window.Capacitor.isNativePlatform()) {
+                    return true;
+                  }
+                } catch (_) { /* ignore */ }
+                // Cold App Link: Capacitor global can lag the first inline script.
+                // MainActivity appends this UA marker in the native WebView only.
+                try {
+                  return /FreedomTimesCapacitorApp\/Android/i.test(navigator.userAgent || '');
+                } catch (_) {
+                  return false;
+                }
+              }
+
+              // Already inside Capacitor (App Link opened this lander) → verify once.
+              // Mark lander + verify + deep-link so bridge getLaunchUrl cannot re-GET verify.
+              if (isNativeShell()) {
+                markHandled([landerUrl, httpsVerify, deepLink]);
+                var copy = document.getElementById('lander-copy');
+                var actions = document.getElementById('lander-actions');
+                var hint = document.getElementById('lander-hint');
+                if (copy) copy.textContent = 'Signing you in…';
+                if (actions) actions.hidden = true;
+                if (hint) hint.hidden = true;
+                location.replace(httpsVerify);
+                return;
+              }
+
+              // External browser: buttons only — never auto-fire deep link AND verify
+              // (Outlook Safe Links / scanners GET this page; auto-navigation risks
+              // double consumption when the app also opens).
+              var openApp = document.getElementById('open-app');
+              var continueBrowser = document.getElementById('continue-browser');
+              if (openApp) {
+                openApp.addEventListener('click', function () {
+                  markHandled([landerUrl, httpsVerify, deepLink]);
+                });
+              }
+              if (continueBrowser) {
+                continueBrowser.addEventListener('click', function () {
+                  markHandled([landerUrl, httpsVerify, deepLink]);
+                });
+              }
+            })();
+          </script>
+        </>
+      ) : (
+        <>
+          <h1>Sign-in link invalid</h1>
+          <p>This magic link is missing a token. Request a new link from EmDash login in the app.</p>
+        </>
+      )}
+    </main>
+  </body>
+</html>

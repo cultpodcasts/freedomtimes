@@ -16,6 +16,7 @@ type PathRule = {
 const AUTH_BYPASS_RULES: PathRule[] = [
   // EmDash OAuth/MCP only — the sole non-Auth0 paths that stay reachable on locked staging.
   // Do not add reader or editorial routes here. See web/docs/STAGING_ACCESS.md.
+  // `/.well-known/` also serves Digital Asset Links (`assetlinks.json`) and OAuth metadata.
   { path: '/_emdash', mode: PathMode.Exact },
   { path: '/_emdash/', mode: PathMode.StartsWith },
   { path: '/.well-known/', mode: PathMode.StartsWith },
@@ -63,6 +64,106 @@ function isAuthBypassPath(path: string): boolean {
       return path === rule.path;
     }
     return path.startsWith(rule.path);
+  });
+}
+
+/**
+ * Successful EmDash magic-link verify → 302 `/_emdash/admin` (+ Set-Cookie).
+ * Errors → 302 `/_emdash/admin/login?error=…` (leave as redirect).
+ */
+function maybeMagicLinkVerifyLander(response: Response): Response {
+  if (response.status !== 302 && response.status !== 303 && response.status !== 307) {
+    return response;
+  }
+
+  const location = response.headers.get('Location') ?? '';
+  let redirectPath = '/_emdash/admin';
+  try {
+    // Second arg is URL-parse base only (WHATWG: ignored when Location is absolute).
+    // We never navigate to that host — only pathname+search, then same-origin
+    // location.replace() so staging / Capacitor keep their current origin.
+    const resolved = new URL(location, 'https://freedomtimes.news');
+    const pathname = resolved.pathname;
+    // Success lands on admin (or a safe in-admin path), not login.
+    if (pathname.startsWith('/_emdash/admin/login')) {
+      return response;
+    }
+    if (pathname !== '/_emdash/admin' && !pathname.startsWith('/_emdash/admin/')) {
+      return response;
+    }
+    // Same-origin relative only (avoid open redirects in the lander).
+    redirectPath = `${pathname}${resolved.search}`;
+  } catch {
+    return response;
+  }
+
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing in…</title></head><body><p>Signing in to EmDash…</p><script>location.replace(${JSON.stringify(redirectPath)});</script></body></html>`;
+
+  const headers = new Headers();
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  // Preserve every Set-Cookie from the verify response (astro-session).
+  const getSetCookie = (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+  if (typeof getSetCookie === 'function') {
+    for (const cookie of getSetCookie.call(response.headers)) {
+      headers.append('Set-Cookie', cookie);
+    }
+  } else {
+    const single = response.headers.get('Set-Cookie');
+    if (single) {
+      headers.append('Set-Cookie', single);
+    }
+  }
+
+  return new Response(html, { status: 200, headers });
+}
+
+const NATIVE_SHELL_BRIDGE_SCRIPT =
+  '<script src="/native-shell-bridge.js" defer data-ft-native-shell-bridge="1"></script>';
+
+/**
+ * EmDash admin/login HTML does not use Layout.astro, so the Capacitor
+ * `appUrlOpen` listener is otherwise missing. Inject the standalone bridge boot
+ * so warm App Links navigate the WebView off “Check your email”.
+ */
+async function maybeInjectNativeShellBridge(path: string, response: Response): Promise<Response> {
+  if (!path.startsWith('/_emdash') || path.startsWith('/_emdash/api/')) {
+    return response;
+  }
+
+  if (response.status !== 200) {
+    return response;
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('text/html')) {
+    return response;
+  }
+
+  const html = await response.text();
+  if (html.includes('data-ft-native-shell-bridge=')) {
+    return new Response(html, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  }
+
+  let nextHtml: string;
+  if (html.includes('</head>')) {
+    nextHtml = html.replace('</head>', `${NATIVE_SHELL_BRIDGE_SCRIPT}</head>`);
+  } else if (html.includes('</body>')) {
+    nextHtml = html.replace('</body>', `${NATIVE_SHELL_BRIDGE_SCRIPT}</body>`);
+  } else {
+    nextHtml = `${html}${NATIVE_SHELL_BRIDGE_SCRIPT}`;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(nextHtml, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
 
@@ -165,13 +266,23 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return context.redirect(redirectUrl, 302);
   }
 
+  // EmDash magic-link verify sets `astro-session` on a 302 to `/_emdash/admin`.
+  // Some Android WebView / Capacitor paths are flaky with Set-Cookie on redirects;
+  // rewrite successful verifies to a 200 HTML lander that keeps Set-Cookie and
+  // navigates with JS (same-origin).
+  if (normalizedPath === '/_emdash/api/auth/magic-link/verify') {
+    const response = await next();
+    return maybeMagicLinkVerifyLander(response);
+  }
+
   // Keep EmDash and MCP OAuth endpoints free of outer Auth0 gating.
   // EmDash handles its own auth and token validation for these routes.
   // Locked staging: NOTHING else is public — reader routes use authorizeReaderApiRequest /
   // requireReaderPageSession (see PUBLIC_READER_PATHS in auth.ts).
   // EmDash/OAuth bypass traffic is never recorded as public page views.
   if (isAuthBypassPath(path)) {
-    return next();
+    const bypassResponse = await next();
+    return maybeInjectNativeShellBridge(path, bypassResponse);
   }
 
   const response = await next();

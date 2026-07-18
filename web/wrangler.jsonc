@@ -36,6 +36,14 @@
 	"env": {
 		"production": {
 			"name": "freedomtimes",
+			// EmDash cloudflareEmail() — keep in sync with Terraform send_email binding EMAIL
+			// (modules/cloudflare_holding_page). Deploy must not strip TF-owned bindings.
+			"send_email": [
+				{
+					"name": "EMAIL",
+					"allowed_sender_addresses": ["noreply@freedomtimes.news"]
+				}
+			],
 			"kv_namespaces": [
 				{
 					"binding": "SESSION",
@@ -73,6 +81,13 @@
 		},
 		"staging": {
 			"name": "freedomtimes-staging",
+			// EmDash cloudflareEmail() — keep in sync with Terraform send_email binding EMAIL.
+			"send_email": [
+				{
+					"name": "EMAIL",
+					"allowed_sender_addresses": ["noreply@freedomtimes.news"]
+				}
+			],
 			"kv_namespaces": [
 				{
 					"binding": "SESSION",

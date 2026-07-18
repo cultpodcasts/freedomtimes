@@ -5,6 +5,9 @@ import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import emdash from 'emdash/astro';
 import { r2 } from '@emdash-cms/cloudflare';
+import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
+import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
+import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
 if (!process.env.TURSO_DATABASE_URL) {
   throw new Error('TURSO_DATABASE_URL is required for build');
@@ -57,6 +60,17 @@ function cloudflareOptimizeDepsBuildFix(): Plugin {
 // https://astro.build/config
 export default defineConfig({
   output: 'server',
+  // EmDash auth uses Astro sessions (cookie `astro-session` → KV `SESSION`).
+  // Default cookie has no Max-Age (browser session only); Capacitor WebViews can
+  // drop those when the process is reclaimed. Persist for 14 days like Auth0 refresh.
+  session: {
+    cookie: {
+      name: 'astro-session',
+      sameSite: 'lax',
+      // Adapter sets Secure in production; keep Path=/ (Astro session default).
+      maxAge: 60 * 60 * 24 * 14,
+    },
+  },
   vite: {
     envPrefix: ['PUBLIC_', 'FT_', 'GITHUB_'],
     resolve: {
@@ -71,7 +85,11 @@ export default defineConfig({
       external: ['cloudflare:workers'],
       noExternal: ['@libsql/kysely-libsql', '@libsql/client', '@libsql/client/web'],
     },
-    plugins: [cloudflareOptimizeDepsBuildFix()],
+    plugins: [
+      cloudflareOptimizeDepsBuildFix(),
+      // EmDash has no magic-link URL builder — rewrite email href for Capacitor Android.
+      magicLinkAndroidSchemePlugin(),
+    ],
     build: {
       // EmDash admin PluginRegistry client bundle is ~7.5 MB (all CMS field plugins); splitting needs emdash lazy routes.
       chunkSizeWarningLimit: 8192,
@@ -83,6 +101,18 @@ export default defineConfig({
       mcp: true,
       database: emdashDatabase,
       storage: emdashStorage,
+      // Official Cloudflare Email Sending provider for EmDash magic links / invites.
+      // Activate under Admin → Extensions, then Settings → Email after deploy.
+      // Requires Worker send_email binding EMAIL (wrangler.jsonc) + domain onboard.
+      // Capacitor Android: magic-link Sign-in button uses HTTPS lander
+      // /auth/native-magic-link (see magicLinkAndroidSchemePlugin + native-android-magic-link.ts).
+      plugins: [
+        cloudflareEmail({
+          from: { email: 'noreply@freedomtimes.news', name: SITE_DISPLAY_NAME },
+          replyTo: 'privacy@freedomtimes.news',
+          binding: 'EMAIL',
+        }),
+      ],
     }),
   ],
   adapter: cloudflare({ configPath: './wrangler.build.jsonc' }),

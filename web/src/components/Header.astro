@@ -44,10 +44,17 @@ const homePath = getHomePath();
 					Admin
 				</a>
 			)}
+			{/* Sign in: Capacitor native only (hidden until client reveals). Sign out / Admin stay on web. */}
 			{isSignedIn ? (
 				<a href="/auth/logout">Sign out</a>
 			) : (
-				<a href={`/auth/login?next=${encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`)}`}>Sign in</a>
+				<a
+					class="nav-sign-in"
+					href={`/auth/login?next=${encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`)}`}
+					hidden
+				>
+					Sign in
+				</a>
 			)}
 		</div>
 		
@@ -239,9 +246,17 @@ const homePath = getHomePath();
 </style>
 
 <script>
+	import { Capacitor } from '@capacitor/core';
+
 	const nav = document.querySelector('.main-nav');
 	const toggle = document.querySelector('#mobile-nav-toggle');
 	const content = document.querySelector('#mobile-nav-content');
+	const signInLink = document.querySelector('.nav-sign-in');
+
+	// Browser / PWA: leave Sign in hidden. Capacitor native: show it (same flag Layout uses for data-native-shell).
+	if (signInLink instanceof HTMLAnchorElement && Capacitor.isNativePlatform()) {
+		signInLink.hidden = false;
+	}
 
 	if (nav instanceof HTMLElement && toggle instanceof HTMLButtonElement && content instanceof HTMLElement) {
 		const closeMenu = () => {
