@@ -128,7 +128,22 @@ Implementation: Vite transform of EmDash’s `magic-link/send` email callback ([
 
 **Caveats:** some email clients strip or refuse unknown custom schemes; Outlook Safe Links typically does **not** rewrite non-http(s) URLs the same way (so the token is less likely to be prefetched), but clients may still show the link as plain text. HTTPS App Links remain as a fallback for non-Android / desktop mail.
 
-On success the verify handler sets an **EmDash session cookie** for that host and redirects (typically to `/_emdash/admin`). That is why operators often land in the admin UI after clicking.
+On success the verify handler sets Astro session cookie **`astro-session`** (HttpOnly, Secure, SameSite=Lax, Path=/, Max-Age 14d → KV binding `SESSION`) and redirects to `/_emdash/admin`. Middleware may rewrite that success 302 into a **200 HTML lander** (same Set-Cookie + `location.replace`) for Capacitor WebView reliability.
+
+### Auth0 `/admin` vs EmDash (two logins)
+
+| Surface | Auth | Entry |
+|---------|------|--------|
+| Freedom Times staff hub | Auth0 (`ft_session`) | `/admin` (hamburger **Admin**) |
+| EmDash CMS | EmDash / Astro `astro-session` | `/_emdash/admin` (hub tile **EmDash CMS**, or open directly) |
+
+Signing into Auth0 does **not** sign into EmDash. After a magic-link CMS sign-in, **stay on `/_emdash/admin`** for editorial work. Opening `/admin` then the EmDash tile is fine **only if** `astro-session` is still present.
+
+### Capacitor bug: `getLaunchUrl` re-fires verify (fixed on this branch)
+
+Capacitor’s `App.getLaunchUrl()` returns the cold-start VIEW intent for the **whole process**. FT `Layout` re-inits the native auth bridge on every full page load. Without a guard, visiting `/admin` after a successful App Link magic-link open would `location.replace` the **same** verify URL again → single-use token already deleted → EmDash login (`invalid_link`) with “Passkeys Not Available Here”.
+
+Fix: [`native-launch-url.ts`](../src/lib/native-launch-url.ts) claims the launch URL once in `sessionStorage` before navigating.
 
 ### Single-use + 15-minute TTL (EmDash upstream)
 

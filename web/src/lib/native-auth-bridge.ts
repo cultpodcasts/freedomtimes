@@ -7,6 +7,7 @@ import {
   NATIVE_APP_COOKIE,
   resolveAndroidMagicLinkHttpsUrl,
 } from './native-android-magic-link';
+import { claimCapacitorLaunchUrl } from './native-launch-url';
 
 const APP_SCHEME = 'news.freedomtimes.app';
 const APP_CALLBACK_HOST = 'auth';
@@ -20,6 +21,14 @@ const APP_LINK_HOSTS = new Set(['freedomtimes.news', 'staging.freedomtimes.news'
 declare global {
   interface Window {
     __ftNativeAuthBridgeInitialized?: boolean;
+  }
+}
+
+function sessionStorageOrNull(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
   }
 }
 
@@ -204,11 +213,15 @@ export async function initializeNativeAuthBridge(): Promise<void> {
   rewriteNativeLoginLinks();
   installNativeLoginInterceptor();
 
+  // Cold-start VIEW intent only — Capacitor keeps returning the same URI for
+  // the process lifetime. Claim once so later FT page loads (e.g. `/admin`)
+  // do not re-GET a single-use EmDash magic-link verify URL.
   const launchUrl = await App.getLaunchUrl();
-  if (launchUrl?.url) {
+  if (launchUrl?.url && claimCapacitorLaunchUrl(launchUrl.url, sessionStorageOrNull())) {
     await handleAppOpenUrl(launchUrl.url);
   }
 
+  // Warm starts / subsequent App Links — always handle (new token / path).
   await App.addListener('appUrlOpen', ({ url }) => {
     void handleAppOpenUrl(url);
   });

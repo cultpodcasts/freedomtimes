@@ -67,6 +67,54 @@ function isAuthBypassPath(path: string): boolean {
   });
 }
 
+/**
+ * Successful EmDash magic-link verify → 302 `/_emdash/admin` (+ Set-Cookie).
+ * Errors → 302 `/_emdash/admin/login?error=…` (leave as redirect).
+ */
+function maybeMagicLinkVerifyLander(response: Response): Response {
+  if (response.status !== 302 && response.status !== 303 && response.status !== 307) {
+    return response;
+  }
+
+  const location = response.headers.get('Location') ?? '';
+  let redirectPath = '/_emdash/admin';
+  try {
+    const resolved = new URL(location, 'https://freedomtimes.news');
+    const pathname = resolved.pathname;
+    // Success lands on admin (or a safe in-admin path), not login.
+    if (pathname.startsWith('/_emdash/admin/login')) {
+      return response;
+    }
+    if (pathname !== '/_emdash/admin' && !pathname.startsWith('/_emdash/admin/')) {
+      return response;
+    }
+    // Same-origin relative only (avoid open redirects in the lander).
+    redirectPath = `${pathname}${resolved.search}`;
+  } catch {
+    return response;
+  }
+
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing in…</title></head><body><p>Signing in to EmDash…</p><script>location.replace(${JSON.stringify(redirectPath)});</script></body></html>`;
+
+  const headers = new Headers();
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  headers.set('Cache-Control', 'no-store');
+  // Preserve every Set-Cookie from the verify response (astro-session).
+  const getSetCookie = (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+  if (typeof getSetCookie === 'function') {
+    for (const cookie of getSetCookie.call(response.headers)) {
+      headers.append('Set-Cookie', cookie);
+    }
+  } else {
+    const single = response.headers.get('Set-Cookie');
+    if (single) {
+      headers.append('Set-Cookie', single);
+    }
+  }
+
+  return new Response(html, { status: 200, headers });
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
   const normalizedPath = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
@@ -164,6 +212,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const redirectUrl = '/_emdash/oauth/authorize' + url.search;
     console.info('[middleware] redirecting to', { redirectUrl });
     return context.redirect(redirectUrl, 302);
+  }
+
+  // EmDash magic-link verify sets `astro-session` on a 302 to `/_emdash/admin`.
+  // Some Android WebView / Capacitor paths are flaky with Set-Cookie on redirects;
+  // rewrite successful verifies to a 200 HTML lander that keeps Set-Cookie and
+  // navigates with JS (same-origin).
+  if (normalizedPath === '/_emdash/api/auth/magic-link/verify') {
+    const response = await next();
+    return maybeMagicLinkVerifyLander(response);
   }
 
   // Keep EmDash and MCP OAuth endpoints free of outer Auth0 gating.

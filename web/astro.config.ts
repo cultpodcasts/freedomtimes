@@ -60,6 +60,17 @@ function cloudflareOptimizeDepsBuildFix(): Plugin {
 // https://astro.build/config
 export default defineConfig({
   output: 'server',
+  // EmDash auth uses Astro sessions (cookie `astro-session` → KV `SESSION`).
+  // Default cookie has no Max-Age (browser session only); Capacitor WebViews can
+  // drop those when the process is reclaimed. Persist for 14 days like Auth0 refresh.
+  session: {
+    cookie: {
+      name: 'astro-session',
+      sameSite: 'lax',
+      // Adapter sets Secure in production; keep Path=/ (Astro session default).
+      maxAge: 60 * 60 * 24 * 14,
+    },
+  },
   vite: {
     envPrefix: ['PUBLIC_', 'FT_', 'GITHUB_'],
     resolve: {

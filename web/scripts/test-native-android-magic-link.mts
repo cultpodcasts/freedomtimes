@@ -7,6 +7,10 @@ import {
   toAndroidMagicLinkDeepLink,
   wrapMagicLinkEmailForAndroidRequest,
 } from '../src/lib/native-android-magic-link.ts';
+import {
+  CAPACITOR_LAUNCH_URL_HANDLED_KEY,
+  claimCapacitorLaunchUrl,
+} from '../src/lib/native-launch-url.ts';
 
 describe('native-android-magic-link', () => {
   it('builds deep link with token and ft_origin', () => {
@@ -69,5 +73,46 @@ describe('native-android-magic-link', () => {
       '<a href="https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=tok">Sign in</a>';
     const out = wrapMagicLinkEmailForAndroidRequest({ to: 'a@b.c', subject: 'x', html }, request);
     assert.equal(out.html, html);
+  });
+});
+
+describe('claimCapacitorLaunchUrl', () => {
+  it('allows the first claim and blocks the same URL afterward', () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+    };
+    const url =
+      'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=once';
+    assert.equal(claimCapacitorLaunchUrl(url, storage), true);
+    assert.equal(store.get(CAPACITOR_LAUNCH_URL_HANDLED_KEY), url);
+    assert.equal(claimCapacitorLaunchUrl(url, storage), false);
+  });
+
+  it('allows a different launch URL after the first', () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        store.set(key, value);
+      },
+    };
+    assert.equal(
+      claimCapacitorLaunchUrl(
+        'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=a',
+        storage,
+      ),
+      true,
+    );
+    assert.equal(
+      claimCapacitorLaunchUrl(
+        'https://freedomtimes.news/_emdash/api/auth/magic-link/verify?token=b',
+        storage,
+      ),
+      true,
+    );
   });
 });

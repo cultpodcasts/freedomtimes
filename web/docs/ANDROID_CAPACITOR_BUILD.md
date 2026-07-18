@@ -120,7 +120,7 @@ Outlook Safe Links wrap the URL through `*.safelinks.protection.outlook.com` fir
 **Local Production target checklist**
 
 1. **APK** — rebuild with the updated `AndroidManifest` App Links filter (below). Sideload does not need a new SHA: local `assembleDebug` with `.env.dev` `ANDROID_STAGING_SIGNING_*` uses staging cert `D9:A6:…:14:60`, already listed in live `https://freedomtimes.news/.well-known/assetlinks.json`. **No Worker redeploy required for fingerprints.**
-2. **WebView JS** — `-Target Production` loads `https://freedomtimes.news`. The `native-auth-bridge` App Link → verify-URL navigation ships with the **site Worker**. Deploy production web when you want that handler live; until then the APK may open on App Link but not navigate to `/_emdash/api/auth/magic-link/verify?token=…`.
+2. **WebView JS** — `-Target Production` loads `https://freedomtimes.news`. The `native-auth-bridge` App Link → verify-URL navigation ships with the **site Worker**. Deploy production web when you want that handler live; until then the APK may open on App Link but not navigate to `/_emdash/api/auth/magic-link/verify?token=…`. Also deploy the launch-URL dedupe fix so `/admin` after a successful magic link does not re-consume the token (see [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md) § `getLaunchUrl`).
 
 ```powershell
 # From repo root — Production Cap URL + debug APK (staging-signed when .env.dev secrets set)
