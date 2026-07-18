@@ -198,3 +198,15 @@ rg 'resource "cloudflare_' infra/terraform
 ```
 
 Then adjust the token and link from [README.md](./README.md).
+
+### Email Sending (EmDash magic links) — not Terraform-managed yet
+
+EmDash uses Cloudflare Email Sending via Worker binding `EMAIL` (`send_email`). See [web/docs/EMDASH_CLOUDFLARE_EMAIL.md](../../web/docs/EMDASH_CLOUDFLARE_EMAIL.md).
+
+| Need | How |
+|------|-----|
+| Onboard `freedomtimes.news` for Sending | Dashboard (or `wrangler email sending enable` by an **operator** — not an agent binding edit). Creates `cf-bounce.*` DNS; does not replace apex Email Routing MX. |
+| Worker `EMAIL` binding | Declared in `web/wrangler.jsonc`; applied on Worker **deploy**. Provider 4.x has no `send_email` schema. |
+| Token permissions for future TF ownership | Account → **Email Sending → Edit** (when provider v5 + TF resources land) |
+
+Existing apex **Email Routing** redirects stay as-is. Review `_dmarc` after onboard (prefer soft `p=none` until ready for stricter policy).

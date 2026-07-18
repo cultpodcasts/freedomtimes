@@ -36,6 +36,14 @@
 	"env": {
 		"production": {
 			"name": "freedomtimes",
+			// EmDash cloudflareEmail() — declare here so wrangler deploy does not strip the binding.
+			// Cloudflare Terraform provider 4.x cannot express send_email; see web/docs/EMDASH_CLOUDFLARE_EMAIL.md.
+			"send_email": [
+				{
+					"name": "EMAIL",
+					"allowed_sender_addresses": ["noreply@freedomtimes.news"]
+				}
+			],
 			"kv_namespaces": [
 				{
 					"binding": "SESSION",
@@ -73,6 +81,13 @@
 		},
 		"staging": {
 			"name": "freedomtimes-staging",
+			// EmDash cloudflareEmail() — same apex From as production (staging has no mail MX).
+			"send_email": [
+				{
+					"name": "EMAIL",
+					"allowed_sender_addresses": ["noreply@freedomtimes.news"]
+				}
+			],
 			"kv_namespaces": [
 				{
 					"binding": "SESSION",

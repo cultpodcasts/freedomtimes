@@ -23,7 +23,7 @@ Historical Worker names (`freedomtimes-holding-staging`, `freedomtimes-holding`)
 On locked staging, every HTML page and API route requires an Auth0 session **except**:
 
 - `/_emdash/*` — EmDash CMS, OAuth, MCP (own auth; bypassed in `middleware.ts`)
-- `/.well-known/*` — OAuth metadata aliases for MCP clients
+- `/.well-known/*` — OAuth metadata aliases for MCP clients, plus public Digital Asset Links (`assetlinks.json`)
 - `/auth/*` — login wall must stay reachable
 - `/` — staging login wall (`SecureAccessWall`)
 

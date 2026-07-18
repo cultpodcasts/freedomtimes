@@ -45,6 +45,12 @@ From the **repository root**:
 - **Debug:** uses **`ANDROID_STAGING_SIGNING_*`** from repo-root `.env.dev` when all four are set; otherwise the default debug keystore.
 - **Release:** uses **`ANDROID_PRODUCTION_SIGNING_*`** when all four are set; if not, **falls back to the same staging keystore** as debug so local `assembleRelease` produces a signed **`app-release.apk`** you can `adb install`. If neither staging nor production signing is configured, release stays **unsigned** (`app-release-unsigned.apk`) and install fails with errors like `INSTALL_PARSE_FAILED_NO_CERTIFICATES`.
 
+### Digital Asset Links (`assetlinks.json`)
+
+`GET https://freedomtimes.news/.well-known/assetlinks.json` (and staging) publishes package `news.freedomtimes.app` with SHA-256 fingerprints for the debug keystore and staging signing cert. Add the production release fingerprint when `ANDROID_PRODUCTION_SIGNING_*` exists (see `web/src/pages/.well-known/assetlinks.json.ts`).
+
+DAL is for verified HTTPS App Links / WebView credential association — **not** required for browser PWA, Auth0 custom-scheme auth, or EmDash magic links. See [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md).
+
 ## Launcher icons from `favicon.svg`
 
 Regenerate mipmap launcher PNGs after changing `web/public/favicon.svg`:

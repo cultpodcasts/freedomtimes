@@ -17,6 +17,19 @@ Terraform is not required for local application development. Local work can run 
 - Turso databases for EmDash, scheduler, push subscriptions, and reader tips
 - Environment entrypoints for `production` and `staging`
 
+### EmDash Cloudflare Email (related, not fully TF-owned yet)
+
+Magic-link delivery for `/_emdash/admin` uses Cloudflare Email Sending + Worker `send_email` binding `EMAIL`. See **[web/docs/EMDASH_CLOUDFLARE_EMAIL.md](../../web/docs/EMDASH_CLOUDFLARE_EMAIL.md)**.
+
+| Piece | Status |
+|-------|--------|
+| EmDash `cloudflareEmail()` plugin | App config (`web/astro.config.ts`) |
+| `send_email` → `EMAIL` | Declared in `web/wrangler.jsonc` (Wrangler deploy applies it; provider 4.x cannot express `send_email`) |
+| Email Sending domain onboard (`freedomtimes.news`) | Operator dashboard one-time (creates `cf-bounce.*`; keeps apex Email Routing redirects) |
+| EmDash UI activate provider | Operator (Admin → Extensions → Settings → Email) |
+
+Do **not** mutate Worker bindings/secrets with one-off `npx wrangler` commands. Provider **v5** is the path to Terraform-owned `send_email` bindings.
+
 ## Environment Separation Rule
 
 Terraform must maintain strict separation between staging and production for all providers (Cloudflare, Auth0, Turso).

@@ -36,6 +36,8 @@ resource "cloudflare_workers_script" "holding_page" {
   }
 
   # Wrangler owns deployed Worker bundle content and most runtime metadata; Terraform manages name/routing/AE identity.
+  # send_email (EMAIL) is declared in web/wrangler.jsonc — Cloudflare provider 4.x has no send_email binding schema
+  # (see web/docs/EMDASH_CLOUDFLARE_EMAIL.md). Do not strip it via ad-hoc wrangler binding edits.
   lifecycle {
     ignore_changes = [
       content,
@@ -47,8 +49,8 @@ resource "cloudflare_workers_script" "holding_page" {
       plain_text_binding,
       r2_bucket_binding,
       kv_namespace_binding,
-      # analytics_engine_binding is NOT ignored — Terraform is source of truth for PAGE_VIEWS dataset id
     ]
+    # analytics_engine_binding is NOT ignored — Terraform is source of truth for PAGE_VIEWS dataset id
   }
 }
 

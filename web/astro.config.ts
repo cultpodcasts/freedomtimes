@@ -5,6 +5,8 @@ import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import emdash from 'emdash/astro';
 import { r2 } from '@emdash-cms/cloudflare';
+import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
+import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 
 if (!process.env.TURSO_DATABASE_URL) {
   throw new Error('TURSO_DATABASE_URL is required for build');
@@ -83,6 +85,16 @@ export default defineConfig({
       mcp: true,
       database: emdashDatabase,
       storage: emdashStorage,
+      // Official Cloudflare Email Sending provider for EmDash magic links / invites.
+      // Activate under Admin → Extensions, then Settings → Email after deploy.
+      // Requires Worker send_email binding EMAIL (wrangler.jsonc) + domain onboard.
+      plugins: [
+        cloudflareEmail({
+          from: { email: 'noreply@freedomtimes.news', name: SITE_DISPLAY_NAME },
+          replyTo: 'privacy@freedomtimes.news',
+          binding: 'EMAIL',
+        }),
+      ],
     }),
   ],
   adapter: cloudflare({ configPath: './wrangler.build.jsonc' }),

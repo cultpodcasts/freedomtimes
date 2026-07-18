@@ -16,6 +16,7 @@ type PathRule = {
 const AUTH_BYPASS_RULES: PathRule[] = [
   // EmDash OAuth/MCP only — the sole non-Auth0 paths that stay reachable on locked staging.
   // Do not add reader or editorial routes here. See web/docs/STAGING_ACCESS.md.
+  // `/.well-known/` also serves Digital Asset Links (`assetlinks.json`) and OAuth metadata.
   { path: '/_emdash', mode: PathMode.Exact },
   { path: '/_emdash/', mode: PathMode.StartsWith },
   { path: '/.well-known/', mode: PathMode.StartsWith },
