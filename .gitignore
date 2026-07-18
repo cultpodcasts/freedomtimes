@@ -57,9 +57,14 @@ web/.tmp/*
 web/.release/*
 .release/rollback-branches/*
 .release/backups/
+# Local deploy / Terraform / validation logs (tracked scripts/rollback JSON stay under subdirs)
+.release/*.log
+.release/*.log.*
+.release/*.txt
 web/scripts/tmp/*
-freedomtimes-emdash-staging.db
-freedomtimes-emdash-staging.db-wal
+# Local EmDash SQLite dumps / WAL (staging, production, etc.)
+freedomtimes-emdash-*.db
+freedomtimes-emdash-*.db-wal
 
 web/auth
 web/auth-wal
