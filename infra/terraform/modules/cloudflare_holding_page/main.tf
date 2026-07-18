@@ -73,10 +73,11 @@ resource "cloudflare_workers_script" "holding_page" {
 
   # Wrangler owns deployed Worker bundle content and most runtime metadata.
   # Terraform owns: PAGE_VIEWS analytics_engine, EMAIL send_email, and secret_text worker secrets.
+  # Do not ignore main_module: empty main_module in state (post-Wrangler refresh) makes
+  # bindings-only PUTs upload ESM as a service worker (Cloudflare 10021).
   lifecycle {
     ignore_changes = [
       content,
-      main_module,
       compatibility_date,
       compatibility_flags,
       logpush,
