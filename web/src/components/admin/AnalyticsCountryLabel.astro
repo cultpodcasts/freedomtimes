@@ -1,0 +1,41 @@
+---
+import { formatCountryDisplay } from '../../lib/country-display';
+
+interface Props {
+	code: string;
+}
+
+const country = formatCountryDisplay(Astro.props.code);
+---
+
+<span class="analytics__country" title={country.title} aria-label={country.ariaLabel}>
+	{country.flag ? (
+		<span class="analytics__country-flag" aria-hidden="true">
+			{country.flag}
+		</span>
+	) : null}
+	<span class="analytics__country-name">{country.name}</span>
+</span>
+
+<style>
+	.analytics__country {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		max-width: 100%;
+		min-width: 0;
+	}
+
+	.analytics__country-flag {
+		flex: 0 0 auto;
+		line-height: 1;
+		font-size: 1.05em;
+	}
+
+	.analytics__country-name {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+</style>

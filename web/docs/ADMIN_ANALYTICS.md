@@ -13,7 +13,7 @@ On `/admin/analytics` (Auth0 `admin` role), **Site traffic / Public page views**
 | Metric | Notes |
 |--------|--------|
 | Top public pages | Paths ranked by approximate view count (e.g. `/`, `/posts/{slug}`, `/{page-slug}`). Click a path to drill into countries for that page. |
-| By country | Site-wide ISO country codes from Cloudflare edge (`cf.country`) |
+| By country | Site-wide countries from Cloudflare edge (`cf.country`); UI shows flag + English name (ISO code in tooltip) |
 | Page × country | When `?path=` is set (or a top page is selected), country breakdown for that path only |
 | Timeframes | `1d` (1 day), `1w` (7 days), `1m` (30 days) |
 | Bots | Flagged on write; **hidden by default** on `/admin/analytics` (`?includeBots=1` to include) |

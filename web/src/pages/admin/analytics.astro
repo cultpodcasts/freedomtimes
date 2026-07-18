@@ -1,4 +1,5 @@
 ---
+import AnalyticsCountryLabel from '../../components/admin/AnalyticsCountryLabel.astro';
 import Header from '../../components/Header.astro';
 import Layout from '../../layouts/Layout.astro';
 import { requireAdminDashboardSession } from '../../lib/admin-dashboard-session';
@@ -183,7 +184,9 @@ function analyticsHref(opts: {
 							<tbody>
 								{analytics.countries.map((row) => (
 									<tr>
-										<td><code>{row.key}</code></td>
+										<td>
+											<AnalyticsCountryLabel code={row.key} />
+										</td>
 										<td>{row.views.toLocaleString()}</td>
 									</tr>
 								))}
@@ -211,7 +214,9 @@ function analyticsHref(opts: {
 							<tbody>
 								{analytics.pathCountries.map((row) => (
 									<tr>
-										<td><code>{row.key}</code></td>
+										<td>
+											<AnalyticsCountryLabel code={row.key} />
+										</td>
 										<td>{row.views.toLocaleString()}</td>
 									</tr>
 								))}
@@ -414,6 +419,11 @@ function analyticsHref(opts: {
 		border-bottom: 1px solid var(--border-subtle);
 		text-align: left;
 		vertical-align: top;
+	}
+
+	.analytics__panel th:first-child,
+	.analytics__panel td:first-child {
+		max-width: 12.5rem;
 	}
 
 	.analytics__panel th:last-child,
