@@ -153,7 +153,18 @@ Signing into Auth0 does **not** sign into EmDash. After a magic-link CMS sign-in
 
 Capacitor’s `App.getLaunchUrl()` returns the cold-start VIEW intent for the **whole process**. FT `Layout` re-inits the native auth bridge on every full page load. Without a guard, visiting `/admin` after a successful App Link magic-link open would `location.replace` the **same** verify URL again → single-use token already deleted → EmDash login (`invalid_link`) with “Passkeys Not Available Here”.
 
-Fix: [`native-launch-url.ts`](../src/lib/native-launch-url.ts) claims the launch URL once in `sessionStorage` before navigating.
+Fix: [`native-launch-url.ts`](../src/lib/native-launch-url.ts) claims the launch URL once in `sessionStorage` before navigating. A **new** magic-link URL (different token) still claims and navigates.
+
+### Capacitor bug: warm App Link leaves EmDash “Check your email” (fixed on this branch)
+
+EmDash login HTML does **not** use `Layout.astro`, so after navigating to “Check your email” the WebView had **no** `appUrlOpen` listener. Clicking the HTTPS lander App Link brought the activity to the foreground but did not `location.replace` the lander/verify URL.
+
+Fix:
+
+1. **Worker (no APK):** build [`native-shell-bridge-boot.ts`](../src/native-shell-bridge-boot.ts) → `/native-shell-bridge.js`, inject into `/_emdash` HTML via middleware, claim each distinct open URL in the bridge (warm + cold).
+2. **APK (next Android build):** [`MainActivity.java`](../android/app/src/main/java/news/freedomtimes/app/MainActivity.java) calls `window.__ftHandleAppUrlOpen` on VIEW intents; if the hook is missing (stale EmDash document), `WebView.loadUrl` the HTTPS lander/verify URL.
+
+After Worker deploy alone: reload EmDash login once (or request a new link) so the injected bridge is present. Full APK rebuild covers the no-reload case.
 
 ### Single-use + 15-minute TTL (EmDash upstream)
 

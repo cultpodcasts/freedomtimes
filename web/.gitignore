@@ -27,3 +27,4 @@ pnpm-debug.log*
 
 # generated service worker bundle
 public/service-worker.js
+public/native-shell-bridge.js

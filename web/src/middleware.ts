@@ -118,6 +118,55 @@ function maybeMagicLinkVerifyLander(response: Response): Response {
   return new Response(html, { status: 200, headers });
 }
 
+const NATIVE_SHELL_BRIDGE_SCRIPT =
+  '<script src="/native-shell-bridge.js" defer data-ft-native-shell-bridge="1"></script>';
+
+/**
+ * EmDash admin/login HTML does not use Layout.astro, so the Capacitor
+ * `appUrlOpen` listener is otherwise missing. Inject the standalone bridge boot
+ * so warm App Links navigate the WebView off “Check your email”.
+ */
+async function maybeInjectNativeShellBridge(path: string, response: Response): Promise<Response> {
+  if (!path.startsWith('/_emdash') || path.startsWith('/_emdash/api/')) {
+    return response;
+  }
+
+  if (response.status !== 200) {
+    return response;
+  }
+
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('text/html')) {
+    return response;
+  }
+
+  const html = await response.text();
+  if (html.includes('data-ft-native-shell-bridge=')) {
+    return new Response(html, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  }
+
+  let nextHtml: string;
+  if (html.includes('</head>')) {
+    nextHtml = html.replace('</head>', `${NATIVE_SHELL_BRIDGE_SCRIPT}</head>`);
+  } else if (html.includes('</body>')) {
+    nextHtml = html.replace('</body>', `${NATIVE_SHELL_BRIDGE_SCRIPT}</body>`);
+  } else {
+    nextHtml = `${html}${NATIVE_SHELL_BRIDGE_SCRIPT}`;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  return new Response(nextHtml, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   const path = context.url.pathname;
   const normalizedPath = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
@@ -232,7 +281,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // requireReaderPageSession (see PUBLIC_READER_PATHS in auth.ts).
   // EmDash/OAuth bypass traffic is never recorded as public page views.
   if (isAuthBypassPath(path)) {
-    return next();
+    const bypassResponse = await next();
+    return maybeInjectNativeShellBridge(path, bypassResponse);
   }
 
   const response = await next();

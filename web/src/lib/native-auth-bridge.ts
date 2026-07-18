@@ -22,6 +22,12 @@ const APP_LINK_HOSTS = new Set(['freedomtimes.news', 'staging.freedomtimes.news'
 declare global {
   interface Window {
     __ftNativeAuthBridgeInitialized?: boolean;
+    /**
+     * Called from Android MainActivity when a VIEW intent arrives. Prefer this
+     * over a blind WebView.loadUrl so custom-scheme → HTTPS verify still runs.
+     * Returns true when the URL was claimed and handled.
+     */
+    __ftHandleAppUrlOpen?: (url: string) => boolean;
   }
 }
 
@@ -214,6 +220,14 @@ async function handleAppOpenUrl(appUrl: string): Promise<void> {
   window.location.replace(httpsTarget);
 }
 
+function tryHandleAppOpenUrl(url: string): boolean {
+  if (!url || !claimCapacitorLaunchUrl(url, sessionStorageOrNull())) {
+    return false;
+  }
+  void handleAppOpenUrl(url);
+  return true;
+}
+
 export async function initializeNativeAuthBridge(): Promise<void> {
   if (!Capacitor.isNativePlatform() || window.__ftNativeAuthBridgeInitialized) {
     return;
@@ -224,16 +238,22 @@ export async function initializeNativeAuthBridge(): Promise<void> {
   rewriteNativeLoginLinks();
   installNativeLoginInterceptor();
 
-  // Cold-start VIEW intent only — Capacitor keeps returning the same URI for
-  // the process lifetime. Claim once so later FT page loads (e.g. `/admin`)
-  // do not re-GET a single-use EmDash magic-link verify URL.
+  // Native MainActivity prefers this hook so warm intents are handled even when
+  // Capacitor's appUrlOpen listener was torn down with the previous document.
+  window.__ftHandleAppUrlOpen = (url: string) => tryHandleAppOpenUrl(url);
+
+  // Cold-start VIEW intent — Capacitor keeps returning the same URI for the
+  // process lifetime. Claim once so later FT page loads (e.g. `/admin`) do not
+  // re-GET a single-use EmDash magic-link verify URL.
   const launchUrl = await App.getLaunchUrl();
-  if (launchUrl?.url && claimCapacitorLaunchUrl(launchUrl.url, sessionStorageOrNull())) {
-    await handleAppOpenUrl(launchUrl.url);
+  if (launchUrl?.url) {
+    tryHandleAppOpenUrl(launchUrl.url);
   }
 
-  // Warm starts / subsequent App Links — always handle (new token / path).
+  // Warm starts / subsequent App Links. Claim the exact URL string so duplicate
+  // deliveries (and MainActivity's __ftHandleAppUrlOpen) are ignored, but a
+  // fresh magic-link token always navigates — including from EmDash login.
   await App.addListener('appUrlOpen', ({ url }) => {
-    void handleAppOpenUrl(url);
+    tryHandleAppOpenUrl(url);
   });
 }
