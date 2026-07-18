@@ -79,6 +79,9 @@ function maybeMagicLinkVerifyLander(response: Response): Response {
   const location = response.headers.get('Location') ?? '';
   let redirectPath = '/_emdash/admin';
   try {
+    // Second arg is URL-parse base only (WHATWG: ignored when Location is absolute).
+    // We never navigate to that host — only pathname+search, then same-origin
+    // location.replace() so staging / Capacitor keep their current origin.
     const resolved = new URL(location, 'https://freedomtimes.news');
     const pathname = resolved.pathname;
     // Success lands on admin (or a safe in-admin path), not login.
