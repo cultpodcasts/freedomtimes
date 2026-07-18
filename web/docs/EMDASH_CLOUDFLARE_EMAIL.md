@@ -29,7 +29,25 @@ Docs upstream: [Deploy to Cloudflare → Email](https://docs.emdashcms.com/deplo
 | `_dmarc` / Sending DNS | Operator review after onboard | Prefer soft `p=none` if Cloudflare proposes `p=reject` before you are ready |
 | EmDash plugin activation | Operator (EmDash UI) | Cannot be Terraform'd |
 
-True Terraform ownership of the Worker `send_email` binding needs a **Cloudflare provider v5** migration (`bindings` with `type = "send_email"`). Track that as a follow-up; until then keep `wrangler.jsonc` in sync with the intended binding so deploys do not drop it.
+### Provider upgrade path (follow-up — **not** in this change)
+
+| Today | Needed for TF-owned `EMAIL` |
+|-------|------------------------------|
+| Cloudflare provider `~> 4.0` (locked ~4.52.x) | Provider **v5** (`~> 5`) |
+| Nested `analytics_engine_binding` / no `send_email` | Unified `bindings = [{ type = "send_email", name = "EMAIL", … }]` on `cloudflare_workers_script` |
+
+**Do not bump provider in the EmDash email PR.** v4 → v5 is a ground-up rewrite. In this repo it forces at least:
+
+- Rewrite `modules/cloudflare_holding_page` (`name` → `script_name`; nested `*_binding` → `bindings`; lifecycle `ignore_changes` must be redesigned for Wrangler-owned KV/R2)
+- **`cloudflare_workers_secret` is removed in v5** — today TF pushes `TURNSTILE_*` and `CLOUDFLARE_ANALYTICS_API_TOKEN` via that resource; need Secrets Store / `secret_text` / other replacement
+- `cloudflare_workers_domain` → `cloudflare_workers_custom_domain`
+- `cloudflare_record` → `cloudflare_dns_record` (FQDN `name`, `content` vs `value`)
+- Staging + production HCP workspaces + lockfiles; plan both before apply
+- Prefer official [tf-migrate](https://github.com/cloudflare/tf-migrate) + [v5 upgrade guide](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/guides/version-5-upgrade); this repo uses **modules**, so expect manual review
+
+Until that follow-up lands, keep `wrangler.jsonc` `send_email` in sync so Worker **deploy** applies `EMAIL` (same pattern as KV/R2).
+
+**Email Sending domain onboard** still has **no** first-class Terraform resource in provider 5.x (only `email_routing_*` exists). API `POST …/email_sending/subdomains` exists; onboard remains dashboard (or operator CLI), not TF.
 
 ## One-time operator steps (after merge + Worker deploy)
 
