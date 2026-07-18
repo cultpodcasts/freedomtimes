@@ -1,6 +1,6 @@
 import { env as cfEnv } from 'cloudflare:workers';
 
-import { isLockedSiteAccess, readOptionalEnv } from './auth';
+import { getHomePath, isLockedSiteAccess, readOptionalEnv } from './auth';
 
 /**
  * Site analytics for public reader pages (homepage, articles, CMS pages, etc.).
@@ -159,6 +159,8 @@ export function shouldRecordPageView(request: Request, response: Response): bool
     return false;
   }
 
+  // Trackability uses the request path before homepage alias canonicalization so
+  // locked staging `/` (Auth0 wall) stays excluded even though `getHomePath()` is `/homepage`.
   const pathname = normalizeTrackedPath(new URL(request.url).pathname);
   if (!isTrackablePath(pathname)) {
     return false;
@@ -186,6 +188,40 @@ export function normalizeTrackedPath(pathname: string): string {
     path = path.slice(0, 256);
   }
   return path || '/';
+}
+
+/**
+ * Collapse homepage aliases to the environment’s canonical home path.
+ *
+ * Production serves the newsroom at `/` (`index.astro` rewrites to `/homepage`), but
+ * clients may still request `/homepage` directly (push deep-links, bookmarks, staging
+ * muscle memory). Those are the same logical page — store and query as `/`.
+ *
+ * Locked staging’s newsroom is `/homepage`; `/` is the login wall (not trackable).
+ */
+export function canonicalizeTrackedPath(pathname: string): string {
+  const path = normalizeTrackedPath(pathname);
+  if (path === '/' || path === '/homepage') {
+    return getHomePath();
+  }
+  return path;
+}
+
+/** SQL expression that maps stored homepage aliases to the canonical key for this env. */
+function sqlCanonicalPathKeyExpr(): string {
+  if (isLockedSiteAccess()) {
+    return 'blob1';
+  }
+  // Production: historical `/homepage` rows + new `/` writes → one Top pages row.
+  return "CASE WHEN blob1 = '/homepage' THEN '/' ELSE blob1 END";
+}
+
+/** SQL predicate matching a selected path, including production homepage aliases. */
+function sqlPathEquals(selectedPath: string): string {
+  if (!isLockedSiteAccess() && selectedPath === '/') {
+    return `(blob1 = '/' OR blob1 = '/homepage')`;
+  }
+  return `blob1 = ${sqlStringLiteral(selectedPath)}`;
 }
 
 /**
@@ -239,11 +275,12 @@ export function readCountryCode(request: Request): string {
  * Best-effort page-view write. Never throws; binding may be absent in local/dev.
  *
  * Data point layout (stable — SQL queries depend on order):
- * - blob1: path (public page path, e.g. `/`, `/posts/my-slug`)
+ * - blob1: path (canonical public page path, e.g. `/`, `/posts/my-slug`;
+ *   production `/homepage` is stored as `/`)
  * - blob2: country (ISO-3166 alpha-2 or XX)
  * - blob3: is_bot ("0" | "1")
  * - double1: 1 (unit count; sampling uses `_sample_interval`)
- * - index1: path (sampling key)
+ * - index1: path (sampling key; same canonical path as blob1)
  */
 export function recordPageView(request: Request, response: Response): void {
   try {
@@ -256,7 +293,7 @@ export function recordPageView(request: Request, response: Response): void {
       return;
     }
 
-    const path = normalizeTrackedPath(new URL(request.url).pathname);
+    const path = canonicalizeTrackedPath(new URL(request.url).pathname);
     const country = readCountryCode(request);
     const isBot = isLikelyBotRequest(request);
 
@@ -293,7 +330,7 @@ export function parseAnalyticsPathFilter(value: string | null | undefined): stri
     return null;
   }
 
-  const path = normalizeTrackedPath(raw);
+  const path = canonicalizeTrackedPath(raw);
   // Paths we write are `/…` with URL-safe characters only; reject anything else.
   if (!/^\/[A-Za-z0-9/_.~%-]*$/.test(path) || path.length > 256) {
     return null;
@@ -352,9 +389,11 @@ export async function loadAdminAnalytics(params: {
   const botFilter = excludeBots ? "AND blob3 = '0'" : '';
   const interval = RANGE_INTERVAL[params.range];
 
+  const pathKeyExpr = sqlCanonicalPathKeyExpr();
+
   const topPagesSql = `
 SELECT
-  blob1 AS key,
+  ${pathKeyExpr} AS key,
   SUM(_sample_interval) AS views
 FROM ${dataset}
 WHERE timestamp > NOW() - ${interval}
@@ -394,7 +433,7 @@ SELECT
   SUM(_sample_interval) AS views
 FROM ${dataset}
 WHERE timestamp > NOW() - ${interval}
-  AND blob1 = ${sqlStringLiteral(selectedPath)}
+  AND ${sqlPathEquals(selectedPath)}
   ${botFilter}
 GROUP BY key
 ORDER BY views DESC

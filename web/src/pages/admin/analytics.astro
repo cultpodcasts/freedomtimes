@@ -26,11 +26,22 @@ if (session instanceof Response) {
 const range = parseAnalyticsRange(Astro.url.searchParams.get('range'));
 const includeBots = Astro.url.searchParams.get('includeBots') === '1';
 const selectedPath = parseAnalyticsPathFilter(Astro.url.searchParams.get('path'));
+const panelParam = Astro.url.searchParams.get('panel');
+/** Mobile single-panel view; desktop always shows both columns. */
+const activePanel: 'pages' | 'countries' =
+	panelParam === 'pages' || panelParam === 'countries'
+		? panelParam
+		: selectedPath
+			? 'countries'
+			: 'pages';
+
 const analytics = await loadAdminAnalytics({
 	range,
 	excludeBots: !includeBots,
 	path: selectedPath,
 });
+
+const countryRows = selectedPath ? analytics.pathCountries : analytics.countries;
 
 const ranges: { id: AnalyticsRange; label: string }[] = [
 	{ id: '1d', label: '1 day' },
@@ -42,6 +53,8 @@ function analyticsHref(opts: {
 	range?: AnalyticsRange;
 	includeBots?: boolean;
 	path?: string | null;
+	/** Omit to keep current mobile panel; pass null to drop `panel` from the URL. */
+	panel?: 'pages' | 'countries' | null;
 }): string {
 	const params = new URLSearchParams();
 	params.set('range', opts.range ?? range);
@@ -51,6 +64,13 @@ function analyticsHref(opts: {
 	const path = opts.path === undefined ? selectedPath : opts.path;
 	if (path) {
 		params.set('path', path);
+	}
+	const panel = opts.panel === undefined ? activePanel : opts.panel;
+	// Only persist panel when it differs from the default derived from path
+	// (avoids noisy URLs on desktop while keeping mobile view stable across filters).
+	const defaultPanel = path ? 'countries' : 'pages';
+	if (panel && panel !== defaultPanel) {
+		params.set('panel', panel);
 	}
 	return `/admin/analytics?${params.toString()}`;
 }
@@ -125,8 +145,28 @@ function analyticsHref(opts: {
 				</p>
 			) : null}
 
-			<div class="analytics__grid">
-				<div class="analytics__panel">
+			<nav class="analytics__panels" aria-label="Analytics view">
+				<a
+					href={analyticsHref({ path: null, panel: 'pages' })}
+					class:list={['analytics__panel-tab', { 'is-active': activePanel === 'pages' }]}
+					aria-current={activePanel === 'pages' ? 'page' : undefined}
+				>
+					Pages
+				</a>
+				<a
+					href={analyticsHref({
+						panel: 'countries',
+						path: selectedPath,
+					})}
+					class:list={['analytics__panel-tab', { 'is-active': activePanel === 'countries' }]}
+					aria-current={activePanel === 'countries' ? 'page' : undefined}
+				>
+					Countries
+				</a>
+			</nav>
+
+			<div class="analytics__grid" data-panel={activePanel}>
+				<div class="analytics__panel analytics__panel--pages">
 					<h3>Top public pages</h3>
 					{analytics.topPages.length === 0 ? (
 						<p class="analytics__empty">No page data.</p>
@@ -145,7 +185,10 @@ function analyticsHref(opts: {
 										<tr class:list={{ 'is-selected': isSelected }}>
 											<td>
 												<a
-													href={analyticsHref({ path: isSelected ? null : row.key })}
+													href={analyticsHref({
+														path: isSelected ? null : row.key,
+														panel: isSelected ? 'pages' : 'countries',
+													})}
 													class="analytics__path-link"
 													aria-current={isSelected ? 'true' : undefined}
 												>
@@ -160,19 +203,47 @@ function analyticsHref(opts: {
 						</table>
 					)}
 					{selectedPath ? (
-						<p class="analytics__hint">
+						<p class="analytics__hint analytics__hint--desktop">
 							Showing countries for <code>{selectedPath}</code>.{' '}
-							<a href={analyticsHref({ path: null })}>Clear selection</a>
+							<a href={analyticsHref({ path: null, panel: 'pages' })}>Clear selection</a>
 						</p>
 					) : (
-						<p class="analytics__hint">Select a path to break down views by country.</p>
+						<p class="analytics__hint analytics__hint--desktop">
+							Select a path to break down views by country.
+						</p>
 					)}
 				</div>
 
-				<div class="analytics__panel">
-					<h3>By country</h3>
-					{analytics.countries.length === 0 ? (
-						<p class="analytics__empty">No country data.</p>
+				<div class="analytics__panel analytics__panel--countries">
+					<div class="analytics__panel-toolbar">
+						<a
+							href={analyticsHref({ path: null, panel: 'pages' })}
+							class="analytics__back-pages"
+						>
+							← Pages
+						</a>
+						{selectedPath ? (
+							<a
+								href={analyticsHref({ path: null, panel: 'countries' })}
+								class="analytics__clear-path"
+							>
+								All countries
+							</a>
+						) : null}
+					</div>
+					{selectedPath ? (
+						<h3>
+							Countries for <code>{selectedPath}</code>
+						</h3>
+					) : (
+						<h3>By country</h3>
+					)}
+					{countryRows.length === 0 ? (
+						<p class="analytics__empty">
+							{selectedPath
+								? 'No country data for this path in this window.'
+								: 'No country data.'}
+						</p>
 					) : (
 						<table>
 							<thead>
@@ -182,7 +253,7 @@ function analyticsHref(opts: {
 								</tr>
 							</thead>
 							<tbody>
-								{analytics.countries.map((row) => (
+								{countryRows.map((row) => (
 									<tr>
 										<td>
 											<AnalyticsCountryLabel code={row.key} />
@@ -193,38 +264,14 @@ function analyticsHref(opts: {
 							</tbody>
 						</table>
 					)}
+					{selectedPath ? (
+						<p class="analytics__hint analytics__hint--desktop">
+							<a href={analyticsHref({ path: null })}>Clear selection</a> to see site-wide
+							countries.
+						</p>
+					) : null}
 				</div>
 			</div>
-
-			{selectedPath ? (
-				<div class="analytics__panel analytics__panel--drilldown">
-					<h3>
-						Countries for <code>{selectedPath}</code>
-					</h3>
-					{analytics.pathCountries.length === 0 ? (
-						<p class="analytics__empty">No country data for this path in this window.</p>
-					) : (
-						<table>
-							<thead>
-								<tr>
-									<th scope="col">Country</th>
-									<th scope="col">Views</th>
-								</tr>
-							</thead>
-							<tbody>
-								{analytics.pathCountries.map((row) => (
-									<tr>
-										<td>
-											<AnalyticsCountryLabel code={row.key} />
-										</td>
-										<td>{row.views.toLocaleString()}</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					)}
-				</div>
-			) : null}
 		</section>
 	</article>
 </Layout>
@@ -361,9 +408,58 @@ function analyticsHref(opts: {
 		font-size: 0.85em;
 	}
 
+	.analytics__panels {
+		display: none;
+		gap: 0.5rem;
+		margin: 0 0 1rem;
+	}
+
+	.analytics__panel-tab {
+		flex: 1 1 0;
+		display: inline-block;
+		padding: 0.4rem 0.75rem;
+		border: 1px solid var(--border-subtle);
+		border-radius: 6px;
+		background: #fff;
+		color: inherit;
+		text-decoration: none;
+		font-size: 0.9rem;
+		font-weight: 600;
+		text-align: center;
+	}
+
+	.analytics__panel-tab.is-active {
+		border-color: #0044bb;
+		color: #0044bb;
+		box-shadow: 0 0 0 1px rgba(0, 68, 187, 0.2);
+	}
+
+	.analytics__panel-toolbar {
+		display: none;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75rem;
+		margin: 0 0 0.65rem;
+		font-size: 0.9rem;
+	}
+
+	.analytics__back-pages,
+	.analytics__clear-path {
+		color: #0044bb;
+		text-decoration: none;
+		font-weight: 600;
+	}
+
+	.analytics__back-pages:hover,
+	.analytics__back-pages:focus-visible,
+	.analytics__clear-path:hover,
+	.analytics__clear-path:focus-visible {
+		text-decoration: underline;
+	}
+
 	.analytics__grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+		grid-template-columns: 1fr 1fr;
 		gap: 1.25rem;
 	}
 
@@ -377,12 +473,6 @@ function analyticsHref(opts: {
 		font-size: 0.9em;
 		font-weight: 600;
 		word-break: break-all;
-	}
-
-	.analytics__panel--drilldown {
-		margin-top: 1.25rem;
-		padding-top: 1.15rem;
-		border-top: 1px solid var(--border-subtle);
 	}
 
 	.analytics__empty {
@@ -456,5 +546,38 @@ function analyticsHref(opts: {
 	.analytics__panel code {
 		font-size: 0.86em;
 		word-break: break-all;
+	}
+
+	@media (max-width: 719px) {
+		.analytics__panels {
+			display: flex;
+		}
+
+		.analytics__panel-toolbar {
+			display: flex;
+		}
+
+		.analytics__hint--desktop {
+			display: none;
+		}
+
+		.analytics__grid {
+			grid-template-columns: 1fr;
+		}
+
+		.analytics__grid[data-panel='pages'] .analytics__panel--countries {
+			display: none;
+		}
+
+		.analytics__grid[data-panel='countries'] .analytics__panel--pages {
+			display: none;
+		}
+	}
+
+	@media (min-width: 720px) {
+		.analytics__panels,
+		.analytics__panel-toolbar {
+			display: none;
+		}
 	}
 </style>
