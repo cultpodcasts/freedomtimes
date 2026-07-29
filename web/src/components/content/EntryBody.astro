@@ -1,6 +1,5 @@
 ---
-import { PortableText } from 'astro-portabletext';
-import Video from '../Video.astro';
+import { PortableText } from 'emdash/ui';
 import Audio from '../Audio.astro';
 import type { LegacyContentBlock, ProcessedPortableNode } from '../../lib/content/contentBlocks';
 
@@ -15,6 +14,7 @@ const {
 	portableContent: unknown[] | null;
 	textContent: string | null;
 	legacyBlocks: LegacyContentBlock[];
+	/** User overrides for emdash/ui PortableText (`audio` only — youtube/embed use plugin + core). */
 	portableComponents: Record<string, unknown>;
 };
 ---
@@ -36,8 +36,8 @@ const {
 {!portableContent && textContent && legacyBlocks.length > 0 && (
 	<div class="legacy-content">
 		{legacyBlocks.map((block) => (
-			block.type === 'video' ? (
-				<Video value={block.value} />
+			block.type === 'portable' ? (
+				<PortableText value={block.value} components={portableComponents} />
 			) : block.type === 'audio' ? (
 				<Audio value={block.value} />
 			) : block.type === 'image' ? (

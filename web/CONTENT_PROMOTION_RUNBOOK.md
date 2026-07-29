@@ -161,6 +161,7 @@ Notes:
 
 - `archives` usually include media references; ensure required files exist in production media storage.
 - For updates, MCP `content_update` requires `_rev` from `content_get` (or REST `GET /_emdash/api/content/...`); the scripted promoter handles this.
+- **In-place production edits:** when the operator asks to change / fix / update a live production post, after backup + `content_update` also run **`content_publish`** on the same slug (unless they say draft-only). `content_update` alone leaves an unpublished draft; warn that publish may notify subscribers, then still publish. See root **`AGENTS.md`** §5.
 
 ### Featured media and bylines (posts)
 

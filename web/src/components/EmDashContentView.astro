@@ -3,10 +3,7 @@ import Layout from "../layouts/Layout.astro";
 import Header from "../components/Header.astro";
 import PushNotificationsCallout from "../components/PushNotificationsCallout.astro";
 import ReaderDataProvenance from "../components/ReaderDataProvenance.astro";
-import Video from "../components/Video.astro";
 import Audio from "../components/Audio.astro";
-import PortableImage from "../components/PortableImage.astro";
-import PortableLink from "../components/PortableLink.astro";
 import EntryHeader from "./content/EntryHeader.astro";
 import EntryMedia from "./content/EntryMedia.astro";
 import EntryBody from "./content/EntryBody.astro";
@@ -77,14 +74,13 @@ const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
 		slug: typeof entry.slug === "string" ? entry.slug : undefined,
 	},
 });
+// EmDash PortableText merges: defaults < plugin-embeds < user overrides.
+// - image / link: EmDash defaults
+// - youtube / embed: plugin-embeds + EmDash Embed
+// - audio: FT override (Apple/Spotify iframe podcasts — no official type yet)
 const portableComponents = {
 	type: {
-		video: Video,
 		audio: Audio,
-		image: PortableImage,
-	},
-	mark: {
-		link: PortableLink,
 	},
 };
 
@@ -298,16 +294,27 @@ const showReaderDataProvenance = entrySlug === "privacy-policy";
 		color: #555555;
 	}
 
-	:global(.inline-figure) {
+	:global(.inline-figure),
+	.content-card :global(.emdash-image) {
 		margin: 0 0 2rem;
 		max-width: 65ch;
 	}
 
-	:global(.inline-figure img) {
+	:global(.inline-figure img),
+	.content-card :global(.emdash-image img) {
 		display: block;
 		width: 100%;
 		height: auto;
 		border: 1px solid #eeeeee;
+	}
+
+	.content-card :global(.emdash-image figcaption) {
+		margin: 0.75rem 0 0;
+		font-family: "Inter", sans-serif;
+		font-size: 0.85rem;
+		line-height: 1.45;
+		color: #555555;
+		text-align: left;
 	}
 
 	:global(.slideshow) {
@@ -462,12 +469,26 @@ const showReaderDataProvenance = entrySlug === "privacy-policy";
 		color: #1f1f1f;
 	}
 
-	.content-card :global(.video-embed) {
+	.content-card :global(.emdash-embed) {
 		margin: 2rem 0;
 		max-width: 65ch;
 	}
 
-	.content-card :global(.video-embed video) {
+	/*
+	 * EmDash Embed.astro uses a classic 16:9 padding-bottom box for .emdash-embed-video
+	 * (iframe + self-hosted <video>). Cinematic / wider-than-16:9 MP4s then leave a
+	 * white gap under the player before figcaption. Collapse that box for native video
+	 * and size from the file’s intrinsic ratio; keep 16:9 for iframes / lite-youtube.
+	 */
+	.content-card :global(.emdash-embed-video:has(> video)) {
+		position: static;
+		height: auto;
+		padding-bottom: 0;
+		overflow: visible;
+	}
+
+	.content-card :global(.emdash-embed-video video) {
+		position: static;
 		display: block;
 		width: 100%;
 		height: auto;
@@ -475,7 +496,8 @@ const showReaderDataProvenance = entrySlug === "privacy-policy";
 		background: #000000;
 	}
 
-	.content-card :global(.video-embed iframe) {
+	.content-card :global(.emdash-embed-video iframe),
+	.content-card :global(lite-youtube) {
 		display: block;
 		width: 100%;
 		aspect-ratio: var(--video-aspect-ratio, 16 / 9);

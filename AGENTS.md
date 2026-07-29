@@ -8,11 +8,11 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 
 2. **Database backup before any mutate.** Before Turso/libSQL writes, SQL migrations, seeds, or EmDash content writes (`content_update`, `content_publish`, etc.), create a **recoverable backup** of the target database first. See **`web/CONTENT_PROMOTION_RUNBOOK.md`** and **`docs/CLI_PATHS_WINDOWS.md`**.
 
-3. **EmDash MCP-only for schema and content JSON.** Do **not** use `npx emdash schema …` / `npx emdash content …` to inspect or edit stored **`posts` / `pages` `content`** (Portable Text). Use Cursor MCP (`content_get`, `content_update`, …). CLI exceptions: `emdash login`, `emdash media upload`, `emdash doctor` — auth/upload/diagnostics only.
+3. **EmDash MCP-only for schema and content JSON.** Do **not** use `npx emdash schema …` / `npx emdash content …` to inspect or edit stored **`posts` / `pages` `content`** (Portable Text). Use Cursor MCP (`content_get`, `content_update`, …). CLI exceptions: `emdash login`, `emdash media upload`, `emdash doctor` — auth/upload/diagnostics only. **When writing body content via MCP:** send a **Portable Text array**, never a raw markdown string (see § *EmDash: MCP only* below; sibling **freedomtimes-agents** [AGENTS.md](../freedomtimes-agents/AGENTS.md) §3).
 
 4. **Staging locked — nothing is public.** Never expose anonymous reader or editorial routes on staging. Full policy: **`web/docs/STAGING_ACCESS.md`**.
 
-5. **No production publish without explicit ask.** Never run production `content_publish`, `promote-post-staging-to-production.mjs`, or equivalent unless the operator **explicitly asks in that chat**. Production publish sends **push notifications** — irreversible.
+5. **No production publish without explicit ask — but production edits must go live.** Never run production `content_publish`, `promote-post-staging-to-production.mjs`, or equivalent unless the operator **explicitly asks in that chat**. Asking to **change / fix / update** a production post **is** that ask: after backup + `content_update`, also run **`content_publish`** on the same slug so the live post updates — do **not** stop at a draft revision unless they say draft-only. Warn that publish may notify subscribers; still publish when they asked for a production change.
 
 6. **CLI authentication — IF NOT AUTHENTICATED YOU MUST STOP.** When any required CLI reports an auth failure (not logged in, invalid token, permission denied): **STOP immediately.** Name the CLI, give the exact auth command for that tool, tell the operator to authenticate and confirm when ready, then **wait**. **Never** silently fall back to alternate APIs, unauthenticated endpoints, or skip the step unless the operator **explicitly** approves an alternate path in that same session. Applies to **wrangler**, **gh**, **turso**, **emdash login**, **terraform** / provider tokens, **cloudflare**, etc.
 
@@ -30,6 +30,8 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 ## EmDash: MCP only for schema and content (hard rule)
 
 **Do not use the EmDash CLI** (`npx emdash schema …`, `npx emdash content …`) **to inspect collection schema or to read/edit/publish content** when you care about the **real stored JSON** (especially **`posts` / `pages` `content`** as Portable Text). The CLI’s JSON output **does not reliably expose** the underlying document shape and has misled debugging repeatedly.
+
+**If MCP can write Portable Text, always do so.** For `content_create` / `content_update`, `data.content` must be a **Portable Text JSON array** — **never** a markdown string. EmDash’s built-in MD→PT leaves reader-visible artefacts (literal `*emphasis*`, image text in `alt` only). Agent drafts convert with sibling **freedomtimes-agents** `scripts/markdown-to-portable-text.mts` / `draft:push-staging` (see that repo’s [AGENTS.md](../freedomtimes-agents/AGENTS.md) §3).
 
 **AI agents — Cursor MCP only:** Use **Cursor** EmDash MCP servers (`freedomtimes-staging`, `freedomtimes-production`) when they appear under **Tools & MCP**. Setup/repair on Windows: **`docs/CURSOR_EMDASH_MCP.md`**; operator skill **`~/.cursor/skills/freedomtimes-emdash-mcp/SKILL.md`**. Call **`content_get`**, **`content_update`**, **`content_publish`**, **`content_create`**, **`schema_list_collections`**, **`schema_get_collection`**, etc. via **`call_mcp_tool`** — not via shell. **If MCP fails, see Primary guardrails §1 — STOP; do not use shell.**
 

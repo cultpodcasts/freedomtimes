@@ -114,12 +114,35 @@ At render time the server emits a real **`<blockquote>`** for step 1, then **`<d
 
 ---
 
-## Portable Text: `audio` vs `video` embeds
+## Portable Text: media embeds (official EmDash alignment)
 
-- **`_type: "video"`** (`Video.astro`) — **Video**: YouTube / watch URLs, generic video iframes, or `<video>` for direct media files under EmDash.
-- **`_type: "audio"`** (`Audio.astro`) — **Audio / podcast players**: Apple Podcasts (`embed.podcasts.apple.com`), Spotify embed URLs, other `https` iframe players, or `<audio>` for direct `.mp3` / `.m4a` / etc. Do **not** use `video` for podcast web players.
+Reader bodies use EmDash’s `PortableText` (`emdash/ui`): core defaults + `@emdash-cms/plugin-embeds`, with **one** Freedom Times override — **`audio`** — for Apple/Spotify iframe podcast players (no official plugin type yet).
 
-Fields (both): typically **`url`**, **`alt`** (or `title` for `Audio` fallback). Optional **`aspectRatio`** applies only to **`video`**.
+| Stored `_type` | Renderer | Use for |
+|----------------|----------|---------|
+| `image` | EmDash default `Image` | Media library images (`asset.url` / `_ref`, `alt`, `caption`) |
+| `youtube` / `vimeo` / … | `@emdash-cms/plugin-embeds` | Social/video slash inserts and YouTube URLs |
+| `embed` | EmDash default `Embed` | Self-hosted video/audio files (`provider: "video"` \| `"audio"`, `url`) |
+| `audio` | FT `Audio.astro` | Podcast web players (Apple Podcasts, Spotify embed URLs) |
+
+Agent drafts convert markdown video `<!--ec:block …-->` markers to `youtube` or `embed`+`provider:"video"` (see sibling freedomtimes-agents `markdown-to-portable-text.mts`). Keep `_type: "audio"` for podcast iframes.
+
+### Migrating PT blocks (operator script)
+
+Use **`web/scripts/migrate-pt-content.mjs`** — dry-run by default, writes a change report under `web/data/pt-migrate/`, then optionally `--apply --publish`. Add new transforms under `web/scripts/lib/pt-migrate/transforms/` as we expand.
+
+```powershell
+cd web
+npm run pt:migrate:scan
+# or: node scripts/migrate-pt-content.mjs posts --scan --transforms video
+
+# Apply one slug (example):
+node scripts/migrate-pt-content.mjs posts <slug> --transforms video --apply --publish
+```
+
+### Legacy FT `audio` (agents)
+
+Keep `_type: "audio"` for podcast iframes. Fields: typically **`url`**, **`alt`** (or `title` fallback).
 
 ---
 

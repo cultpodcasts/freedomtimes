@@ -40,7 +40,9 @@
     "cap:sync:ios": "cap sync ios",
     "cap:open:android": "cap open android",
     "cap:open:ios": "cap open ios",
-    "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-local.ps1 -WorkersOnly"
+    "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-local.ps1 -WorkersOnly",
+    "pt:migrate": "node scripts/migrate-pt-content.mjs",
+    "pt:migrate:scan": "node scripts/migrate-pt-content.mjs posts --scan --transforms video"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.0.0",
@@ -51,12 +53,13 @@
     "@capacitor/core": "^8.4.1",
     "@capacitor/ios": "^8.4.1",
     "@capacitor/push-notifications": "^8.1.1",
-    "@emdash-cms/cloudflare": "^0.29.0",
+    "@emdash-cms/cloudflare": "^0.31.1",
+    "@emdash-cms/plugin-embeds": "^0.1.39",
     "@libsql/client": "^0.17.4",
     "@libsql/kysely-libsql": "^0.4.1",
     "astro": "^7.0.2",
     "drizzle-orm": "^0.45.2",
-    "emdash": "^0.29.0",
+    "emdash": "^0.31.1",
     "jose": "^6.2.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
