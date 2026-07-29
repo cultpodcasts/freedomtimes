@@ -6,6 +6,7 @@ import react from '@astrojs/react';
 import emdash from 'emdash/astro';
 import { r2 } from '@emdash-cms/cloudflare';
 import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
+import { embedsPlugin } from '@emdash-cms/plugin-embeds';
 import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
@@ -112,6 +113,9 @@ export default defineConfig({
           replyTo: 'privacy@freedomtimes.news',
           binding: 'EMAIL',
         }),
+        // Official embed blocks (youtube, vimeo, tweet, bluesky, mastodon, linkPreview, gist).
+        // Reader: EmDash PortableText merges plugin components; FT keeps audio override only.
+        embedsPlugin(),
       ],
     }),
   ],

@@ -62,6 +62,9 @@ web/.release/*
 .release/*.log.*
 .release/*.txt
 web/scripts/tmp/*
+# Local PT migration dry-run reports / one-off payloads (may contain full post bodies)
+web/data/pt-migrate/
+web/data/_tmp-video-migrate/
 # Local EmDash SQLite dumps / WAL (staging, production, etc.)
 freedomtimes-emdash-*.db
 freedomtimes-emdash-*.db-wal

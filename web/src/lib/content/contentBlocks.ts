@@ -14,8 +14,82 @@ export type LegacyContentBlock =
 	| { type: 'paragraph'; text: string }
 	| { type: 'details'; summary: string; text: string }
 	| { type: 'image'; alt: string; src: string }
-	| { type: 'video'; value: Record<string, unknown> }
+	/** Migrated legacy video ec:block → youtube/embed PT node for EmDash PortableText. */
+	| { type: 'portable'; value: unknown[] }
 	| { type: 'audio'; value: Record<string, unknown> };
+
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{6,}$/;
+
+function youtubeIdFromUrl(url: string): string | null {
+	try {
+		const u = new URL(url);
+		const host = u.hostname.toLowerCase().replace(/^www\./, '');
+		if (host === 'youtu.be') {
+			const id = u.pathname.split('/').filter(Boolean)[0] ?? '';
+			return YOUTUBE_ID.test(id) ? id : null;
+		}
+		const isYoutube =
+			host === 'youtube.com' ||
+			host === 'm.youtube.com' ||
+			host === 'youtube-nocookie.com';
+		if (!isYoutube) return null;
+		const v = u.searchParams.get('v');
+		if (v && YOUTUBE_ID.test(v)) return v;
+		const parts = u.pathname.split('/').filter(Boolean);
+		if (parts[0] === 'embed' && parts[1] && YOUTUBE_ID.test(parts[1])) return parts[1];
+		if (parts[0] === 'shorts' && parts[1] && YOUTUBE_ID.test(parts[1])) return parts[1];
+		return null;
+	} catch {
+		return null;
+	}
+}
+
+function resolveLegacyVideoSrc(block: Record<string, unknown>): string | null {
+	const candidates = [
+		block.url,
+		block.id,
+		block.file,
+		block.asset && typeof block.asset === 'object'
+			? (block.asset as Record<string, unknown>).url
+			: null,
+		block.asset && typeof block.asset === 'object'
+			? (block.asset as Record<string, unknown>)._ref
+			: null,
+	];
+	for (const c of candidates) {
+		if (typeof c === 'string' && c.trim()) return c.trim();
+	}
+	return null;
+}
+
+/** Legacy FT `_type: "video"` → plugin `youtube` or core `embed`. */
+export function legacyVideoToPortableNode(
+	block: Record<string, unknown>,
+): Record<string, unknown> | null {
+	const src = resolveLegacyVideoSrc(block);
+	if (!src) return null;
+	const alt =
+		readString(block.alt) ?? readString(block.title) ?? readString(block.caption);
+	const ytId = youtubeIdFromUrl(src);
+	if (ytId) {
+		const node: Record<string, unknown> = {
+			_type: 'youtube',
+			id: /youtube|youtu\.be/i.test(src)
+				? src
+				: `https://www.youtube.com/watch?v=${ytId}`,
+		};
+		if (alt) node.title = alt;
+		return node;
+	}
+	const url = normalizeEmdashMediaFileUrl(src) ?? src;
+	const node: Record<string, unknown> = {
+		_type: 'embed',
+		url,
+		provider: 'video',
+	};
+	if (alt) node.caption = alt;
+	return node;
+}
 
 function normalizeEmdashMediaFileUrl(value: string): string | null {
 	const trimmed = value.trim();
@@ -270,7 +344,19 @@ export function parseLegacyTextContent(value: string): LegacyContentBlock[] {
 				if (parsed && typeof parsed === 'object') {
 					const t = (parsed as Record<string, unknown>)._type;
 					if (t === 'video') {
-						blocks.push({ type: 'video', value: parsed as Record<string, unknown> });
+						const node = legacyVideoToPortableNode(
+							parsed as Record<string, unknown>,
+						);
+						if (node) {
+							blocks.push({ type: 'portable', value: [node] });
+						}
+						continue;
+					}
+					if (t === 'youtube' || t === 'embed') {
+						blocks.push({
+							type: 'portable',
+							value: [parsed as Record<string, unknown>],
+						});
 						continue;
 					}
 					if (t === 'audio') {
