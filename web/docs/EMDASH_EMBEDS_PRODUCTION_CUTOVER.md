@@ -6,6 +6,8 @@
 
 **Hard rules:** Turso backup / rollback branch **before** any production EmDash mutate. Production `content_publish` may notify subscribers — warn, then publish when migrating live posts. Agents use Cursor EmDash MCP only (no shell MCP fallback).
 
+**Production content = video transform only.** Do **not** copy staging bodies, apply `web/.emdash/article-patches/*`, swap podcast/YouTube URLs, or otherwise “bring production in line with staging.” Staging-only editorial fixes (e.g. Inès Radio France audio URL, Ahmadi BBC YouTube) stay on staging until the operator explicitly asks for a separate production content edit.
+
 ---
 
 ## Preflight (must all be green)
@@ -100,7 +102,7 @@ node scripts/migrate-pt-content.mjs posts --scan --transforms video --url https:
 | PBCC | `emdash-embed` players; no large white gap under cinematic clips |
 | Scan | **0** remaining `video` |
 
-Optional: after Ahmadi migrate, confirm BBC YouTube URL `PHEVjCZE47s` (ITV may be pulled) — staging already uses BBC; production may still need that caption/URL fix as a separate small edit.
+Do **not** change production captions/URLs (e.g. Ahmadi BBC vs ITV) as part of this cutover — only the `_type: "video"` → `youtube` / `embed` rewrite.
 
 ### Phase 3 — Stabilize
 
@@ -166,7 +168,7 @@ Then redeploy or restart Worker secrets sync so production Worker reads the roll
 
 - Leave rollback branch attached until root cause known
 - Do **not** re-attempt migrate until code+content plan revalidated on staging
-- If only content was bad but code is fine: prefer EmDash `revision_restore` / re-copy from staging for the few slugs instead of full DB switch — still keep the Turso branch as insurance
+- If only content was bad but code is fine: prefer EmDash `revision_restore` on the affected production slugs (or Turso rollback branch) — **not** copying staging bodies wholesale. Keep the Turso branch as insurance.
 
 ---
 
