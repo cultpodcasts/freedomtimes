@@ -156,9 +156,11 @@ function prepareDek(value: string): string {
   return text;
 }
 
+// Show all published posts (newest first). A hard cap of 12 was dropping
+// older features (PBCC, Ahmadi, intro) once weekly roundups filled the slot.
 const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
   status: 'published',
-  limit: 12,
+  limit: 100,
   orderBy: { published_at: 'desc', updated_at: 'desc' },
 });
 
