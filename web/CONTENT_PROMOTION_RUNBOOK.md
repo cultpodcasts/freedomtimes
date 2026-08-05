@@ -259,3 +259,57 @@ After metadata is aligned, reload admin and re-test the collection route.
 6. For archives, media links and downloadable file URLs work.
 7. Staging-versus-production text-bearing fields were compared for the promoted items.
 8. No mojibake signatures appear in production content or on the rendered public route.
+9. **Request Google indexing** for the live public URL(s) (§7) — do not treat promote as complete until this is done (or explicitly deferred by the operator).
+
+## 7. Request indexing (Google Search Console)
+
+After a production promote (or an in-place production content change that is published), **notify Google** so new/updated URLs leave “Discovered – currently not indexed” sooner. Sitemap discovery alone is slow; Freedom Times has repeatedly seen weeklies stuck undiscovered or discovered-but-uncrawled until an explicit indexing request.
+
+### Live URL shape
+
+| Collection | Public URL |
+|------------|------------|
+| `posts` | `https://freedomtimes.news/posts/<slug>` |
+| `pages` | `https://freedomtimes.news/<slug>` (homepage: `https://freedomtimes.news/`) |
+| `archives` | `https://freedomtimes.news/archives/<slug>` |
+
+GSC property for this site is the **domain** property: `sc-domain:freedomtimes.news` (not a URL-prefix). Cursor MCP `gsc` must use `GSC_SITE_URL=sc-domain:freedomtimes.news`.
+
+### Preferred path — Cursor GSC MCP (`gsc`)
+
+Prerequisites (one-time / if tools fail):
+
+1. **Web Search Indexing API** enabled on GCP project **Freedom Times Web** (`indexing.googleapis.com`).
+2. OAuth token for `developer@freedomtimes.news` (or another GSC owner) cached under `%USERPROFILE%\.gsc-mcp\oauth-token.json` — see Suganthan GSC MCP setup; first login opens Google consent.
+3. Cursor **Tools & MCP**: server `gsc` enabled and ready.
+
+After the public route is verified live:
+
+1. **`inspect_url`** on the live URL — note coverage state (indexed / discovered / unknown).
+2. **`submit_url`** (single) or **`submit_batch`** (`URL_UPDATED`) for the promoted URL. For a weekly roundup, always include at least:
+   - `https://freedomtimes.news/posts/<slug>`
+   - optionally `https://freedomtimes.news/` if the homepage card/listing changed
+3. Resubmit sitemaps so Google refreshes the index (domain property — use OAuth + Search Console API if MCP `list_sitemaps` / `submit_sitemap` rewrites to a missing URL-prefix):
+   - `https://freedomtimes.news/sitemap.xml`
+   - `https://freedomtimes.news/sitemap-posts.xml`
+4. Re-run **`inspect_url`** later (hours–days) to confirm crawl/index progress. Do not expect instant “Submitted and indexed.”
+
+Example agent/operator asks after promote:
+
+- “Submit indexing for `https://freedomtimes.news/posts/<slug>`”
+- “Batch `URL_UPDATED` for homepage + the new post”
+
+### Manual fallback — Search Console UI
+
+If MCP/Indexing API is unavailable:
+
+1. Open [Google Search Console](https://search.google.com/search-console) → property `freedomtimes.news` (domain).
+2. **URL Inspection** → paste `https://freedomtimes.news/posts/<slug>` → **Request indexing**.
+3. **Sitemaps** → ensure `sitemap.xml` / `sitemap-posts.xml` are submitted; use **Resubmit** if stale.
+
+### Notes
+
+- Indexing API notifications are a crawl hint, not a guarantee. Official docs emphasize JobPosting/BroadcastEvent; requests for ordinary pages still work in practice but priority is not assured.
+- Daily Indexing API quota is limited (~200 URL notifications). Prefer the new/changed URLs, not a full-site flood every promote.
+- Staging URLs must **never** be submitted for indexing (`staging.freedomtimes.news` is locked / not public).
+- Same step applies after **in-place production edits** that change reader-visible copy or SEO fields — publish first (§3), then request indexing for the same live URL.
