@@ -12,6 +12,10 @@
  * Requires `--i-understand-production` — pass only when the operator explicitly requested
  * production publish in the current session.
  *
+ * After a successful promote, complete go-live: request Google indexing for
+ * https://freedomtimes.news/posts/<slug> (GSC MCP submit_url / submit_batch).
+ * See web/CONTENT_PROMOTION_RUNBOOK.md §7 Request indexing.
+ *
  * Usage (from repo root):
  *   node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production
  *
