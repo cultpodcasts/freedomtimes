@@ -86,11 +86,10 @@ export function transformVideoBlock(block, index) {
 
 	const ytId = youtubeIdFromUrl(src);
 	if (ytId) {
+		// EmDash plugin-embeds / lite-youtube expect a bare video id, not a watch/embed URL.
 		const after = {
 			_type: 'youtube',
-			id: /youtube|youtu\.be/i.test(src)
-				? src
-				: `https://www.youtube.com/watch?v=${ytId}`,
+			id: ytId,
 		};
 		if (typeof block._key === 'string' && block._key) after._key = block._key;
 		if (typeof block.alt === 'string' && block.alt.trim()) after.title = block.alt.trim();
