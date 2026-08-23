@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import emdash from 'emdash/astro';
+import type { PluginDescriptor } from 'emdash';
 import { r2 } from '@emdash-cms/cloudflare';
 import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
 import { embedsPlugin } from '@emdash-cms/plugin-embeds';
@@ -107,6 +108,8 @@ export default defineConfig({
       // Requires Worker send_email binding EMAIL (wrangler.jsonc) + domain onboard.
       // Capacitor Android: magic-link Sign-in button uses HTTPS lander
       // /auth/native-magic-link (see magicLinkAndroidSchemePlugin + native-android-magic-link.ts).
+      // EmDash 0.34 factories return PluginDescriptor<SpecificOptions>; emdash()
+      // still types plugins as PluginDescriptor<Record<string, unknown>>[].
       plugins: [
         cloudflareEmail({
           from: { email: 'noreply@freedomtimes.news', name: SITE_DISPLAY_NAME },
@@ -116,7 +119,7 @@ export default defineConfig({
         // Official embed blocks (youtube, vimeo, tweet, bluesky, mastodon, linkPreview, gist).
         // Reader: EmDash PortableText merges plugin components; FT keeps audio override only.
         embedsPlugin(),
-      ],
+      ] as PluginDescriptor[],
     }),
   ],
   adapter: cloudflare({ configPath: './wrangler.build.jsonc' }),
