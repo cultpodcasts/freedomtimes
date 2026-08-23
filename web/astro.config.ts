@@ -4,24 +4,23 @@ import { fileURLToPath } from 'node:url';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import emdash from 'emdash/astro';
+import type { PluginDescriptor } from 'emdash';
 import { r2 } from '@emdash-cms/cloudflare';
 import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
 import { embedsPlugin } from '@emdash-cms/plugin-embeds';
 import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
-if (!process.env.TURSO_DATABASE_URL) {
-  throw new Error('TURSO_DATABASE_URL is required for build');
-}
-
 const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.ts', import.meta.url));
 const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
+// Build-time Turso is optional. Worker-only deploys leave TURSO_* unset; the
+// libsql shim prefers Cloudflare Worker secrets at runtime (kysely-libsql.ts).
 const emdashDatabase = {
   entrypoint: libsqlShimEntryUrl,
   config: {
-    url: process.env.TURSO_DATABASE_URL,
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    url: process.env.TURSO_DATABASE_URL?.trim() || 'libsql://unused-at-build.invalid',
+    authToken: process.env.TURSO_AUTH_TOKEN?.trim() || '',
   },
   type: 'sqlite',
 } as const;
@@ -80,6 +79,13 @@ export default defineConfig({
         '@libsql/client/web': libsqlClientWebPath,
         'better-sqlite3': sqliteShimPath,
         bindings: bindingsShimPath,
+        // shared/push lives outside web/; Rolldown resolves bare imports from
+        // that file, not web/node_modules. Alias the package names to the same
+        // entry files Node/Vite would pick from web/ (jose has no root index).
+        jose: fileURLToPath(new URL('./node_modules/jose/dist/webapi/index.js', import.meta.url)),
+        'webpush-webcrypto': fileURLToPath(
+          new URL('./node_modules/webpush-webcrypto/lib/webpush.js', import.meta.url),
+        ),
       },
     },
     ssr: {
@@ -107,6 +113,8 @@ export default defineConfig({
       // Requires Worker send_email binding EMAIL (wrangler.jsonc) + domain onboard.
       // Capacitor Android: magic-link Sign-in button uses HTTPS lander
       // /auth/native-magic-link (see magicLinkAndroidSchemePlugin + native-android-magic-link.ts).
+      // EmDash 0.34 factories return PluginDescriptor<SpecificOptions>; emdash()
+      // still types plugins as PluginDescriptor<Record<string, unknown>>[].
       plugins: [
         cloudflareEmail({
           from: { email: 'noreply@freedomtimes.news', name: SITE_DISPLAY_NAME },
@@ -116,7 +124,7 @@ export default defineConfig({
         // Official embed blocks (youtube, vimeo, tweet, bluesky, mastodon, linkPreview, gist).
         // Reader: EmDash PortableText merges plugin components; FT keeps audio override only.
         embedsPlugin(),
-      ],
+      ] as PluginDescriptor[],
     }),
   ],
   adapter: cloudflare({ configPath: './wrangler.build.jsonc' }),

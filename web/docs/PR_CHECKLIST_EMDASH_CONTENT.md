@@ -7,7 +7,7 @@ Use this list when a PR bumps **`emdash`** / **`@emdash-cms/cloudflare`**, or ch
 ## 1. Local (before merge)
 
 - [ ] **`cd web && npm install`** — lockfile matches `package.json`.
-- [ ] **`npm run build`** — requires env from your secrets (at minimum **`TURSO_DATABASE_URL`** per `astro.config.ts`; add others your CI uses).
+- [ ] **`npm run build`** — Turso is optional for worker-only deploys (runtime Worker secrets). Full / local CMS builds still want **`TURSO_DATABASE_URL`**; add others your CI uses.
 - [ ] If you rely on IDE diagnostics only on touched files, skim **`entryBody`** / **`contentEntry`** for import cycles or unused exports.
 
 Optional full-repo typecheck (currently noisy elsewhere):

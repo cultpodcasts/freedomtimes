@@ -3,10 +3,10 @@ Set-StrictMode -Version Latest
 # Directories commonly missing from PATH in non-interactive shells (Cursor agents, CI-like pwsh).
 # Only Windows-native CLIs belong here — Turso runs in WSL (see docs/CLI_PATHS_WINDOWS.md).
 $script:WindowsCliPathCandidates = @(
-    (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links")
-    (Join-Path $env:ProgramFiles "Terraform")
-    (Join-Path $env:LOCALAPPDATA "Programs\Terraform")
-    (Join-Path $env:USERPROFILE "scoop\shims")
+    $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links" }),
+    $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles "Terraform" }),
+    $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Programs\Terraform" }),
+    $(if ($env:USERPROFILE) { Join-Path $env:USERPROFILE "scoop\shims" })
 )
 
 function Initialize-WindowsCliPath {
