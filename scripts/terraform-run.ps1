@@ -393,9 +393,12 @@ if (-not (Test-Path $preflightScript)) {
 if ($LoadEnvFiles) {
     $baseEnvPath = Join-Path $repoRoot ".env.dev"
     Import-EnvFile -Path $baseEnvPath
-    Invoke-EnvRemapping -Env $Environment
-    Write-Host "DEBUG: Loaded and remapped env vars from .env.dev for environment: $Environment" -ForegroundColor DarkGray
+    Write-Host "DEBUG: Loaded env vars from .env.dev for environment: $Environment" -ForegroundColor DarkGray
 }
+
+# Join split PFX parts and remap uppercase/suffixed TF_VAR names from process env
+# (Cloud Agent injected secrets, or values loaded from .env.dev above).
+Invoke-EnvRemapping -Env $Environment
 
 $preflightArgs = @{
     Environment = $Environment

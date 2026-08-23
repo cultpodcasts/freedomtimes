@@ -79,106 +79,103 @@ if ($LoadEnvFiles) {
 # Cloud Agent secret limits split PFX base64 into _1 + _2. Join before remapping.
 Join-SplitCustomHostnameCertificateEnvVars
 
-# Normalize shared vars from canonical uppercase names in .env.dev to the
-# lowercase TF_VAR names used by root module variables.
-if ($LoadEnvFiles) {
-    $sharedAliases = [ordered]@{
-        "TF_VAR_cloudflare_api_token"          = "TF_VAR_CLOUDFLARE_API_TOKEN"
-        "TF_VAR_cloudflare_account_id"         = "TF_VAR_CLOUDFLARE_ACCOUNT_ID"
-        "TF_VAR_cloudflare_zone_id"            = "TF_VAR_CLOUDFLARE_ZONE_ID"
-        "TF_VAR_auth0_domain"                  = "TF_VAR_AUTH0_DOMAIN"
-        "TF_VAR_auth0_management_client_id"    = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
-        "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
-        "TF_VAR_azure_location"                = "TF_VAR_AZURE_LOCATION"
-        "TF_VAR_turso_organization"            = "TF_VAR_TURSO_ORGANIZATION"
+# Normalize shared vars from canonical uppercase names (process env or .env.dev)
+# to the lowercase TF_VAR names used by root module variables. Runs even without
+# -LoadEnvFiles so Cloud Agent injected secrets remap the same way.
+$sharedAliases = [ordered]@{
+    "TF_VAR_cloudflare_api_token"           = "TF_VAR_CLOUDFLARE_API_TOKEN"
+    "TF_VAR_cloudflare_account_id"          = "TF_VAR_CLOUDFLARE_ACCOUNT_ID"
+    "TF_VAR_cloudflare_zone_id"             = "TF_VAR_CLOUDFLARE_ZONE_ID"
+    "TF_VAR_auth0_domain"                   = "TF_VAR_AUTH0_DOMAIN"
+    "TF_VAR_auth0_management_client_id"     = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_ID"
+    "TF_VAR_auth0_management_client_secret" = "TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET"
+    "TF_VAR_azure_location"                 = "TF_VAR_AZURE_LOCATION"
+    "TF_VAR_turso_organization"             = "TF_VAR_TURSO_ORGANIZATION"
+}
+foreach ($targetKey in $sharedAliases.Keys) {
+    $sourceKey = $sharedAliases[$targetKey]
+    $sourceValue = [System.Environment]::GetEnvironmentVariable($sourceKey, "Process")
+    if (-not [string]::IsNullOrWhiteSpace($sourceValue)) {
+        [System.Environment]::SetEnvironmentVariable($targetKey, $sourceValue, "Process")
     }
-    foreach ($targetKey in $sharedAliases.Keys) {
-        $sourceKey = $sharedAliases[$targetKey]
+}
+
+# Required analytics token: ANALYTICS_CF_TOKEN → TF_VAR_cloudflare_analytics_api_token.
+# Terraform does not mint analytics API tokens.
+$analyticsNames = @(
+    "TF_VAR_cloudflare_analytics_api_token",
+    "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN",
+    "ANALYTICS_CF_TOKEN"
+)
+foreach ($analyticsName in $analyticsNames) {
+    $analyticsValue = [System.Environment]::GetEnvironmentVariable($analyticsName, "Process")
+    if (-not [string]::IsNullOrWhiteSpace($analyticsValue)) {
+        [System.Environment]::SetEnvironmentVariable("TF_VAR_cloudflare_analytics_api_token", $analyticsValue, "Process")
+        break
+    }
+}
+
+# Remap environment-specific vars from suffixed keys to the unsuffixed names
+# Terraform expects. GitHub Actions does this in the workflow env: block;
+# Cloud Agent injects the same suffixed names into process env.
+if ($Environment -eq "staging" -or $Environment -eq "production") {
+    $suffix = if ($Environment -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
+    $envSpecificKeys = [ordered]@{
+        "TF_VAR_route_pattern"                            = "TF_VAR_ROUTE_PATTERN$suffix"
+        "TF_VAR_worker_name"                              = "TF_VAR_WORKER_NAME$suffix"
+        "TF_VAR_manage_apex_dns_record"                   = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
+        "TF_VAR_apex_dns_record_content"                  = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
+        "TF_VAR_api_custom_hostname"                      = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
+        "TF_VAR_workspace_url"                            = "TF_VAR_WORKSPACE_URL$suffix"
+        "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
+        "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
+        "TF_VAR_turso_database_name"                      = "TF_VAR_TURSO_DATABASE_NAME$suffix"
+        "TF_VAR_turso_database_group"                     = "TF_VAR_TURSO_DATABASE_GROUP$suffix"
+        "TF_VAR_turso_database_token_expiration"          = "TF_VAR_TURSO_DATABASE_TOKEN_EXPIRATION$suffix"
+        "TF_VAR_turso_database_size_limit"                = "TF_VAR_TURSO_DATABASE_SIZE_LIMIT$suffix"
+    }
+    foreach ($tfVar in $envSpecificKeys.Keys) {
+        $sourceKey = $envSpecificKeys[$tfVar]
         $sourceValue = [System.Environment]::GetEnvironmentVariable($sourceKey, "Process")
         if (-not [string]::IsNullOrWhiteSpace($sourceValue)) {
-            [System.Environment]::SetEnvironmentVariable($targetKey, $sourceValue, "Process")
+            [System.Environment]::SetEnvironmentVariable($tfVar, $sourceValue, "Process")
         }
     }
 
-    # Required analytics token: ANALYTICS_CF_TOKEN → TF_VAR_cloudflare_analytics_api_token.
-    # Terraform does not mint analytics API tokens.
-    $analyticsNames = @(
-        "TF_VAR_cloudflare_analytics_api_token",
-        "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN",
-        "ANALYTICS_CF_TOKEN"
-    )
-    foreach ($analyticsName in $analyticsNames) {
-        $analyticsValue = [System.Environment]::GetEnvironmentVariable($analyticsName, "Process")
-        if (-not [string]::IsNullOrWhiteSpace($analyticsValue)) {
-            [System.Environment]::SetEnvironmentVariable("TF_VAR_cloudflare_analytics_api_token", $analyticsValue, "Process")
-            break
+    if ($Environment -eq "staging") {
+        $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE_STAGING", "Process")
+    }
+    else {
+        $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE_PRODUCTION", "Process")
+        if ([string]::IsNullOrWhiteSpace($audience)) {
+            $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE", "Process")
         }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($audience)) {
+        [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
     }
 }
 
-# Remap environment-specific vars from suffixed keys in .env.dev to the
-# unsuffixed names Terraform expects.  GitHub Actions workflows do this
-# remapping in their env: block; this block handles it for local runs.
-if ($LoadEnvFiles) {
-    $suffix = if ($Environment -eq "staging") { "_STAGING" } else { "_PRODUCTION" }
-    if ($Environment -eq "staging" -or $Environment -eq "production") {
-        $envSpecificKeys = [ordered]@{
-            "TF_VAR_route_pattern"                            = "TF_VAR_ROUTE_PATTERN$suffix"
-            "TF_VAR_worker_name"                              = "TF_VAR_WORKER_NAME$suffix"
-            "TF_VAR_manage_apex_dns_record"                   = "TF_VAR_MANAGE_APEX_DNS_RECORD$suffix"
-            "TF_VAR_apex_dns_record_content"                  = "TF_VAR_APEX_DNS_RECORD_CONTENT$suffix"
-            "TF_VAR_api_custom_hostname"                      = "TF_VAR_API_CUSTOM_HOSTNAME$suffix"
-            "TF_VAR_workspace_url"                            = "TF_VAR_WORKSPACE_URL$suffix"
-            "TF_VAR_api_custom_hostname_certificate_base64"   = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64$suffix"
-            "TF_VAR_api_custom_hostname_certificate_password" = "TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD$suffix"
-            "TF_VAR_turso_database_name"                      = "TF_VAR_TURSO_DATABASE_NAME$suffix"
-            "TF_VAR_turso_database_group"                     = "TF_VAR_TURSO_DATABASE_GROUP$suffix"
-            "TF_VAR_turso_database_token_expiration"          = "TF_VAR_TURSO_DATABASE_TOKEN_EXPIRATION$suffix"
-            "TF_VAR_turso_database_size_limit"                = "TF_VAR_TURSO_DATABASE_SIZE_LIMIT$suffix"
-        }
-        foreach ($tfVar in $envSpecificKeys.Keys) {
-            $sourceKey = $envSpecificKeys[$tfVar]
-            $sourceValue = [System.Environment]::GetEnvironmentVariable($sourceKey, "Process")
-            if (-not [string]::IsNullOrWhiteSpace($sourceValue)) {
-                [System.Environment]::SetEnvironmentVariable($tfVar, $sourceValue, "Process")
-            }
-        }
-
-        if ($Environment -eq "staging") {
-            $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE_STAGING", "Process")
-        }
-        else {
-            $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE_PRODUCTION", "Process")
-            if ([string]::IsNullOrWhiteSpace($audience)) {
-                $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE", "Process")
-            }
-        }
-        if (-not [string]::IsNullOrWhiteSpace($audience)) {
-            [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
-        }
+if ($Environment -eq "auth0-shared") {
+    $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($audience)) {
+        [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
     }
 
-    if ($Environment -eq "auth0-shared") {
-        $audience = [System.Environment]::GetEnvironmentVariable("AUTH0_API_AUDIENCE", "Process")
-        if (-not [string]::IsNullOrWhiteSpace($audience)) {
-            [System.Environment]::SetEnvironmentVariable("TF_VAR_auth0_api_identifier", $audience, "Process")
-        }
-
-        $rolesClaim = [System.Environment]::GetEnvironmentVariable("AUTH0_ROLES_CLAIM_NAMESPACE", "Process")
-        if (-not [string]::IsNullOrWhiteSpace($rolesClaim)) {
-            [System.Environment]::SetEnvironmentVariable("TF_VAR_editorial_roles_claim", $rolesClaim, "Process")
-        }
-
-        $workspaceUrl = [System.Environment]::GetEnvironmentVariable("TF_VAR_WORKSPACE_URL_PRODUCTION", "Process")
-        if (-not [string]::IsNullOrWhiteSpace($workspaceUrl)) {
-            [System.Environment]::SetEnvironmentVariable("TF_VAR_workspace_url", $workspaceUrl, "Process")
-        }
+    $rolesClaim = [System.Environment]::GetEnvironmentVariable("AUTH0_ROLES_CLAIM_NAMESPACE", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($rolesClaim)) {
+        [System.Environment]::SetEnvironmentVariable("TF_VAR_editorial_roles_claim", $rolesClaim, "Process")
     }
 
-    Write-Host "Remapped env-specific vars for $Environment." -ForegroundColor DarkGray
-
-    Set-TursoPlatformApiTokenForEnvironment -Environment $Environment
+    $workspaceUrl = [System.Environment]::GetEnvironmentVariable("TF_VAR_WORKSPACE_URL_PRODUCTION", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($workspaceUrl)) {
+        [System.Environment]::SetEnvironmentVariable("TF_VAR_workspace_url", $workspaceUrl, "Process")
+    }
 }
+
+Write-Host "Remapped env-specific vars for $Environment." -ForegroundColor DarkGray
+
+Set-TursoPlatformApiTokenForEnvironment -Environment $Environment
 
 # Normalize legacy Auth0 env var names for compatibility.
 if (-not $env:TF_VAR_auth0_management_client_id -and $env:TF_VAR_auth0_client_id) {
