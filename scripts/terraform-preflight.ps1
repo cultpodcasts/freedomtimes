@@ -9,6 +9,7 @@ param(
 )
 
 . "$PSScriptRoot/terraform-turso-env.ps1"
+. "$PSScriptRoot/join-split-certificate-env.ps1"
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -74,6 +75,9 @@ if ($LoadEnvFiles) {
 
     Write-Host "Loaded env values from $BaseEnvFile" -ForegroundColor DarkGray
 }
+
+# Cloud Agent secret limits split PFX base64 into _1 + _2. Join before remapping.
+Join-SplitCustomHostnameCertificateEnvVars
 
 # Normalize shared vars from canonical uppercase names in .env.dev to the
 # lowercase TF_VAR names used by root module variables.

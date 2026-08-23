@@ -30,6 +30,7 @@ $envDir = Join-Path $repoRoot "infra/terraform/environments/$Environment"
 . "$PSScriptRoot/ensure-windows-cli-path.ps1"
 Initialize-WindowsCliPath
 . "$PSScriptRoot/terraform-turso-env.ps1"
+. "$PSScriptRoot/join-split-certificate-env.ps1"
 . "$PSScriptRoot/terraform-env-lock.ps1"
 $preflightScript = Join-Path $PSScriptRoot "terraform-preflight.ps1"
 
@@ -83,6 +84,9 @@ function Import-EnvFile {
 
 function Invoke-EnvRemapping {
     param([string]$Env)
+
+    # Cloud Agent secret limits split PFX base64 into _1 + _2. Join before remapping.
+    Join-SplitCustomHostnameCertificateEnvVars
 
     # Shared uppercase → lowercase TF_VAR aliases
     $sharedAliases = [ordered]@{
