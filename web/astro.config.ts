@@ -79,6 +79,12 @@ export default defineConfig({
         '@libsql/client/web': libsqlClientWebPath,
         'better-sqlite3': sqliteShimPath,
         bindings: bindingsShimPath,
+        // shared/push lives outside web/; Rolldown resolves bare imports from
+        // that file, not web/node_modules. Pin the copies web already depends on.
+        jose: fileURLToPath(new URL('./node_modules/jose', import.meta.url)),
+        'webpush-webcrypto': fileURLToPath(
+          new URL('./node_modules/webpush-webcrypto', import.meta.url),
+        ),
       },
     },
     ssr: {
