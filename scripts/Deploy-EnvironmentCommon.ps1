@@ -12,7 +12,7 @@
 # | Version bump default         | Bump unless -SkipVersionBump | No bump unless -BumpVersion | Same as full deploy                 | Same as full deploy                 |
 # | Turso build creds            | Terraform outputs          | Terraform outputs             | None (runtime Worker secrets)       | .env.dev only                       |
 # | wrangler deploy              | --env staging              | --env production              | Web only                            | Web (+ staging vars) + scheduler    |
-# | Post-deploy secret verify    | Yes (web worker)           | Yes (web worker)              | Yes                                 | No                                  |
+# | Post-deploy secret verify    | Yes (web worker)           | Yes (web worker; also -DryRun)| Yes                                 | No                                  |
 # | Turso rollback checkpoint    | No (optional manual)       | Yes before Terraform (full)   | Skipped; use -SkipTursoBackup       | Skipped                             |
 #
 # Production -WorkerOnly: see deploy-production-local.ps1 (resolve-turso-build-credentials; not covered above).
@@ -625,6 +625,20 @@ function Invoke-DeploySchedulerWorkerDeploy {
     }
 }
 
+function Get-DeployRequiredWebWorkerSecretNames {
+    # Names only — wrangler secret list does not return values.
+    # TURSO_* are runtime Worker secrets; -WorkerOnly builds do not read them locally.
+    return @(
+        "AUTH0_DOMAIN",
+        "AUTH0_CLIENT_ID",
+        "AUTH0_CLIENT_SECRET",
+        "EMDASH_AUTH_SECRET",
+        "EMDASH_PREVIEW_SECRET",
+        "TURSO_DATABASE_URL",
+        "TURSO_AUTH_TOKEN"
+    )
+}
+
 function Invoke-DeployWorkerSecretVerification {
     Write-DeployStep "Verifying $($script:DeployEnvironment) Worker secrets"
     Ensure-DeployCloudflareWranglerAuthFromEnv
@@ -636,15 +650,8 @@ function Invoke-DeployWorkerSecretVerification {
             throw "Failed to list $($script:DeployEnvironment) worker secrets."
         }
 
-        $requiredSecrets = @(
-            "AUTH0_DOMAIN",
-            "AUTH0_CLIENT_ID",
-            "AUTH0_CLIENT_SECRET",
-            "EMDASH_AUTH_SECRET",
-            "EMDASH_PREVIEW_SECRET"
-        )
-        foreach ($secretName in $requiredSecrets) {
-            if (-not ($secretOutput -match $secretName)) {
+        foreach ($secretName in (Get-DeployRequiredWebWorkerSecretNames)) {
+            if (-not ($secretOutput -match [regex]::Escape($secretName))) {
                 throw "Expected worker secret '$secretName' was not found."
             }
         }

@@ -64,7 +64,7 @@ Need to deploy?
 | Staging web + scheduler (no Terraform) | `pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly` |
 | Full production local (Terraform + web; auto Turso checkpoint) | `pwsh ./scripts/deploy-production-local.ps1` |
 | Production web worker only | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction` |
-| Dry-run production worker deploy (no build) | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
+| Dry-run production worker deploy (live secret names, no build) | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
 | CI production release (not local wrangler) | `pwsh ./scripts/production-release.ps1 -TerraformMode apply -Watch -AllowProduction` |
 
 When a deploy **fails**, use the [Quick symptom index](#quick-symptom-index) and sections below — do not switch scripts unless the decision table says a different entry point fits the goal.
@@ -140,7 +140,7 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 7. Deploy web worker (`--env production`)
 8. Post-deploy secret verify
 
-**`-WorkerOnly`:** requires `-AllowProduction`. Skips Turso backup, Terraform, and Auth0 sync unless `-SyncCloudflareWorkerSecrets`. Does **not** read Turso credentials — the worker keeps existing Cloudflare `TURSO_*` secrets. `-DryRun` stops before build and deploy.
+**`-WorkerOnly`:** requires `-AllowProduction`. Skips Turso backup, Terraform, and Auth0 sync unless `-SyncCloudflareWorkerSecrets`. Does **not** read Turso credentials — the worker keeps existing Cloudflare `TURSO_*` secrets. `-DryRun` stops before build and deploy after listing live Worker secret **names** (Auth0, EmDash, and `TURSO_*`). It cannot show secret values or prove the Turso host is production.
 
 ```powershell
 pwsh ./scripts/deploy-production-local.ps1
@@ -347,7 +347,7 @@ Keep `.env.dev` Turso values for full deploys, `astro dev`, `-WorkersOnly`, and 
 pwsh ./scripts/sync-production-turso-env-dev.ps1
 ```
 
-`-DryRun` on the production worker-only script skips build and deploy; it does not resolve Turso.
+`-DryRun` on the production script skips build and deploy. It lists live Worker secret **names** (including `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`) and fails if any required name is missing. It does **not** read Terraform / `.env.dev` Turso keys and cannot print secret values. Confirm the libsql host is production in the Cloudflare dashboard if that matters.
 
 ---
 
@@ -444,7 +444,7 @@ Details: [scripts/set-github-secrets.md § Cloudflare Token Permissions](../../s
 
 ## Post-deploy Worker secret verify (local deploy scripts)
 
-`Deploy-EnvironmentCommon.ps1` (via `deploy-staging-local.ps1`, `deploy-production-local.ps1`, and `-WorkerOnly` when deploy runs) lists secrets on the deployed web Worker after `wrangler deploy` and fails if any of these are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`. Skipped for `-WorkersOnly`.
+`Deploy-EnvironmentCommon.ps1` (via `deploy-staging-local.ps1`, `deploy-production-local.ps1`, `-WorkerOnly` after deploy, and production `-DryRun`) lists secrets on the web Worker and fails if any of these **names** are missing: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `EMDASH_AUTH_SECRET`, `EMDASH_PREVIEW_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`. Values are not returned. Skipped for `-WorkersOnly`.
 
 If verify fails after a successful deploy, re-run `pwsh ./scripts/set-github-secrets.ps1 -Target Staging|Production -SyncCloudflareWorkerSecrets` (production requires `-AllowProduction`), then deploy again or put secrets manually with `npx wrangler secret put` from `web/`.
 

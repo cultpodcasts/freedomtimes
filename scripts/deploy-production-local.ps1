@@ -21,6 +21,10 @@ param(
   read Turso credentials — the worker uses existing Cloudflare TURSO_* secrets
   at runtime. Requires -AllowProduction when using -WorkerOnly.
 
+  -DryRun: skip build and deploy. Verifies the live Worker has the required
+  secret *names* (including TURSO_*) via wrangler secret list. Does not resolve
+  local Turso credentials and cannot print secret values.
+
   Version bump default: no bump unless -BumpVersion (production ships the version staging already bumped).
 
   Full deploy creates a Turso rollback checkpoint before Terraform apply (WSL Turso CLI).
@@ -69,6 +73,8 @@ elseif ($SyncCloudflareWorkerSecrets) {
 }
 
 if ($DryRun) {
+    Write-DeployStep "Dry run — verifying live Worker secrets (no build or deploy)"
+    Invoke-DeployWorkerSecretVerification
     Write-DeployStep "Dry run complete — skipping build and deploy"
     Write-Host "Worker name (display): $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
     exit 0
