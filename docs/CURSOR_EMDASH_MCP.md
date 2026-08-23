@@ -136,13 +136,14 @@ This wasted hours on the **23 Aug 2026** weekly when agents followed MCP `base64
 - MCP **`media_upload`** with **`base64`** (or a homemade public URL) for official / large cards
 - **JPEG-crushing** official `generate-social-images.ts` / `draft:push-staging` PNGs to “make them small enough for MCP”
 - **Homemade** OG/social cards (canvas, screenshot, AI image, hand-composited JPEG) in place of the official script
+- Setting **`seo.image`** to a **bare media id** (validates; admin OG Image widget stays empty) or a raw **`storageKey`** without the `/_emdash/api/media/file/` prefix
 
 ### Correct path
 
 1. **Generate** the card with the official script only: **`web/scripts/generate-social-images.ts`** (also invoked from sibling **freedomtimes-agents** `draft:push-staging`). Do not invent a substitute card.
-2. **Put bytes** with the existing CLI exception for binary — **`emdash media upload`** — or Admin / raw R2 put. Schema and post JSON stay MCP-only (`AGENTS.md` §3).
-3. **Library row:** if `emdash media upload` already returned an `id`, use it. After a raw R2 put with no library row, MCP **`media_create`**. If the row exists and you only need metadata, MCP **`media_update`**.
-4. **Point the post at the card:** MCP **`content_update`** with **`seo.image`** set to the **media id string** (the library row `id`). Not `storageKey`, not `/_emdash/api/media/file/…`, not a MediaReference object.
+2. **Put bytes** with the existing CLI exception for binary — **`emdash media upload`** — or **`POST /_emdash/api/media`** multipart (same as `uploadMedia` in `generate-social-images.ts`). Admin / raw R2 put is a last resort. Schema and post JSON stay MCP-only (`AGENTS.md` §3).
+3. **Library row:** if `emdash media upload` or the multipart POST already returned a row, read **`storageKey`** / **`storage_key`** from it (the filename-bearing R2 key, not the bare library `id`). After a raw R2 put with no library row, MCP **`media_create`**. If the row exists and you only need metadata, MCP **`media_update`**.
+4. **Point the post at the card:** MCP **`content_update`** with **`seo.image`** set to the same-origin file path **`/_emdash/api/media/file/<storageKey>`**. That is what `seoImageFieldValueFromNormalizedRow` writes and what the admin OG Image widget displays. A **bare media id** validates but leaves the picker empty. Do **not** store a raw `storageKey` without the `/_emdash/api/media/file/` prefix, and do **not** send a MediaReference object (`ContentSeo.image` is `string | null` only).
 
 ### Staging upload example (PowerShell)
 
@@ -152,14 +153,16 @@ From the **repo root**, after `emdash login` (or with staging URL + token in the
 npx --prefix web emdash media upload .\web\.release\<slug>-social.png --alt "Share preview" -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
 ```
 
-Read **`id`** from the JSON (not `storageKey`). Then MCP `content_update`:
+Read **`storageKey`** / **`storage_key`** from the JSON (not the bare `id`). Then MCP `content_update`:
 
 ```json
 {
   "collection": "posts",
   "id": "<slug>",
-  "seo": { "image": "<media-id>" }
+  "seo": { "image": "/_emdash/api/media/file/<storageKey>" }
 }
 ```
+
+Staging example that worked **23 Aug 2026**: `seo.image` = `/_emdash/api/media/file/01M0QT8Y0RP9SEZSKVMHXBYEXQ.png`.
 
 If MCP is unavailable, **STOP** (`AGENTS.md` Primary guardrails §1). Do **not** fall back to MCP `media_upload` base64, JPEG-crush, or a homemade card.
