@@ -42,6 +42,12 @@ export const EMDASH_OWNED_WELL_KNOWN_PATHS = [
 	EMDASH_OAUTH_PROTECTED_RESOURCE_PATH,
 ] as const;
 
+/** Pre-existing pages route — must not be stolen by OAuth aliases. */
+export const ASSETLINKS_PATH = '/.well-known/assetlinks.json' as const;
+
+export const ASSETLINKS_PAGE_ENDPOINT =
+	'src/pages/.well-known/assetlinks.json.ts' as const;
+
 /** Written by astro:routes:resolved; read by test-emdash-oauth-routes.mts. */
 export const OAUTH_WELL_KNOWN_ROUTE_MANIFEST = '.astro/oauth-well-known-routes.json' as const;
 
@@ -53,7 +59,8 @@ export type OAuthWellKnownRouteRow = {
 export function isOAuthWellKnownRoutePattern(pattern: string): boolean {
 	return (
 		(OAUTH_WELL_KNOWN_ALIAS_PATTERNS as readonly string[]).includes(pattern) ||
-		(EMDASH_OWNED_WELL_KNOWN_PATHS as readonly string[]).includes(pattern)
+		(EMDASH_OWNED_WELL_KNOWN_PATHS as readonly string[]).includes(pattern) ||
+		pattern === ASSETLINKS_PATH
 	);
 }
 

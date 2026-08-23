@@ -4,6 +4,8 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+	ASSETLINKS_PAGE_ENDPOINT,
+	ASSETLINKS_PATH,
 	EMDASH_OAUTH_AUTHORIZATION_SERVER_LEGACY_PATH,
 	EMDASH_OAUTH_AUTHORIZATION_SERVER_RFC_PATH,
 	EMDASH_OAUTH_AUTHORIZATION_SERVER_ROOT_PATH,
@@ -51,5 +53,18 @@ describe('Astro well-known OAuth route manifest', () => {
 			entrypointFile(byPattern.get(EMDASH_OAUTH_PROTECTED_RESOURCE_RFC_PATH) ?? ''),
 			entrypointFile(OAUTH_WELL_KNOWN_ALIAS_ENDPOINT),
 		);
+	});
+
+	it('binds /.well-known/assetlinks.json to the pages route, not the OAuth alias', () => {
+		assert.equal(
+			existsSync(manifestPath),
+			true,
+			`${OAUTH_WELL_KNOWN_ROUTE_MANIFEST} missing — run astro build (npm run build writes it)`,
+		);
+
+		const rows = JSON.parse(readFileSync(manifestPath, 'utf8')) as OAuthWellKnownRouteRow[];
+		const entrypoint = rows.find((row) => row.pattern === ASSETLINKS_PATH)?.entrypoint ?? '';
+		assert.equal(entrypointFile(entrypoint), ASSETLINKS_PAGE_ENDPOINT);
+		assert.doesNotMatch(entrypoint, /oauth-well-known-aliases/);
 	});
 });
