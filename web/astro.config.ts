@@ -80,10 +80,11 @@ export default defineConfig({
         'better-sqlite3': sqliteShimPath,
         bindings: bindingsShimPath,
         // shared/push lives outside web/; Rolldown resolves bare imports from
-        // that file, not web/node_modules. Pin the copies web already depends on.
-        jose: fileURLToPath(new URL('./node_modules/jose', import.meta.url)),
+        // that file, not web/node_modules. Alias the package names to the same
+        // entry files Node/Vite would pick from web/ (jose has no root index).
+        jose: fileURLToPath(new URL('./node_modules/jose/dist/webapi/index.js', import.meta.url)),
         'webpush-webcrypto': fileURLToPath(
-          new URL('./node_modules/webpush-webcrypto', import.meta.url),
+          new URL('./node_modules/webpush-webcrypto/lib/webpush.js', import.meta.url),
         ),
       },
     },
