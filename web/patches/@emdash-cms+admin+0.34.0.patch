@@ -1,0 +1,13 @@
+diff --git a/node_modules/@emdash-cms/admin/dist/index.js b/node_modules/@emdash-cms/admin/dist/index.js
+index 87bdbca..ff67600 100644
+--- a/node_modules/@emdash-cms/admin/dist/index.js
++++ b/node_modules/@emdash-cms/admin/dist/index.js
+@@ -27036,7 +27036,7 @@ function MediaLibrary({ items = [], isLoading, onUpload, onItemUpdated, hasMore,
+ 							ref: fileInputRef,
+ 							type: "file",
+ 							multiple: true,
+-							accept: "image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx",
++							accept: "image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.vtt,.srt",
+ 							className: "sr-only",
+ 							onChange: handleFileSelect,
+ 							"aria-label": _t({
