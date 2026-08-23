@@ -8,7 +8,7 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 
 2. **Database backup before any mutate.** Before Turso/libSQL writes, SQL migrations, seeds, or EmDash content writes (`content_update`, `content_publish`, etc.), create a **recoverable backup** of the target database first. See **`web/CONTENT_PROMOTION_RUNBOOK.md`** and **`docs/CLI_PATHS_WINDOWS.md`**.
 
-3. **EmDash MCP-only for schema and content JSON.** Do **not** use `npx emdash schema …` / `npx emdash content …` to inspect or edit stored **`posts` / `pages` `content`** (Portable Text). Use Cursor MCP (`content_get`, `content_update`, …). CLI exceptions: `emdash login`, `emdash media upload`, `emdash doctor` — auth/upload/diagnostics only. **When writing body content via MCP:** send a **Portable Text array**, never a raw markdown string (see § *EmDash: MCP only* below; sibling **freedomtimes-agents** [AGENTS.md](../freedomtimes-agents/AGENTS.md) §3).
+3. **EmDash MCP-only for schema and content JSON.** Do **not** use `npx emdash schema …` / `npx emdash content …` to inspect or edit stored **`posts` / `pages` `content`** (Portable Text). Use Cursor MCP (`content_get`, `content_update`, …). CLI exceptions: `emdash login`, `emdash media upload` (binary / official OG cards — see §8), `emdash doctor` — auth/upload/diagnostics only. **When writing body content via MCP:** send a **Portable Text array**, never a raw markdown string (see § *EmDash: MCP only* below; sibling **freedomtimes-agents** [AGENTS.md](../freedomtimes-agents/AGENTS.md) §3).
 
 4. **Staging locked — nothing is public.** Never expose anonymous reader or editorial routes on staging. Full policy: **`web/docs/STAGING_ACCESS.md`**.
 
@@ -17,6 +17,8 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 6. **CLI authentication — IF NOT AUTHENTICATED YOU MUST STOP.** When any required CLI reports an auth failure (not logged in, invalid token, permission denied): **STOP immediately.** Name the CLI, give the exact auth command for that tool, tell the operator to authenticate and confirm when ready, then **wait**. **Never** silently fall back to alternate APIs, unauthenticated endpoints, or skip the step unless the operator **explicitly** approves an alternate path in that same session. Applies to **wrangler**, **gh**, **turso**, **emdash login**, **terraform** / provider tokens, **cloudflare**, etc.
 
 7. **Turso CLI (WSL) — IF TURSO AUTH FAILS WE DO NOT BYPASS.** When `wsl bash -lic "turso auth whoami"` fails or reports not logged in: **STOP immediately.** Tell the operator: *"Turso CLI is not authenticated in WSL. Run `wsl bash -lic \"turso auth login\"`, complete login, then tell me when ready."* Then **wait**. **Never** use Platform API or other workarounds for backup/export/import that require an authenticated Turso CLI unless the operator **explicitly** approves an alternate path in that same session. See **`docs/CLI_PATHS_WINDOWS.md`**.
+
+8. **Large media — never MCP `media_upload` base64.** Official OG/social PNGs (typically 200–600KB) **truncate, time out, or become 1×1 placeholders** when sent as MCP `base64`. Ignore the `media_upload` tool’s `base64` hint for those files. Put bytes with **`emdash media upload`** (already a CLI exception for binary — this is the correct path for OG cards) or Admin/raw R2 put; then MCP **`media_create`** if there is no library row, else **`media_update`**; set **`seo.image`** to the **media id string**. Do **not** JPEG-crush or replace official `generate-social-images.ts` / `draft:push-staging` cards. Procedure: **[docs/CURSOR_EMDASH_MCP.md § Large media uploads](docs/CURSOR_EMDASH_MCP.md#large-media-uploads-avoid-mcp-base64-truncation)**. Schema and content JSON remain MCP-only (guardrail §3).
 
 ## CLI paths (Windows vs WSL)
 
@@ -41,7 +43,7 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 
 Repo scripts **`promote-post-staging-to-production.mjs`** and **`merge-staging-post-from-patch.mjs`** apply this rule: staging reads and production writes use **MCP** (or REST only where noted for `_rev` resolution), not `emdash content` / `emdash schema`.
 
-**CLI exceptions (outside schema + content JSON):** e.g. **`emdash login`**, **`emdash media upload`**, **`emdash doctor`** — only when the task is explicitly about auth, binary upload, or local diagnostics, not about inspecting or editing entry JSON.
+**CLI exceptions (outside schema + content JSON):** e.g. **`emdash login`**, **`emdash media upload`** (binary / official OG cards — never MCP `media_upload` base64; see **Primary guardrails** §8), **`emdash doctor`** — only when the task is explicitly about auth, binary upload, or local diagnostics, not about inspecting or editing entry JSON.
 
 **Cursor `call_mcp_tool` vs this repo:** Some agent sessions only register built-in MCP servers (e.g. `cursor-ide-browser`) and do **not** see Freedom Times EmDash servers. That is a **Primary guardrails §1 blocker** — enable servers under **Ctrl+Shift+J → Tools & MCP**, restart Cursor, check **Output → MCP Logs**, then **wait** for the operator.
 

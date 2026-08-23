@@ -119,6 +119,47 @@ Expect `Proxy established successfully` (Ctrl+C to stop).
 | Doc | Topic |
 |-----|--------|
 | `AGENTS.md` | MCP-only guardrail for AI agents |
+| `AGENTS.md` Primary guardrails §8 | Large media: never MCP `media_upload` base64 |
 | `web/docs/DEPLOY.md` | Canonical deploy reference + symptom index (links here) |
 | `web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md` | MCP vs CLI for Portable Text |
+| `web/docs/SOCIAL_IMAGES_AND_FAVICONS.md` | Official OG card sizes and `generate-social-images.ts` |
 | `scripts/set-emdash-mcp-tokens.ps1` | PAT env var setup |
+
+## Large media uploads (avoid MCP base64 truncation)
+
+**Hard rule:** for official OG/social PNGs and any other large media (typically **200–600KB**), **do not** send file bytes through Cursor MCP `media_upload` `base64`. That path truncates, times out, or uploads a 1×1 test file. The R2 **MEDIA** binding has **no signed upload URLs** — ignore the `media_upload` tool text that tells agents to send `base64`, and ignore `media_create` text that assumes a signed URL.
+
+This wasted hours on the **23 Aug 2026** weekly when agents followed MCP `base64` for official cards, then JPEG-crushed the result.
+
+### Forbidden
+
+- MCP **`media_upload`** with **`base64`** (or a homemade public URL) for official / large cards
+- **JPEG-crushing** official `generate-social-images.ts` / `draft:push-staging` PNGs to “make them small enough for MCP”
+- **Homemade** OG/social cards (canvas, screenshot, AI image, hand-composited JPEG) in place of the official script
+
+### Correct path
+
+1. **Generate** the card with the official script only: **`web/scripts/generate-social-images.ts`** (also invoked from sibling **freedomtimes-agents** `draft:push-staging`). Do not invent a substitute card.
+2. **Put bytes** with the existing CLI exception for binary — **`emdash media upload`** — or Admin / raw R2 put. Schema and post JSON stay MCP-only (`AGENTS.md` §3).
+3. **Library row:** if `emdash media upload` already returned an `id`, use it. After a raw R2 put with no library row, MCP **`media_create`**. If the row exists and you only need metadata, MCP **`media_update`**.
+4. **Point the post at the card:** MCP **`content_update`** with **`seo.image`** set to the **media id string** (the library row `id`). Not `storageKey`, not `/_emdash/api/media/file/…`, not a MediaReference object.
+
+### Staging upload example (PowerShell)
+
+From the **repo root**, after `emdash login` (or with staging URL + token in the environment):
+
+```powershell
+npx --prefix web emdash media upload .\web\.release\<slug>-social.png --alt "Share preview" -u $env:EMDASH_STAGING_URL -t $env:EMDASH_STAGING_TOKEN --json
+```
+
+Read **`id`** from the JSON (not `storageKey`). Then MCP `content_update`:
+
+```json
+{
+  "collection": "posts",
+  "id": "<slug>",
+  "seo": { "image": "<media-id>" }
+}
+```
+
+If MCP is unavailable, **STOP** (`AGENTS.md` Primary guardrails §1). Do **not** fall back to MCP `media_upload` base64, JPEG-crush, or a homemade card.
