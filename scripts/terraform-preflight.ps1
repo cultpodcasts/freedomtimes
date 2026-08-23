@@ -51,18 +51,32 @@ function Set-ProcessEnvFromHashtable {
 }
 
 function Get-TfcTokenFromCredentials {
-    $tfcCredsFile = Join-Path $env:APPDATA "terraform.d\credentials.tfrc.json"
-    if (-not (Test-Path $tfcCredsFile)) {
-        return ""
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
+        $candidates += (Join-Path $env:APPDATA "terraform.d\credentials.tfrc.json")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:HOME)) {
+        $candidates += (Join-Path $env:HOME ".terraform.d/credentials.tfrc.json")
     }
 
-    try {
-        $json = Get-Content $tfcCredsFile -Raw | ConvertFrom-Json
-        return [string]$json.credentials."app.terraform.io".token
+    foreach ($tfcCredsFile in $candidates) {
+        if (-not (Test-Path $tfcCredsFile)) {
+            continue
+        }
+
+        try {
+            $json = Get-Content $tfcCredsFile -Raw | ConvertFrom-Json
+            $token = [string]$json.credentials."app.terraform.io".token
+            if (-not [string]::IsNullOrWhiteSpace($token)) {
+                return $token
+            }
+        }
+        catch {
+            continue
+        }
     }
-    catch {
-        return ""
-    }
+
+    return ""
 }
 
 if ($LoadEnvFiles) {
