@@ -495,8 +495,12 @@ function Ensure-DeployCloudflareAccountIdFromEnv {
         return
     }
 
-    $accountId = Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TF_VAR_CLOUDFLARE_ACCOUNT_ID"
-    if ($accountId) {
+    $accountId = Get-DeployFirstNonEmpty -Values @(
+        ([Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_ACCOUNT_ID", "Process")),
+        ([Environment]::GetEnvironmentVariable("CLOUDFLARE_ACCOUNT_ID", "Process")),
+        (Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TF_VAR_CLOUDFLARE_ACCOUNT_ID")
+    )
+    if (-not [string]::IsNullOrWhiteSpace($accountId)) {
         $env:CLOUDFLARE_ACCOUNT_ID = $accountId
     }
 }

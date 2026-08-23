@@ -10,6 +10,11 @@ function Get-PushSecretsEnvFileValue {
         [string]$Key
     )
 
+    $fromProcess = [Environment]::GetEnvironmentVariable($Key, "Process")
+    if (-not [string]::IsNullOrWhiteSpace($fromProcess)) {
+        return $fromProcess.Trim()
+    }
+
     if (-not (Test-Path $Path)) {
         return ""
     }
@@ -110,11 +115,11 @@ function Assert-AndroidFcmSecretsReady {
     }
 
     if ($missing.Count -gt 0) {
-        throw "Missing required $label push secret values in .env.dev: $($missing -join ', ')"
+        throw "Missing required $label push secret values in process environment or .env.dev: $($missing -join ', ')"
     }
 
     if ($placeholders.Count -gt 0) {
-        throw "Unresolved placeholder $label push secret values in .env.dev: $($placeholders -join ', ')"
+        throw "Unresolved placeholder $label push secret values in process environment or .env.dev: $($placeholders -join ', ')"
     }
 
     $allProductionFcmEmpty = $true
@@ -141,7 +146,7 @@ function Assert-PushSecretsReady {
     )
 
     $label = $Target.ToLowerInvariant()
-    $preflightMessage = "Preflight: validating $label push secret inputs in .env.dev"
+    $preflightMessage = "Preflight: validating $label push secret inputs in process environment or .env.dev"
     if (Get-Command Write-Step -ErrorAction SilentlyContinue) {
         Write-Step $preflightMessage
     } else {
@@ -178,11 +183,11 @@ function Assert-PushSecretsReady {
     }
 
     if ($missing.Count -gt 0) {
-        throw "Missing required $label push secret values in .env.dev: $($missing -join ', ')"
+        throw "Missing required $label push secret values in process environment or .env.dev: $($missing -join ', ')"
     }
 
     if ($placeholders.Count -gt 0) {
-        throw "Unresolved placeholder $label push secret values in .env.dev: $($placeholders -join ', ')"
+        throw "Unresolved placeholder $label push secret values in process environment or .env.dev: $($placeholders -join ', ')"
     }
 
     Assert-AndroidFcmSecretsReady -EnvPath $EnvPath -Target $Target

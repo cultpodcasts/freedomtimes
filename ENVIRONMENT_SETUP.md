@@ -782,12 +782,20 @@ TF_VAR_AUTH0_MANAGEMENT_CLIENT_SECRET=<auth0-mgmt-secret>
 
 # STAGING
 TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING=<base64-pfx-cert>
+# Cloud Agent / secret-store size limits: split the PFX base64 instead of the full key.
+# terraform-preflight.ps1 and terraform-run.ps1 join _1 + _2 in memory.
+# TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING_1=<pfx-base64-part-1>
+# TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_STAGING_2=<pfx-base64-part-2>
 TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_STAGING=<pfx-password>
 AUTH0_LOGIN_APP_CLIENT_ID_STAGING=<auth0-client-id>
 AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING=<auth0-client-secret>
 
 # PRODUCTION
 TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION=<base64-pfx-cert>
+# Cloud Agent / secret-store size limits: split the PFX base64 instead of the full key.
+# terraform-preflight.ps1 and terraform-run.ps1 join _1 + _2 in memory.
+# TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION_1=<pfx-base64-part-1>
+# TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_BASE64_PRODUCTION_2=<pfx-base64-part-2>
 TF_VAR_API_CUSTOM_HOSTNAME_CERTIFICATE_PASSWORD_PRODUCTION=<pfx-password>
 AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION=<auth0-client-id>
 AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION=<auth0-client-secret>

@@ -15,7 +15,7 @@ If red/missing: follow [Repair workflow](#repair-workflow) below. **AI agents:**
 On Windows + Cursor + EmDash, direct HTTP config in `mcp.json` often fails:
 
 1. **`${env:EMDASH_*_PAT}` in headers** — Cursor may send the literal string, not the token.
-2. **OAuth discovery** — EmDash exposes `/.well-known/oauth-*`; Cursor and stable `mcp-remote` try OAuth before bearer PAT (HTTP 500).
+2. **OAuth discovery 500 (Worker; first hop only)** — Cursor and stable `mcp-remote` try OAuth before bearer PAT. Production used to **500** on authorization-server metadata (see [OAuth discovery 500](#oauth-discovery-500-http-mcp)). After that Worker fix is deployed, **discovery no longer 500s** — that is the first hop Cursor hits. Authorize, CSRF, DCR, and PAT header interpolation can still fail; the stdio PAT bridge remains the Windows default.
 3. **Multi-root `workspaceFolder`** — `${workspaceFolder}/../freedomtimes/...` can resolve to the wrong root (e.g. Aberdeen Incident) when agents + articles + site are open together.
 
 **Working pattern:** stdio bridge → local `mcp-remote@next` → EmDash HTTP with PAT.
@@ -113,6 +113,58 @@ Expect `Proxy established successfully` (Ctrl+C to stop).
 ## Copilot / VS Code
 
 `/.vscode/mcp.json` uses the `servers` key and HTTP URLs — reference for Copilot. Cursor on Windows should use the **stdio bridge** above.
+
+## OAuth discovery 500 (HTTP MCP)
+
+**Symptom (23 Aug 2026, production Worker `freedomtimes`):** Cursor HTTP MCP died on OAuth discovery.
+
+| Request | Before fix | After fix |
+|---|---|---|
+| `GET /.well-known/oauth-authorization-server/_emdash` | 302 → crashing path | **200** JSON from **EmDash** (we no longer 302) |
+| `GET /.well-known/oauth-authorization-server` | Worker 1101 (no `routeData`) | **404** — no origin-root AS (issuer is `/_emdash`; do not 302) |
+| `GET /_emdash/.well-known/oauth-authorization-server` | Worker 1101 (no `routeData`) | **302** `Location: https://…/.well-known/oauth-authorization-server/_emdash` |
+| `GET /.well-known/oauth-protected-resource` | 200 (already worked) | 200 (unchanged, EmDash) |
+| `GET /.well-known/oauth-protected-resource/_emdash/api/mcp` | Worker 1101 (middleware 302 never ran) | **302** toward EmDash’s protected-resource document |
+
+**Root cause:** EmDash 0.34 serves RFC 8414 metadata at `/.well-known/oauth-authorization-server/_emdash` only. Site middleware 302'd that working path to `/_emdash/.well-known/oauth-authorization-server`, which **is not an EmDash route**. The unsuffixed root path also had no Astro route, so it never reached middleware. Unmatched Worker paths take the Astro Cloudflare entry's no-`routeData` fallback, which calls `.fetch` on an undefined binding (often `env.ASSETS` in that branch) and throws (Cloudflare 1101). Staging OAuth discovery 500'd the same way; staging MCP still worked via the stdio PAT bridge, which never needs this document.
+
+**Fix:** stop redirecting the RFC path so EmDash can serve it. Register only paths EmDash does not (worker-entry needs `routeData`):
+
+- Legacy `/_emdash/.well-known/oauth-authorization-server` — the URL *we* used to send clients to — **302** to the RFC path (absolute `Location`, `Access-Control-Allow-Origin: *`).
+- Origin-root `/.well-known/oauth-authorization-server` — **404**. A 302 would relocate issuer (`https://origin` → `https://origin/_emdash`).
+- RFC 9728 `/.well-known/oauth-protected-resource/_emdash/api/mcp` — **302** toward EmDash’s unsuffixed protected-resource document (the old middleware 302 was dead: no `routeData`). That 302 is toward an EmDash route, not away from one.
+
+Do not serve or re-export metadata JSON. Do not inject EmDash’s RFC paths. Auth0 lock / `AUTH_BYPASS_RULES` unchanged. `npm run build` runs the route-table test against `web/dist`.
+
+**Confirm on staging after merge/deploy** (anonymous; no Auth0 session):
+
+```bash
+curl -sS -D - -o /tmp/as.json \
+  https://staging.freedomtimes.news/.well-known/oauth-authorization-server/_emdash
+# Expect: HTTP 200, content-type application/json
+# Body: issuer https://staging.freedomtimes.news/_emdash,
+#        authorization_endpoint …/_emdash/oauth/authorize,
+#        token_endpoint …/_emdash/api/oauth/token
+
+curl -sSI https://staging.freedomtimes.news/.well-known/oauth-authorization-server
+# 404 (not 302, not 500 / Worker 1101)
+
+curl -sSI https://staging.freedomtimes.news/_emdash/.well-known/oauth-authorization-server
+# 302 Location: https://staging.freedomtimes.news/.well-known/oauth-authorization-server/_emdash
+
+curl -sSIL -o /tmp/as-via-alias.json \
+  https://staging.freedomtimes.news/_emdash/.well-known/oauth-authorization-server
+# Final status 200; body same issuer as the RFC path.
+
+curl -sSI https://staging.freedomtimes.news/.well-known/oauth-protected-resource/_emdash/api/mcp
+# 302 Location: https://staging.freedomtimes.news/.well-known/oauth-protected-resource
+```
+
+Handler tests (no build): `cd web && npm run test:oauth-discovery`.
+
+Route-table test (fails if `.astro/oauth-well-known-routes.json` is missing): `npm run test:oauth-discovery:routes`. `npm run build` writes that manifest and runs both.
+
+Do **not** deploy production from this change unless an operator explicitly asks.
 
 ## Related docs
 

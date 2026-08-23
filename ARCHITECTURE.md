@@ -180,7 +180,7 @@ flowchart LR
 Important current details:
 
 - Middleware explicitly keeps `/_emdash/*` and related OAuth discovery paths outside the outer Auth0 gate so EmDash can complete its own OAuth and MCP flows.
-- The Worker normalizes some OAuth query parameters for EmDash clients and exposes compatibility redirects for `.well-known` metadata routes.
+- The Worker normalizes some OAuth query parameters for EmDash clients. EmDash serves RFC 8414 authorization-server metadata at `/.well-known/oauth-authorization-server/_emdash`. The abandoned `/_emdash/.well-known/…` URL 302s to that path; the origin-root well-known 404s.
 - The build includes a small post-build patch step that improves EmDash publish diagnostics in Workers and guards against a known publish-time schema drift problem while upstream behavior is being validated.
 - Public rendering is driven by EmDash's published/live state.
 

@@ -15,7 +15,7 @@ Editorial authentication is **same-origin** on the Cloudflare Worker: Auth0 sess
 | `/auth/logout` | Clears app session and logs out at Auth0 |
 | `/signed-in` | Protected admin page |
 
-Middleware keeps `/_emdash/*` and OAuth discovery paths outside the outer Auth0 gate so EmDash can complete its own OAuth and MCP flows.
+Middleware keeps `/_emdash/*` and OAuth discovery paths outside the outer Auth0 gate so EmDash can complete its own OAuth and MCP flows. EmDash serves RFC 8414 metadata at `/.well-known/oauth-authorization-server/_emdash`. The abandoned `/_emdash/.well-known/oauth-authorization-server` URL 302s to that path; the origin-root well-known 404s (no origin-root issuer). See `docs/CURSOR_EMDASH_MCP.md`.
 
 ## Environment variables
 

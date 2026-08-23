@@ -4,7 +4,10 @@ import type { APIRoute } from 'astro';
  * Android Digital Asset Links for package `news.freedomtimes.app`.
  *
  * Served at `/.well-known/assetlinks.json` (AUTH_BYPASS under `/.well-known/`).
- * Without this route, unknown `/.well-known/*` paths hit EmDash and return Worker 1101.
+ * Without this route, unknown `/.well-known/*` paths miss Astro routeData and
+ * the Cloudflare worker entry's unmatched-route fallback 1101s.
+ * OAuth well-known aliases are `src/endpoints/oauth-well-known-aliases.ts`;
+ * do not fold them into this file.
  *
  * Fingerprints (SHA-256, colon-separated, from keytool / apksigner):
  * - Android debug keystore (`~/.android/debug.keystore`, alias androiddebugkey)
