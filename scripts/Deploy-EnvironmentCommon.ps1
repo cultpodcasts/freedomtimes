@@ -10,7 +10,7 @@
 # | Secret sync                  | Always                     | Always                        | Only with -SyncCloudflareWorkerSecrets | Only with -SyncCloudflareWorkerSecrets |
 # | CLOUDFLARE_ACCOUNT_ID bootstrap | Yes                     | No                            | When syncing secrets                | Load .env.dev; when syncing secrets |
 # | Version bump default         | Bump unless -SkipVersionBump | No bump unless -BumpVersion | Same as full deploy                 | Same as full deploy                 |
-# | Turso build creds            | Terraform outputs          | Terraform outputs             | Staging: Terraform outputs          | .env.dev only                       |
+# | Turso build creds            | Terraform outputs          | Terraform outputs             | None (runtime Worker secrets)       | .env.dev only                       |
 # | wrangler deploy              | --env staging              | --env production              | Web only                            | Web (+ staging vars) + scheduler    |
 # | Post-deploy secret verify    | Yes (web worker)           | Yes (web worker)              | Yes                                 | No                                  |
 # | Turso rollback checkpoint    | No (optional manual)       | Yes before Terraform (full)   | Skipped; use -SkipTursoBackup       | Skipped                             |
@@ -246,18 +246,20 @@ function Set-DeployTursoBuildEnvFromTerraform {
     $env:TURSO_AUTH_TOKEN = Get-DeployTerraformOutputRaw -Name "turso_database_auth_token"
 }
 
-function Set-DeployTursoBuildEnvForWorkerOnly {
-    if ($script:DeployIsStaging) {
-        Write-DeployStep "Reading Turso build credentials from Terraform outputs"
-        Set-DeployTursoBuildEnvFromTerraform
+function Ensure-DeployCloudflareWranglerAuthFromEnv {
+    Ensure-DeployCloudflareAccountIdFromEnv
+
+    if (-not [string]::IsNullOrWhiteSpace($env:CLOUDFLARE_API_TOKEN)) {
         return
     }
 
-    Write-DeployStep "Resolving Turso build credentials (Terraform or .env.dev)"
-    . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
-    $resolved = Set-TursoBuildEnv -Environment production -RepoRoot $script:DeployRepoRoot
-    Write-Host "  TURSO_DATABASE_URL <= $($resolved.Url.Source)" -ForegroundColor DarkGray
-    Write-Host "  TURSO_AUTH_TOKEN   <= $($resolved.Token.Source)" -ForegroundColor DarkGray
+    $token = Get-DeployFirstNonEmpty -Values @(
+        ([Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_API_TOKEN", "Process")),
+        (Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TF_VAR_CLOUDFLARE_API_TOKEN")
+    )
+    if (-not [string]::IsNullOrWhiteSpace($token)) {
+        $env:CLOUDFLARE_API_TOKEN = $token
+    }
 }
 
 function Get-DeployWorkerName {
@@ -267,12 +269,19 @@ function Get-DeployWorkerName {
         return Get-DeployTerraformOutputRaw -Name "worker_name"
     }
 
-    if ($script:DeployIsStaging) {
-        return Get-DeployTerraformOutputRaw -Name "worker_name"
+    # -WorkerOnly must not require Terraform. Prefer env / .env.dev, then a
+    # best-effort terraform probe, then the known script name.
+    $envKey = if ($script:DeployIsStaging) { "TF_VAR_WORKER_NAME_STAGING" } else { "TF_VAR_WORKER_NAME_PRODUCTION" }
+    $defaultName = if ($script:DeployIsStaging) { "freedomtimes-staging" } else { "freedomtimes" }
+
+    $fromEnv = Get-DeployFirstNonEmpty -Values @(
+        ([Environment]::GetEnvironmentVariable($envKey, "Process")),
+        (Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key $envKey)
+    )
+    if (-not [string]::IsNullOrWhiteSpace($fromEnv)) {
+        return $fromEnv
     }
 
-    # Production -WorkerOnly: best-effort name for display. Never fail the deploy
-    # after wrangler succeeded — terraform output is optional here.
     try {
         . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
         $terraformExe = Resolve-TerraformExecutable
@@ -282,15 +291,10 @@ function Get-DeployWorkerName {
         }
     }
     catch {
-        # Fall through to env / default. Callers print this after a successful deploy.
+        # Fall through to the known Worker name. Callers print this after deploy.
     }
 
-    $workerFromEnv = [Environment]::GetEnvironmentVariable("TF_VAR_WORKER_NAME_PRODUCTION", "Process")
-    if (-not [string]::IsNullOrWhiteSpace($workerFromEnv)) {
-        return $workerFromEnv.Trim()
-    }
-
-    return "freedomtimes"
+    return $defaultName
 }
 
 function Invoke-DeployPushSecretsPreflight {
@@ -560,7 +564,7 @@ function Invoke-DeployWorkerBuild {
         Assert-DeployRequiredBuildEnv
     }
     elseif ($WorkerOnly) {
-        Set-DeployTursoBuildEnvForWorkerOnly
+        Write-DeployStep "Skipping Turso build credentials (-WorkerOnly uses runtime Worker secrets)"
     }
     else {
         Set-DeployTursoBuildEnvFromTerraform
@@ -589,9 +593,11 @@ function Invoke-DeployWorkerDeploy {
     )
 
     Write-DeployStep "Deploying $($script:DeployEnvironment) Worker"
+    Ensure-DeployCloudflareWranglerAuthFromEnv
+    $wranglerConfig = Join-Path $script:DeployRepoRoot "web/wrangler.jsonc"
     Push-Location $script:DeployRepoRoot
     try {
-        & npx wrangler deploy --config .\web\wrangler.jsonc --env $script:DeployEnvironment @WranglerVarArgs
+        & npx wrangler deploy --config $wranglerConfig --env $script:DeployEnvironment @WranglerVarArgs
         if ($LASTEXITCODE -ne 0) {
             throw "Wrangler worker deploy failed."
         }
@@ -621,9 +627,11 @@ function Invoke-DeploySchedulerWorkerDeploy {
 
 function Invoke-DeployWorkerSecretVerification {
     Write-DeployStep "Verifying $($script:DeployEnvironment) Worker secrets"
+    Ensure-DeployCloudflareWranglerAuthFromEnv
+    $wranglerConfig = Join-Path $script:DeployRepoRoot "web/wrangler.jsonc"
     Push-Location $script:DeployRepoRoot
     try {
-        $secretOutput = & npx wrangler secret list --config .\web\wrangler.jsonc --env $script:DeployEnvironment
+        $secretOutput = & npx wrangler secret list --config $wranglerConfig --env $script:DeployEnvironment
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to list $($script:DeployEnvironment) worker secrets."
         }

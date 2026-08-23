@@ -11,18 +11,16 @@ import { embedsPlugin } from '@emdash-cms/plugin-embeds';
 import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
-if (!process.env.TURSO_DATABASE_URL) {
-  throw new Error('TURSO_DATABASE_URL is required for build');
-}
-
 const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.ts', import.meta.url));
 const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
+// Build-time Turso is optional. Worker-only deploys leave TURSO_* unset; the
+// libsql shim prefers Cloudflare Worker secrets at runtime (kysely-libsql.ts).
 const emdashDatabase = {
   entrypoint: libsqlShimEntryUrl,
   config: {
-    url: process.env.TURSO_DATABASE_URL,
-    authToken: process.env.TURSO_AUTH_TOKEN,
+    url: process.env.TURSO_DATABASE_URL?.trim() || 'libsql://unused-at-build.invalid',
+    authToken: process.env.TURSO_AUTH_TOKEN?.trim() || '',
   },
   type: 'sqlite',
 } as const;

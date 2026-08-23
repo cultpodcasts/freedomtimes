@@ -15,8 +15,9 @@ param(
   secret sync, build, wrangler deploy, post-deploy secret verify.
 
   -WorkerOnly: skip Terraform and infra steps; build and deploy the web worker only.
-  Turso build creds read from Terraform outputs. Pass -SyncCloudflareWorkerSecrets to
-  re-sync Cloudflare secrets first.
+  Does not read Turso credentials — the worker uses existing Cloudflare TURSO_*
+  secrets at runtime. Pass -SyncCloudflareWorkerSecrets to re-sync Cloudflare
+  secrets first.
 
   -WorkersOnly: skip Terraform; load Turso build creds from .env.dev only; build and
   deploy web + scheduler workers (freedomtimes-staging, freedomtimes-scheduler-staging).

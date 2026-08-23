@@ -17,8 +17,9 @@ param(
   Full deploy (default): Terraform apply, Auth0 .env.dev sync, secret sync,
   build, wrangler deploy, post-deploy secret verify.
 
-  -WorkerOnly: skip Terraform; resolve Turso build creds from Terraform outputs or .env.dev.
-  Requires -AllowProduction when using -WorkerOnly.
+  -WorkerOnly: skip Terraform; build and deploy the web worker only. Does not
+  read Turso credentials — the worker uses existing Cloudflare TURSO_* secrets
+  at runtime. Requires -AllowProduction when using -WorkerOnly.
 
   Version bump default: no bump unless -BumpVersion (production ships the version staging already bumped).
 

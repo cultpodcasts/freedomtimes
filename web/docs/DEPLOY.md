@@ -64,7 +64,7 @@ Need to deploy?
 | Staging web + scheduler (no Terraform) | `pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly` |
 | Full production local (Terraform + web; auto Turso checkpoint) | `pwsh ./scripts/deploy-production-local.ps1` |
 | Production web worker only | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction` |
-| Verify production Turso creds without deploy | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
+| Dry-run production worker deploy (no build) | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
 | CI production release (not local wrangler) | `pwsh ./scripts/production-release.ps1 -TerraformMode apply -Watch -AllowProduction` |
 
 When a deploy **fails**, use the [Quick symptom index](#quick-symptom-index) and sections below — do not switch scripts unless the decision table says a different entry point fits the goal.
@@ -107,11 +107,11 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 4. Enforce publish-only collection `supports` for `posts` / `pages` (EmDash SQL)
 5. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`)
 6. Bump `web/package.json` patch version (unless `-SkipVersionBump`)
-7. Build (`npm run build` in `web/`; Turso creds from Terraform outputs)
+7. Build (`npm run build` in `web/`; Turso creds from Terraform outputs on full deploy only)
 8. Deploy web worker (`npx wrangler deploy --config .\web\wrangler.jsonc --env staging` from repo root)
 9. Post-deploy secret verify (required Auth0 + EmDash secrets on worker)
 
-**`-WorkerOnly`:** skips steps 2–5 unless `-SyncCloudflareWorkerSecrets` (then step 5 runs with `CLOUDFLARE_ACCOUNT_ID` bootstrap from `.env.dev`). Turso build creds still read from Terraform outputs. Runs steps 1, 6–9. Does **not** deploy the scheduler worker or Azure Function App.
+**`-WorkerOnly`:** skips steps 2–5 unless `-SyncCloudflareWorkerSecrets` (then step 5 runs with `CLOUDFLARE_ACCOUNT_ID` bootstrap from `.env.dev`). Does **not** read Turso credentials — Astro build uses a placeholder and the worker keeps existing Cloudflare `TURSO_*` secrets. Runs steps 1, 6–9. Does **not** deploy the scheduler worker or Azure Function App.
 
 **`-WorkersOnly`:** skips steps 2–5 unless `-SyncCloudflareWorkerSecrets` (then step 5 runs). Loads Turso build creds from `.env.dev` only (not Terraform). Runs push preflight, optional secret sync, version bump, build, fresh-build check, web deploy (with staging wrangler vars), and scheduler deploy. No post-deploy secret verify.
 
@@ -140,7 +140,7 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 7. Deploy web worker (`--env production`)
 8. Post-deploy secret verify
 
-**`-WorkerOnly`:** requires `-AllowProduction`. Skips Turso backup, Terraform, and Auth0 sync unless `-SyncCloudflareWorkerSecrets`. Resolves Turso build creds via `resolve-turso-build-credentials.ps1` (Terraform output → `.env.dev` → derived URL). `-DryRun` stops after credential resolution (no build or deploy).
+**`-WorkerOnly`:** requires `-AllowProduction`. Skips Turso backup, Terraform, and Auth0 sync unless `-SyncCloudflareWorkerSecrets`. Does **not** read Turso credentials — the worker keeps existing Cloudflare `TURSO_*` secrets. `-DryRun` stops before build and deploy.
 
 ```powershell
 pwsh ./scripts/deploy-production-local.ps1
@@ -339,28 +339,15 @@ Expect `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. If missing:
 
 ### What happened
 
-`deploy-production-local.ps1 -WorkerOnly` used to require non-null Terraform outputs for `turso_database_url` and `turso_database_auth_token`. After adding scheduler, subscriptions, and tips Turso databases, production workspace outputs for **URLs** (and most tokens) can be **null** until `terraform apply` runs — even when databases already exist and credentials live in `.env.dev`.
+`deploy-production-local.ps1 -WorkerOnly` used to require Turso URL/token from Terraform outputs (or `.env.dev` via `resolve-turso-build-credentials.ps1`) because `astro.config.ts` refused to load without `TURSO_DATABASE_URL`. Worker-only deploys do **not** need those credentials: the libsql shim reads `TURSO_*` from Cloudflare Worker secrets at runtime.
 
-Staging avoids this with `deploy-staging-local.ps1 -WorkersOnly`, which loads `.env.dev` only.
+Keep `.env.dev` Turso values for full deploys, `astro dev`, `-WorkersOnly`, and secret sync. Refresh them when outputs exist:
 
-### Fix (no terraform apply)
+```powershell
+pwsh ./scripts/sync-production-turso-env-dev.ps1
+```
 
-1. Ensure production Turso values exist in repo-root `.env.dev` (see [`.env.dev.example`](../../.env.dev.example) § Production Turso):
-   - **EmDash build:** `TURSO_PRODUCTION_EMDASH_DB_URL`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (preferred when `TURSO_DATABASE_URL` points at staging for local dev)
-   - **Scheduler / subscriptions / tips:** `TURSO_PRODUCTION_*` or unprefixed `TURSO_SCHEDULER_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_TIPS_*`
-2. Refresh from Terraform when outputs exist, or derive URLs when only names/default DB names are known:
-
-   ```powershell
-   pwsh ./scripts/sync-production-turso-env-dev.ps1
-   ```
-
-3. Verify credential resolution without building or deploying:
-
-   ```powershell
-   pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun
-   ```
-
-`deploy-production-local.ps1 -WorkerOnly` now uses `scripts/resolve-turso-build-credentials.ps1`: Terraform output first, then `.env.dev`, then derived `libsql://` URL from a production host suffix plus `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` (default `freedomtimes-emdash-production`).
+`-DryRun` on the production worker-only script skips build and deploy; it does not resolve Turso.
 
 ---
 
@@ -582,7 +569,7 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 |---------|--------------|-----|
 | `Turso CLI is not authenticated in WSL` during production deploy | WSL Turso not logged in | `wsl bash -lic "turso auth login"`; see [Turso rollback checkpoint](#turso-rollback-checkpoint-production-deploy) |
 | `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); `deploy-production-local.ps1` has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
-| `Failed to read terraform output 'turso_database_url'` during `deploy-production-local.ps1 -WorkerOnly` | Production Turso URL outputs null in Terraform state (new DB resources not applied) while `.env.dev` lacks production EmDash keys | Populate `TURSO_PRODUCTION_EMDASH_DB_URL` / `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (or production `TURSO_SUBSCRIPTIONS_*` URLs for host-suffix derivation) in `.env.dev`; run `pwsh ./scripts/sync-production-turso-env-dev.ps1`; verify with `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
+| `Failed to read terraform output 'turso_database_url'` | Full deploy (or leftover WorkerOnly path) still reading Terraform Turso outputs | Worker-only deploys should skip Turso. For full deploy / `-WorkersOnly`, populate `.env.dev` or apply Terraform so outputs exist |
 | `Missing required production push secret values` (FCM labels mention production **or** staging) | No FCM keys at all in `.env.dev` | Run `populate-android-fcm-env.ps1` or set `PUSH_STAGING_ANDROID_FCM_*` / `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |
 | `Refusing to sync placeholder value for Worker secret` | Secret sync hit a template value | Same as above |
