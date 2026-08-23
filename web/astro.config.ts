@@ -8,6 +8,10 @@ import type { PluginDescriptor } from 'emdash';
 import { r2 } from '@emdash-cms/cloudflare';
 import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
 import { embedsPlugin } from '@emdash-cms/plugin-embeds';
+import {
+  OAUTH_WELL_KNOWN_ALIAS_ENDPOINT,
+  OAUTH_WELL_KNOWN_ALIAS_PATTERNS,
+} from './src/endpoints/oauth-well-known-aliases';
 import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
@@ -104,6 +108,16 @@ export default defineConfig({
   },
   integrations: [
     react(),
+    {
+      name: 'freedomtimes-oauth-well-known-aliases',
+      hooks: {
+        'astro:config:setup'({ injectRoute }) {
+          for (const pattern of OAUTH_WELL_KNOWN_ALIAS_PATTERNS) {
+            injectRoute({ pattern, entrypoint: OAUTH_WELL_KNOWN_ALIAS_ENDPOINT });
+          }
+        },
+      },
+    },
     emdash({
       mcp: true,
       database: emdashDatabase,

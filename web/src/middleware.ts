@@ -212,20 +212,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  // Some OAuth clients use RFC 8414 path variants for issuers/resources with paths.
-  // EmDash serves metadata under /_emdash; expose compatibility aliases at root.
-  if (
-    path === '/.well-known/oauth-authorization-server'
-    || path === '/.well-known/oauth-authorization-server/_emdash'
-  ) {
-    return context.redirect('/_emdash/.well-known/oauth-authorization-server', 302);
-  }
-
-  if (
-    path === '/.well-known/oauth-protected-resource/_emdash/api/mcp'
-  ) {
-    return context.redirect('/.well-known/oauth-protected-resource', 302);
-  }
+  // EmDash serves RFC 8414 metadata at
+  // `/.well-known/oauth-authorization-server/_emdash`. Do not 302 that onto
+  // `/_emdash/.well-known/oauth-authorization-server` — that path is not an
+  // EmDash route and unmatched Worker paths 1101. The legacy URL and the
+  // RFC 9728 protected-resource suffix are dedicated alias routes (see
+  // `oauth-well-known-aliases.ts`): they 302 *toward* EmDash’s documents.
+  // Do not 302 well-known discovery in this middleware — no routeData, no
+  // handler (the previous AS 302 was this class of bug).
 
   // Some MCP clients do not send scope/slug on authorize, which EmDash rejects.
   // Normalize these query params so OAuth can complete.
