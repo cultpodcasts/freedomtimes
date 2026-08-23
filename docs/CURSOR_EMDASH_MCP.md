@@ -160,7 +160,9 @@ curl -sSI https://staging.freedomtimes.news/.well-known/oauth-protected-resource
 # 302 Location: https://staging.freedomtimes.news/.well-known/oauth-protected-resource
 ```
 
-Unit tests: `cd web && npm run test:oauth-discovery` (route-table assertions run when `web/dist` exists, and on every `npm run build`).
+Handler tests (no build): `cd web && npm run test:oauth-discovery`.
+
+Route-table test (fails if `.astro/oauth-well-known-routes.json` is missing): `npm run test:oauth-discovery:routes`. `npm run build` writes that manifest and runs both.
 
 Do **not** deploy production from this change unless an operator explicitly asks.
 

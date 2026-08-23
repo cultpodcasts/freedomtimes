@@ -1,5 +1,7 @@
 import { defineConfig } from 'astro/config';
 import type { Plugin } from 'vite';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
@@ -11,7 +13,9 @@ import { embedsPlugin } from '@emdash-cms/plugin-embeds';
 import {
   OAUTH_WELL_KNOWN_ALIAS_ENDPOINT,
   OAUTH_WELL_KNOWN_ALIAS_PATTERNS,
-} from './src/endpoints/oauth-well-known-aliases';
+  OAUTH_WELL_KNOWN_ROUTE_MANIFEST,
+  oauthWellKnownRouteRows,
+} from './src/lib/oauth-well-known-paths';
 import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
@@ -115,6 +119,20 @@ export default defineConfig({
           for (const pattern of OAUTH_WELL_KNOWN_ALIAS_PATTERNS) {
             injectRoute({ pattern, entrypoint: OAUTH_WELL_KNOWN_ALIAS_ENDPOINT });
           }
+        },
+        'astro:routes:resolved'({ routes }) {
+          const dest = fileURLToPath(new URL(`./${OAUTH_WELL_KNOWN_ROUTE_MANIFEST}`, import.meta.url));
+          mkdirSync(dirname(dest), { recursive: true });
+          writeFileSync(
+            dest,
+            `${JSON.stringify(
+              oauthWellKnownRouteRows(
+                routes.map((route) => ({ pattern: route.pattern, entrypoint: route.entrypoint })),
+              ),
+              null,
+              2,
+            )}\n`,
+          );
         },
       },
     },

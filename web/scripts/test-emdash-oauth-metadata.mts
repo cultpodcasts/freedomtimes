@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import {
+	oauthWellKnownAliasOptions,
+	oauthWellKnownAliasResponse,
+} from '../src/endpoints/oauth-well-known-aliases.ts';
 import {
 	EMDASH_OAUTH_AUTHORIZATION_SERVER_LEGACY_PATH,
 	EMDASH_OAUTH_AUTHORIZATION_SERVER_RFC_PATH,
@@ -12,8 +15,8 @@ import {
 	EMDASH_OAUTH_PROTECTED_RESOURCE_RFC_PATH,
 	OAUTH_WELL_KNOWN_ALIAS_ENDPOINT,
 	OAUTH_WELL_KNOWN_ALIAS_PATTERNS,
-	oauthWellKnownAliasResponse,
-} from '../src/endpoints/oauth-well-known-aliases.ts';
+	oauthWellKnownRouteRows,
+} from '../src/lib/oauth-well-known-paths.ts';
 
 const origin = 'https://staging.freedomtimes.news';
 const middlewareSource = readFileSync(
@@ -24,26 +27,9 @@ const astroConfigSource = readFileSync(
 	fileURLToPath(new URL('../astro.config.ts', import.meta.url)),
 	'utf8',
 );
-const distChunksDir = fileURLToPath(new URL('../dist/server/chunks', import.meta.url));
-const hasDist = existsSync(distChunksDir);
 
 function urlFor(path: string): URL {
 	return new URL(path, origin);
-}
-
-function routeComponentsFromDist(): Map<string, string> {
-	const map = new Map<string, string>();
-	if (!existsSync(distChunksDir)) {
-		return map;
-	}
-	const re = /"route":\s*"([^"]+)"[\s\S]{0,800}?"component":\s*"([^"]+)"/g;
-	for (const file of readdirSync(distChunksDir).filter((name) => name.endsWith('.mjs'))) {
-		const text = readFileSync(join(distChunksDir, file), 'utf8');
-		for (const match of text.matchAll(re)) {
-			map.set(match[1], match[2]);
-		}
-	}
-	return map;
 }
 
 describe('oauthWellKnownAliasResponse', () => {
@@ -59,8 +45,27 @@ describe('oauthWellKnownAliasResponse', () => {
 		assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
 	});
 
+	it('treats a trailing slash on the legacy URL the same as the canonical path', () => {
+		const response = oauthWellKnownAliasResponse(
+			urlFor(`${EMDASH_OAUTH_AUTHORIZATION_SERVER_LEGACY_PATH}/`),
+		);
+		assert.equal(response.status, 302);
+		assert.equal(
+			response.headers.get('Location'),
+			`${origin}${EMDASH_OAUTH_AUTHORIZATION_SERVER_RFC_PATH}`,
+		);
+	});
+
 	it('404s the origin-root authorization-server well-known (no issuer relocation)', () => {
 		const response = oauthWellKnownAliasResponse(urlFor(EMDASH_OAUTH_AUTHORIZATION_SERVER_ROOT_PATH));
+		assert.equal(response.status, 404);
+		assert.equal(response.headers.get('Location'), null);
+	});
+
+	it('404s the origin-root path with a trailing slash', () => {
+		const response = oauthWellKnownAliasResponse(
+			urlFor(`${EMDASH_OAUTH_AUTHORIZATION_SERVER_ROOT_PATH}/`),
+		);
 		assert.equal(response.status, 404);
 		assert.equal(response.headers.get('Location'), null);
 	});
@@ -69,6 +74,23 @@ describe('oauthWellKnownAliasResponse', () => {
 		const response = oauthWellKnownAliasResponse(urlFor(EMDASH_OAUTH_PROTECTED_RESOURCE_RFC_PATH));
 		assert.equal(response.status, 302);
 		assert.equal(response.headers.get('Location'), `${origin}${EMDASH_OAUTH_PROTECTED_RESOURCE_PATH}`);
+	});
+
+	it('treats a trailing slash on the protected-resource suffix the same as the canonical path', () => {
+		const response = oauthWellKnownAliasResponse(
+			urlFor(`${EMDASH_OAUTH_PROTECTED_RESOURCE_RFC_PATH}/`),
+		);
+		assert.equal(response.status, 302);
+		assert.equal(response.headers.get('Location'), `${origin}${EMDASH_OAUTH_PROTECTED_RESOURCE_PATH}`);
+	});
+});
+
+describe('oauthWellKnownAliasOptions', () => {
+	it('returns 204 with CORS for browser preflight', () => {
+		const response = oauthWellKnownAliasOptions();
+		assert.equal(response.status, 204);
+		assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+		assert.equal(response.headers.get('Access-Control-Allow-Methods'), 'GET, HEAD, OPTIONS');
 	});
 });
 
@@ -91,8 +113,28 @@ describe('alias inject list', () => {
 			),
 			false,
 		);
-		assert.match(astroConfigSource, /OAUTH_WELL_KNOWN_ALIAS_PATTERNS/);
+		assert.match(astroConfigSource, /from '\.\/src\/lib\/oauth-well-known-paths'/);
+		assert.doesNotMatch(astroConfigSource, /from '\.\/src\/endpoints\/oauth-well-known-aliases'/);
 		assert.equal(OAUTH_WELL_KNOWN_ALIAS_ENDPOINT, './src/endpoints/oauth-well-known-aliases.ts');
+	});
+
+	it('filters resolved routes to the five well-known OAuth paths', () => {
+		const rows = oauthWellKnownRouteRows([
+			{ pattern: '/robots.txt', entrypoint: './src/pages/robots.txt.ts' },
+			{
+				pattern: EMDASH_OAUTH_AUTHORIZATION_SERVER_RFC_PATH,
+				entrypoint: 'node_modules/emdash/dist/astro/routes/api/well-known/oauth-authorization-server.mjs',
+			},
+			{
+				pattern: EMDASH_OAUTH_AUTHORIZATION_SERVER_LEGACY_PATH,
+				entrypoint: OAUTH_WELL_KNOWN_ALIAS_ENDPOINT,
+			},
+			{ pattern: '/homepage', entrypoint: './src/pages/homepage.astro' },
+		]);
+		assert.deepEqual(
+			rows.map((row) => row.pattern),
+			[EMDASH_OAUTH_AUTHORIZATION_SERVER_LEGACY_PATH, EMDASH_OAUTH_AUTHORIZATION_SERVER_RFC_PATH],
+		);
 	});
 });
 
@@ -100,29 +142,5 @@ describe('middleware must not steal EmDash well-known documents', () => {
 	it('does not 302 authorization-server or protected-resource discovery', () => {
 		assert.doesNotMatch(middlewareSource, /redirect\([^)]*oauth-authorization-server/);
 		assert.doesNotMatch(middlewareSource, /redirect\([^)]*oauth-protected-resource/);
-	});
-});
-
-describe('built Worker route table', () => {
-	it('binds RFC documents to EmDash and aliases to the well-known endpoint', (t) => {
-		if (!hasDist) {
-			t.skip('web/dist/server/chunks missing — run astro build (npm run build always does)');
-			return;
-		}
-
-		const routes = routeComponentsFromDist();
-		const rfcAs = routes.get(EMDASH_OAUTH_AUTHORIZATION_SERVER_RFC_PATH);
-		const legacyAs = routes.get(EMDASH_OAUTH_AUTHORIZATION_SERVER_LEGACY_PATH);
-		const rootAs = routes.get(EMDASH_OAUTH_AUTHORIZATION_SERVER_ROOT_PATH);
-		const prp = routes.get(EMDASH_OAUTH_PROTECTED_RESOURCE_PATH);
-		const prpRfc = routes.get(EMDASH_OAUTH_PROTECTED_RESOURCE_RFC_PATH);
-
-		assert.match(rfcAs ?? '', /emdash.*oauth-authorization-server/);
-		assert.match(legacyAs ?? '', /oauth-well-known-aliases/);
-		assert.match(rootAs ?? '', /oauth-well-known-aliases/);
-		assert.match(prp ?? '', /emdash.*oauth-protected-resource/);
-		assert.match(prpRfc ?? '', /oauth-well-known-aliases/);
-		assert.doesNotMatch(rfcAs ?? '', /oauth-well-known-aliases/);
-		assert.doesNotMatch(prp ?? '', /oauth-well-known-aliases/);
 	});
 });
