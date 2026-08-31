@@ -49,16 +49,20 @@ function Resolve-TerraformExecutable {
         return $cmd.Source
     }
 
-    $wingetLink = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\terraform.exe"
-    if (Test-Path -LiteralPath $wingetLink) {
-        return $wingetLink
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $wingetLink = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\terraform.exe"
+        if (Test-Path -LiteralPath $wingetLink) {
+            return $wingetLink
+        }
     }
 
-    $whereOutput = & where.exe terraform 2>$null
-    if ($whereOutput) {
-        $first = ($whereOutput | Select-Object -First 1).ToString().Trim()
-        if ($first) {
-            return $first
+    if ($IsWindows -and (Get-Command where.exe -ErrorAction SilentlyContinue)) {
+        $whereOutput = & where.exe terraform 2>$null
+        if ($whereOutput) {
+            $first = ($whereOutput | Select-Object -First 1).ToString().Trim()
+            if ($first) {
+                return $first
+            }
         }
     }
 

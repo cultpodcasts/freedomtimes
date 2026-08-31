@@ -185,6 +185,10 @@ function Try-TerraformOutputRaw {
         [string]$OutputName
     )
 
+    if ([string]::IsNullOrWhiteSpace($TerraformExe) -or -not (Test-Path -LiteralPath $TerraformEnvDir)) {
+        return $null
+    }
+
     Push-Location $TerraformEnvDir
     try {
         $stderrFile = [System.IO.Path]::GetTempFileName()
@@ -360,7 +364,14 @@ function Set-TursoBuildEnv {
 
     $envDevPath = Join-Path $RepoRoot ".env.dev"
     $terraformEnvDir = Join-Path $RepoRoot "infra/terraform/environments/$Environment"
-    $terraformExe = Resolve-TerraformExecutable
+    $terraformExe = ""
+    try {
+        $terraformExe = Resolve-TerraformExecutable
+    }
+    catch {
+        # -WorkerOnly must resolve TURSO_* from env / .env.dev without Terraform.
+        $terraformExe = ""
+    }
 
     Import-EnvFileForTurso -Path $envDevPath
 
