@@ -1,6 +1,17 @@
 import type { AstroCookies } from 'astro';
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
 import { env as cfEnv } from 'cloudflare:workers';
+import {
+  ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
+  SESSION_COOKIE_MAX_AGE_SECONDS,
+} from './auth-session-lifetime';
+
+export {
+  ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
+  ACCESS_TOKEN_REFRESH_LEEWAY_SECONDS,
+  SESSION_COOKIE_MAX_AGE_SECONDS,
+  accessTokenNeedsRefresh,
+} from './auth-session-lifetime';
 
 export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
@@ -16,14 +27,6 @@ const NATIVE_AUTH_CALLBACK_URL = 'news.freedomtimes.app://auth/callback';
 /** Matches the state cookie lifetime — the whole Auth0 authorize round trip should complete well within this window. */
 export const RETURN_TO_COOKIE_MAX_AGE_SECONDS = 600;
 
-/** Matches `jwt_configuration.lifetime_in_seconds` (`id_token_lifetime_in_seconds`) in `infra/terraform/modules/auth0_app`. */
-export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24; // 24 hours
-/**
- * Keep the access-token cookie for the same window as `ft_session`.
- * A 30-minute `maxAge` dropped `ft_access_token` while the ID token was still valid,
- * which broke cookie-based APIM calls and felt like a forced re-login.
- */
-export const ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS = SESSION_COOKIE_MAX_AGE_SECONDS;
 /** Matches `refresh_token_idle_lifetime_seconds` default in `infra/terraform/modules/auth0_app`. */
 export const REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
@@ -322,9 +325,10 @@ export async function exchangeRefreshTokenForTokens(params: {
 }
 
 /**
- * When `ft_session` is missing or `verifyIdToken()` failed, exchange `ft_refresh` and
- * reissue the auth cookies. Returns the new ID-token payload, or `null` if there is no
- * refresh cookie, the exchange fails, or `roleCheck` rejects the new token.
+ * When `ft_session` is missing, `verifyIdToken()` failed, or `accessTokenNeedsRefresh()`
+ * is true, exchange `ft_refresh` and reissue the auth cookies. Returns the new
+ * ID-token payload, or `null` if there is no refresh cookie, the exchange fails,
+ * or `roleCheck` rejects the new token.
  */
 export async function tryRefreshAuthCookies(params: {
   cookies: AstroCookies;

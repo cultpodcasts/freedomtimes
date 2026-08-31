@@ -1,7 +1,9 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import {
+  ACCESS_TOKEN_COOKIE,
   SESSION_COOKIE,
+  accessTokenNeedsRefresh,
   clearAuthCookies,
   getAuthConfig,
   getCookieDeleteOptionsForHost,
@@ -79,6 +81,21 @@ if (!payload) {
     logPrefix: 'signed-in',
     roleCheck: hasEditorialRole,
   });
+}
+
+if (payload && accessTokenNeedsRefresh(Astro.cookies.get(ACCESS_TOKEN_COOKIE)?.value)) {
+  const refreshed = await tryRefreshAuthCookies({
+    cookies: Astro.cookies,
+    hostname: Astro.url.hostname,
+    requestId,
+    logPrefix: 'signed-in',
+    roleCheck: hasEditorialRole,
+  });
+  if (refreshed) {
+    payload = refreshed;
+  } else {
+    console.warn('[signed-in] ID token still valid but access-token refresh failed', { requestId });
+  }
 }
 
 if (!payload) {

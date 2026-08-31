@@ -2,8 +2,10 @@ import type { AstroCookies } from 'astro';
 import type { JWTPayload } from 'jose';
 
 import {
+	ACCESS_TOKEN_COOKIE,
 	REFRESH_TOKEN_COOKIE,
 	SESSION_COOKIE,
+	accessTokenNeedsRefresh,
 	clearAuthCookies,
 	getAuthConfig,
 	getCookieDeleteOptionsForHost,
@@ -80,6 +82,16 @@ export async function requireEditorialSession(
 				return context.redirect('/?denied=1');
 			}
 
+			if (accessTokenNeedsRefresh(context.cookies.get(ACCESS_TOKEN_COOKIE)?.value)) {
+				const refreshed = await tryRefreshSession(context, requestId);
+				if (refreshed) {
+					return refreshed;
+				}
+				console.warn('[editorial-session] ID token still valid but access-token refresh failed', {
+					requestId,
+				});
+			}
+
 			return buildSession(payload, requestId);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -114,6 +126,9 @@ export async function getOptionalEditorialSession(
 		try {
 			const payload = await verifyIdToken(token, getAuthConfig());
 			if (hasEditorialRole(payload)) {
+				if (accessTokenNeedsRefresh(context.cookies.get(ACCESS_TOKEN_COOKIE)?.value)) {
+					return (await tryRefreshSession(context, requestId)) ?? buildSession(payload, requestId);
+				}
 				return buildSession(payload, requestId);
 			}
 			return null;

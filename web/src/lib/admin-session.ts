@@ -2,8 +2,10 @@ import type { AstroCookies } from 'astro';
 import type { JWTPayload } from 'jose';
 
 import {
+  ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
   SESSION_COOKIE,
+  accessTokenNeedsRefresh,
   clearAuthCookies,
   getAuthConfig,
   getCookieDeleteOptionsForHost,
@@ -79,6 +81,26 @@ export async function verifyAdminSession(params: {
           roleDebug: getRoleClaimDebug(payload),
         });
         return { ok: false, reason: 'forbidden', payload };
+      }
+
+      if (accessTokenNeedsRefresh(params.cookies.get(ACCESS_TOKEN_COOKIE)?.value)) {
+        const refreshed = await tryRefreshAuthCookies({
+          cookies: params.cookies,
+          hostname: params.url.hostname,
+          requestId,
+          logPrefix: params.logPrefix,
+          roleCheck: params.roleCheck,
+        });
+        if (refreshed) {
+          return {
+            ok: true,
+            session: adminSessionFromPayload(refreshed, requestId),
+            payload: refreshed,
+          };
+        }
+        console.warn(`[${params.logPrefix}] ID token still valid but access-token refresh failed`, {
+          requestId,
+        });
       }
 
       return {
@@ -168,6 +190,7 @@ export async function authorizeAdminApiRequest<T extends AdminSessionBase = Admi
   });
 
   if (!verified.ok) {
+    wipeAuthCookies(params.cookies, params.url.hostname);
     if (verified.reason === 'forbidden') {
       return jsonAuthError('Forbidden', 403);
     }
