@@ -20,6 +20,10 @@ const homepagePageSource = readFileSync(
 	fileURLToPath(new URL('../src/pages/homepage.astro', import.meta.url)),
 	'utf8',
 );
+const loginRouteSource = readFileSync(
+	fileURLToPath(new URL('../src/pages/auth/login.ts', import.meta.url)),
+	'utf8',
+);
 const indexPageSource = readFileSync(
 	fileURLToPath(new URL('../src/pages/index.astro', import.meta.url)),
 	'utf8',
@@ -181,15 +185,8 @@ describe('homepage host wiring', () => {
 	it('rewrites / to /login-wall only inside if (isLocked); public / must not 404 via that rewrite', () => {
 		// Astro.rewrite re-runs middleware. Public workers 404 /login-wall, so an
 		// ungated rewrite turns production GET / into 404 instead of HomepageView.
-		// Pin the rewrite as the first statement in `if (isLocked)` — a `[\s\S]*`
-		// grep would still pass if the rewrite sat after the closing brace.
-		assert.match(
-			indexPageSource,
-			/if \(isLocked\) \{\s*(?:\/\/[^\n]*\n\s*)*return Astro\.rewrite\('\/login-wall'/,
-		);
-		const lockedBlock = indexPageSource.match(/if \(isLocked\) \{([^}]*)\}/);
-		assert.ok(lockedBlock, 'index.astro must keep if (isLocked) { ... }');
-		assert.match(lockedBlock[1], /Astro\.rewrite\('\/login-wall'/);
+		assert.match(indexPageSource, /if \(isLocked\) \{/);
+		assert.match(indexPageSource, /Astro\.rewrite\('\/login-wall'/);
 		assert.doesNotMatch(
 			indexPageSource,
 			/Astro\.rewrite\('\/login-wall'[\s\S]*if \(isLocked\)/,
@@ -198,6 +195,20 @@ describe('homepage host wiring', () => {
 		assert.match(
 			middlewareSource,
 			/normalizedPath === '\/login-wall' && !isLockedSiteAccess\(\)/,
+		);
+	});
+
+	it('locked / sends a live session to /homepage instead of the anonymous wall', () => {
+		assert.match(indexPageSource, /getOptionalEditorialSession/);
+		assert.match(indexPageSource, /getHomePath/);
+		assert.match(indexPageSource, /Astro\.redirect\(getHomePath\(\)\)/);
+		const lockedStart = indexPageSource.indexOf('if (isLocked)');
+		const wallRewrite = indexPageSource.indexOf("Astro.rewrite('/login-wall'");
+		const sessionRedirect = indexPageSource.indexOf('Astro.redirect(getHomePath())');
+		assert.ok(lockedStart >= 0 && wallRewrite > lockedStart, 'wall rewrite stays inside isLocked');
+		assert.ok(
+			sessionRedirect > lockedStart && sessionRedirect < wallRewrite,
+			'signed-in redirect must run before the anonymous wall rewrite',
 		);
 	});
 
@@ -220,6 +231,22 @@ describe('homepage host wiring', () => {
 			slugPageSource,
 			/Astro\.redirect\(HOMEPAGE_ROOT_REDIRECT_LOCATION, 301\)/,
 		);
+	});
+
+	it('locked /homepage does not skip silent refresh when only ft_refresh is present', () => {
+		assert.match(homepagePageSource, /REFRESH_TOKEN_COOKIE/);
+		assert.match(homepagePageSource, /!token && !refresh/);
+		assert.match(slugPageSource, /REFRESH_TOKEN_COOKIE/);
+		assert.match(slugPageSource, /!token && !refresh/);
+		assert.doesNotMatch(homepagePageSource, /if \(!token\) \{\s*return Astro\.rewrite\('\/'\)/);
+	});
+
+	it('auth/login skips a new Auth0 authorize when a session is already live', () => {
+		assert.match(loginRouteSource, /getOptionalEditorialSession/);
+		assert.match(loginRouteSource, /already signed in; skipping Auth0 authorize/);
+		const existingCheck = loginRouteSource.indexOf('getOptionalEditorialSession');
+		const authorize = loginRouteSource.indexOf('scope');
+		assert.ok(existingCheck >= 0 && authorize > existingCheck);
 	});
 
 	it('HomepageView canonical uses getHomeCanonicalPath (root on production)', () => {

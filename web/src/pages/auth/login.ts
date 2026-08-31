@@ -3,6 +3,7 @@ import {
   getAuthConfig,
   getAuthFlowCookieName,
   getAuthRedirectUri,
+  getHomePath,
   getNativeAppCookieName,
   getReturnToCookieName,
   getStateCookieName,
@@ -11,9 +12,22 @@ import {
   RETURN_TO_COOKIE_MAX_AGE_SECONDS,
   sanitizeReturnToPath,
 } from '../../lib/auth';
+import { getOptionalEditorialSession } from '../../lib/editorial-session';
 
 export const GET: APIRoute = async (ctx) => {
   const requestId = ctx.request.headers.get('cf-ray') ?? crypto.randomUUID();
+  const existing = await getOptionalEditorialSession({
+    cookies: ctx.cookies,
+    url: ctx.url,
+    request: ctx.request,
+    redirect: ctx.redirect,
+  });
+  if (existing) {
+    const returnTo = sanitizeReturnToPath(ctx.url.searchParams.get('next')) ?? getHomePath();
+    console.info('[auth.login] already signed in; skipping Auth0 authorize', { requestId, returnTo });
+    return ctx.redirect(returnTo);
+  }
+
   const config = getAuthConfig();
   const state = makeState();
   const useNativeApp =
