@@ -5,17 +5,14 @@ import {
 	REFRESH_TOKEN_COOKIE,
 	SESSION_COOKIE,
 	clearAuthCookies,
-	exchangeRefreshTokenForTokens,
 	getAuthConfig,
 	getCookieDeleteOptionsForHost,
-	getCookieDomainForHost,
 	getDisplayName,
 	getRoleClaimDebug,
 	hasAdminRole,
 	hasEditorialRole,
 	isPublicReaderPath,
-	makeState,
-	setAuthCookies,
+	tryRefreshAuthCookies,
 	verifyIdToken,
 } from './auth';
 
@@ -53,40 +50,14 @@ async function tryRefreshSession(
 	context: EditorialSessionContext,
 	requestId: string,
 ): Promise<EditorialSession | null> {
-	const refreshToken = context.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
-	if (!refreshToken) {
-		return null;
-	}
-
-	try {
-		const config = getAuthConfig();
-		const refreshed = await exchangeRefreshTokenForTokens({ refreshToken, config });
-		const payload = await verifyIdToken(refreshed.idToken, config);
-
-		if (!hasEditorialRole(payload)) {
-			console.warn('[editorial-session] refreshed token failed role check', {
-				requestId,
-				roleDebug: getRoleClaimDebug(payload),
-			});
-			return null;
-		}
-
-		setAuthCookies(context.cookies, {
-			idToken: refreshed.idToken,
-			accessToken: refreshed.accessToken,
-			refreshToken: refreshed.refreshToken,
-			csrfToken: makeState(),
-			cookieDomain: getCookieDomainForHost(context.url.hostname),
-		});
-
-		console.info('[editorial-session] silently refreshed session via refresh_token', { requestId });
-
-		return buildSession(payload, requestId);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		console.warn('[editorial-session] refresh_token exchange failed', { requestId, message });
-		return null;
-	}
+	const payload = await tryRefreshAuthCookies({
+		cookies: context.cookies,
+		hostname: context.url.hostname,
+		requestId,
+		logPrefix: 'editorial-session',
+		roleCheck: hasEditorialRole,
+	});
+	return payload ? buildSession(payload, requestId) : null;
 }
 
 export async function requireEditorialSession(

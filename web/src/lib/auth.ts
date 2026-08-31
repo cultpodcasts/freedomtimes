@@ -18,7 +18,12 @@ export const RETURN_TO_COOKIE_MAX_AGE_SECONDS = 600;
 
 /** Matches `jwt_configuration.lifetime_in_seconds` (`id_token_lifetime_in_seconds`) in `infra/terraform/modules/auth0_app`. */
 export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24; // 24 hours
-export const ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 30; // 30 minutes
+/**
+ * Keep the access-token cookie for the same window as `ft_session`.
+ * A 30-minute `maxAge` dropped `ft_access_token` while the ID token was still valid,
+ * which broke cookie-based APIM calls and felt like a forced re-login.
+ */
+export const ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS = SESSION_COOKIE_MAX_AGE_SECONDS;
 /** Matches `refresh_token_idle_lifetime_seconds` default in `infra/terraform/modules/auth0_app`. */
 export const REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
@@ -264,9 +269,10 @@ export async function exchangeCodeForTokens(params: {
 /**
  * Silent re-authentication: exchange a stored `ft_refresh` cookie value for a fresh
  * ID/access token pair, without a full Auth0 `/authorize` redirect. Used by
- * `editorial-session.ts` when the ID token has expired. Rotation is enabled on the Auth0
- * application (`enable_refresh_token_rotation`), so Auth0 normally returns a new
- * `refresh_token` on every use — callers must persist it back into `ft_refresh`.
+ * `tryRefreshAuthCookies()` from editorial, admin, and `/signed-in` when the ID token
+ * has expired. Rotation is enabled on the Auth0 application
+ * (`enable_refresh_token_rotation`), so Auth0 normally returns a new `refresh_token`
+ * on every use — callers must persist it back into `ft_refresh`.
  */
 export async function exchangeRefreshTokenForTokens(params: {
   refreshToken: string;
@@ -313,6 +319,59 @@ export async function exchangeRefreshTokenForTokens(params: {
     // Fall back to the presented token if Auth0 does not rotate it for some reason.
     refreshToken: tokenResponse.refresh_token ?? refreshToken,
   };
+}
+
+/**
+ * When `ft_session` is missing or `verifyIdToken()` failed, exchange `ft_refresh` and
+ * reissue the auth cookies. Returns the new ID-token payload, or `null` if there is no
+ * refresh cookie, the exchange fails, or `roleCheck` rejects the new token.
+ */
+export async function tryRefreshAuthCookies(params: {
+  cookies: AstroCookies;
+  hostname: string;
+  requestId: string;
+  logPrefix: string;
+  roleCheck: (payload: JWTPayload) => boolean;
+}): Promise<JWTPayload | null> {
+  const refreshToken = params.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
+  if (!refreshToken) {
+    return null;
+  }
+
+  try {
+    const config = getAuthConfig();
+    const refreshed = await exchangeRefreshTokenForTokens({ refreshToken, config });
+    const payload = await verifyIdToken(refreshed.idToken, config);
+
+    if (!params.roleCheck(payload)) {
+      console.warn(`[${params.logPrefix}] refreshed token failed role check`, {
+        requestId: params.requestId,
+        roleDebug: getRoleClaimDebug(payload),
+      });
+      return null;
+    }
+
+    setAuthCookies(params.cookies, {
+      idToken: refreshed.idToken,
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken,
+      csrfToken: makeState(),
+      cookieDomain: getCookieDomainForHost(params.hostname),
+    });
+
+    console.info(`[${params.logPrefix}] silently refreshed session via refresh_token`, {
+      requestId: params.requestId,
+    });
+
+    return payload;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[${params.logPrefix}] refresh_token exchange failed`, {
+      requestId: params.requestId,
+      message,
+    });
+    return null;
+  }
 }
 
 /**

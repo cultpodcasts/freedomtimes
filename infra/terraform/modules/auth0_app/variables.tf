@@ -83,7 +83,7 @@ variable "id_token_lifetime_in_seconds" {
 }
 
 variable "enable_refresh_token_rotation" {
-  description = "Configure a rotating, expiring refresh_token policy on the login app client. The web app requests offline_access and uses silent refresh in editorial-session.ts — see web/docs/AUTH.md."
+  description = "Configure a rotating, expiring refresh_token policy on the login app client. The web app requests offline_access and uses silent refresh in tryRefreshAuthCookies() — see web/docs/AUTH.md."
   type        = bool
   default     = true
 }
@@ -101,7 +101,7 @@ variable "refresh_token_idle_lifetime_seconds" {
 }
 
 variable "refresh_token_leeway" {
-  description = "Grace period in seconds during which a rotated refresh token may still be reused (refresh_token.leeway), to tolerate client retries/race conditions."
+  description = "Grace period in seconds during which a rotated refresh token may still be reused (refresh_token.leeway), to tolerate client retries/race conditions (for example two staff tabs refreshing at once)."
   type        = number
-  default     = 10
+  default     = 60
 }
