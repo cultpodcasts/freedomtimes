@@ -34,6 +34,8 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 - `scripts/Deploy-EnvironmentCommon.ps1` — dot-sourced helpers only
 - `scripts/terraform-run.ps1` — Terraform only; local deploy scripts call this internally on full deploy
 
+**GitHub PRs from a new cloud agent:** if PR create fails with `must be a collaborator`, do not stop. Device-login as **CultPodcasts** — **[docs/CLOUD_AGENT_GITHUB_PR.md](../../docs/CLOUD_AGENT_GITHUB_PR.md)** and **`AGENTS.md`** §9.
+
 **Guardrails before you run anything:**
 
 1. **Production deploy** — Do not run `deploy-production-local.ps1` or `production-release.ps1` unless the operator explicitly asked in this chat. Production infra deploy is operator-controlled; **EmDash `content_publish`** is a separate hard rule (push notifications).
@@ -85,7 +87,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 | `deploy-production-local.ps1` | Full production (infra + web) | Yes | Web (`freedomtimes`) | No bump |
 | `deploy-production-local.ps1 -WorkerOnly` | Production web only | No | Web | No bump |
 
-**EmDash core schema (not `pt:migrate`, not tips/subscriptions SQL):** after Turso backup and `npm run build`, local and CI deploy apply `npx emdash migrate` (non-interactive, `--expected-target-fingerprint` from `--status --json`), then wrangler of **that same build**, then `npx emdash migrate --check`. Staging/production runtime is `migrations.runtime: "check"` / `EMDASH_MIGRATIONS_MODE=check` — first-request auto-migrate is off. `astro dev` stays `dev: "auto"`.
+**EmDash core schema (not `pt:migrate`, not tips/subscriptions SQL):** after Turso backup and `npm run build`, local and CI deploy apply `npx emdash migrate` (non-interactive, `--expected-target-fingerprint` from `--status --json`), then wrangler of **that same build**, then `npx emdash migrate --check`. Staging/production runtime is `migrations: { runtime: "check", dev: "auto" }` in `web/astro.config.ts` — first-request auto-migrate is off. `astro dev` stays `dev: "auto"`.
 
 **Production Turso rollback:** full deploy **and** `-WorkerOnly` create a rollback checkpoint via WSL Turso CLI **before** migrate. Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h. Metadata path is logged under `.release/rollback-branches/`.
 
