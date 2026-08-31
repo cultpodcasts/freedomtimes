@@ -26,7 +26,7 @@ Exact secret name (case-sensitive). Stored on the **Cursor Cloud Agent environme
 | **Dashboard** | Cloud Agent environment → Secrets |
 | **Not these names** | `GH_TOKEN`, `GITHUB_TOKEN` — those override the Cursor App credential used for `git push` |
 
-Per-boot `start` on the environment logs `gh` in with this secret (`--with-token --insecure-storage`) and `gh auth switch --user cultpodcasts`. Agents must still verify `gh api user` is `cultpodcasts` before `gh pr create` / reviews.
+The secret is injected on every cloud agent. **Environment `start` does not reliably leave `gh` as `cultpodcasts`** (start is detached; later git token-refresh can keep the Cursor App account active). Agents must run the `--with-token` login below and verify `gh api user` is `cultpodcasts` before `gh pr create` / reviews. That is not a new device approval.
 
 If the secret is unset, expired, or `gh auth` fails: fall back to device login below. Do not invent another secret name.
 
