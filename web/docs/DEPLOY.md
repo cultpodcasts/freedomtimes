@@ -7,7 +7,7 @@
 | Doc | Use for |
 |-----|---------|
 | [AGENTS.md](../../AGENTS.md) | AI guardrails (MCP, Turso auth, production publish) |
-| [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) | Windows Terraform PATH; WSL Turso CLI invoke patterns |
+| [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) | Windows Terraform PATH; Turso CLI (WSL on Windows, native on Linux) |
 | [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) | CI release workflow (`production-release.ps1`), schema/content promotion |
 | [STAGING_RECOVERY.md](../../STAGING_RECOVERY.md) | Staging teardown/recovery checklist, worker rename |
 | [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) | Secret sync categories, FCM credential prep |
@@ -106,7 +106,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 **Full deploy (default) — step order:**
 
 1. Push secrets preflight (`Assert-StagingPushSecretsReady`)
-2. Turso EmDash export (`turso db export` via WSL → `.release/backups/`)
+2. Turso EmDash export (`turso db export` via WSL on Windows / native `turso` on Linux → `.release/backups/`)
 3. Terraform apply (`terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove`)
 4. Verify Auth0 staging credentials in `.env.dev` match Terraform output
 5. Enforce publish-only collection `supports` for `posts` / `pages` (EmDash SQL)
@@ -139,7 +139,7 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 **Full deploy (default) — step order:**
 
 1. Push secrets preflight (`Assert-ProductionPushSecretsReady`)
-2. Turso production rollback checkpoint (`turso-create-rollback-branch.ps1` via WSL; `-SkipTursoBackup` only if metadata newer than 24h exists)
+2. Turso production rollback checkpoint (`turso-create-rollback-branch.ps1` via WSL on Windows / native `turso` on Linux; `-SkipTursoBackup` only if metadata newer than 24h exists)
 3. Terraform apply
 4. Write Auth0 production credentials from Terraform output into `.env.dev`, then verify
 5. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction`)
@@ -551,7 +551,7 @@ Database name: `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` from `.env.dev` (default 
 
 **GitHub Actions path** (`production-release.ps1`) does **not** create a checkpoint — run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) manually before dispatch.
 
-### Turso auth failure (WSL)
+### Turso auth failure
 
 If deploy stops with *Turso CLI is not authenticated*:
 

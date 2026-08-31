@@ -107,7 +107,7 @@ turso db list
 | **`scripts/deploy-production-local.ps1`** | Full deploy and `-WorkerOnly` invoke rollback checkpoint before migrate (unless `-SkipTursoBackup` with a file newer than 24h, or `-DryRun`). Linux passes `-UseNativeTurso`. |
 | **`scripts/turso-create-rollback-branch-wsl.sh`** | Run from WSL; prepends `~/.turso` to `PATH` |
 | **`web/CONTENT_PROMOTION_RUNBOOK.md`** | Turso backups, export commands, rollback branches |
-| **`AGENTS.md`** | Points agents to WSL Turso for database backups |
+| **`AGENTS.md`** | Points agents to Turso CLI for database backups (WSL on Windows, native on Linux) |
 
 Terraform talks to Turso through the **Turso provider** and **Platform API tokens** (`TF_VAR_turso_api_token`, `TURSO_TOKEN_STAGING`, etc.) — that does **not** require the Turso CLI on Windows. The CLI is needed for **`turso db export`**, rollback branches, and ad hoc operator commands.
 
