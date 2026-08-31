@@ -5,60 +5,62 @@ interface Props {
 
 const { denied = false } = Astro.props;
 ---
-<title>Secure Access</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
-<div class="secure-access">
-	<p class="lead">Secure Access</p>
-	{denied && <p class="warn">Access denied.</p>}
-	<a class="button" href="/auth/login">Log in with Google</a>
-</div>
-
-<style is:global>
-	/* Win over newspaper global.css if this page's graph ever leaks again. */
-	html:has(.secure-access),
-	html:has(.secure-access) body {
-		margin: 0;
-		min-height: 100vh;
-		height: 100%;
-		display: grid;
-		place-items: center;
-		background: #0044bb;
-		color: #ffffff;
-		font-family: Inter, system-ui, sans-serif;
-		line-height: 1.5;
-	}
-
-	.secure-access {
-		text-align: center;
-		padding: 2rem;
-		max-width: 400px;
-	}
-
-	.secure-access .lead {
-		margin: 0 0 2rem;
-		color: #ffffff;
-		font-size: 1.1rem;
-	}
-
-	.secure-access .button {
-		display: inline-block;
-		padding: 1rem 2rem;
-		background: #ffffff;
-		color: #0044bb;
-		text-decoration: none;
-		font-weight: 700;
-		border-radius: 4px;
-	}
-
-	.secure-access .button:hover {
-		background: #e8eefc;
-	}
-
-	.secure-access .warn {
-		color: #ffe08a;
-		margin: 0 0 1rem;
-		font-size: 0.9rem;
-	}
-</style>
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Secure Access</title>
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
+		<!-- is:inline: Astro 7 dropped is:global styles from this page-level wall. -->
+		<style is:inline>
+			html,
+			body {
+				margin: 0;
+				min-height: 100vh;
+				display: grid;
+				place-items: center;
+				background: #0044bb;
+				color: #ffffff;
+				font-family: Inter, system-ui, sans-serif;
+				line-height: 1.5;
+			}
+			.secure-access {
+				text-align: center;
+				padding: 2rem;
+				max-width: 400px;
+			}
+			.secure-access .lead {
+				margin: 0 0 2rem;
+				color: #ffffff;
+				font-size: 1.1rem;
+			}
+			.secure-access .button {
+				display: inline-block;
+				padding: 1rem 2rem;
+				background: #ffffff;
+				color: #0044bb;
+				text-decoration: none;
+				font-weight: 700;
+				border-radius: 4px;
+			}
+			.secure-access .button:hover {
+				background: #e8eefc;
+			}
+			.secure-access .warn {
+				color: #ffe08a;
+				margin: 0 0 1rem;
+				font-size: 0.9rem;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="secure-access">
+			<p class="lead">Secure Access</p>
+			{denied && <p class="warn">Access denied.</p>}
+			<a class="button" href="/auth/login">Log in with Google</a>
+		</div>
+	</body>
+</html>

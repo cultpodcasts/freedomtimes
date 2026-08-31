@@ -174,12 +174,12 @@ describe('homepage host wiring', () => {
 		assert.match(indexPageSource, /import\('\.\.\/components\/HomepageView\.astro'\)/);
 	});
 
-	it('SecureAccessWall is a globally centered blue gateway (not a nested document)', () => {
-		assert.match(secureAccessWallSource, /is:global/);
+	it('SecureAccessWall is an inline-centered blue gateway (styles must not be bundled away)', () => {
+		assert.match(secureAccessWallSource, /is:inline/);
 		assert.match(secureAccessWallSource, /place-items:\s*center/);
 		assert.match(secureAccessWallSource, /background:\s*#0044bb/);
 		assert.match(secureAccessWallSource, /min-height:\s*100vh/);
-		assert.doesNotMatch(secureAccessWallSource, /<!doctype html>/i);
+		assert.match(secureAccessWallSource, /<!doctype html>/i);
 	});
 
 	it('[slug].astro also redirects a production /homepage fallback', () => {
