@@ -104,7 +104,8 @@ What this does:
 
 1. Dispatches `.github/workflows/terraform-production.yml`.
 2. Requests Terraform apply (`production_terraform_apply=true`).
-3. Watches run completion and exits non-zero on failure.
+3. The workflow backs up EmDash Turso, builds `web/` (writes `.emdash/migrations.json`), runs `npx emdash migrate`, deploys that same Worker build, then `npx emdash migrate --check`. This is EmDash **core** schema, not `pt:migrate` or tips/subscriptions SQL. Staging/production runtime stays on `check` (no first-request auto-migrate).
+4. Watches run completion and exits non-zero on failure.
 
 **Web version:** CI builds from committed `main` — no automatic bump. Local staging/production version behavior: [DEPLOY.md § Web version bump](web/docs/DEPLOY.md#web-version-bump-on-deploy). Bump and commit manually before dispatch if you want a new semver on the release build.
 
@@ -125,7 +126,7 @@ pwsh ./scripts/deploy-production-local.ps1
 **Release-specific notes (not duplicated in deploy guide):**
 
 - Prefer the CI path (§2 above) for routine releases on `main`.
-- Local full deploy auto-creates a Turso rollback checkpoint before Terraform (same intent as §1 manual checkpoint for the CI path).
+- Local full deploy **and** `-WorkerOnly` auto-create a Turso rollback checkpoint, then `emdash migrate`, wrangler, `--check` (same sequence as CI).
 - After deploy, post-deploy secret verify runs on the production web Worker (`AUTH0_*`, `EMDASH_*`) — see canonical doc if verify fails.
 
 ## 3. Step 1: Prove Production Matches Staging Schema Semantics

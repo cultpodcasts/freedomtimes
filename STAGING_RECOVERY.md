@@ -18,7 +18,7 @@ This runs the full local staging deploy in deterministic order. **Script matrix,
 
 **Recovery-specific notes:**
 
-- **Turso backup:** not included on staging full deploy. For risky staging DB work, create a rollback branch manually (`turso-create-rollback-branch.ps1` with staging database name) before deploy.
+- **Turso backup:** staging local/CI deploy now exports the EmDash staging DB (`turso db export`) before `emdash migrate`. For extra isolation, you can still create a rollback branch manually before risky work.
 - **Scheduler / Azure Function:** full deploy and `-WorkerOnly` do **not** deploy the scheduler worker or Azure Function App. Use `-WorkersOnly` or manual steps (§2.5) when needed.
 - **Web + scheduler without Terraform:** `deploy-staging-local.ps1 -WorkersOnly`.
 

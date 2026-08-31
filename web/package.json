@@ -44,7 +44,10 @@
     "cap:open:ios": "cap open ios",
     "deploy:staging:workers": "pwsh -NoProfile -File ../scripts/deploy-staging-local.ps1 -WorkersOnly",
     "pt:migrate": "node scripts/migrate-pt-content.mjs",
-    "pt:migrate:scan": "node scripts/migrate-pt-content.mjs posts --scan --transforms video"
+    "pt:migrate:scan": "node scripts/migrate-pt-content.mjs posts --scan --transforms video",
+    "emdash:migrate": "node scripts/emdash-core-migrate.mjs apply",
+    "emdash:migrate:check": "node scripts/emdash-core-migrate.mjs check",
+    "emdash:migrate:status": "node scripts/emdash-core-migrate.mjs status"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.2.3",

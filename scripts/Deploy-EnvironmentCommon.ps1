@@ -10,10 +10,12 @@
 # | Secret sync                  | Always                     | Always                        | Only with -SyncCloudflareWorkerSecrets | Only with -SyncCloudflareWorkerSecrets |
 # | CLOUDFLARE_ACCOUNT_ID bootstrap | Yes                     | No                            | When syncing secrets                | Load .env.dev; when syncing secrets |
 # | Version bump default         | Bump unless -SkipVersionBump | No bump unless -BumpVersion | Same as full deploy                 | Same as full deploy                 |
-# | Turso build creds            | Terraform outputs          | Terraform outputs             | None (runtime Worker secrets)       | .env.dev only                       |
+# | Turso build creds            | Terraform outputs          | Terraform outputs             | resolve-turso-build-credentials     | .env.dev / resolve-turso            |
+# | EmDash core migrate          | After backup + build       | After backup + build          | After backup + build                | After backup + build                |
 # | wrangler deploy              | --env staging              | --env production              | Web only                            | Web (+ staging vars) + scheduler    |
+# | EmDash migrate --check       | After wrangler             | After wrangler                | After wrangler                      | After wrangler                      |
 # | Post-deploy secret verify    | Yes (web worker)           | Yes (web worker; also -DryRun)| Yes                                 | No                                  |
-# | Turso rollback checkpoint    | No (optional manual)       | Yes before Terraform (full)   | Skipped; use -SkipTursoBackup       | Skipped                             |
+# | Turso EmDash backup          | Export before migrate      | Rollback branch before migrate| Same as full deploy                 | Same as full deploy                 |
 #
 # Production -WorkerOnly: see deploy-production-local.ps1 (resolve-turso-build-credentials; not covered above).
 #
@@ -381,7 +383,7 @@ function Invoke-DeployTursoRollbackCheckpoint {
         "-ProductionDatabaseName", $databaseName,
         "-TursoGroup", $tursoGroup,
         "-AllowProduction",
-        "-Notes", "deploy-production-local.ps1 full deploy"
+        "-Notes", "deploy-production-local.ps1 EmDash core migrate backup"
     )
 
     $result = Invoke-DeployChildPwsh -CaptureOutput -Arguments $rollbackArgs
@@ -397,6 +399,136 @@ function Invoke-DeployTursoRollbackCheckpoint {
     }
     else {
         Write-Warning "Turso rollback checkpoint completed but metadata path was not found in script output."
+    }
+}
+
+function Get-DeployFreshBackupCutoffUtc {
+    return (Get-Date).ToUniversalTime().AddHours(-24)
+}
+
+function Assert-DeployFreshEmDashTursoBackup {
+    $cutoff = Get-DeployFreshBackupCutoffUtc
+
+    if ($script:DeployIsStaging) {
+        $backupDir = Join-Path $script:DeployRepoRoot ".release/backups"
+        $newest = Get-ChildItem -Path $backupDir -Filter "emdash-staging-*.db" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff) {
+            throw @(
+                "Refusing -SkipTursoBackup: no staging EmDash export newer than 24h under .release/backups/emdash-staging-*.db.",
+                "Create one (see web/CONTENT_PROMOTION_RUNBOOK.md) or omit -SkipTursoBackup."
+            ) -join " "
+        }
+        Write-DeployStep "Using existing staging EmDash export $($newest.Name) (SkipTursoBackup)"
+        return
+    }
+
+    $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
+    $newestMeta = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+    if ($null -eq $newestMeta -or $newestMeta.LastWriteTimeUtc -lt $cutoff) {
+        throw @(
+            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h under .release/rollback-branches/.",
+            "Run scripts/turso-create-rollback-branch.ps1 -AllowProduction or omit -SkipTursoBackup."
+        ) -join " "
+    }
+    Write-DeployStep "Using existing production rollback metadata $($newestMeta.Name) (SkipTursoBackup)"
+}
+
+function Invoke-DeployStagingTursoExport {
+    Assert-DeployTursoWslAuth
+
+    $databaseName = Get-DeployTursoDatabaseNameFromEnv `
+        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_STAGING" `
+        -DefaultName ""
+    if ([string]::IsNullOrWhiteSpace($databaseName)) {
+        throw "Set TF_VAR_TURSO_DATABASE_NAME_STAGING in .env.dev for the staging EmDash export."
+    }
+
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $backupDir = Join-Path $script:DeployRepoRoot ".release/backups"
+    if (-not (Test-Path $backupDir)) {
+        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    }
+    $outputRel = ".release/backups/emdash-staging-$stamp.db"
+
+    Write-DeployStep "Exporting staging EmDash Turso '$databaseName' → $outputRel"
+
+    $bashLine = 'export PATH="$HOME/.turso:$PATH"; mkdir -p .release/backups; turso db export ' +
+        "'" + ($databaseName -replace "'", "'\''") + "' --output-file './$outputRel'"
+    $exportLines = & wsl bash -lc $bashLine 2>&1
+    $exitCode = $LASTEXITCODE
+    $exportLines | ForEach-Object { $_ }
+    if ($exitCode -ne 0) {
+        throw "Staging EmDash Turso export failed (exit $exitCode)."
+    }
+
+    $outputAbs = Join-Path $script:DeployRepoRoot $outputRel
+    if (-not (Test-Path $outputAbs)) {
+        throw "Staging EmDash Turso export reported success but $outputAbs is missing."
+    }
+    Write-Host "Staging EmDash backup saved: $outputAbs" -ForegroundColor Green
+}
+
+function Invoke-DeployEmDashTursoBackup {
+    param(
+        [switch]$SkipTursoBackup
+    )
+
+    if ($SkipTursoBackup) {
+        Write-DeployStep "Skipping Turso EmDash backup (-SkipTursoBackup); requiring a fresh checkpoint"
+        Assert-DeployFreshEmDashTursoBackup
+        return
+    }
+
+    if ($script:DeployIsStaging) {
+        Invoke-DeployStagingTursoExport
+        return
+    }
+
+    Invoke-DeployTursoRollbackCheckpoint
+}
+
+function Invoke-DeployEmdashCoreMigrate {
+    Write-DeployStep "Applying EmDash core migrations (npx emdash migrate)"
+
+    $url = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+    $token = [Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")
+    if ([string]::IsNullOrWhiteSpace($url) -or [string]::IsNullOrWhiteSpace($token)) {
+        throw "EmDash core migrate requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN (load them before build)."
+    }
+
+    $manifest = Join-Path $script:DeployRepoRoot "web/.emdash/migrations.json"
+    if (-not (Test-Path $manifest)) {
+        throw "Missing $manifest after npm run build. Deploy aborted before migrate."
+    }
+
+    Push-Location (Join-Path $script:DeployRepoRoot "web")
+    try {
+        & node .\scripts\emdash-core-migrate.mjs apply
+        if ($LASTEXITCODE -ne 0) {
+            throw "EmDash core migrate apply failed (exit $LASTEXITCODE)."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Invoke-DeployEmdashCoreMigrateCheck {
+    Write-DeployStep "Checking EmDash core migrations (npx emdash migrate --check)"
+
+    Push-Location (Join-Path $script:DeployRepoRoot "web")
+    try {
+        & node .\scripts\emdash-core-migrate.mjs check
+        if ($LASTEXITCODE -ne 0) {
+            throw "EmDash core migrate --check failed (exit $LASTEXITCODE)."
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 
@@ -563,16 +695,11 @@ function Invoke-DeployWorkerBuild {
 
     Write-DeployStep "Building $($script:DeployEnvironment) Worker"
 
-    if ($WorkersOnly) {
-        Set-DeployTursoBuildEnvFromEnvDev
-        Assert-DeployRequiredBuildEnv
-    }
-    elseif ($WorkerOnly) {
-        Write-DeployStep "Skipping Turso build credentials (-WorkerOnly uses runtime Worker secrets)"
-    }
-    else {
-        Set-DeployTursoBuildEnvFromTerraform
-    }
+    # Core migrate needs a real Turso URL in .emdash/migrations.json. Always
+    # resolve credentials (Terraform outputs or .env.dev) — including -WorkerOnly.
+    . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
+    $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
+    Assert-DeployRequiredBuildEnv
 
     . "$script:DeployCommonScriptRoot/build-provenance-env.ps1"
     Set-BuildProvenanceEnv -RepoRoot $script:DeployRepoRoot

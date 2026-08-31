@@ -264,6 +264,7 @@ jobs:
           set -euo pipefail
 
           AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
+          TURSO_DATABASE_NAME=$(terraform output -raw turso_database_name 2>/dev/null || echo "")
           TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
           TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
           SCHEDULER_TURSO_DATABASE_URL=$(terraform output -raw scheduler_turso_database_url 2>/dev/null || echo "")
@@ -274,6 +275,7 @@ jobs:
           TIPS_TURSO_AUTH_TOKEN=$(terraform output -raw tips_turso_database_auth_token 2>/dev/null || echo "")
 
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
+          echo "turso_database_name=$TURSO_DATABASE_NAME" >> $GITHUB_OUTPUT
           echo "turso_database_url=$TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
           echo "::add-mask::$TURSO_AUTH_TOKEN"
           echo "turso_auth_token=$TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
@@ -542,6 +544,18 @@ jobs:
 
           npm run tips:db:deploy
 
+      - name: Backup EmDash Turso before core migrate
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN_STAGING }}
+        run: |
+          set -euo pipefail
+          DB_NAME="${{ steps.tf_outputs.outputs.turso_database_name }}"
+          if [ -z "${DB_NAME}" ] || [ "${DB_NAME}" = "null" ]; then
+            echo "ERROR: turso_database_name is required but empty from Terraform outputs"
+            exit 1
+          fi
+          bash "$GITHUB_WORKSPACE/scripts/ci-turso-emdash-backup.sh" staging "$DB_NAME"
+
       - name: Build Astro Worker
         working-directory: web
         env:
@@ -565,6 +579,15 @@ jobs:
 
           npm run build
 
+      - name: Apply EmDash core migrations
+        working-directory: web
+        env:
+          TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+        run: |
+          set -euo pipefail
+          npm run emdash:migrate
+
       - name: Deploy Astro Worker to Staging
         working-directory: web
         env:
@@ -586,6 +609,15 @@ jobs:
             --var COOKIE_BASE_DOMAIN:$COOKIE_BASE_DOMAIN \
             --var AUTH0_ROLES_CLAIM_NAMESPACE:$AUTH0_ROLES_CLAIM_NAMESPACE \
             --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
+
+      - name: Check EmDash core migrations
+        working-directory: web
+        env:
+          TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+        run: |
+          set -euo pipefail
+          npm run emdash:migrate:check
 
       - name: Deploy Scheduler Worker to Staging
         if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
