@@ -32,6 +32,10 @@ const homepageViewSource = readFileSync(
 	fileURLToPath(new URL('../src/components/HomepageView.astro', import.meta.url)),
 	'utf8',
 );
+const secureAccessWallSource = readFileSync(
+	fileURLToPath(new URL('../src/components/SecureAccessWall.astro', import.meta.url)),
+	'utf8',
+);
 
 const PRODUCTION_APEX = [...PRODUCTION_PUBLIC_HOSTNAMES].find((host) => !host.startsWith('www.'))!;
 const PRODUCTION_WWW = [...PRODUCTION_PUBLIC_HOSTNAMES].find((host) => host.startsWith('www.'))!;
@@ -162,6 +166,20 @@ describe('homepage host wiring', () => {
 		assert.doesNotMatch(indexPageSource, /Astro\.rewrite\('\/homepage'\)/);
 		assert.match(indexPageSource, /HomepageView/);
 		assert.match(indexPageSource, /SecureAccessWall/);
+		assert.doesNotMatch(
+			indexPageSource,
+			/import HomepageView from/,
+			'static HomepageView import leaks newspaper CSS + EmDash fetch onto the locked login wall',
+		);
+		assert.match(indexPageSource, /import\('\.\.\/components\/HomepageView\.astro'\)/);
+	});
+
+	it('SecureAccessWall is a globally centered blue gateway (not a nested document)', () => {
+		assert.match(secureAccessWallSource, /is:global/);
+		assert.match(secureAccessWallSource, /place-items:\s*center/);
+		assert.match(secureAccessWallSource, /background:\s*#0044bb/);
+		assert.match(secureAccessWallSource, /min-height:\s*100vh/);
+		assert.doesNotMatch(secureAccessWallSource, /<!doctype html>/i);
 	});
 
 	it('[slug].astro also redirects a production /homepage fallback', () => {
