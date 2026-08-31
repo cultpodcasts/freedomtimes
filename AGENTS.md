@@ -93,9 +93,9 @@ Full policy: **`web/docs/STAGING_ACCESS.md`**.
 
 Context-specific runbooks (link to canonical doc for script details): [PRODUCTION_RELEASE_RUNBOOK.md](PRODUCTION_RELEASE_RUNBOOK.md) (CI + promotion), [STAGING_RECOVERY.md](STAGING_RECOVERY.md) (recovery checklist).
 
-### Cloud Agents (Linux VM — full staging)
+### Cloud Agents (Linux VM — staging and production)
 
-When the operator asks for a **full staging stack** (Terraform + workers), run the **full** script. Do **not** default to `-WorkerOnly` / `-WorkersOnly`. Canonical step order stays in **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — do not duplicate it here. This subsection is only Cloud VM pitfalls.
+When the operator asks for a **full staging or production stack** (Terraform + workers), run the **full** script. Do **not** default to `-WorkerOnly` / `-WorkersOnly`. Canonical step order stays in **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — do not duplicate it here. This subsection is only Cloud VM pitfalls.
 
 **Hard rules**
 
@@ -108,15 +108,15 @@ When the operator asks for a **full staging stack** (Terraform + workers), run t
 
 - Use **Cursor environment/repo secrets**, not Jon's Windows `.env.dev`.
 - Terraform Cloud: Cursor secret name is `TF_TOKEN_APP_TERRAFORM_IO`. `scripts/terraform-preflight.ps1` looks for `TF_TOKEN_app_terraform_io` (also `TF_TOKEN` / `TFE_TOKEN`). Copy the Cursor name into the preflight name in **process env** before deploy.
-- Copy `TF_VAR_CLOUDFLARE_API_TOKEN` / `TF_VAR_CLOUDFLARE_ACCOUNT_ID` into `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` when those names are missing.
-- **Turso hosts:** compare `TURSO_DATABASE_URL` and `TURSO_PRODUCTION_EMDASH_DB_URL`. If the hosts match, **refuse** — do not write that pair into `.env.dev`, do not migrate it, and do **not** fall back to process `TURSO_AUTH_TOKEN` (that token is the production DB JWT). Staging Turso is database name `freedomtimes-emdash-staging`. After apply, Terraform-minted `turso_database_auth_token` has **404'd** (`Set-DeployTursoBuildEnvFromTerraform` / `Resolve-StagingEmdashTursoToken` prefer that output). Do not then use process `TURSO_AUTH_TOKEN` because the hosts match. Mint a staging token with `turso db show` / `turso db tokens create` against that staging database after `turso config set token` from `TURSO_PLATFORM_API_TOKEN` (never `TURSO_AUTH_TOKEN` for CLI login). <!-- pragma: allowlist secret -->
+- Copy `TF_VAR_CLOUDFLARE_API_TOKEN` / `TF_VAR_CLOUDFLARE_ACCOUNT_ID` into `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` when those names are missing. **If `CLOUDFLARE_API_TOKEN` is already set but shorter than 40 characters, it is a stub** — overwrite it with `TF_VAR_CLOUDFLARE_API_TOKEN` (deploy scripts do this). A short process token makes Wrangler fail with `6111` / `9106` after Terraform has already succeeded. Never print token values.
+- **Turso hosts:** compare `TURSO_DATABASE_URL` and `TURSO_PRODUCTION_EMDASH_DB_URL`. If the hosts match, **refuse** — do not write that pair into `.env.dev`, do not migrate it, and do **not** fall back to process `TURSO_AUTH_TOKEN` (that token is the production DB JWT). Staging Turso is database name `freedomtimes-emdash-staging`. After apply, Terraform-minted `turso_database_auth_token` has **404'd**. Production resolve now prefers `TURSO_PRODUCTION_EMDASH_DB_TOKEN`; staging resolve still prefers the Terraform output (`Resolve-StagingEmdashTursoToken`). Do not then use process `TURSO_AUTH_TOKEN` because the hosts match. Mint a staging token with `turso db show` / `turso db tokens create` against that staging database after `turso config set token` from `TURSO_PLATFORM_API_TOKEN` (never `TURSO_AUTH_TOKEN` for CLI login). <!-- pragma: allowlist secret -->
 - Do **not** require `EMDASH_TARGET_FINGERPRINT_*` as Cursor secrets for this **local** script path (those pins are GitHub Actions; this Cloud env has not had them). Take the fingerprint from `emdash migrate --status --json` **after** `web/` build, then pass `--expected-target-fingerprint` from the helper.
 
 **Linux Cloud VM bootstrap (this image)**
 
 - Default `node` can be 22.14; need **22.22.2** (`registerHooks`) via nvm. **`/exec-daemon/node` shadows nvm** — it stays first on `PATH` after `nvm use`, so `npm ci` still runs 22.14.0 (`EBADENGINE`). After `nvm install` / `nvm use 22.22.2`, invoke that nvm binary (`$NVM_DIR/versions/node/v22.22.2/bin/node` / `npm`) or **prepend** that directory to `PATH` so it beats `/exec-daemon/node`. Confirm `node -v` is `v22.22.2` before `npm ci` / `npm run build`.
 - Install `pwsh`, native `turso` (`$HOME/.turso/turso`), and `terraform` if missing.
-- `terraform init` on a VM with no `.terraform` is **required** before the first full staging apply. Treat that as a preflight, not a surprise failure: `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles`, then re-run the full deploy.
+- `terraform init` on a VM with no `.terraform` is **required** before the first full apply for **that** environment. Treat that as a preflight, not a surprise failure: `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles` (or `-Environment production`), then re-run the full deploy.
 - **Lockfile timing:** Linux `terraform init` dirties `.terraform.lock.hcl` with extra platform hashes. **Leave that file dirty through apply** (reverting before apply is the failure mode). After apply succeeds, revert the hash-only diff. Never commit those hashes unless the operator asked for a lockfile change.
 
 **Full staging command**
@@ -126,3 +126,13 @@ When the operator asks for a **full staging stack** (Terraform + workers), run t
 - A successful Terraform mutate can be small (example: `0 added, 2 changed, 0 destroyed`). That is not a required delta next time.
 - After apply: `emdash migrate` apply, wrangler staging, `emdash migrate --check`. Pending none is success.
 - Probe `https://staging.freedomtimes.news/` HTTP 200 is the **locked holding page** (title Secure Access, Log in with Google). That is success, not a worker failure. Staging stays locked (**Primary guardrails §4**). <!-- pragma: allowlist secret -->
+
+**Production extras (only when the operator asked in this chat)**
+
+- Full stack: `pwsh ./scripts/deploy-production-local.ps1` with **no** `-WorkerOnly`. That creates a Turso rollback branch, applies Terraform, syncs Worker secrets, builds, migrates, and deploys. Do **not** pass `-SkipTursoBackup` unless a checkpoint newer than 24h already matches (scripts match `sourceDatabase` to `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` **or** the production EmDash URL host — `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` is often unset here).
+- **`TURSO_PRODUCTION_EMDASH_DB_TOKEN`** is often unset as a Cursor secret. If process `TURSO_DATABASE_URL` is production EmDash, copy process `TURSO_AUTH_TOKEN` into `TURSO_PRODUCTION_EMDASH_DB_TOKEN` only. Do **not** write that pair into `.env.dev` as `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` (file `TURSO_DATABASE_URL` stays staging). Do **not** source staging Turso PATH overlays during a production deploy.
+- Resolve helpers now prefer `TURSO_PRODUCTION_EMDASH_DB_TOKEN` over Terraform-minted `turso_database_auth_token` (that output has **404'd**). Still mint/set the production JWT; do not use process `TURSO_AUTH_TOKEN` as a *staging* token when the hosts match.
+- Fingerprint: after `web/` build against the **production** host, take `emdash migrate --status --json` and set `EMDASH_TARGET_FINGERPRINT` plus `EMDASH_TARGET_FINGERPRINT_PRODUCTION`. Do not require those names as Cursor secrets.
+- If Terraform apply **succeeds** and a later step fails: do not re-apply blindly. Finish with `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SyncCloudflareWorkerSecrets` (omit `-SkipTursoBackup` unless the skip check passes). If Terraform itself failed: **STOP** before wrangler.
+- Apply delta of `0 added, 1 changed, 0 destroyed` on the holding-page Worker is expected (`last_deployed_from = wrangler`).
+- Probe apex `/` (200 newsroom, not Secure Access) and `/homepage` (301 → `/` on the same host). Do not require `www` (may have no DNS). Staging probes stay the locked wall.

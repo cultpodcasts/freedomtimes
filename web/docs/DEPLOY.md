@@ -21,7 +21,7 @@
 
 Read **`AGENTS.md`** first, then this section, then run **one** script from the decision table below.
 
-**Cloud Agents (Linux VM):** a **full staging stack** (Terraform + workers) is `pwsh ./scripts/deploy-staging-local.ps1` with **no** `-WorkerOnly` / `-WorkersOnly`. Do not take the WorkerOnly path because this table also lists those flags. Fresh Cloud VMs need `terraform init` before the first apply; Cursor secret remaps, Turso host compare, and VM bootstrap live in **`AGENTS.md`** § Local deploy → Cloud Agents — not here.
+**Cloud Agents (Linux VM):** a **full staging stack** (Terraform + workers) is `pwsh ./scripts/deploy-staging-local.ps1` with **no** `-WorkerOnly` / `-WorkersOnly`. A **full production stack** (operator must ask) is `pwsh ./scripts/deploy-production-local.ps1` with **no** `-WorkerOnly`. Do not take the WorkerOnly path because this table also lists those flags. Fresh Cloud VMs need `terraform init` for **that** environment before the first apply; Cursor secret remaps (including a short `CLOUDFLARE_API_TOKEN` stub), Turso host compare, and VM bootstrap live in **`AGENTS.md`** § Local deploy → Cloud Agents — not here.
 
 **Script entry points (repo root, `pwsh`):**
 
@@ -34,7 +34,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 **Not entry points — do not invoke directly:**
 
 - `scripts/Deploy-EnvironmentCommon.ps1` — dot-sourced helpers only
-- `scripts/terraform-run.ps1` — Terraform only; local deploy scripts call this internally on full deploy. **Cloud Agent exception:** on a fresh VM with no staging `.terraform`, run `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles` first (**`AGENTS.md`** § Local deploy → Cloud Agents), then the full deploy script.
+- `scripts/terraform-run.ps1` — Terraform only; local deploy scripts call this internally on full deploy. **Cloud Agent exception:** on a fresh VM with no `.terraform` for the target environment, run `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles` (or `-Environment production`) first (**`AGENTS.md`** § Local deploy → Cloud Agents), then the full deploy script.
 
 **GitHub PRs from a new cloud agent:** if PR create fails with `must be a collaborator`, do not stop. Prefer Cursor environment secret **`CULTPODCASTS_GH_TOKEN`** (90-day PAT; rotate before ~2026-11-29), else device-login as **CultPodcasts** — **[docs/CLOUD_AGENT_GITHUB_PR.md](../../docs/CLOUD_AGENT_GITHUB_PR.md)** and **`AGENTS.md`** §9.
 
@@ -589,7 +589,7 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 | `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); `deploy-production-local.ps1` has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
 | `Failed to read terraform output 'turso_database_url'` | Turso URL missing from Terraform and `.env.dev` | Populate `.env.dev` or apply Terraform so outputs exist (needed for core migrate, including `-WorkerOnly`) |
 | `No migration manifest` / EmDash core migrate failed | `npm run build` did not write `web/.emdash/migrations.json`, or Turso creds are the build placeholder | Rebuild in `web/` with real `TURSO_*`; do not apply migrate without backup |
-| `Refusing -SkipTursoBackup` | No rollback metadata / staging export newer than 24h | Omit `-SkipTursoBackup` or create a fresh checkpoint/export first |
+| `Refusing -SkipTursoBackup` | No rollback metadata / staging export newer than 24h, or production `sourceDatabase` did not match `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` / production EmDash URL | Omit `-SkipTursoBackup` or create a fresh checkpoint/export first. Cloud Agents: that TF_VAR is often unset — scripts now also match the production URL host. |
 | `Missing required production push secret values` (FCM labels mention production **or** staging) | No FCM keys at all in `.env.dev` | Run `populate-android-fcm-env.ps1` or set `PUSH_STAGING_ANDROID_FCM_*` / `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |
 | `Refusing to sync placeholder value for Worker secret` | Secret sync hit a template value | Same as above |
@@ -598,6 +598,7 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 | Wrangler deploy: bundle / dist not found | Wrong cwd or missing `--config .\web\wrangler.jsonc` | Build in `web/`, deploy with correct config |
 | Terraform: `No such module "node:module"` on worker script | Terraform trying to push holding template over Wrangler bundle | Ensure `lifecycle.ignore_changes` on `cloudflare_workers_script`; deploy via Wrangler |
 | Wrangler auth / non-interactive failure | OAuth not available | Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` |
+| Wrangler `6111` / `9106` (invalid Authorization header) during `secret put` or deploy | Process `CLOUDFLARE_API_TOKEN` is a short Cursor stub shadowing `TF_VAR_CLOUDFLARE_API_TOKEN` | Deploy scripts replace tokens shorter than 40 characters with `TF_VAR_CLOUDFLARE_API_TOKEN`. If a session still has the stub, export the TF_VAR value over `CLOUDFLARE_API_TOKEN` (never print it). |
 | Terraform `Authentication error (10000)` on Turnstile or Workers | Cloudflare API token missing permission | Add permission per [infra/terraform/CLOUDFLARE_API_TOKEN.md](../../infra/terraform/CLOUDFLARE_API_TOKEN.md); update `.env.dev` and TFC `TF_VAR_cloudflare_api_token`; re-apply |
 | `Android push delivery is not configured` at runtime | Scheduler worker missing `PUSH_ANDROID_FCM_*` | `set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction` |
 | `/submit-a-tip` shows “Human verification is not configured” | Production Worker missing `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY` | Run `terraform apply` in `infra/terraform/environments/production` (Turnstile widget + Worker secrets); ensure Cloudflare API token has **Turnstile → Edit** ([token guide](../../infra/terraform/CLOUDFLARE_API_TOKEN.md); no redeploy) |
