@@ -427,13 +427,13 @@ function Invoke-DeployTursoCli {
             "'" + ($arg -replace "'", "'\''") + "'"
         }
         $bashLine = 'export PATH="$HOME/.turso:$PATH"; turso ' + ($quoted -join " ")
-        if ($CaptureOutput) {
-            $lines = & wsl bash -lc $bashLine 2>&1
-            return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @($lines) }
+        $lines = & wsl bash -lc $bashLine 2>&1
+        $code = $LASTEXITCODE
+        if (-not $CaptureOutput) {
+            $lines | ForEach-Object { Write-Host $_ }
+            $lines = @()
         }
-
-        & wsl bash -lc $bashLine
-        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @() }
+        return [pscustomobject]@{ ExitCode = $code; Output = @($lines) }
     }
 
     $exe = Get-DeployNativeTursoExe
@@ -446,13 +446,13 @@ function Invoke-DeployTursoCli {
         ) -join " "
     }
 
-    if ($CaptureOutput) {
-        $lines = & $exe @TursoArgs 2>&1
-        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @($lines) }
+    $lines = & $exe @TursoArgs 2>&1
+    $code = $LASTEXITCODE
+    if (-not $CaptureOutput) {
+        $lines | ForEach-Object { Write-Host $_ }
+        $lines = @()
     }
-
-    & $exe @TursoArgs
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @() }
+    return [pscustomobject]@{ ExitCode = $code; Output = @($lines) }
 }
 
 function Assert-DeployTursoAuth {
