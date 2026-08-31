@@ -1,12 +1,30 @@
 ---
+import HomepageView from '../components/HomepageView.astro';
 import SecureAccessWall from '../components/SecureAccessWall.astro';
-import { readOptionalEnv } from '../lib/auth';
+import { isLockedSiteAccess } from '../lib/auth';
+import { getOptionalEditorialSession } from '../lib/editorial-session';
 
 const denied = Astro.url.searchParams.get('denied') === '1';
-const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const isLocked = isLockedSiteAccess();
 
-if (siteAccessMode === 'public') {
-	return Astro.rewrite('/homepage');
+let isAdmin = false;
+let isSignedIn = false;
+
+if (!isLocked) {
+	const session = await getOptionalEditorialSession({
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+	});
+	if (session) {
+		isAdmin = session.isAdmin;
+		isSignedIn = true;
+	}
 }
 ---
-<SecureAccessWall denied={denied} />
+{isLocked ? (
+	<SecureAccessWall denied={denied} />
+) : (
+	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
+)}

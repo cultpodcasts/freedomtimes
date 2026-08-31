@@ -4,6 +4,8 @@ import { getEmDashCollection } from 'emdash';
 import Layout from '../layouts/Layout.astro';
 import Header from './Header.astro';
 import { SITE_DISPLAY_NAME } from '../lib/site-brand';
+import { getHomeCanonicalPath } from '../lib/homepage-host';
+import { readOptionalEnv } from '../lib/auth';
 import {
   readEmDashCreatedAt,
   readEmDashPublishedAt,
@@ -208,13 +210,17 @@ const rails = stories.slice(2);
 const socialTitle = SITE_DISPLAY_NAME;
 const socialDescription = 'Telling survivor truths. Protecting sources. Holding cults to account.';
 const socialImage = '/social/homepage-og.png';
+const homeCanonicalPath = getHomeCanonicalPath({
+  hostname: Astro.url.hostname,
+  siteAccessMode: readOptionalEnv('SITE_ACCESS_MODE'),
+});
 ---
 
 <Layout
   title={socialTitle}
   socialTitle={socialTitle}
   description={socialDescription}
-  canonicalUrl={Astro.url.pathname}
+  canonicalUrl={homeCanonicalPath}
   ogType="website"
   ogImage={socialImage}
   ogImageAlt={`${SITE_DISPLAY_NAME} homepage`}

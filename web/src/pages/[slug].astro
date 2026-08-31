@@ -3,7 +3,11 @@ import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../components/EmDashContentView.astro';
 import HomepageView from '../components/HomepageView.astro';
-import { isLockedSiteAccess, SESSION_COOKIE } from '../lib/auth';
+import { isLockedSiteAccess, readOptionalEnv, SESSION_COOKIE } from '../lib/auth';
+import {
+	HOMEPAGE_ROOT_REDIRECT_LOCATION,
+	shouldRedirectHomepageToRoot,
+} from '../lib/homepage-host';
 import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
@@ -12,6 +16,14 @@ import {
 const slug = Astro.params.slug;
 if (!slug) {
 	return new Response('Missing slug', { status: 400 });
+}
+
+if (slug === 'homepage' && shouldRedirectHomepageToRoot({
+	pathname: Astro.url.pathname,
+	hostname: Astro.url.hostname,
+	siteAccessMode: readOptionalEnv('SITE_ACCESS_MODE'),
+})) {
+	return Astro.redirect(HOMEPAGE_ROOT_REDIRECT_LOCATION, 301);
 }
 
 /** `/homepage` is a staging-only URL; production serves the newsroom at `/`. */

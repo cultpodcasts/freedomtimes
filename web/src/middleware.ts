@@ -1,6 +1,10 @@
 import { defineMiddleware } from 'astro:middleware';
 import { env as cfEnv } from 'cloudflare:workers';
 
+import {
+  HOMEPAGE_ROOT_REDIRECT_LOCATION,
+  shouldRedirectHomepageToRoot,
+} from './lib/homepage-host';
 import { recordPageView } from './lib/page-view-analytics';
 
 enum PathMode {
@@ -174,6 +178,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (env.DEBUG_MIDDLEWARE) {
     console.info('[middleware] onRequest called', { path: context.url.pathname, full: context.url.href });
+  }
+
+  // Production public host: `/homepage` is not a reader URL. 301 to `/` on
+  // this host — never to staging. Staging still renders the editorial page.
+  if (
+    (context.request.method === 'GET' || context.request.method === 'HEAD')
+    && shouldRedirectHomepageToRoot({
+      pathname: normalizedPath,
+      hostname: context.url.hostname,
+      siteAccessMode: env.SITE_ACCESS_MODE,
+    })
+  ) {
+    return context.redirect(HOMEPAGE_ROOT_REDIRECT_LOCATION, 301);
   }
 
   if (context.request.method === 'GET' && normalizedPath === '/robots.txt') {

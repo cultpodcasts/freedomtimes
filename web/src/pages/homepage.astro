@@ -1,10 +1,22 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
-import { isLockedSiteAccess, SESSION_COOKIE } from '../lib/auth';
+import { isLockedSiteAccess, readOptionalEnv, SESSION_COOKIE } from '../lib/auth';
+import {
+  HOMEPAGE_ROOT_REDIRECT_LOCATION,
+  shouldRedirectHomepageToRoot,
+} from '../lib/homepage-host';
 import {
   getOptionalEditorialSession,
   requireEditorialSession,
 } from '../lib/editorial-session';
+
+if (shouldRedirectHomepageToRoot({
+  pathname: Astro.url.pathname,
+  hostname: Astro.url.hostname,
+  siteAccessMode: readOptionalEnv('SITE_ACCESS_MODE'),
+})) {
+  return Astro.redirect(HOMEPAGE_ROOT_REDIRECT_LOCATION, 301);
+}
 
 const isLocked = isLockedSiteAccess();
 
