@@ -3,16 +3,17 @@ import {
   getAuthConfig,
   getAuthFlowCookieName,
   getAuthRedirectUri,
-  getHomePath,
   getNativeAppCookieName,
   getReturnToCookieName,
   getStateCookieName,
+  isLockedSiteAccess,
   isNativeAppContext,
   makeState,
   RETURN_TO_COOKIE_MAX_AGE_SECONDS,
   sanitizeReturnToPath,
 } from '../../lib/auth';
 import { getOptionalEditorialSession } from '../../lib/editorial-session';
+import { resolveAuthLoginGet } from '../../lib/root-route';
 
 export const GET: APIRoute = async (ctx) => {
   const requestId = ctx.request.headers.get('cf-ray') ?? crypto.randomUUID();
@@ -22,10 +23,17 @@ export const GET: APIRoute = async (ctx) => {
     request: ctx.request,
     redirect: ctx.redirect,
   });
-  if (existing) {
-    const returnTo = sanitizeReturnToPath(ctx.url.searchParams.get('next')) ?? getHomePath();
-    console.info('[auth.login] already signed in; skipping Auth0 authorize', { requestId, returnTo });
-    return ctx.redirect(returnTo);
+  const loginAction = resolveAuthLoginGet({
+    siteAccess: isLockedSiteAccess() ? 'locked' : 'public',
+    hasEditorialSession: Boolean(existing),
+    nextPath: sanitizeReturnToPath(ctx.url.searchParams.get('next')),
+  });
+  if (loginAction.kind === 'redirect') {
+    console.info('[auth.login] already signed in; skipping Auth0 authorize', {
+      requestId,
+      returnTo: loginAction.location,
+    });
+    return ctx.redirect(loginAction.location);
   }
 
   const config = getAuthConfig();

@@ -5,6 +5,7 @@ import {
   ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
   SESSION_COOKIE_MAX_AGE_SECONDS,
 } from './auth-session-lifetime';
+import { editorialHomePath, siteAccessFromMode } from './root-route';
 
 export {
   ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
@@ -126,7 +127,7 @@ export function isPublicReaderPath(pathname: string): boolean {
 
 /** Editorial home URL: `/homepage` on locked staging, `/` on public production. */
 export function getHomePath(): '/' | '/homepage' {
-  return isLockedSiteAccess() ? '/homepage' : '/';
+  return editorialHomePath(siteAccessFromMode(readOptionalEnv('SITE_ACCESS_MODE')));
 }
 
 export function getAuthConfig(): AuthConfig {

@@ -1,24 +1,28 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
-import { isLockedSiteAccess, readOptionalEnv, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
-import {
-  HOMEPAGE_ROOT_REDIRECT_LOCATION,
-  shouldRedirectHomepageToRoot,
-} from '../lib/homepage-host';
+import { isLockedSiteAccess, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
   getOptionalEditorialSession,
   requireEditorialSession,
 } from '../lib/editorial-session';
+import { resolveHomepageGet } from '../lib/root-route';
 
-if (shouldRedirectHomepageToRoot({
-  pathname: Astro.url.pathname,
+const homepageAction = resolveHomepageGet({
+  siteAccess: isLockedSiteAccess() ? 'locked' : 'public',
   hostname: Astro.url.hostname,
-  siteAccessMode: readOptionalEnv('SITE_ACCESS_MODE'),
-})) {
-  return Astro.redirect(HOMEPAGE_ROOT_REDIRECT_LOCATION, 301);
+  sessionCookie: Astro.cookies.get(SESSION_COOKIE)?.value,
+  refreshCookie: Astro.cookies.get(REFRESH_TOKEN_COOKIE)?.value,
+});
+
+if (homepageAction.kind === 'redirect') {
+  return Astro.redirect(homepageAction.location, homepageAction.status);
 }
 
-const isLocked = isLockedSiteAccess();
+// Serve the same login screen as `/` without a redirect (embedded browsers
+// were showing a blank page on /homepage after 302 or nested HTML).
+if (homepageAction.kind === 'login-wall') {
+  return Astro.rewrite('/');
+}
 
 let isAdmin = false;
 let isSignedIn = false;
@@ -30,17 +34,7 @@ const sessionContext = {
   redirect: Astro.redirect,
 };
 
-if (isLocked) {
-  const token = Astro.cookies.get(SESSION_COOKIE)?.value;
-  const refresh = Astro.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
-
-  // Serve the same login screen as `/` without a redirect (embedded browsers
-  // were showing a blank page on /homepage after 302 or nested HTML).
-  // Missing ft_session is not "signed out" — ft_refresh can still silent-refresh.
-  if (!token && !refresh) {
-    return Astro.rewrite('/');
-  }
-
+if (homepageAction.kind === 'require-session') {
   const session = await requireEditorialSession(sessionContext);
 
   if (session instanceof Response) {

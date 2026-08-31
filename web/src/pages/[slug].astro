@@ -12,6 +12,7 @@ import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../lib/editorial-session';
+import { resolveHomepageGet } from '../lib/root-route';
 
 const slug = Astro.params.slug;
 if (!slug) {
@@ -47,14 +48,22 @@ const sessionContext = {
 };
 
 if (isHomepage) {
-	if (isLocked) {
-		const token = Astro.cookies.get(SESSION_COOKIE)?.value;
-		const refresh = Astro.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
+	const homepageAction = resolveHomepageGet({
+		siteAccess: isLocked ? 'locked' : 'public',
+		hostname: Astro.url.hostname,
+		sessionCookie: Astro.cookies.get(SESSION_COOKIE)?.value,
+		refreshCookie: Astro.cookies.get(REFRESH_TOKEN_COOKIE)?.value,
+	});
 
-		if (!token && !refresh) {
-			return Astro.rewrite('/');
-		}
+	if (homepageAction.kind === 'redirect') {
+		return Astro.redirect(homepageAction.location, homepageAction.status);
+	}
 
+	if (homepageAction.kind === 'login-wall') {
+		return Astro.rewrite('/');
+	}
+
+	if (homepageAction.kind === 'require-session') {
 		const session = await requireEditorialSession(sessionContext);
 
 		if (session instanceof Response) {

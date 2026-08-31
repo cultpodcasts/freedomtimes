@@ -1,22 +1,25 @@
 ---
-import { getHomePath, isLockedSiteAccess } from '../lib/auth';
+import { isLockedSiteAccess } from '../lib/auth';
 import { getOptionalEditorialSession } from '../lib/editorial-session';
+import { resolveRootGet } from '../lib/root-route';
 
 const isLocked = isLockedSiteAccess();
+const session = await getOptionalEditorialSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+const rootAction = resolveRootGet({
+	siteAccess: isLocked ? 'locked' : 'public',
+	hasEditorialSession: Boolean(session),
+});
 
-if (isLocked) {
-	const session = await getOptionalEditorialSession({
-		cookies: Astro.cookies,
-		url: Astro.url,
-		request: Astro.request,
-		redirect: Astro.redirect,
-	});
-	if (session) {
-		// `/` is the anonymous wall only. A live (or silently refreshable) session
-		// belongs on `/homepage`. Showing the wall here sends people through
-		// `/auth/login` again; a failed callback clears cookies and signs them out.
-		return Astro.redirect(getHomePath());
-	}
+if (rootAction.kind === 'redirect') {
+	return Astro.redirect(rootAction.location, rootAction.status);
+}
+
+if (rootAction.kind === 'login-wall') {
 	// Separate route so newspaper CSS / getEmDashCollection never enter this response.
 	return Astro.rewrite('/login-wall' + Astro.url.search);
 }
@@ -24,12 +27,6 @@ if (isLocked) {
 const HomepageView = (await import('../components/HomepageView.astro')).default;
 let isAdmin = false;
 let isSignedIn = false;
-const session = await getOptionalEditorialSession({
-	cookies: Astro.cookies,
-	url: Astro.url,
-	request: Astro.request,
-	redirect: Astro.redirect,
-});
 if (session) {
 	isAdmin = session.isAdmin;
 	isSignedIn = true;

@@ -2,6 +2,7 @@ import { defineMiddleware } from 'astro:middleware';
 import { env as cfEnv } from 'cloudflare:workers';
 
 import { isLockedSiteAccess } from './lib/auth';
+import { resolveLoginWallGet } from './lib/root-route';
 import {
   HOMEPAGE_ROOT_REDIRECT_LOCATION,
   shouldRedirectHomepageToRoot,
@@ -195,7 +196,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   // Internal rewrite target for locked `/`. Not a public reader URL.
-  if (normalizedPath === '/login-wall' && !isLockedSiteAccess()) {
+  if (
+    normalizedPath === '/login-wall'
+    && resolveLoginWallGet(isLockedSiteAccess() ? 'locked' : 'public') === 'not-found'
+  ) {
     return new Response('Not Found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
   }
 
