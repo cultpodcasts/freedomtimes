@@ -181,10 +181,15 @@ describe('homepage host wiring', () => {
 	it('rewrites / to /login-wall only inside if (isLocked); public / must not 404 via that rewrite', () => {
 		// Astro.rewrite re-runs middleware. Public workers 404 /login-wall, so an
 		// ungated rewrite turns production GET / into 404 instead of HomepageView.
+		// Pin the rewrite as the first statement in `if (isLocked)` — a `[\s\S]*`
+		// grep would still pass if the rewrite sat after the closing brace.
 		assert.match(
 			indexPageSource,
-			/if \(isLocked\) \{[\s\S]*Astro\.rewrite\('\/login-wall'/,
+			/if \(isLocked\) \{\s*(?:\/\/[^\n]*\n\s*)*return Astro\.rewrite\('\/login-wall'/,
 		);
+		const lockedBlock = indexPageSource.match(/if \(isLocked\) \{([^}]*)\}/);
+		assert.ok(lockedBlock, 'index.astro must keep if (isLocked) { ... }');
+		assert.match(lockedBlock[1], /Astro\.rewrite\('\/login-wall'/);
 		assert.doesNotMatch(
 			indexPageSource,
 			/Astro\.rewrite\('\/login-wall'[\s\S]*if \(isLocked\)/,
