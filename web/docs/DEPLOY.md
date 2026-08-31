@@ -21,6 +21,8 @@
 
 Read **`AGENTS.md`** first, then this section, then run **one** script from the decision table below.
 
+**Cloud Agents (Linux VM):** a **full staging stack** (Terraform + workers) is `pwsh ./scripts/deploy-staging-local.ps1` with **no** `-WorkerOnly` / `-WorkersOnly`. Do not take the WorkerOnly path because this table also lists those flags. Fresh Cloud VMs need `terraform init` before the first apply; Cursor secret remaps, Turso host compare, and VM bootstrap live in **`AGENTS.md`** § Local deploy → Cloud Agents — not here.
+
 **Script entry points (repo root, `pwsh`):**
 
 | Script | When |
@@ -32,7 +34,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 **Not entry points — do not invoke directly:**
 
 - `scripts/Deploy-EnvironmentCommon.ps1` — dot-sourced helpers only
-- `scripts/terraform-run.ps1` — Terraform only; local deploy scripts call this internally on full deploy
+- `scripts/terraform-run.ps1` — Terraform only; local deploy scripts call this internally on full deploy. **Cloud Agent exception:** on a fresh VM with no staging `.terraform`, run `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles` first (**`AGENTS.md`** § Local deploy → Cloud Agents), then the full deploy script.
 
 **GitHub PRs from a new cloud agent:** if PR create fails with `must be a collaborator`, do not stop. Prefer Cursor environment secret **`CULTPODCASTS_GH_TOKEN`** (90-day PAT; rotate before ~2026-11-29), else device-login as **CultPodcasts** — **[docs/CLOUD_AGENT_GITHUB_PR.md](../../docs/CLOUD_AGENT_GITHUB_PR.md)** and **`AGENTS.md`** §9.
 
@@ -40,7 +42,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 
 1. **Production deploy** — Do not run `deploy-production-local.ps1` or `production-release.ps1` unless the operator explicitly asked in this chat. Production infra deploy is operator-controlled; **EmDash `content_publish`** is a separate hard rule (push notifications).
 2. **Turso CLI** — Windows: `wsl bash -lic "turso auth whoami"` (WSL); interactive `turso auth login` when no Platform API token is in env. Linux: native `turso` (PATH or `$HOME/.turso/turso`). Local deploy sets the CLI token from `TURSO_PLATFORM_API_TOKEN` (else `TURSO_API_TOKEN` / `TF_VAR_turso_api_token` / non-JWT `TURSO_TOKEN`) via `turso config set token`, then `turso auth whoami`. Never use `TURSO_AUTH_TOKEN` (database JWT). Still run `turso db export` / rollback after auth — do not skip backup. If no platform token and whoami fails: **STOP**; Windows `wsl bash -lic "turso auth login"`, Linux `turso auth login`.
-3. **Turso rollback checkpoint** — every web-Worker deploy (full or `-WorkerOnly`) backs up EmDash Turso **before** `emdash migrate`. Production: rollback branch. Staging: `turso db export` (database name = `TF_VAR_TURSO_DATABASE_NAME_STAGING` if set, otherwise the Terraform staging `turso_database_name` default; that env key is optional). Staging WorkerOnly uses `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` as the EmDash pair; when `TURSO_PRODUCTION_EMDASH_DB_URL` is set, that is production EmDash — do not treat `TURSO_DATABASE_URL` as production. Do not pass `-SkipTursoBackup` unless a checkpoint/export newer than 24h already exists.
+3. **Turso rollback checkpoint** — every web-Worker deploy (full or `-WorkerOnly`) backs up EmDash Turso **before** `emdash migrate`. Production: rollback branch. Staging: `turso db export` (database name = `TF_VAR_TURSO_DATABASE_NAME_STAGING` if set, otherwise the Terraform staging `turso_database_name` default; that env key is optional). **Compare hosts** on `TURSO_DATABASE_URL` and `TURSO_PRODUCTION_EMDASH_DB_URL`: if they match, **refuse** (do not write that pair into `.env.dev`, do not migrate it) — Cloud Agents: **`AGENTS.md`** § Local deploy → Cloud Agents. Do not pass `-SkipTursoBackup` unless a checkpoint/export newer than 24h already exists.
 4. **EmDash content/schema** — Deploy scripts do not promote CMS content. Use EmDash MCP for stored PT JSON; see `AGENTS.md` § EmDash MCP.
 5. **CLI auth** — On wrangler, gh, terraform, or turso auth failure: **STOP**, name the CLI and auth command, wait for operator.
 
@@ -549,7 +551,7 @@ If sync still warns about missing outputs, run `terraform output` in `infra/terr
 
 Database name: `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` from `.env.dev` (default `freedomtimes-emdash-production`). Group: `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (default `freedomtimes-production`).
 
-Staging export uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default. Do not require `TF_VAR_TURSO_DATABASE_NAME_STAGING` as a Cursor secret. Staging migrate uses `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`; `TURSO_PRODUCTION_EMDASH_DB_URL` is the production EmDash URL when both are present.
+Staging export uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default. Do not require `TF_VAR_TURSO_DATABASE_NAME_STAGING` as a Cursor secret. Staging migrate uses `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` only after a **host compare** against `TURSO_PRODUCTION_EMDASH_DB_URL` — if the hosts match, refuse (Cloud Agents: **`AGENTS.md`** § Local deploy → Cloud Agents).
 
 **GitHub Actions mutate path** (`production-release.ps1 -TerraformMode apply` / `workflow_dispatch` with `production_worker_deploy=true`) **does** create a recoverable checkpoint: a Turso rollback branch plus metadata JSON uploaded as artifact `emdash-production-rollback-metadata` and echoed on the job summary. Push to `main`, pull requests, and `-TerraformMode plan` are check-only and do **not** create a checkpoint. For content promotion or schema work outside that dispatch, still run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). Staging mutate uploads `emdash-staging-backup` (14-day retention) from `turso db export`.
 
