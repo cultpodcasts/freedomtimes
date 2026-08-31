@@ -70,7 +70,7 @@ export const GET: APIRoute = async (ctx) => {
   authorizeUrl.searchParams.set('client_id', config.clientId);
   authorizeUrl.searchParams.set('redirect_uri', redirectUri);
   // openid: minimal identity scope; roles/permissions remain on token claims via API audience + Auth0 config.
-  // offline_access: required for Auth0 to issue a refresh_token (see callback.ts / tryRefreshAuthCookies).
+  // offline_access: required for Auth0 to issue a refresh_token (see callback.ts / editorial-session.ts).
   authorizeUrl.searchParams.set('scope', 'openid offline_access');
   authorizeUrl.searchParams.set('audience', config.apiAudience);
   authorizeUrl.searchParams.set('connection', 'google-oauth2');

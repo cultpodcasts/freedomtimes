@@ -30,7 +30,7 @@ resource "auth0_client" "admin_ui" {
 
   # Refresh token grant is already in local.login_app_grant_types. This block sets Auth0's
   # rotation/lifetime policy for it. The web app requests offline_access and silently
-  # refreshes via tryRefreshAuthCookies() (editorial + admin + /signed-in) — see web/docs/AUTH.md.
+  # refreshes via editorial-session.ts — see web/docs/AUTH.md.
   dynamic "refresh_token" {
     for_each = var.enable_refresh_token_rotation ? [1] : []
     content {

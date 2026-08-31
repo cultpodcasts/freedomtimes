@@ -2,14 +2,13 @@ import type { AstroCookies } from 'astro';
 import type { JWTPayload } from 'jose';
 
 import {
+  ACCESS_TOKEN_COOKIE,
   CSRF_COOKIE,
   SESSION_COOKIE,
-  clearAuthCookies,
   getAuthConfig,
   getCookieDeleteOptionsForHost,
   getDisplayName,
   getRoleClaimDebug,
-  tryRefreshAuthCookies,
   verifyIdToken,
 } from './auth';
 
@@ -38,8 +37,13 @@ export function jsonAuthError(error: string, status: 401 | 403): Response {
   });
 }
 
-function wipeAuthCookies(cookies: AstroCookies, hostname: string): void {
-  clearAuthCookies(cookies, getCookieDeleteOptionsForHost(hostname));
+export function clearAuthCookies(cookies: AstroCookies, hostname: string): void {
+  const deleteOptionsList = getCookieDeleteOptionsForHost(hostname);
+  for (const deleteOptions of deleteOptionsList) {
+    cookies.delete(SESSION_COOKIE, deleteOptions);
+    cookies.delete(ACCESS_TOKEN_COOKIE, deleteOptions);
+    cookies.delete(CSRF_COOKIE, deleteOptions);
+  }
 }
 
 export function verifyCsrfToken(cookies: AstroCookies, request: Request): Response | null {
@@ -53,13 +57,6 @@ export function verifyCsrfToken(cookies: AstroCookies, request: Request): Respon
   return null;
 }
 
-function adminSessionFromPayload(payload: JWTPayload, requestId: string): AdminSessionBase {
-  return {
-    displayName: getDisplayName(payload),
-    requestId,
-  };
-}
-
 export async function verifyAdminSession(params: {
   cookies: AstroCookies;
   request: Request;
@@ -70,48 +67,34 @@ export async function verifyAdminSession(params: {
   const requestId = params.request.headers.get('cf-ray') ?? crypto.randomUUID();
   const token = params.cookies.get(SESSION_COOKIE)?.value;
 
-  if (token) {
-    try {
-      const payload = await verifyIdToken(token, getAuthConfig());
-      if (!params.roleCheck(payload)) {
-        console.warn(`[${params.logPrefix}] token verified but role check failed`, {
-          requestId,
-          roleDebug: getRoleClaimDebug(payload),
-        });
-        return { ok: false, reason: 'forbidden', payload };
-      }
-
-      return {
-        ok: true,
-        session: adminSessionFromPayload(payload, requestId),
-        payload,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[${params.logPrefix}] token verification failed`, { requestId, message });
-      // Fall through to a silent refresh before treating this as logged out.
-    }
-  } else {
+  if (!token) {
     console.warn(`[${params.logPrefix}] missing session cookie`, { requestId });
+    return { ok: false, reason: 'no_session' };
   }
 
-  const refreshed = await tryRefreshAuthCookies({
-    cookies: params.cookies,
-    hostname: params.url.hostname,
-    requestId,
-    logPrefix: params.logPrefix,
-    roleCheck: params.roleCheck,
-  });
+  try {
+    const payload = await verifyIdToken(token, getAuthConfig());
+    if (!params.roleCheck(payload)) {
+      console.warn(`[${params.logPrefix}] token verified but role check failed`, {
+        requestId,
+        roleDebug: getRoleClaimDebug(payload),
+      });
+      return { ok: false, reason: 'forbidden', payload };
+    }
 
-  if (refreshed) {
     return {
       ok: true,
-      session: adminSessionFromPayload(refreshed, requestId),
-      payload: refreshed,
+      session: {
+        displayName: getDisplayName(payload),
+        requestId,
+      },
+      payload,
     };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[${params.logPrefix}] token verification failed`, { requestId, message });
+    return { ok: false, reason: 'invalid_token' };
   }
-
-  return token ? { ok: false, reason: 'invalid_token' } : { ok: false, reason: 'no_session' };
 }
 
 /**
@@ -137,13 +120,16 @@ export async function requireAdminPageSession<T extends AdminSessionBase = Admin
     return params.buildSession ? params.buildSession(base, verified.payload) : (base as T);
   }
 
-  wipeAuthCookies(params.context.cookies, params.context.url.hostname);
-
   if (verified.reason === 'forbidden') {
+    clearAuthCookies(params.context.cookies, params.context.url.hostname);
     return params.context.redirect('/?denied=1');
   }
 
   const loginPath = `/auth/login?next=${encodeURIComponent(params.loginNextPath)}`;
+  if (verified.reason === 'invalid_token') {
+    clearAuthCookies(params.context.cookies, params.context.url.hostname);
+  }
+
   return params.context.redirect(loginPath);
 }
 

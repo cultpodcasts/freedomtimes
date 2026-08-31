@@ -60,7 +60,8 @@ All auth cookies share the same `HttpOnly` (except `ft_csrf`), `Secure`, `SameSi
 **Stale-cookie protections:**
 
 - Callback and logout clear both host-only and domain-scoped auth cookie variants (including `ft_refresh`).
-- `tryRefreshAuthCookies()` (`web/src/lib/auth.ts`) is the shared silent-refresh helper. `requireEditorialSession`, `verifyAdminSession` (`/admin/*` pages and `/api/admin/*`), and `/signed-in` all call it when `ft_session` is missing or `verifyIdToken()` fails, before clearing cookies and redirecting to `/auth/login`.
+- `requireEditorialSession` attempts a silent `ft_refresh` exchange before clearing cookies and redirecting to `/auth/login` when the session token is expired (see below).
+- `/signed-in` clears auth cookies and redirects to `/auth/login` when the session token is expired and no refresh was possible.
 - `/signed-in` detects duplicate `ft_session` values in the `Cookie` header, clears auth cookies, and forces a clean login.
 
 **Role denial:** If the callback token verifies but the required role claim is missing, auth cookies are cleared and the user is redirected to `/?denied=1`.
@@ -106,8 +107,8 @@ There is **no tenant-wide Auth0 SSO session management** in this repo (no `auth0
 
 | Layer | What it controls | Where |
 |---|---|---|
-| ID token `exp` (JWT claim) | `verifyIdToken()` runs on **every** protected page/API request (`editorial-session.ts`, `admin-session.ts`, `signed-in.astro`). Once `exp` has passed, the app tries a silent refresh (below) before redirecting to `/auth/login` | Terraform: `auth0_client.admin_ui.jwt_configuration.lifetime_in_seconds` (`infra/terraform/modules/auth0_app/main.tf`, `var.id_token_lifetime_in_seconds`, default 86,400s / 24h) |
-| `ft_session` / `ft_csrf` / `ft_access_token` / `ft_refresh` cookie `maxAge` | Browser stops sending each cookie once its own `maxAge` elapses | App code: `web/src/lib/auth.ts` (`SESSION_COOKIE` / `CSRF_COOKIE` / `ACCESS_TOKEN_COOKIE` 24h, `REFRESH_TOKEN_COOKIE` matches `refresh_token_idle_lifetime_seconds`, default 14d) |
+| ID token `exp` (JWT claim) | `verifyIdToken()` runs on **every** protected page/API request (`editorial-session.ts`, `signed-in.astro`). Once `exp` has passed, the app tries a silent refresh (below) before redirecting to `/auth/login` | Terraform: `auth0_client.admin_ui.jwt_configuration.lifetime_in_seconds` (`infra/terraform/modules/auth0_app/main.tf`, `var.id_token_lifetime_in_seconds`, default 86,400s / 24h) |
+| `ft_session` / `ft_csrf` / `ft_refresh` cookie `maxAge` | Browser stops sending each cookie once its own `maxAge` elapses | App code: `web/src/lib/auth.ts` (`SESSION_COOKIE`/`CSRF_COOKIE` 24h, `REFRESH_TOKEN_COOKIE` matches `refresh_token_idle_lifetime_seconds`, default 14d) |
 
 **Before the 8h alignment:** `jwt_configuration.lifetime_in_seconds` was hardcoded to `3600` (1 hour), while the `ft_session` cookie declared an 8-hour `maxAge`. The ID token's own `exp` was the real bottleneck — the cookie's 8-hour window was mostly theoretical because `verifyIdToken()` rejected the token as expired after 1 hour and forced a fresh Auth0 login.
 
@@ -117,13 +118,11 @@ There is **no tenant-wide Auth0 SSO session management** in this repo (no `auth0
 |---|---|---|---|
 | ID token lifetime (`id_token_lifetime_in_seconds`) | 28,800s (8h) | 86,400s (24h) — matches `SESSION_COOKIE_MAX_AGE_SECONDS` | `modules/auth0_app` var, per staging/production login app |
 | `ft_session` / `ft_csrf` cookie `maxAge` | 8h | 24h | `web/src/lib/auth.ts` |
-| `ft_access_token` cookie `maxAge` | 30 minutes | 24h (same as `ft_session`) | `web/src/lib/auth.ts` |
 | Refresh token rotation | rotating / expiring, absolute 30d, idle 14d | unchanged | `modules/auth0_app` var, per staging/production login app |
-| Refresh token leeway | 10s | 60s (tolerates two tabs rotating at once) | `modules/auth0_app` var — **needs Terraform apply** |
 
 The login app must be **OIDC conformant** (`oidc_conformant = true` on `auth0_client.admin_ui`) when refresh token rotation is enabled — Auth0 returns `400 Application must be OIDC Conformant when Refresh Token rotation is enabled` otherwise.
 
-**What this changes:** raising `id_token_lifetime_in_seconds` to 24h (and matching the cookie `maxAge`) gives staff a full day before the ID token expires. After that, silent refresh via `ft_refresh` can extend the session for up to 14 days of activity (idle refresh token lifetime) without a full Auth0 login prompt. `/admin/*` used to skip that refresh and bounce to Auth0 as soon as `ft_session` expired — that is the usual reason staff felt they had to sign in again every day.
+**What this changes:** raising `id_token_lifetime_in_seconds` to 24h (and matching the cookie `maxAge`) gives staff a full day before the ID token expires. After that, silent refresh via `ft_refresh` can extend the session for up to 14 days of activity (idle refresh token lifetime) without a full Auth0 login prompt.
 
 ### Refresh tokens (app side)
 
@@ -131,7 +130,7 @@ Auth0-side refresh token policy alone does nothing unless the app actually reque
 
 1. **`web/src/pages/auth/login.ts`** requests `scope=openid offline_access` — `offline_access` is what makes Auth0 include a `refresh_token` in the token response.
 2. **`web/src/pages/auth/callback.ts`** stores the returned `refresh_token` in a new `HttpOnly`, `Secure`, `SameSite=Lax` cookie (`ft_refresh`, `REFRESH_TOKEN_COOKIE` in `auth.ts`), `maxAge` matching `refresh_token_idle_lifetime_seconds` (default 14 days), same `path=/` and domain policy as the other auth cookies.
-3. **`web/src/lib/auth.ts`** (`tryRefreshAuthCookies`) is the shared silent-refresh path. When `ft_session` is missing or fails `verifyIdToken()` (typically `exp` expiry), callers read `ft_refresh`, call `exchangeRefreshTokenForTokens()` (grant_type `refresh_token` against `/oauth/token`), re-verify the new ID token, run the caller’s role check (`hasEditorialRole` or `hasAdminRole`), and reissue all four auth cookies (Auth0 rotation returns a new `refresh_token` on every use). Used by `editorial-session.ts`, `admin-session.ts` (`/admin`, tips, analytics, push diagnostics), and `/signed-in`. Only if there is no refresh cookie, or the refresh exchange/role-check fails, are cookies cleared and the user redirected to `/auth/login`.
+3. **`web/src/lib/editorial-session.ts`** (`requireEditorialSession`) attempts a silent refresh before forcing a login redirect: when the `ft_session` ID token is missing or fails `verifyIdToken()` (typically `exp` expiry), it reads `ft_refresh`, calls `exchangeRefreshTokenForTokens()` (grant_type `refresh_token` against `/oauth/token`) in `web/src/lib/auth.ts`, re-verifies the new ID token, and — if it still carries a valid editorial role — reissues all four auth cookies (Auth0 rotation returns a new `refresh_token` on every use). Only if there is no refresh cookie, or the refresh exchange/role-check fails, are cookies cleared and the user redirected to `/auth/login`.
 
 This is deliberately **not** a separate `/auth/refresh` route: the refresh happens transparently inside the same request that discovered the expired token, so a protected page/API call either succeeds (session silently extended) or falls back to the login redirect in one round trip.
 
