@@ -15,7 +15,8 @@ This runbook is the single path for promoting all production-facing changes:
 | Layout/UI changes (`web/src/**`) | `terraform-production.yml` workflow | Includes Worker build/deploy and required runtime vars/secrets sync |
 | EmDash runtime updates (`web` dependencies/config) | `terraform-production.yml` workflow | Same workflow deploys updated Worker bundle |
 | Terraform/IaC changes (`infra/terraform/**`) | `terraform-production.yml` workflow (plan/apply) | Applies managed infrastructure and captures outputs |
-| EmDash schema changes | EmDash CLI against staging, then production | Apply same collection/field operations to production after staging validation |
+| EmDash **core** schema (`emdash migrate` / `.emdash/migrations.json`) | Deploy pipeline: local `deploy-*-local.ps1` or CI `production-release.ps1` (`production_worker_deploy=true`) | Backup first, then apply, wrangler, `--check`. Runtime stays `check` (no first-request auto-migrate). |
+| EmDash collection/field model | Cursor EmDash MCP (`schema_*` / content tools) against staging, then production | Not `npx emdash schema` for agents. Apply the same collection/field operations to production after staging validation. |
 | EmDash content changes | Staging-to-production promotion | Use [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md) |
 
 ## Prerequisites
@@ -24,7 +25,7 @@ This runbook is the single path for promoting all production-facing changes:
 2. `gh` authenticated (`gh auth status`).
 3. EmDash staging and production API tokens available.
 4. Staging validation complete for schema/content and page rendering.
-5. Turso CLI access in **WSL** for production rollback checkpoints — **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (primary reference for WSL invoke patterns). Required for schema/content promotion and the GitHub Actions release path; **local full production deploy** (`deploy-production-local.ps1`) creates a checkpoint automatically unless you pass `-SkipTursoBackup`.
+5. Turso CLI access for production rollback checkpoints — **WSL on Windows, native `turso` on Linux** (**[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)**, AGENTS.md §7). Required for schema/content promotion and for reading CI rollback metadata; **local full production deploy** (`deploy-production-local.ps1`) creates a checkpoint automatically unless you pass `-SkipTursoBackup`. CI mutate (`production_worker_deploy=true`) also creates a Turso rollback branch and uploads the metadata artifact.
 
 Merge rule for EmDash-dependent changes:
 
@@ -103,8 +104,8 @@ From repo root:
 What this does:
 
 1. Dispatches `.github/workflows/terraform-production.yml`.
-2. Requests Terraform apply (`production_terraform_apply=true`).
-3. The workflow backs up EmDash Turso, builds `web/` (writes `.emdash/migrations.json`), runs `npx emdash migrate`, deploys that same Worker build, then `npx emdash migrate --check`. This is EmDash **core** schema, not `pt:migrate` or tips/subscriptions SQL. Staging/production runtime stays on `check` (no first-request auto-migrate).
+2. Requests Terraform apply (`production_terraform_apply=true`) and Worker mutate (`production_worker_deploy=true`).
+3. The workflow creates a recoverable Turso rollback branch (metadata artifact + job summary), builds `web/` (writes `.emdash/migrations.json`), runs `npx emdash migrate` with `EMDASH_TARGET_FINGERPRINT_PRODUCTION`, deploys that same Worker build, then `npx emdash migrate --check`. This is EmDash **core** schema, not `pt:migrate` or tips/subscriptions SQL. Staging/production runtime stays on `check` (no first-request auto-migrate). A push to `main` without this dispatch is check-only (no backup, no apply, no wrangler).
 4. Watches run completion and exits non-zero on failure.
 
 **Web version:** CI builds from committed `main` — no automatic bump. Local staging/production version behavior: [DEPLOY.md § Web version bump](web/docs/DEPLOY.md#web-version-bump-on-deploy). Bump and commit manually before dispatch if you want a new semver on the release build.

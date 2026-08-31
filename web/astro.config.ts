@@ -53,6 +53,12 @@ const sqliteShimPath = fileURLToPath(new URL('./src/shims/better-sqlite3.ts', im
 const bindingsShimPath = fileURLToPath(new URL('./src/shims/bindings.ts', import.meta.url));
 
 const isAstroBuild = process.argv.includes('build');
+const isAstroDev = process.argv.includes('dev') && !isAstroBuild;
+if (isAstroDev && /emdash-production/i.test(tursoDatabaseUrl)) {
+  throw new Error(
+    'astro dev refuses TURSO_DATABASE_URL that looks like production EmDash (migrations.dev is auto). Use a local or staging URL.',
+  );
+}
 
 /**
  * @astrojs/cloudflare 14 prebundles astro/assets/fonts/runtime.js during SSR optimizeDeps.
@@ -153,7 +159,8 @@ export default defineConfig({
       database: emdashDatabase,
       // Staging/production must not auto-migrate on first request. Deploy
       // scripts apply `npx emdash migrate` after Turso backup, then `--check`.
-      // `astro dev` keeps auto so local schema can catch up.
+      // `dev: "auto"` is local-only: astro.config refuses production-looking
+      // TURSO_DATABASE_URL so a mixed .env.dev cannot auto-migrate prod.
       migrations: {
         runtime: 'check',
         dev: 'auto',

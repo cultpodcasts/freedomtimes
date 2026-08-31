@@ -79,7 +79,7 @@ elseif ($SyncCloudflareWorkerSecrets) {
 Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly -SkipVersionBump:$SkipVersionBump
 
 if ($WorkersOnly) {
-    $webDistDir = Join-Path $script:DeployRepoRoot "web\dist"
+    $webDistDir = Join-Path $script:DeployRepoRoot "web" "dist"
     Assert-DeployFreshWebBuild -DistDir $webDistDir -BuildStartedAt $script:DeployWebBuildStartedAt
     $webVarArgs = Get-DeployStagingWebWranglerVarArgs
     Invoke-DeployEmdashCoreMigrate
@@ -88,7 +88,7 @@ if ($WorkersOnly) {
     Invoke-DeploySchedulerWorkerDeploy
 
     Write-DeployStep "Staging deploy complete"
-    Write-Host "Web worker:    $(Get-DeployWorkerName -WorkerOnly:$false)" -ForegroundColor Green
+    Write-Host "Web worker:    $(Get-DeployWorkerName -WorkerOnly:$true)" -ForegroundColor Green
     Write-Host "Scheduler:     deployed (staging env)" -ForegroundColor Green
 }
 else {

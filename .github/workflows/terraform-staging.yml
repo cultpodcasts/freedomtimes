@@ -10,10 +10,20 @@ on:
       - ".github/workflows/terraform-staging.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - "functions/editorial-api/**"
+      - "web/**"
+      - ".github/workflows/terraform-staging.yml"
   workflow_dispatch:
     inputs:
       staging_terraform_apply:
         description: "Run Terraform apply (true) or plan-only (false)"
+        required: false
+        default: false
+        type: boolean
+      staging_worker_deploy:
+        description: "Backup EmDash Turso, apply core migrate, and wrangler deploy (true). PRs are check-only."
         required: false
         default: false
         type: boolean
@@ -23,11 +33,12 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: staging-deploy
-  cancel-in-progress: true
+  group: staging-emdash-migrate
+  cancel-in-progress: false
 
 env:
   STAGING_TERRAFORM_APPLY: "false"
+  STAGING_WORKER_DEPLOY: "false"
 
 jobs:
   terraform:
@@ -456,7 +467,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "22.22.2"
           cache: "npm"
           cache-dependency-path: |
             scheduler-worker/package-lock.json
@@ -544,7 +555,23 @@ jobs:
 
           npm run tips:db:deploy
 
+      - name: Decide EmDash worker mutate
+        id: emdash_mutate
+        run: |
+          set -euo pipefail
+          deploy=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.staging_worker_deploy }}" = "true" ]; then
+            deploy=true
+          fi
+          if [ "${STAGING_WORKER_DEPLOY}" = "true" ]; then
+            deploy=true
+          fi
+          echo "deploy_worker=$deploy" >> "$GITHUB_OUTPUT"
+          echo "EmDash worker mutate (backup + migrate apply + wrangler): $deploy (PRs are check-only)"
+
       - name: Backup EmDash Turso before core migrate
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        id: emdash_backup
         env:
           TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN_STAGING }}
         run: |
@@ -555,6 +582,28 @@ jobs:
             exit 1
           fi
           bash "$GITHUB_WORKSPACE/scripts/ci-turso-emdash-backup.sh" staging "$DB_NAME"
+
+      - name: Upload staging EmDash backup artifact
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: emdash-staging-backup
+          path: .release/backups/emdash-staging-*.db
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record staging EmDash backup in job summary
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        run: |
+          set -euo pipefail
+          {
+            echo "## Staging EmDash Turso backup"
+            echo
+            echo "Recoverable runner export uploaded as artifact \`emdash-staging-backup\` (14-day retention)."
+            echo
+            echo "Files:"
+            ls -la .release/backups/emdash-staging-*.db
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build Astro Worker
         working-directory: web
@@ -580,15 +629,18 @@ jobs:
           npm run build
 
       - name: Apply EmDash core migrations
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
         working-directory: web
         env:
           TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
           TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+          EMDASH_TARGET_FINGERPRINT: ${{ secrets.EMDASH_TARGET_FINGERPRINT_STAGING }}
         run: |
           set -euo pipefail
           npm run emdash:migrate
 
       - name: Deploy Astro Worker to Staging
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
         working-directory: web
         env:
           # This token must include Workers Scripts edit + KV Storage write permissions
@@ -620,7 +672,7 @@ jobs:
           npm run emdash:migrate:check
 
       - name: Deploy Scheduler Worker to Staging
-        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
         working-directory: scheduler-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
@@ -631,6 +683,7 @@ jobs:
           npx wrangler deploy --config wrangler.jsonc --env staging
 
       - name: Set Worker Secrets for Staging
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
         working-directory: web
         # Cloudflare Worker secrets are synced here from Terraform outputs and Auth0 Management API.
         # Auth0 login app credentials come from the Terraform-managed application.
@@ -675,7 +728,7 @@ jobs:
           fi
 
       - name: Set Scheduler Worker Secrets for Staging
-        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
         working-directory: scheduler-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}

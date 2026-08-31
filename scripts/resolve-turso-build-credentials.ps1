@@ -31,6 +31,10 @@ function Import-EnvFileForTurso {
             if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
                 $value = $value.Substring(1, $value.Length - 2)
             }
+            $existing = [Environment]::GetEnvironmentVariable($key, "Process")
+            if (-not [string]::IsNullOrWhiteSpace($existing)) {
+                continue
+            }
             [Environment]::SetEnvironmentVariable($key, $value, "Process")
         }
     }

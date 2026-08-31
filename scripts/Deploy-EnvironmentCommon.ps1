@@ -584,17 +584,41 @@ function Assert-DeployFreshEmDashTursoBackup {
         return
     }
 
+    $expectedDb = Get-DeployTursoDatabaseNameFromEnv `
+        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
+        -DefaultName "[REDACTED]-emdash-production"
     $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
-    $newestMeta = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending |
-        Select-Object -First 1
-    if ($null -eq $newestMeta -or $newestMeta.LastWriteTimeUtc -lt $cutoff) {
+    $newestMeta = $null
+    $candidates = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTimeUtc -ge $cutoff } |
+        Sort-Object LastWriteTimeUtc -Descending
+    foreach ($candidate in $candidates) {
+        try {
+            $meta = Get-Content -LiteralPath $candidate.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+        }
+        catch {
+            Write-Warning "Ignoring malformed rollback metadata $($candidate.Name) (not valid JSON)."
+            continue
+        }
+        $sourceDatabase = [string]$meta.sourceDatabase
+        if ([string]::IsNullOrWhiteSpace($sourceDatabase)) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (missing sourceDatabase)."
+            continue
+        }
+        if ($sourceDatabase -ne $expectedDb) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' != '$expectedDb')."
+            continue
+        }
+        $newestMeta = $candidate
+        break
+    }
+    if ($null -eq $newestMeta) {
         throw @(
-            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h under .release/rollback-branches/.",
+            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h for sourceDatabase '$expectedDb' under .release/rollback-branches/.",
             "Run scripts/turso-create-rollback-branch.ps1 -AllowProduction or omit -SkipTursoBackup."
         ) -join " "
     }
-    Write-DeployStep "Using existing production rollback metadata $($newestMeta.Name) (SkipTursoBackup)"
+    Write-DeployStep "Using existing production rollback metadata $($newestMeta.Name) for '$expectedDb' (SkipTursoBackup)"
 }
 
 function Invoke-DeployStagingTursoExport {

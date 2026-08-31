@@ -71,6 +71,11 @@ if [[ "$ENVIRONMENT" == "staging" ]]; then
   echo "Exporting staging EmDash Turso '${DATABASE_NAME}' → ${OUT}"
   turso db export "${DATABASE_NAME}" --output-file "${OUT}"
   echo "Staging EmDash backup saved: ${OUT}"
+  if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+    echo "backup_file=${OUT}" >> "${GITHUB_OUTPUT}"
+    echo "rollback_branch=" >> "${GITHUB_OUTPUT}"
+    echo "rollback_metadata=" >> "${GITHUB_OUTPUT}"
+  fi
   exit 0
 fi
 
@@ -99,3 +104,8 @@ cat > "${META_FILE}" <<EOF
 }
 EOF
 echo "Rollback metadata saved: ${META_FILE}"
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  echo "backup_file=" >> "${GITHUB_OUTPUT}"
+  echo "rollback_branch=${BRANCH_NAME}" >> "${GITHUB_OUTPUT}"
+  echo "rollback_metadata=${META_FILE}" >> "${GITHUB_OUTPUT}"
+fi

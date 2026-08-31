@@ -29,7 +29,8 @@ param(
 
   Turso rollback checkpoint runs before migrate for full deploy and -WorkerOnly
   (WSL Turso on Windows; native turso on Linux). -SkipTursoBackup requires a
-  rollback metadata file newer than 24h. Skipped for -DryRun.
+  rollback metadata file newer than 24h whose sourceDatabase matches the
+  production EmDash name about to be migrated. Skipped for -DryRun.
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1

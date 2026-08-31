@@ -87,16 +87,16 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 | `deploy-production-local.ps1` | Full production (infra + web) | Yes | Web (`freedomtimes`) | No bump |
 | `deploy-production-local.ps1 -WorkerOnly` | Production web only | No | Web | No bump |
 
-**EmDash core schema (not `pt:migrate`, not tips/subscriptions SQL):** after Turso backup and `npm run build`, local and CI deploy apply `npx emdash migrate` (non-interactive, `--expected-target-fingerprint` from `--status --json`), then wrangler of **that same build**, then `npx emdash migrate --check`. Staging/production runtime is `migrations: { runtime: "check", dev: "auto" }` in `web/astro.config.ts` — first-request auto-migrate is off. `astro dev` stays `dev: "auto"`.
+**EmDash core schema (not `pt:migrate`, not tips/subscriptions SQL):** after Turso backup and `npm run build`, local deploy applies `npx emdash migrate` (non-interactive, `--expected-target-fingerprint`), then wrangler of **that same build**, then `npx emdash migrate --check`. CI/production apply requires a pre-reviewed `EMDASH_TARGET_FINGERPRINT` (staging secret `EMDASH_TARGET_FINGERPRINT_STAGING`, production secret `EMDASH_TARGET_FINGERPRINT_PRODUCTION`) that must match `--status` for that host/build. Staging/production runtime is `migrations: { runtime: "check", dev: "auto" }` in `web/astro.config.ts` — first-request auto-migrate is off. `astro dev` stays `dev: "auto"` and refuses production-looking `TURSO_*` hosts.
 
-**Production Turso rollback:** full deploy **and** `-WorkerOnly` create a rollback checkpoint **before** migrate (WSL Turso on Windows; native `turso` on Linux). Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h. Metadata path is logged under `.release/rollback-branches/`.
+**Production Turso rollback:** full deploy **and** `-WorkerOnly` create a rollback checkpoint **before** migrate (WSL Turso on Windows; native `turso` on Linux). Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h whose `sourceDatabase` matches the production EmDash name about to be migrated. Metadata path is logged under `.release/rollback-branches/`.
 
-**CI / release path (not local deploy):** `production-release.ps1` dispatches `terraform-production.yml` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). The workflow now also backups EmDash Turso, applies core migrate, deploys, then `--check`. Section 1 checkpoint is still the operator-facing rollback record.
+**CI / release path (not local deploy):** `production-release.ps1` dispatches `terraform-production.yml` with `production_worker_deploy=true` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). That dispatch creates a recoverable Turso rollback branch (metadata uploaded as a workflow artifact + job summary), applies core migrate, deploys, then `--check`. Push/PR on the workflow is **check-only** (no backup, no apply, no wrangler). Section 1 remains the operator-facing record for content promotion and for local schema work that is not going through this dispatch.
 
 ### Prerequisites (all local deploy scripts)
 
 - Repo-root `.env.dev` populated (see [`.env.dev.example`](../../.env.dev.example), [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md))
-- `pwsh` (PowerShell 7+), Node/npm in `web/`, wrangler auth (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
+- `pwsh` (PowerShell 7+), Node **>=22.22.2** / npm in `web/` (EmDash 0.35 needs `registerHooks`; 22.14.0 is not enough), wrangler auth (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
 - Push secret preflight runs first on staging and production deploy scripts (VAPID + FCM — see [FCM keys (deploy preflight)](#fcm-keys-deploy-preflight))
 
 ### `deploy-staging-local.ps1`
@@ -551,7 +551,7 @@ Database name: `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` from `.env.dev` (default 
 
 Staging export uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default. Do not require `TF_VAR_TURSO_DATABASE_NAME_STAGING` as a Cursor secret. Staging migrate uses `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`; `TURSO_PRODUCTION_EMDASH_DB_URL` is the production EmDash URL when both are present.
 
-**GitHub Actions path** (`production-release.ps1`) does **not** create a checkpoint — run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) manually before dispatch.
+**GitHub Actions mutate path** (`production-release.ps1` / `workflow_dispatch` with `production_worker_deploy=true`) **does** create a recoverable checkpoint: a Turso rollback branch plus metadata JSON uploaded as artifact `emdash-production-rollback-metadata` and echoed on the job summary. Push to `main` and pull requests are check-only and do **not** create a checkpoint. For content promotion or schema work outside that dispatch, still run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). Staging mutate uploads `emdash-staging-backup` (14-day retention) from `turso db export`.
 
 ### Turso auth failure
 
