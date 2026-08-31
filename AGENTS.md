@@ -85,7 +85,7 @@ Full policy: **`web/docs/STAGING_ACCESS.md`**.
 **Hard rules for agents:**
 
 - Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**.
-- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Do not pass `-SkipTursoBackup` unless a checkpoint newer than 24h already exists.
+- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Staging `turso db export` uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default (do not require that env key as a Cursor secret). When `TURSO_PRODUCTION_EMDASH_DB_URL` is set, `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` are the staging EmDash pair — do not treat them as production. Do not pass `-SkipTursoBackup` unless a checkpoint newer than 24h already exists.
 - Deploy scripts ship Workers and infra; they do **not** publish EmDash content (**Primary guardrails §5** for `content_publish`).
 - On deploy failure, use the canonical doc's [Quick symptom index](web/docs/DEPLOY.md#quick-symptom-index) — do not improvise alternate script names.
 

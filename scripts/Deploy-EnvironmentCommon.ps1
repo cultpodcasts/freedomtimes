@@ -516,10 +516,7 @@ function Invoke-DeployStagingTursoExport {
 
     $databaseName = Get-DeployTursoDatabaseNameFromEnv `
         -EnvKey "TF_VAR_TURSO_DATABASE_NAME_STAGING" `
-        -DefaultName ""
-    if ([string]::IsNullOrWhiteSpace($databaseName)) {
-        throw "Set TF_VAR_TURSO_DATABASE_NAME_STAGING in .env.dev (or the process environment) for the staging EmDash export."
-    }
+        -DefaultName "freedomtimes-emdash-staging" # pragma: allowlist secret
 
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     $backupDir = Join-Path $script:DeployRepoRoot ".release/backups"

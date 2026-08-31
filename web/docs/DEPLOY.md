@@ -40,7 +40,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 
 1. **Production deploy** — Do not run `deploy-production-local.ps1` or `production-release.ps1` unless the operator explicitly asked in this chat. Production infra deploy is operator-controlled; **EmDash `content_publish`** is a separate hard rule (push notifications).
 2. **Turso CLI** — Windows: `wsl bash -lic "turso auth whoami"` (WSL). Linux: `turso auth whoami` (PATH or `$HOME/.turso/turso`). On auth failure: **STOP**; tell the operator `wsl bash -lic "turso auth login"` or `turso auth login`. Do not bypass with Platform API unless operator approves.
-3. **Turso rollback checkpoint** — every web-Worker deploy (full or `-WorkerOnly`) backs up EmDash Turso **before** `emdash migrate`. Production: rollback branch. Staging: `turso db export`. Do not pass `-SkipTursoBackup` unless a checkpoint/export newer than 24h already exists.
+3. **Turso rollback checkpoint** — every web-Worker deploy (full or `-WorkerOnly`) backs up EmDash Turso **before** `emdash migrate`. Production: rollback branch. Staging: `turso db export` (database name = `TF_VAR_TURSO_DATABASE_NAME_STAGING` if set, otherwise the Terraform staging `turso_database_name` default; that env key is optional). Staging WorkerOnly uses `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` as the EmDash pair; when `TURSO_PRODUCTION_EMDASH_DB_URL` is set, that is production EmDash — do not treat `TURSO_DATABASE_URL` as production. Do not pass `-SkipTursoBackup` unless a checkpoint/export newer than 24h already exists.
 4. **EmDash content/schema** — Deploy scripts do not promote CMS content. Use EmDash MCP for stored PT JSON; see `AGENTS.md` § EmDash MCP.
 5. **CLI auth** — On wrangler, gh, terraform, or turso auth failure: **STOP**, name the CLI and auth command, wait for operator.
 
@@ -548,6 +548,8 @@ If sync still warns about missing outputs, run `terraform output` in `infra/terr
 | Staging (`deploy-staging-local.ps1`, including `-WorkerOnly` / `-WorkersOnly`) | **Yes** — `turso db export` |
 
 Database name: `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` from `.env.dev` (default `freedomtimes-emdash-production`). Group: `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (default `freedomtimes-production`).
+
+Staging export uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default. Do not require `TF_VAR_TURSO_DATABASE_NAME_STAGING` as a Cursor secret. Staging migrate uses `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`; `TURSO_PRODUCTION_EMDASH_DB_URL` is the production EmDash URL when both are present.
 
 **GitHub Actions path** (`production-release.ps1`) does **not** create a checkpoint — run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) manually before dispatch.
 

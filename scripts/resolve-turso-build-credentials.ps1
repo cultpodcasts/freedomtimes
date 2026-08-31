@@ -8,6 +8,9 @@ Set-StrictMode -Version Latest
   Prefers Terraform outputs when present; falls back to repo-root .env.dev (and optional
   production-prefixed aliases). Does not require terraform apply when .env.dev is populated.
 
+  Staging uses TURSO_DATABASE_URL / TURSO_AUTH_TOKEN. When TURSO_PRODUCTION_EMDASH_DB_URL
+  is set, that is the production EmDash URL — do not treat TURSO_DATABASE_URL as production.
+
   Dot-source this file and call Set-TursoBuildEnv.
 #>
 
@@ -69,6 +72,39 @@ function Get-FirstNonEmptyTursoValue {
 function Test-IsProductionEmdashLibsqlUrl {
     param([string]$Url)
     return (-not [string]::IsNullOrWhiteSpace($Url)) -and ($Url -match 'freedomtimes-emdash-production')
+}
+
+function Test-TursoLibsqlUrlsEqual {
+    param(
+        [string]$Left,
+        [string]$Right
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Left) -or [string]::IsNullOrWhiteSpace($Right)) {
+        return $false
+    }
+
+    $normalize = {
+        param([string]$Url)
+        $hostPart = $Url.Trim() -replace "^libsql://", "" -replace "^https://", ""
+        $hostPart = ($hostPart -split "\?")[0]
+        $at = $hostPart.LastIndexOf("@")
+        if ($at -ge 0) {
+            $hostPart = $hostPart.Substring($at + 1)
+        }
+        return $hostPart.TrimEnd("/").ToLowerInvariant()
+    }
+
+    return (& $normalize $Left) -eq (& $normalize $Right)
+}
+
+function Get-ProductionEmdashUrlHint {
+    param([string]$EnvDevPath)
+
+    return Get-FirstNonEmptyTursoValue @(
+        ([Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_URL", "Process")),
+        (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_PRODUCTION_EMDASH_DB_URL")
+    )
 }
 
 function Get-TursoHostSuffixFromLibsqlUrl {
@@ -268,7 +304,19 @@ function Resolve-StagingEmdashTursoUrl {
         (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_DATABASE_URL")
     )
     if (-not [string]::IsNullOrWhiteSpace($envUrl)) {
-        return @{ Value = $envUrl; Source = "TURSO_DATABASE_URL" }
+        $productionHint = Get-ProductionEmdashUrlHint -EnvDevPath $EnvDevPath
+        if (-not [string]::IsNullOrWhiteSpace($productionHint) -and (Test-TursoLibsqlUrlsEqual -Left $envUrl -Right $productionHint)) {
+            throw "TURSO_DATABASE_URL matches TURSO_PRODUCTION_EMDASH_DB_URL. Staging WorkerOnly would hit production EmDash. Set TURSO_DATABASE_URL to the staging EmDash URL (keep production on TURSO_PRODUCTION_EMDASH_DB_URL)."
+        }
+        if ([string]::IsNullOrWhiteSpace($productionHint) -and (Test-IsProductionEmdashLibsqlUrl -Url $envUrl)) {
+            throw "TURSO_DATABASE_URL looks like production EmDash and TURSO_PRODUCTION_EMDASH_DB_URL is unset. Refusing staging migrate. Set TURSO_PRODUCTION_EMDASH_DB_URL for production and keep TURSO_DATABASE_URL as staging."
+        }
+        $source = if (-not [string]::IsNullOrWhiteSpace($productionHint)) {
+            "TURSO_DATABASE_URL (staging EmDash; production is TURSO_PRODUCTION_EMDASH_DB_URL)"
+        } else {
+            "TURSO_DATABASE_URL"
+        }
+        return @{ Value = $envUrl; Source = $source }
     }
 
     throw "Missing staging EmDash Turso URL. Set TURSO_DATABASE_URL in .env.dev or run terraform apply."
