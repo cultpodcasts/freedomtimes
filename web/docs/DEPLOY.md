@@ -39,7 +39,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 **Guardrails before you run anything:**
 
 1. **Production deploy** — Do not run `deploy-production-local.ps1` or `production-release.ps1` unless the operator explicitly asked in this chat. Production infra deploy is operator-controlled; **EmDash `content_publish`** is a separate hard rule (push notifications).
-2. **Turso CLI (WSL)** — Full production deploy needs `wsl bash -lic "turso auth whoami"`. On auth failure: **STOP**; tell operator to run `wsl bash -lic "turso auth login"`. Do not bypass with Platform API unless operator approves.
+2. **Turso CLI** — Windows: `wsl bash -lic "turso auth whoami"` (WSL). Linux: `turso auth whoami` (PATH or `$HOME/.turso/turso`). On auth failure: **STOP**; tell the operator `wsl bash -lic "turso auth login"` or `turso auth login`. Do not bypass with Platform API unless operator approves.
 3. **Turso rollback checkpoint** — every web-Worker deploy (full or `-WorkerOnly`) backs up EmDash Turso **before** `emdash migrate`. Production: rollback branch. Staging: `turso db export`. Do not pass `-SkipTursoBackup` unless a checkpoint/export newer than 24h already exists.
 4. **EmDash content/schema** — Deploy scripts do not promote CMS content. Use EmDash MCP for stored PT JSON; see `AGENTS.md` § EmDash MCP.
 5. **CLI auth** — On wrangler, gh, terraform, or turso auth failure: **STOP**, name the CLI and auth command, wait for operator.
@@ -89,7 +89,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 **EmDash core schema (not `pt:migrate`, not tips/subscriptions SQL):** after Turso backup and `npm run build`, local and CI deploy apply `npx emdash migrate` (non-interactive, `--expected-target-fingerprint` from `--status --json`), then wrangler of **that same build**, then `npx emdash migrate --check`. Staging/production runtime is `migrations: { runtime: "check", dev: "auto" }` in `web/astro.config.ts` — first-request auto-migrate is off. `astro dev` stays `dev: "auto"`.
 
-**Production Turso rollback:** full deploy **and** `-WorkerOnly` create a rollback checkpoint via WSL Turso CLI **before** migrate. Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h. Metadata path is logged under `.release/rollback-branches/`.
+**Production Turso rollback:** full deploy **and** `-WorkerOnly` create a rollback checkpoint **before** migrate (WSL Turso on Windows; native `turso` on Linux). Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h. Metadata path is logged under `.release/rollback-branches/`.
 
 **CI / release path (not local deploy):** `production-release.ps1` dispatches `terraform-production.yml` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). The workflow now also backups EmDash Turso, applies core migrate, deploys, then `--check`. Section 1 checkpoint is still the operator-facing rollback record.
 
@@ -553,11 +553,16 @@ Database name: `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` from `.env.dev` (default 
 
 ### Turso auth failure (WSL)
 
-If deploy stops with *Turso CLI is not authenticated in WSL*:
+If deploy stops with *Turso CLI is not authenticated*:
 
 ```powershell
+# Windows
 wsl bash -lic "turso auth login"
 wsl bash -lic "turso auth whoami"
+
+# Linux
+turso auth login
+turso auth whoami
 ```
 
 Then retry deploy. Per **AGENTS.md**, do not bypass with Platform API or other workarounds unless the operator explicitly approves an alternate path.
@@ -576,7 +581,7 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| `Turso CLI is not authenticated in WSL` during production deploy | WSL Turso not logged in | `wsl bash -lic "turso auth login"`; see [Turso rollback checkpoint](#turso-rollback-checkpoint-production-deploy) |
+| `Turso CLI is not authenticated` during deploy | Turso CLI not logged in | Windows: `wsl bash -lic "turso auth login"`. Linux: `turso auth login`. See [Turso rollback checkpoint](#turso-rollback-checkpoint-production-deploy) |
 | `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); `deploy-production-local.ps1` has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
 | `Failed to read terraform output 'turso_database_url'` | Turso URL missing from Terraform and `.env.dev` | Populate `.env.dev` or apply Terraform so outputs exist (needed for core migrate, including `-WorkerOnly`) |
 | `No migration manifest` / EmDash core migrate failed | `npm run build` did not write `web/.emdash/migrations.json`, or Turso creds are the build placeholder | Rebuild in `web/` with real `TURSO_*`; do not apply migrate without backup |

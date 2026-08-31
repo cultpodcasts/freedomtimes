@@ -50,9 +50,21 @@ pwsh scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFile
 
 ---
 
-## Turso CLI (WSL only)
+## Turso CLI (Windows = WSL; Linux = native)
 
-**Turso is not a Windows-native CLI in this workspace.** It is installed and authenticated inside **WSL** (Ubuntu). Do not expect `where.exe turso` or `Get-Command turso` to succeed from PowerShell.
+**On Windows, Turso is not a native CLI in this workspace.** It is installed and authenticated inside **WSL** (Ubuntu). Do not expect `where.exe turso` or `Get-Command turso` to succeed from Windows PowerShell.
+
+**On Linux** (Cursor cloud VMs, Grok Bot, CI): use native `turso` on `PATH` or `$HOME/.turso/turso`. Deploy scripts call that binary directly — they do **not** require `wsl`.
+
+```bash
+# Install (Linux)
+curl -sSfL https://get.tur.so/install.sh | bash
+turso auth login
+turso auth whoami
+turso db export <emdash-staging-db> --output-file .release/backups/emdash-staging-<stamp>.db
+```
+
+Local deploy (`Assert-DeployTursoAuth`, staging `turso db export`) picks WSL when `wsl` exists and the host is not Linux; otherwise native.
 
 | Item | Value |
 |------|--------|
@@ -92,7 +104,7 @@ turso db list
 | Script / doc | Role |
 |--------------|------|
 | **`scripts/turso-create-rollback-branch.ps1`** | WSL by default (`$HOME/.turso/turso` via `wsl bash -lc`); pass `-UseNativeTurso` only if `turso` is on Windows PATH |
-| **`scripts/deploy-production-local.ps1`** | Full deploy invokes rollback checkpoint before Terraform (unless `-SkipTursoBackup`, `-WorkerOnly`, or `-DryRun`) |
+| **`scripts/deploy-production-local.ps1`** | Full deploy and `-WorkerOnly` invoke rollback checkpoint before migrate (unless `-SkipTursoBackup` with a file newer than 24h, or `-DryRun`). Linux passes `-UseNativeTurso`. |
 | **`scripts/turso-create-rollback-branch-wsl.sh`** | Run from WSL; prepends `~/.turso` to `PATH` |
 | **`web/CONTENT_PROMOTION_RUNBOOK.md`** | Turso backups, export commands, rollback branches |
 | **`AGENTS.md`** | Points agents to WSL Turso for database backups |
@@ -106,7 +118,7 @@ Terraform talks to Turso through the **Turso provider** and **Platform API token
 | Need | Where it runs | Verify |
 |------|---------------|--------|
 | `terraform plan/apply` | Windows | `where.exe terraform` |
-| `turso db export` / `turso db list` | WSL | `wsl bash -lic "turso db list"` |
+| `turso db export` / `turso db list` | WSL on Windows; native on Linux | `wsl bash -lic "turso db list"` or `turso db list` |
 | Turso tokens in `.env.dev` | Windows (HTTP + Terraform outputs) | `pwsh scripts/sync-staging-turso-env-dev.ps1` |
 
 See also: [LOCAL_DEV_REQUIREMENTS.md](../LOCAL_DEV_REQUIREMENTS.md), [web/docs/DEPLOY.md](../web/docs/DEPLOY.md), [infra/terraform/README.md](../infra/terraform/README.md).

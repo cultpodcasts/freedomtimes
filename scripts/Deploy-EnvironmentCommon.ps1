@@ -308,19 +308,85 @@ function Invoke-DeployPushSecretsPreflight {
     }
 }
 
-function Assert-DeployTursoWslAuth {
-    if ($null -eq (Get-Command wsl -ErrorAction SilentlyContinue)) {
-        throw "wsl is required for Turso rollback checkpoints. Install WSL and Turso CLI — see docs/CLI_PATHS_WINDOWS.md"
+function Test-DeployShouldUseWslTurso {
+    if ($IsLinux) {
+        return $false
     }
 
-    $whoamiLines = & wsl bash -lic "turso auth whoami" 2>&1
-    $exitCode = $LASTEXITCODE
-    $whoamiText = ($whoamiLines | Out-String).Trim()
+    return $null -ne (Get-Command wsl -ErrorAction SilentlyContinue)
+}
 
-    if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($whoamiText)) {
+function Get-DeployNativeTursoExe {
+    $cmd = Get-Command turso -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+
+    $homeTurso = Join-Path $HOME ".turso/turso"
+    if (Test-Path $homeTurso) {
+        return $homeTurso
+    }
+
+    return $null
+}
+
+function Get-DeployTursoAuthLoginHint {
+    if (Test-DeployShouldUseWslTurso) {
+        return 'wsl bash -lic "turso auth login"'
+    }
+
+    return "turso auth login"
+}
+
+function Invoke-DeployTursoCli {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$TursoArgs,
+        [switch]$CaptureOutput
+    )
+
+    if (Test-DeployShouldUseWslTurso) {
+        $quoted = foreach ($arg in $TursoArgs) {
+            "'" + ($arg -replace "'", "'\''") + "'"
+        }
+        $bashLine = 'export PATH="$HOME/.turso:$PATH"; turso ' + ($quoted -join " ")
+        if ($CaptureOutput) {
+            $lines = & wsl bash -lc $bashLine 2>&1
+            return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @($lines) }
+        }
+
+        & wsl bash -lc $bashLine
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @() }
+    }
+
+    $exe = Get-DeployNativeTursoExe
+    if ([string]::IsNullOrWhiteSpace($exe)) {
         throw @(
-            "Turso CLI is not authenticated in WSL.",
-            "Run: wsl bash -lic `"turso auth login`"",
+            "Turso CLI is not installed (no turso on PATH and no `$HOME/.turso/turso).",
+            "Install: curl -sSfL https://get.tur.so/install.sh | bash",
+            "Then: turso auth login",
+            "See docs/CLI_PATHS_WINDOWS.md and AGENTS.md."
+        ) -join " "
+    }
+
+    if ($CaptureOutput) {
+        $lines = & $exe @TursoArgs 2>&1
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @($lines) }
+    }
+
+    & $exe @TursoArgs
+    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @() }
+}
+
+function Assert-DeployTursoAuth {
+    $loginHint = Get-DeployTursoAuthLoginHint
+    $whoami = Invoke-DeployTursoCli -CaptureOutput -TursoArgs @("auth", "whoami")
+    $whoamiText = ($whoami.Output | Out-String).Trim()
+
+    if ($whoami.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($whoamiText)) {
+        throw @(
+            "Turso CLI is not authenticated.",
+            "Run: $loginHint",
             "Complete login, then retry deploy.",
             "See docs/CLI_PATHS_WINDOWS.md and AGENTS.md."
         ) -join " "
@@ -328,13 +394,18 @@ function Assert-DeployTursoWslAuth {
 
     if ($whoamiText -match '(?i)not logged in|login required|unauthenticated|error') {
         throw @(
-            "Turso CLI is not authenticated in WSL (whoami: $whoamiText).",
-            "Run: wsl bash -lic `"turso auth login`"",
+            "Turso CLI is not authenticated (whoami: $whoamiText).",
+            "Run: $loginHint",
             "Complete login, then retry deploy."
         ) -join " "
     }
 
-    Write-Host "  Turso WSL auth: $whoamiText" -ForegroundColor DarkGray
+    $via = if (Test-DeployShouldUseWslTurso) { "WSL" } else { "native" }
+    Write-Host "  Turso $via auth: $whoamiText" -ForegroundColor DarkGray
+}
+
+function Assert-DeployTursoWslAuth {
+    Assert-DeployTursoAuth
 }
 
 function Get-DeployTursoDatabaseNameFromEnv {
@@ -366,7 +437,7 @@ function Invoke-DeployTursoRollbackCheckpoint {
         return
     }
 
-    Assert-DeployTursoWslAuth
+    Assert-DeployTursoAuth
 
     $databaseName = Get-DeployTursoDatabaseNameFromEnv `
         -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
@@ -385,6 +456,9 @@ function Invoke-DeployTursoRollbackCheckpoint {
         "-AllowProduction",
         "-Notes", "deploy-production-local.ps1 EmDash core migrate backup"
     )
+    if (-not (Test-DeployShouldUseWslTurso)) {
+        $rollbackArgs += "-UseNativeTurso"
+    }
 
     $result = Invoke-DeployChildPwsh -CaptureOutput -Arguments $rollbackArgs
     $result.Output | ForEach-Object { $_ }
@@ -438,13 +512,13 @@ function Assert-DeployFreshEmDashTursoBackup {
 }
 
 function Invoke-DeployStagingTursoExport {
-    Assert-DeployTursoWslAuth
+    Assert-DeployTursoAuth
 
     $databaseName = Get-DeployTursoDatabaseNameFromEnv `
         -EnvKey "TF_VAR_TURSO_DATABASE_NAME_STAGING" `
         -DefaultName ""
     if ([string]::IsNullOrWhiteSpace($databaseName)) {
-        throw "Set TF_VAR_TURSO_DATABASE_NAME_STAGING in .env.dev for the staging EmDash export."
+        throw "Set TF_VAR_TURSO_DATABASE_NAME_STAGING in .env.dev (or the process environment) for the staging EmDash export."
     }
 
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
@@ -453,19 +527,15 @@ function Invoke-DeployStagingTursoExport {
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
     }
     $outputRel = ".release/backups/emdash-staging-$stamp.db"
+    $outputAbs = Join-Path $script:DeployRepoRoot $outputRel
 
     Write-DeployStep "Exporting staging EmDash Turso '$databaseName' → $outputRel"
 
-    $bashLine = 'export PATH="$HOME/.turso:$PATH"; mkdir -p .release/backups; turso db export ' +
-        "'" + ($databaseName -replace "'", "'\''") + "' --output-file './$outputRel'"
-    $exportLines = & wsl bash -lc $bashLine 2>&1
-    $exitCode = $LASTEXITCODE
-    $exportLines | ForEach-Object { $_ }
-    if ($exitCode -ne 0) {
-        throw "Staging EmDash Turso export failed (exit $exitCode)."
+    $export = Invoke-DeployTursoCli -TursoArgs @("db", "export", $databaseName, "--output-file", $outputAbs)
+    if ($export.ExitCode -ne 0) {
+        throw "Staging EmDash Turso export failed (exit $($export.ExitCode))."
     }
 
-    $outputAbs = Join-Path $script:DeployRepoRoot $outputRel
     if (-not (Test-Path $outputAbs)) {
         throw "Staging EmDash Turso export reported success but $outputAbs is missing."
     }

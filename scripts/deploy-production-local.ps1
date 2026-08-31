@@ -28,8 +28,8 @@ param(
   Version bump default: no bump unless -BumpVersion (production ships the version staging already bumped).
 
   Turso rollback checkpoint runs before migrate for full deploy and -WorkerOnly
-  (WSL Turso CLI). -SkipTursoBackup requires a rollback metadata file newer
-  than 24h. Skipped for -DryRun.
+  (WSL Turso on Windows; native turso on Linux). -SkipTursoBackup requires a
+  rollback metadata file newer than 24h. Skipped for -DryRun.
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1

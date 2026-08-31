@@ -60,7 +60,13 @@ if ($UseWslTurso) {
     }
 }
 elseif (-not (Test-CommandAvailable -CommandName "turso")) {
-    throw "Turso CLI not on Windows PATH. Use default WSL mode (-UseWslTurso) or install Turso in WSL. See docs/CLI_PATHS_WINDOWS.md and web/CONTENT_PROMOTION_RUNBOOK.md"
+    $homeTurso = Join-Path $HOME ".turso/turso"
+    if (Test-Path $homeTurso) {
+        $env:Path = "$(Split-Path $homeTurso -Parent)$([IO.Path]::PathSeparator)$env:Path"
+    }
+    else {
+        throw "Turso CLI not on PATH and `$HOME/.turso/turso is missing. On Linux install with curl -sSfL https://get.tur.so/install.sh | bash. On Windows use WSL (default) or install Turso. See docs/CLI_PATHS_WINDOWS.md"
+    }
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent

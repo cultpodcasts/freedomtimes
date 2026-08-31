@@ -16,7 +16,7 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 
 6. **CLI authentication — IF NOT AUTHENTICATED YOU MUST STOP.** When any required CLI reports an auth failure (not logged in, invalid token, permission denied): **STOP immediately.** Name the CLI, give the exact auth command for that tool, tell the operator to authenticate and confirm when ready, then **wait**. **Never** silently fall back to alternate APIs, unauthenticated endpoints, or skip the step unless the operator **explicitly** approves an alternate path in that same session. Applies to **wrangler**, **gh**, **turso**, **emdash login**, **terraform** / provider tokens, **cloudflare**, etc.
 
-7. **Turso CLI (WSL) — IF TURSO AUTH FAILS WE DO NOT BYPASS.** When `wsl bash -lic "turso auth whoami"` fails or reports not logged in: **STOP immediately.** Tell the operator: *"Turso CLI is not authenticated in WSL. Run `wsl bash -lic \"turso auth login\"`, complete login, then tell me when ready."* Then **wait**. **Never** use Platform API or other workarounds for backup/export/import that require an authenticated Turso CLI unless the operator **explicitly** approves an alternate path in that same session. See **`docs/CLI_PATHS_WINDOWS.md`**.
+7. **Turso CLI — IF TURSO AUTH FAILS WE DO NOT BYPASS.** **Windows:** `wsl bash -lic "turso auth whoami"` (Turso lives in WSL). **Linux** (cloud VMs, no `wsl`): native `turso` on PATH or `$HOME/.turso/turso`, then `turso auth whoami`. On auth failure: **STOP immediately.** Tell the operator the matching login: *"Turso CLI is not authenticated. Run `wsl bash -lic \"turso auth login\"` (Windows) or `turso auth login` (Linux), complete login, then tell me when ready."* Then **wait**. **Never** use Platform API or other workarounds for backup/export/import that require an authenticated Turso CLI unless the operator **explicitly** approves an alternate path in that same session. See **`docs/CLI_PATHS_WINDOWS.md`**.
 
 8. **Large media — never MCP `media_upload` base64.** Official OG/social PNGs (typically 200–600KB) **truncate, time out, or become 1×1 placeholders** when sent as MCP `base64`. Ignore the `media_upload` tool’s `base64` hint for those files. Put bytes with **`emdash media upload`** (already a CLI exception for binary — this is the correct path for OG cards) or **`POST /_emdash/api/media`** multipart (or Admin/raw R2 put; then MCP **`media_create`** if there is no library row, else **`media_update`**). Then MCP **`content_update`** with **`seo.image`** set to the same-origin file path **`/_emdash/api/media/file/<storageKey>`** (same as `seoImageFieldValueFromNormalizedRow` in `web/scripts/generate-social-images.ts`). A **bare media id** validates but leaves the admin OG Image widget empty; do **not** store a raw `storageKey` without the prefix. Do **not** JPEG-crush or replace official `generate-social-images.ts` / `draft:push-staging` cards. Procedure: **[docs/CURSOR_EMDASH_MCP.md § Large media uploads](docs/CURSOR_EMDASH_MCP.md#large-media-uploads-avoid-mcp-base64-truncation)**. Schema and content JSON remain MCP-only (guardrail §3).
 
@@ -24,9 +24,9 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 
 ## CLI paths (Windows vs WSL)
 
-**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** — Windows-native Terraform vs WSL-only Turso CLI, PATH verification, and repo script patterns.
+**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** — Windows-native Terraform vs WSL Turso (Windows) / native Turso (Linux), PATH verification, and repo script patterns.
 
-- Quick check: `where.exe terraform` (Windows); `wsl bash -lic "turso auth whoami"` then `wsl bash -lic "turso db list"` (Turso in WSL).
+- Quick check: `where.exe terraform` (Windows). Turso: `wsl bash -lic "turso auth whoami"` then `turso db list` in WSL; on Linux `turso auth whoami` / `$HOME/.turso/turso`.
 - Do not run parallel Terraform operations on the same environment (staging/production/auth0-shared); `scripts/terraform-run.ps1` enforces a per-environment file lock.
 - Auth failures: **Primary guardrails §6–§7** — STOP; do not bypass.
 - Turso backups and rollback branches: **[web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md)** (Turso backups section).
@@ -55,7 +55,7 @@ Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section *
 
 See **Primary guardrails §2**. Before **any** mutating operation on a database or CMS-backed store (Turso / libSQL, SQL migrations, seeds, EmDash content writes, MCP updates), create a **recoverable backup** of the **target** database first. Do not skip this for small edits.
 
-Concrete steps and examples (Turso `db export`, rollback branches, scheduler/subscriptions — Turso CLI in **WSL**): see **`web/CONTENT_PROMOTION_RUNBOOK.md`** section *Turso backups before any mutating work*; invoke patterns in **`docs/CLI_PATHS_WINDOWS.md`**.
+Concrete steps and examples (Turso `db export`, rollback branches, scheduler/subscriptions — Turso CLI in **WSL on Windows**, **native on Linux**): see **`web/CONTENT_PROMOTION_RUNBOOK.md`** section *Turso backups before any mutating work*; invoke patterns in **`docs/CLI_PATHS_WINDOWS.md`**.
 
 ## Staging access: NOTHING IS PUBLIC (hard rule for AI agents)
 
@@ -85,7 +85,7 @@ Full policy: **`web/docs/STAGING_ACCESS.md`**.
 **Hard rules for agents:**
 
 - Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**.
-- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint via WSL **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**). Do not pass `-SkipTursoBackup` unless a checkpoint newer than 24h already exists.
+- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Do not pass `-SkipTursoBackup` unless a checkpoint newer than 24h already exists.
 - Deploy scripts ship Workers and infra; they do **not** publish EmDash content (**Primary guardrails §5** for `content_publish`).
 - On deploy failure, use the canonical doc's [Quick symptom index](web/docs/DEPLOY.md#quick-symptom-index) — do not improvise alternate script names.
 
