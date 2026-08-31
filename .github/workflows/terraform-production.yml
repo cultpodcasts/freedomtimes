@@ -15,16 +15,22 @@ on:
         required: false
         default: false
         type: boolean
+      production_worker_deploy:
+        description: "Mutate production (EmDash backup/apply, tips/subscriptions/scheduler SQL, wrangler). Push is EmDash --check only; no SQL/wrangler."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: production-deploy
-  cancel-in-progress: true
+  group: production-emdash-migrate
+  cancel-in-progress: false
 
 env:
   PRODUCTION_TERRAFORM_APPLY: "false"
+  PRODUCTION_WORKER_DEPLOY: "false"
 
 jobs:
   terraform:
@@ -268,6 +274,7 @@ jobs:
           set -euo pipefail
 
           AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
+          TURSO_DATABASE_NAME=$(terraform output -raw turso_database_name 2>/dev/null || echo "")
           TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
           TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
           SCHEDULER_TURSO_DATABASE_URL=$(terraform output -raw scheduler_turso_database_url 2>/dev/null || echo "")
@@ -278,6 +285,7 @@ jobs:
           TIPS_TURSO_AUTH_TOKEN=$(terraform output -raw tips_turso_database_auth_token 2>/dev/null || echo "")
 
           echo "auth0_app_client_id=$AUTH0_APP_CLIENT_ID" >> $GITHUB_OUTPUT
+          echo "turso_database_name=$TURSO_DATABASE_NAME" >> $GITHUB_OUTPUT
           echo "turso_database_url=$TURSO_DATABASE_URL" >> $GITHUB_OUTPUT
           echo "::add-mask::$TURSO_AUTH_TOKEN"
           echo "turso_auth_token=$TURSO_AUTH_TOKEN" >> $GITHUB_OUTPUT
@@ -323,7 +331,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "22.22.2"
           cache: "npm"
           cache-dependency-path: |
             scheduler-worker/package-lock.json
@@ -490,8 +498,22 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
+      - name: Decide worker / Turso mutate
+        id: emdash_mutate
+        run: |
+          set -euo pipefail
+          deploy=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.production_worker_deploy }}" = "true" ]; then
+            deploy=true
+          fi
+          if [ "${PRODUCTION_WORKER_DEPLOY}" = "true" ]; then
+            deploy=true
+          fi
+          echo "deploy_worker=$deploy" >> "$GITHUB_OUTPUT"
+          echo "Production mutate (EmDash backup/apply, SQL db:deploy, wrangler): $deploy (push to main: EmDash --check only)"
+
       - name: Apply Scheduler Database Migration and Seed
-        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
         working-directory: web
         env:
           TURSO_SCHEDULER_DATABASE_URL: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
@@ -512,7 +534,7 @@ jobs:
           npm run scheduler:db:deploy
 
       - name: Apply Subscriptions Database Migration and Seed
-        if: steps.tf_outputs.outputs.subscriptions_turso_database_url != '' && steps.tf_outputs.outputs.subscriptions_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.subscriptions_turso_database_url != '' && steps.tf_outputs.outputs.subscriptions_turso_database_url != 'null'
         working-directory: web
         env:
           TURSO_SUBSCRIPTIONS_DATABASE_URL: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
@@ -533,7 +555,7 @@ jobs:
           npm run subscriptions:db:deploy
 
       - name: Apply Tips Database Migration
-        if: steps.tf_outputs.outputs.tips_turso_database_url != '' && steps.tf_outputs.outputs.tips_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.tips_turso_database_url != '' && steps.tf_outputs.outputs.tips_turso_database_url != 'null'
         working-directory: web
         env:
           TURSO_TIPS_DATABASE_URL: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
@@ -552,6 +574,50 @@ jobs:
           fi
 
           npm run tips:db:deploy
+
+      - name: Backup EmDash Turso before core migrate
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        id: emdash_backup
+        env:
+          TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN }}
+        run: |
+          set -euo pipefail
+          DB_NAME="${{ steps.tf_outputs.outputs.turso_database_name }}"
+          if [ -z "${DB_NAME}" ] || [ "${DB_NAME}" = "null" ]; then
+            echo "ERROR: turso_database_name is required but empty from Terraform outputs"
+            exit 1
+          fi
+          bash "$GITHUB_WORKSPACE/scripts/ci-turso-emdash-backup.sh" production "$DB_NAME" \
+            "${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}"
+
+      - name: Upload production EmDash rollback metadata
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: emdash-production-rollback-metadata
+          path: .release/rollback-branches/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record production EmDash rollback in job summary
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        run: |
+          set -euo pipefail
+          {
+            echo "## Production EmDash Turso rollback"
+            echo
+            echo "Turso branch is the recoverable copy. Metadata artifact: \`emdash-production-rollback-metadata\`."
+            echo
+            echo "- rollback_branch: \`${{ steps.emdash_backup.outputs.rollback_branch }}\`"
+            echo "- rollback_metadata: \`${{ steps.emdash_backup.outputs.rollback_metadata }}\`"
+            echo
+            echo "Metadata JSON:"
+            echo
+            echo '```json'
+            cat .release/rollback-branches/*.json
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build Astro Worker
         working-directory: web
@@ -576,7 +642,19 @@ jobs:
 
           npm run build
 
+      - name: Apply EmDash core migrations
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        working-directory: web
+        env:
+          TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+          EMDASH_TARGET_FINGERPRINT: ${{ secrets.EMDASH_TARGET_FINGERPRINT_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          npm run emdash:migrate
+
       - name: Deploy Astro Worker to Production
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
         working-directory: web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
@@ -594,8 +672,17 @@ jobs:
           --var AUTH0_ROLES_CLAIM_NAMESPACE:$AUTH0_ROLES_CLAIM_NAMESPACE
           --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
 
+      - name: Check EmDash core migrations
+        working-directory: web
+        env:
+          TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
+          TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
+        run: |
+          set -euo pipefail
+          npm run emdash:migrate:check
+
       - name: Deploy Scheduler Worker to Production
-        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
         working-directory: scheduler-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
@@ -606,6 +693,7 @@ jobs:
           npx wrangler deploy --config wrangler.jsonc --env production
 
       - name: Set Worker Secrets for Production
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
         working-directory: web
         # Cloudflare Worker secrets are synced here from Terraform outputs and Auth0 Management API.
         # Auth0 login app credentials come from the Terraform-managed application.
@@ -656,7 +744,7 @@ jobs:
           fi
 
       - name: Set Scheduler Worker Secrets for Production
-        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
         working-directory: scheduler-worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}

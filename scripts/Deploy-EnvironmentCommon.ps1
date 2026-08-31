@@ -10,10 +10,12 @@
 # | Secret sync                  | Always                     | Always                        | Only with -SyncCloudflareWorkerSecrets | Only with -SyncCloudflareWorkerSecrets |
 # | CLOUDFLARE_ACCOUNT_ID bootstrap | Yes                     | No                            | When syncing secrets                | Load .env.dev; when syncing secrets |
 # | Version bump default         | Bump unless -SkipVersionBump | No bump unless -BumpVersion | Same as full deploy                 | Same as full deploy                 |
-# | Turso build creds            | Terraform outputs          | Terraform outputs             | None (runtime Worker secrets)       | .env.dev only                       |
+# | Turso build creds            | Terraform outputs          | Terraform outputs             | resolve-turso-build-credentials     | .env.dev / resolve-turso            |
+# | EmDash core migrate          | After backup + build       | After backup + build          | After backup + build                | After backup + build                |
 # | wrangler deploy              | --env staging              | --env production              | Web only                            | Web (+ staging vars) + scheduler    |
+# | EmDash migrate --check       | After wrangler             | After wrangler                | After wrangler                      | After wrangler                      |
 # | Post-deploy secret verify    | Yes (web worker)           | Yes (web worker; also -DryRun)| Yes                                 | No                                  |
-# | Turso rollback checkpoint    | No (optional manual)       | Yes before Terraform (full)   | Skipped; use -SkipTursoBackup       | Skipped                             |
+# | Turso EmDash backup          | Export before migrate      | Rollback branch before migrate| Same as full deploy                 | Same as full deploy                 |
 #
 # Production -WorkerOnly: see deploy-production-local.ps1 (resolve-turso-build-credentials; not covered above).
 #
@@ -246,19 +248,47 @@ function Set-DeployTursoBuildEnvFromTerraform {
     $env:TURSO_AUTH_TOKEN = Get-DeployTerraformOutputRaw -Name "turso_database_auth_token"
 }
 
+function Test-DeployCloudflareApiTokenPlausible {
+    param([string]$Token)
+
+    # Cloudflare API tokens used by Wrangler are typically 40+ characters.
+    # Cursor Cloud has injected a ~31-character CLOUDFLARE_API_TOKEN stub that
+    # shadows TF_VAR_CLOUDFLARE_API_TOKEN; wrangler then fails with
+    # Authorization header 6111 / API 9106.
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        return $false
+    }
+
+    $trimmed = $Token.Trim()
+    if ($trimmed.Length -lt 40) {
+        return $false
+    }
+
+    if ($trimmed -match "\s") {
+        return $false
+    }
+
+    return $true
+}
+
 function Ensure-DeployCloudflareWranglerAuthFromEnv {
     Ensure-DeployCloudflareAccountIdFromEnv
 
-    if (-not [string]::IsNullOrWhiteSpace($env:CLOUDFLARE_API_TOKEN)) {
-        return
-    }
-
-    $token = Get-DeployFirstNonEmpty -Values @(
+    $tfToken = Get-DeployFirstNonEmpty -Values @(
         ([Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_API_TOKEN", "Process")),
         (Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TF_VAR_CLOUDFLARE_API_TOKEN")
     )
-    if (-not [string]::IsNullOrWhiteSpace($token)) {
-        $env:CLOUDFLARE_API_TOKEN = $token
+
+    $current = $env:CLOUDFLARE_API_TOKEN
+    if (Test-DeployCloudflareApiTokenPlausible -Token $current) {
+        return
+    }
+
+    if (Test-DeployCloudflareApiTokenPlausible -Token $tfToken) {
+        if (-not [string]::IsNullOrWhiteSpace($current)) {
+            Write-Warning ("CLOUDFLARE_API_TOKEN is not usable for Wrangler (length {0}); using TF_VAR_CLOUDFLARE_API_TOKEN." -f $current.Trim().Length)
+        }
+        $env:CLOUDFLARE_API_TOKEN = $tfToken.Trim()
     }
 }
 
@@ -306,19 +336,171 @@ function Invoke-DeployPushSecretsPreflight {
     }
 }
 
-function Assert-DeployTursoWslAuth {
-    if ($null -eq (Get-Command wsl -ErrorAction SilentlyContinue)) {
-        throw "wsl is required for Turso rollback checkpoints. Install WSL and Turso CLI — see docs/CLI_PATHS_WINDOWS.md"
+function Test-DeployShouldUseWslTurso {
+    if ($IsLinux) {
+        return $false
     }
 
-    $whoamiLines = & wsl bash -lic "turso auth whoami" 2>&1
-    $exitCode = $LASTEXITCODE
-    $whoamiText = ($whoamiLines | Out-String).Trim()
+    return $null -ne (Get-Command wsl -ErrorAction SilentlyContinue)
+}
 
-    if ($exitCode -ne 0 -or [string]::IsNullOrWhiteSpace($whoamiText)) {
+function Get-DeployNativeTursoExe {
+    $cmd = Get-Command turso -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+
+    $homeTurso = Join-Path $HOME ".turso/turso"
+    if (Test-Path $homeTurso) {
+        return $homeTurso
+    }
+
+    return $null
+}
+
+function Get-DeployTursoAuthLoginHint {
+    if (Test-DeployShouldUseWslTurso) {
+        return 'wsl bash -lic "turso auth login"'
+    }
+
+    return "turso auth login"
+}
+
+function Test-DeployTursoTokenLooksLikeDatabaseJwt {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+
+    $v = $Value.Trim()
+    return $v.StartsWith("eyJ") -and (@($v.Split(".")).Count -ge 3)
+}
+
+function Get-DeployTursoPlatformApiTokenBinding {
+    $preferredKeys = @(
+        "TURSO_PLATFORM_API_TOKEN",
+        "TURSO_API_TOKEN",
+        "TF_VAR_turso_api_token"
+    )
+
+    foreach ($key in $preferredKeys) {
+        $fromProcess = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrWhiteSpace($fromProcess)) {
+            $fromProcess = Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key $key
+        }
+        if (-not [string]::IsNullOrWhiteSpace($fromProcess)) {
+            return [pscustomobject]@{ Key = $key; Value = $fromProcess.Trim() }
+        }
+    }
+
+    $legacy = [Environment]::GetEnvironmentVariable("TURSO_TOKEN", "Process")
+    if ([string]::IsNullOrWhiteSpace($legacy)) {
+        $legacy = Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TURSO_TOKEN"
+    }
+    if ([string]::IsNullOrWhiteSpace($legacy)) {
+        return $null
+    }
+
+    $trimmed = $legacy.Trim()
+    if (Test-DeployTursoTokenLooksLikeDatabaseJwt -Value $trimmed) {
+        Write-Warning "TURSO_TOKEN looks like a libsql database JWT; skipping for turso CLI auth. Use TURSO_PLATFORM_API_TOKEN (never TURSO_AUTH_TOKEN)."
+        return $null
+    }
+
+    return [pscustomobject]@{ Key = "TURSO_TOKEN"; Value = $trimmed }
+}
+
+function Set-DeployNativeTursoCliTokenFromEnv {
+    if (Test-DeployShouldUseWslTurso) {
+        return $false
+    }
+
+    $binding = Get-DeployTursoPlatformApiTokenBinding
+    if ($null -eq $binding) {
+        return $false
+    }
+
+    $exe = Get-DeployNativeTursoExe
+    if ([string]::IsNullOrWhiteSpace($exe)) {
+        return $false
+    }
+
+    $stdoutFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $proc = Start-Process -FilePath $exe -ArgumentList @("config", "set", "token", $binding.Value) `
+            -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+        if ($proc.ExitCode -ne 0) {
+            throw "turso config set token failed (exit $($proc.ExitCode)) using $($binding.Key). Token value not logged."
+        }
+        Write-Host "  Turso CLI token set from $($binding.Key)" -ForegroundColor DarkGray
+        return $true
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-DeployTursoCli {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$TursoArgs,
+        [switch]$CaptureOutput
+    )
+
+    if (Test-DeployShouldUseWslTurso) {
+        $quoted = foreach ($arg in $TursoArgs) {
+            "'" + ($arg -replace "'", "'\''") + "'"
+        }
+        $bashLine = 'export PATH="$HOME/.turso:$PATH"; turso ' + ($quoted -join " ")
+        $lines = & wsl bash -lc $bashLine 2>&1
+        $code = $LASTEXITCODE
+        if (-not $CaptureOutput) {
+            $lines | ForEach-Object { Write-Host $_ }
+            $lines = @()
+        }
+        return [pscustomobject]@{ ExitCode = $code; Output = @($lines) }
+    }
+
+    $exe = Get-DeployNativeTursoExe
+    if ([string]::IsNullOrWhiteSpace($exe)) {
         throw @(
-            "Turso CLI is not authenticated in WSL.",
-            "Run: wsl bash -lic `"turso auth login`"",
+            "Turso CLI is not installed (no turso on PATH and no `$HOME/.turso/turso).",
+            "Install: curl -sSfL https://get.tur.so/install.sh | bash",
+            "Then: turso auth login",
+            "See docs/CLI_PATHS_WINDOWS.md and AGENTS.md."
+        ) -join " "
+    }
+
+    $lines = & $exe @TursoArgs 2>&1
+    $code = $LASTEXITCODE
+    if (-not $CaptureOutput) {
+        $lines | ForEach-Object { Write-Host $_ }
+        $lines = @()
+    }
+    return [pscustomobject]@{ ExitCode = $code; Output = @($lines) }
+}
+
+function Assert-DeployTursoAuth {
+    $loginHint = Get-DeployTursoAuthLoginHint
+    $null = Set-DeployNativeTursoCliTokenFromEnv
+    $whoami = Invoke-DeployTursoCli -CaptureOutput -TursoArgs @("auth", "whoami")
+    $whoamiText = ($whoami.Output | Out-String).Trim()
+    $whoamiUser = (
+        $whoamiText -split "(`r`n|`n)" |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Last 1
+    )
+    if (Test-DeployTursoTokenLooksLikeDatabaseJwt -Value $whoamiUser) {
+        $whoamiUser = "(redacted)"
+    }
+
+    if ($whoami.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($whoamiText)) {
+        throw @(
+            "Turso CLI is not authenticated.",
+            "Run: $loginHint",
             "Complete login, then retry deploy.",
             "See docs/CLI_PATHS_WINDOWS.md and AGENTS.md."
         ) -join " "
@@ -326,13 +508,100 @@ function Assert-DeployTursoWslAuth {
 
     if ($whoamiText -match '(?i)not logged in|login required|unauthenticated|error') {
         throw @(
-            "Turso CLI is not authenticated in WSL (whoami: $whoamiText).",
-            "Run: wsl bash -lic `"turso auth login`"",
+            "Turso CLI is not authenticated (whoami: $whoamiText).",
+            "Run: $loginHint",
             "Complete login, then retry deploy."
         ) -join " "
     }
 
-    Write-Host "  Turso WSL auth: $whoamiText" -ForegroundColor DarkGray
+    $via = if (Test-DeployShouldUseWslTurso) { "WSL" } else { "native" }
+    Write-Host "  Turso $via auth: $whoamiUser" -ForegroundColor DarkGray
+}
+
+function Assert-DeployTursoWslAuth {
+    Assert-DeployTursoAuth
+}
+
+function Get-DeployLibsqlHostname {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return ""
+    }
+
+    $hostPart = $Url.Trim() -replace "^libsql://", "" -replace "^https://", ""
+    $hostPart = ($hostPart -split "\?")[0]
+    $at = $hostPart.LastIndexOf("@")
+    if ($at -ge 0) {
+        $hostPart = $hostPart.Substring($at + 1)
+    }
+
+    return $hostPart.TrimEnd("/").ToLowerInvariant()
+}
+
+function Test-DeployUrlLooksLikeProductionEmdash {
+    param([string]$Url)
+
+    $hostname = Get-DeployLibsqlHostname -Url $Url
+    return (-not [string]::IsNullOrWhiteSpace($hostname)) -and ($hostname -match "-emdash-production")
+}
+
+function Get-DeployProductionEmdashUrlCandidates {
+    $urls = [System.Collections.Generic.List[string]]::new()
+    foreach ($candidate in @(
+            [Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_URL", "Process"),
+            (Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TURSO_PRODUCTION_EMDASH_DB_URL"),
+            [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+        )) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+        if (-not (Test-DeployUrlLooksLikeProductionEmdash -Url $candidate)) {
+            continue
+        }
+        $urls.Add($candidate.Trim())
+    }
+
+    return $urls.ToArray()
+}
+
+function Test-DeployRollbackSourceMatchesProductionEmDash {
+    param(
+        [string]$SourceDatabase,
+        [string]$ExpectedDatabase = "",
+        [string[]]$ProductionUrls = @()
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SourceDatabase)) {
+        return $false
+    }
+
+    # Literal placeholder left in-repo by redaction — never treat it as a real DB name.
+    if ($SourceDatabase -eq "[REDACTED]-emdash-production" -or $SourceDatabase -match "REDACTED") {
+        return $false
+    }
+
+    $source = $SourceDatabase.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedDatabase) -and $ExpectedDatabase -notmatch "REDACTED" -and $source -eq $ExpectedDatabase.Trim()) {
+        return $true
+    }
+
+    $urls = @($ProductionUrls)
+    if ($urls.Count -eq 0) {
+        $urls = @(Get-DeployProductionEmdashUrlCandidates)
+    }
+
+    foreach ($url in $urls) {
+        $hostname = Get-DeployLibsqlHostname -Url $url
+        if ([string]::IsNullOrWhiteSpace($hostname)) {
+            continue
+        }
+        if ($hostname.StartsWith($source.ToLowerInvariant(), [StringComparison]::Ordinal)) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 function Get-DeployTursoDatabaseNameFromEnv {
@@ -364,7 +633,7 @@ function Invoke-DeployTursoRollbackCheckpoint {
         return
     }
 
-    Assert-DeployTursoWslAuth
+    Assert-DeployTursoAuth
 
     $databaseName = Get-DeployTursoDatabaseNameFromEnv `
         -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
@@ -381,8 +650,11 @@ function Invoke-DeployTursoRollbackCheckpoint {
         "-ProductionDatabaseName", $databaseName,
         "-TursoGroup", $tursoGroup,
         "-AllowProduction",
-        "-Notes", "deploy-production-local.ps1 full deploy"
+        "-Notes", "deploy-production-local.ps1 EmDash core migrate backup"
     )
+    if (-not (Test-DeployShouldUseWslTurso)) {
+        $rollbackArgs += "-UseNativeTurso"
+    }
 
     $result = Invoke-DeployChildPwsh -CaptureOutput -Arguments $rollbackArgs
     $result.Output | ForEach-Object { $_ }
@@ -397,6 +669,160 @@ function Invoke-DeployTursoRollbackCheckpoint {
     }
     else {
         Write-Warning "Turso rollback checkpoint completed but metadata path was not found in script output."
+    }
+}
+
+function Get-DeployFreshBackupCutoffUtc {
+    return (Get-Date).ToUniversalTime().AddHours(-24)
+}
+
+function Assert-DeployFreshEmDashTursoBackup {
+    $cutoff = Get-DeployFreshBackupCutoffUtc
+
+    if ($script:DeployIsStaging) {
+        $backupDir = Join-Path $script:DeployRepoRoot ".release/backups"
+        $newest = Get-ChildItem -Path $backupDir -Filter "emdash-staging-*.db" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff) {
+            throw @(
+                "Refusing -SkipTursoBackup: no staging EmDash export newer than 24h under .release/backups/emdash-staging-*.db.",
+                "Create one (see web/CONTENT_PROMOTION_RUNBOOK.md) or omit -SkipTursoBackup."
+            ) -join " "
+        }
+        Write-DeployStep "Using existing staging EmDash export $($newest.Name) (SkipTursoBackup)"
+        return
+    }
+
+    $expectedDb = Get-DeployTursoDatabaseNameFromEnv `
+        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
+        -DefaultName ""
+    if ($expectedDb -eq "[REDACTED]-emdash-production" -or $expectedDb -match "REDACTED") {
+        $expectedDb = ""
+    }
+    $productionUrls = @(Get-DeployProductionEmdashUrlCandidates)
+    $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
+    $newestMeta = $null
+    $candidates = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTimeUtc -ge $cutoff } |
+        Sort-Object LastWriteTimeUtc -Descending
+    foreach ($candidate in $candidates) {
+        try {
+            $meta = Get-Content -LiteralPath $candidate.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
+        }
+        catch {
+            Write-Warning "Ignoring malformed rollback metadata $($candidate.Name) (not valid JSON)."
+            continue
+        }
+        $sourceDatabase = [string]$meta.sourceDatabase
+        if ([string]::IsNullOrWhiteSpace($sourceDatabase)) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (missing sourceDatabase)."
+            continue
+        }
+        if (-not (Test-DeployRollbackSourceMatchesProductionEmDash `
+                    -SourceDatabase $sourceDatabase `
+                    -ExpectedDatabase $expectedDb `
+                    -ProductionUrls $productionUrls)) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name or URL)."
+            continue
+        }
+        $newestMeta = $candidate
+        break
+    }
+    if ($null -eq $newestMeta) {
+        throw @(
+            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h whose sourceDatabase matches TF_VAR_TURSO_DATABASE_NAME_PRODUCTION or the production EmDash URL host under .release/rollback-branches/.",
+            "Run scripts/turso-create-rollback-branch.ps1 -AllowProduction or omit -SkipTursoBackup."
+        ) -join " "
+    }
+    Write-DeployStep "Using existing production rollback metadata $($newestMeta.Name) for '$expectedDb' (SkipTursoBackup)"
+}
+
+function Invoke-DeployStagingTursoExport {
+    Assert-DeployTursoAuth
+
+    $databaseName = Get-DeployTursoDatabaseNameFromEnv `
+        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_STAGING" `
+        -DefaultName "freedomtimes-emdash-staging" # pragma: allowlist secret
+
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $backupDir = Join-Path $script:DeployRepoRoot ".release/backups"
+    if (-not (Test-Path $backupDir)) {
+        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    }
+    $outputRel = ".release/backups/emdash-staging-$stamp.db"
+    $outputAbs = Join-Path $script:DeployRepoRoot $outputRel
+
+    Write-DeployStep "Exporting staging EmDash Turso '$databaseName' → $outputRel"
+
+    $export = Invoke-DeployTursoCli -TursoArgs @("db", "export", $databaseName, "--output-file", $outputAbs)
+    if ($export.ExitCode -ne 0) {
+        throw "Staging EmDash Turso export failed (exit $($export.ExitCode))."
+    }
+
+    if (-not (Test-Path $outputAbs)) {
+        throw "Staging EmDash Turso export reported success but $outputAbs is missing."
+    }
+    Write-Host "Staging EmDash backup saved: $outputAbs" -ForegroundColor Green
+}
+
+function Invoke-DeployEmDashTursoBackup {
+    param(
+        [switch]$SkipTursoBackup
+    )
+
+    if ($SkipTursoBackup) {
+        Write-DeployStep "Skipping Turso EmDash backup (-SkipTursoBackup); requiring a fresh checkpoint"
+        Assert-DeployFreshEmDashTursoBackup
+        return
+    }
+
+    if ($script:DeployIsStaging) {
+        Invoke-DeployStagingTursoExport
+        return
+    }
+
+    Invoke-DeployTursoRollbackCheckpoint
+}
+
+function Invoke-DeployEmdashCoreMigrate {
+    Write-DeployStep "Applying EmDash core migrations (npx emdash migrate)"
+
+    $url = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+    $token = [Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")
+    if ([string]::IsNullOrWhiteSpace($url) -or [string]::IsNullOrWhiteSpace($token)) {
+        throw "EmDash core migrate requires TURSO_DATABASE_URL and TURSO_AUTH_TOKEN (load them before build)."
+    }
+
+    $manifest = Join-Path $script:DeployRepoRoot "web/.emdash/migrations.json"
+    if (-not (Test-Path $manifest)) {
+        throw "Missing $manifest after npm run build. Deploy aborted before migrate."
+    }
+
+    Push-Location (Join-Path $script:DeployRepoRoot "web")
+    try {
+        & node (Join-Path "scripts" "emdash-core-migrate.mjs") apply
+        if ($LASTEXITCODE -ne 0) {
+            throw "EmDash core migrate apply failed (exit $LASTEXITCODE)."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Invoke-DeployEmdashCoreMigrateCheck {
+    Write-DeployStep "Checking EmDash core migrations (npx emdash migrate --check)"
+
+    Push-Location (Join-Path $script:DeployRepoRoot "web")
+    try {
+        & node (Join-Path "scripts" "emdash-core-migrate.mjs") check
+        if ($LASTEXITCODE -ne 0) {
+            throw "EmDash core migrate --check failed (exit $LASTEXITCODE)."
+        }
+    }
+    finally {
+        Pop-Location
     }
 }
 
@@ -479,7 +905,7 @@ function Invoke-DeployEnforceStagingPublishOnlyCollections {
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {
-        & node .\scripts\enforce-publish-only-collections.cjs
+        & node (Join-Path "scripts" "enforce-publish-only-collections.cjs")
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to enforce staging publish-only collection supports."
         }
@@ -507,6 +933,7 @@ function Ensure-DeployCloudflareAccountIdFromEnv {
 
 function Invoke-DeploySecretSync {
     Write-DeployStep "Syncing Cloudflare Worker secrets for $($script:DeployEnvironment)"
+    Ensure-DeployCloudflareWranglerAuthFromEnv
 
     if ($script:DeployIsStaging) {
         Ensure-DeployCloudflareAccountIdFromEnv
@@ -563,16 +990,11 @@ function Invoke-DeployWorkerBuild {
 
     Write-DeployStep "Building $($script:DeployEnvironment) Worker"
 
-    if ($WorkersOnly) {
-        Set-DeployTursoBuildEnvFromEnvDev
-        Assert-DeployRequiredBuildEnv
-    }
-    elseif ($WorkerOnly) {
-        Write-DeployStep "Skipping Turso build credentials (-WorkerOnly uses runtime Worker secrets)"
-    }
-    else {
-        Set-DeployTursoBuildEnvFromTerraform
-    }
+    # Core migrate needs a real Turso URL in .emdash/migrations.json. Always
+    # resolve credentials (Terraform outputs or .env.dev) — including -WorkerOnly.
+    . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
+    $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
+    Assert-DeployRequiredBuildEnv
 
     . "$script:DeployCommonScriptRoot/build-provenance-env.ps1"
     Set-BuildProvenanceEnv -RepoRoot $script:DeployRepoRoot

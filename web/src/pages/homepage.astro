@@ -1,12 +1,28 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
-import { isLockedSiteAccess, SESSION_COOKIE } from '../lib/auth';
+import { isLockedSiteAccess, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
   getOptionalEditorialSession,
   requireEditorialSession,
 } from '../lib/editorial-session';
+import { resolveHomepageGet } from '../lib/root-route';
 
-const isLocked = isLockedSiteAccess();
+const homepageAction = resolveHomepageGet({
+  siteAccess: isLockedSiteAccess() ? 'locked' : 'public',
+  hostname: Astro.url.hostname,
+  sessionCookie: Astro.cookies.get(SESSION_COOKIE)?.value,
+  refreshCookie: Astro.cookies.get(REFRESH_TOKEN_COOKIE)?.value,
+});
+
+if (homepageAction.kind === 'redirect') {
+  return Astro.redirect(homepageAction.location, homepageAction.status);
+}
+
+// Serve the same login screen as `/` without a redirect (embedded browsers
+// were showing a blank page on /homepage after 302 or nested HTML).
+if (homepageAction.kind === 'login-wall') {
+  return Astro.rewrite('/');
+}
 
 let isAdmin = false;
 let isSignedIn = false;
@@ -18,15 +34,7 @@ const sessionContext = {
   redirect: Astro.redirect,
 };
 
-if (isLocked) {
-  const token = Astro.cookies.get(SESSION_COOKIE)?.value;
-
-  // Serve the same login screen as `/` without a redirect (embedded browsers
-  // were showing a blank page on /homepage after 302 or nested HTML).
-  if (!token) {
-    return Astro.rewrite('/');
-  }
-
+if (homepageAction.kind === 'require-session') {
   const session = await requireEditorialSession(sessionContext);
 
   if (session instanceof Response) {

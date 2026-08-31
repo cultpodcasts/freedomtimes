@@ -1,6 +1,12 @@
 import { defineMiddleware } from 'astro:middleware';
 import { env as cfEnv } from 'cloudflare:workers';
 
+import { isLockedSiteAccess } from './lib/auth';
+import { resolveLoginWallGet } from './lib/root-route';
+import {
+  HOMEPAGE_ROOT_REDIRECT_LOCATION,
+  shouldRedirectHomepageToRoot,
+} from './lib/homepage-host';
 import { recordPageView } from './lib/page-view-analytics';
 
 enum PathMode {
@@ -174,6 +180,27 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   if (env.DEBUG_MIDDLEWARE) {
     console.info('[middleware] onRequest called', { path: context.url.pathname, full: context.url.href });
+  }
+
+  // Production public host: `/homepage` is not a reader URL. 301 to `/` on
+  // this host — never to staging. Staging still renders the editorial page.
+  if (
+    (context.request.method === 'GET' || context.request.method === 'HEAD')
+    && shouldRedirectHomepageToRoot({
+      pathname: normalizedPath,
+      hostname: context.url.hostname,
+      siteAccessMode: env.SITE_ACCESS_MODE,
+    })
+  ) {
+    return context.redirect(HOMEPAGE_ROOT_REDIRECT_LOCATION, 301);
+  }
+
+  // Internal rewrite target for locked `/`. Not a public reader URL.
+  if (
+    normalizedPath === '/login-wall'
+    && resolveLoginWallGet(isLockedSiteAccess() ? 'locked' : 'public') === 'not-found'
+  ) {
+    return new Response('Not Found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
   }
 
   if (context.request.method === 'GET' && normalizedPath === '/robots.txt') {

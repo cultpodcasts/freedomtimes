@@ -14,7 +14,8 @@ const { denied = false } = Astro.props;
 		<link rel="preconnect" href="https://fonts.googleapis.com">
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
-		<style>
+		<!-- is:inline keeps these exact original rules in the HTML (Astro 7 dropped scoped/global wall CSS). -->
+		<style is:inline>
 			body {
 				margin: 0;
 				min-height: 100vh;

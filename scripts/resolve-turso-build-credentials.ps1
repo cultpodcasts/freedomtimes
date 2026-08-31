@@ -8,6 +8,9 @@ Set-StrictMode -Version Latest
   Prefers Terraform outputs when present; falls back to repo-root .env.dev (and optional
   production-prefixed aliases). Does not require terraform apply when .env.dev is populated.
 
+  Staging uses TURSO_DATABASE_URL / TURSO_AUTH_TOKEN. When TURSO_PRODUCTION_EMDASH_DB_URL
+  is set, that is the production EmDash URL — do not treat TURSO_DATABASE_URL as production.
+
   Dot-source this file and call Set-TursoBuildEnv.
 #>
 
@@ -18,15 +21,19 @@ function Import-EnvFileForTurso {
         return
     }
 
-    Get-Content $Path | ForEach-Object {
-        $line = $_.Trim()
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) { return }
+    foreach ($rawLine in Get-Content -Path $Path) {
+        $line = $rawLine.Trim()
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) { continue }
         if ($line -match '^[A-Za-z_][A-Za-z0-9_]*=') {
             $parts = $line -split '=', 2
             $key = $parts[0].Trim().Trim([char]0xFEFF)
             $value = $parts[1].Trim().Trim([char]0xFEFF)
             if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
                 $value = $value.Substring(1, $value.Length - 2)
+            }
+            $existing = [Environment]::GetEnvironmentVariable($key, "Process")
+            if (-not [string]::IsNullOrWhiteSpace($existing)) {
+                continue
             }
             [Environment]::SetEnvironmentVariable($key, $value, "Process")
         }
@@ -69,6 +76,39 @@ function Get-FirstNonEmptyTursoValue {
 function Test-IsProductionEmdashLibsqlUrl {
     param([string]$Url)
     return (-not [string]::IsNullOrWhiteSpace($Url)) -and ($Url -match 'freedomtimes-emdash-production')
+}
+
+function Test-TursoLibsqlUrlsEqual {
+    param(
+        [string]$Left,
+        [string]$Right
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Left) -or [string]::IsNullOrWhiteSpace($Right)) {
+        return $false
+    }
+
+    $normalize = {
+        param([string]$Url)
+        $hostPart = $Url.Trim() -replace "^libsql://", "" -replace "^https://", ""
+        $hostPart = ($hostPart -split "\?")[0]
+        $at = $hostPart.LastIndexOf("@")
+        if ($at -ge 0) {
+            $hostPart = $hostPart.Substring($at + 1)
+        }
+        return $hostPart.TrimEnd("/").ToLowerInvariant()
+    }
+
+    return (& $normalize $Left) -eq (& $normalize $Right)
+}
+
+function Get-ProductionEmdashUrlHint {
+    param([string]$EnvDevPath)
+
+    return Get-FirstNonEmptyTursoValue @(
+        ([Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_URL", "Process")),
+        (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_PRODUCTION_EMDASH_DB_URL")
+    )
 }
 
 function Get-TursoHostSuffixFromLibsqlUrl {
@@ -149,6 +189,10 @@ function Try-TerraformOutputRaw {
         [string]$OutputName
     )
 
+    if ([string]::IsNullOrWhiteSpace($TerraformExe) -or -not (Test-Path -LiteralPath $TerraformEnvDir)) {
+        return $null
+    }
+
     Push-Location $TerraformEnvDir
     try {
         $stderrFile = [System.IO.Path]::GetTempFileName()
@@ -221,17 +265,19 @@ function Resolve-ProductionEmdashTursoToken {
         [string]$ResolvedUrl
     )
 
-    $terraformToken = Try-TerraformOutputRaw -TerraformExe $TerraformExe -TerraformEnvDir $TerraformEnvDir -OutputName "turso_database_auth_token"
-    if (-not [string]::IsNullOrWhiteSpace($terraformToken)) {
-        return @{ Value = $terraformToken; Source = "terraform output turso_database_auth_token" }
-    }
-
+    # Terraform-minted turso_database_auth_token has 404'd on Cloud Agent
+    # deploys. Prefer an explicit production JWT when one is already set.
     $directToken = Get-FirstNonEmptyTursoValue @(
         ([Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_TOKEN", "Process")),
         (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_PRODUCTION_EMDASH_DB_TOKEN")
     )
     if (-not [string]::IsNullOrWhiteSpace($directToken)) {
         return @{ Value = $directToken; Source = "TURSO_PRODUCTION_EMDASH_DB_TOKEN" }
+    }
+
+    $terraformToken = Try-TerraformOutputRaw -TerraformExe $TerraformExe -TerraformEnvDir $TerraformEnvDir -OutputName "turso_database_auth_token"
+    if (-not [string]::IsNullOrWhiteSpace($terraformToken)) {
+        return @{ Value = $terraformToken; Source = "terraform output turso_database_auth_token" }
     }
 
     if (Test-IsProductionEmdashLibsqlUrl -Url $ResolvedUrl) {
@@ -268,7 +314,19 @@ function Resolve-StagingEmdashTursoUrl {
         (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_DATABASE_URL")
     )
     if (-not [string]::IsNullOrWhiteSpace($envUrl)) {
-        return @{ Value = $envUrl; Source = "TURSO_DATABASE_URL" }
+        $productionHint = Get-ProductionEmdashUrlHint -EnvDevPath $EnvDevPath
+        if (-not [string]::IsNullOrWhiteSpace($productionHint) -and (Test-TursoLibsqlUrlsEqual -Left $envUrl -Right $productionHint)) {
+            throw "TURSO_DATABASE_URL matches TURSO_PRODUCTION_EMDASH_DB_URL. Staging WorkerOnly would hit production EmDash. Set TURSO_DATABASE_URL to the staging EmDash URL (keep production on TURSO_PRODUCTION_EMDASH_DB_URL)."
+        }
+        if ([string]::IsNullOrWhiteSpace($productionHint) -and (Test-IsProductionEmdashLibsqlUrl -Url $envUrl)) {
+            throw "TURSO_DATABASE_URL looks like production EmDash and TURSO_PRODUCTION_EMDASH_DB_URL is unset. Refusing staging migrate. Set TURSO_PRODUCTION_EMDASH_DB_URL for production and keep TURSO_DATABASE_URL as staging."
+        }
+        $source = if (-not [string]::IsNullOrWhiteSpace($productionHint)) {
+            "TURSO_DATABASE_URL (staging EmDash; production is TURSO_PRODUCTION_EMDASH_DB_URL)"
+        } else {
+            "TURSO_DATABASE_URL"
+        }
+        return @{ Value = $envUrl; Source = $source }
     }
 
     throw "Missing staging EmDash Turso URL. Set TURSO_DATABASE_URL in .env.dev or run terraform apply."
@@ -312,7 +370,14 @@ function Set-TursoBuildEnv {
 
     $envDevPath = Join-Path $RepoRoot ".env.dev"
     $terraformEnvDir = Join-Path $RepoRoot "infra/terraform/environments/$Environment"
-    $terraformExe = Resolve-TerraformExecutable
+    $terraformExe = ""
+    try {
+        $terraformExe = Resolve-TerraformExecutable
+    }
+    catch {
+        # -WorkerOnly must resolve TURSO_* from env / .env.dev without Terraform.
+        $terraformExe = ""
+    }
 
     Import-EnvFileForTurso -Path $envDevPath
 

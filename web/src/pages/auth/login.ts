@@ -6,14 +6,36 @@ import {
   getNativeAppCookieName,
   getReturnToCookieName,
   getStateCookieName,
+  isLockedSiteAccess,
   isNativeAppContext,
   makeState,
   RETURN_TO_COOKIE_MAX_AGE_SECONDS,
   sanitizeReturnToPath,
 } from '../../lib/auth';
+import { getOptionalEditorialSession } from '../../lib/editorial-session';
+import { resolveAuthLoginGet } from '../../lib/root-route';
 
 export const GET: APIRoute = async (ctx) => {
   const requestId = ctx.request.headers.get('cf-ray') ?? crypto.randomUUID();
+  const existing = await getOptionalEditorialSession({
+    cookies: ctx.cookies,
+    url: ctx.url,
+    request: ctx.request,
+    redirect: ctx.redirect,
+  });
+  const loginAction = resolveAuthLoginGet({
+    siteAccess: isLockedSiteAccess() ? 'locked' : 'public',
+    hasEditorialSession: Boolean(existing),
+    nextPath: sanitizeReturnToPath(ctx.url.searchParams.get('next')),
+  });
+  if (loginAction.kind === 'redirect') {
+    console.info('[auth.login] already signed in; skipping Auth0 authorize', {
+      requestId,
+      returnTo: loginAction.location,
+    });
+    return ctx.redirect(loginAction.location);
+  }
+
   const config = getAuthConfig();
   const state = makeState();
   const useNativeApp =
@@ -70,7 +92,7 @@ export const GET: APIRoute = async (ctx) => {
   authorizeUrl.searchParams.set('client_id', config.clientId);
   authorizeUrl.searchParams.set('redirect_uri', redirectUri);
   // openid: minimal identity scope; roles/permissions remain on token claims via API audience + Auth0 config.
-  // offline_access: required for Auth0 to issue a refresh_token (see callback.ts / editorial-session.ts).
+  // offline_access: required for Auth0 to issue a refresh_token (see callback.ts / tryRefreshAuthCookies).
   authorizeUrl.searchParams.set('scope', 'openid offline_access');
   authorizeUrl.searchParams.set('audience', config.apiAudience);
   authorizeUrl.searchParams.set('connection', 'google-oauth2');

@@ -1,12 +1,35 @@
 ---
-import SecureAccessWall from '../components/SecureAccessWall.astro';
-import { readOptionalEnv } from '../lib/auth';
+import { isLockedSiteAccess } from '../lib/auth';
+import { getOptionalEditorialSession } from '../lib/editorial-session';
+import { resolveRootGet } from '../lib/root-route';
 
-const denied = Astro.url.searchParams.get('denied') === '1';
-const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const isLocked = isLockedSiteAccess();
+const session = await getOptionalEditorialSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+const rootAction = resolveRootGet({
+	siteAccess: isLocked ? 'locked' : 'public',
+	hasEditorialSession: Boolean(session),
+});
 
-if (siteAccessMode === 'public') {
-	return Astro.rewrite('/homepage');
+if (rootAction.kind === 'redirect') {
+	return Astro.redirect(rootAction.location, rootAction.status);
+}
+
+if (rootAction.kind === 'login-wall') {
+	// Separate route so newspaper CSS / getEmDashCollection never enter this response.
+	return Astro.rewrite('/login-wall' + Astro.url.search);
+}
+
+const HomepageView = (await import('../components/HomepageView.astro')).default;
+let isAdmin = false;
+let isSignedIn = false;
+if (session) {
+	isAdmin = session.isAdmin;
+	isSignedIn = true;
 }
 ---
-<SecureAccessWall denied={denied} />
+<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />

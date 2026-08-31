@@ -1,7 +1,8 @@
 Set-StrictMode -Version Latest
 
 # Directories commonly missing from PATH in non-interactive shells (Cursor agents, CI-like pwsh).
-# Only Windows-native CLIs belong here — Turso runs in WSL (see docs/CLI_PATHS_WINDOWS.md).
+# Only Windows-native CLIs belong here. Turso is WSL on Windows and native on Linux
+# (see docs/CLI_PATHS_WINDOWS.md / AGENTS.md §7). Do not add a Windows turso.exe here.
 $script:WindowsCliPathCandidates = @(
     $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links" }),
     $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles "Terraform" }),
@@ -49,16 +50,20 @@ function Resolve-TerraformExecutable {
         return $cmd.Source
     }
 
-    $wingetLink = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\terraform.exe"
-    if (Test-Path -LiteralPath $wingetLink) {
-        return $wingetLink
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        $wingetLink = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links\terraform.exe"
+        if (Test-Path -LiteralPath $wingetLink) {
+            return $wingetLink
+        }
     }
 
-    $whereOutput = & where.exe terraform 2>$null
-    if ($whereOutput) {
-        $first = ($whereOutput | Select-Object -First 1).ToString().Trim()
-        if ($first) {
-            return $first
+    if ($IsWindows -and (Get-Command where.exe -ErrorAction SilentlyContinue)) {
+        $whereOutput = & where.exe terraform 2>$null
+        if ($whereOutput) {
+            $first = ($whereOutput | Select-Object -First 1).ToString().Trim()
+            if ($first) {
+                return $first
+            }
         }
     }
 

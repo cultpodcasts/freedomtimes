@@ -1,6 +1,18 @@
 import type { AstroCookies } from 'astro';
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from 'jose';
 import { env as cfEnv } from 'cloudflare:workers';
+import {
+  ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
+  SESSION_COOKIE_MAX_AGE_SECONDS,
+} from './auth-session-lifetime';
+import { editorialHomePath, siteAccessFromMode } from './root-route';
+
+export {
+  ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
+  ACCESS_TOKEN_REFRESH_LEEWAY_SECONDS,
+  SESSION_COOKIE_MAX_AGE_SECONDS,
+  accessTokenNeedsRefresh,
+} from './auth-session-lifetime';
 
 export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
@@ -16,9 +28,6 @@ const NATIVE_AUTH_CALLBACK_URL = 'news.freedomtimes.app://auth/callback';
 /** Matches the state cookie lifetime — the whole Auth0 authorize round trip should complete well within this window. */
 export const RETURN_TO_COOKIE_MAX_AGE_SECONDS = 600;
 
-/** Matches `jwt_configuration.lifetime_in_seconds` (`id_token_lifetime_in_seconds`) in `infra/terraform/modules/auth0_app`. */
-export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24; // 24 hours
-export const ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 30; // 30 minutes
 /** Matches `refresh_token_idle_lifetime_seconds` default in `infra/terraform/modules/auth0_app`. */
 export const REFRESH_TOKEN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
@@ -118,7 +127,7 @@ export function isPublicReaderPath(pathname: string): boolean {
 
 /** Editorial home URL: `/homepage` on locked staging, `/` on public production. */
 export function getHomePath(): '/' | '/homepage' {
-  return isLockedSiteAccess() ? '/homepage' : '/';
+  return editorialHomePath(siteAccessFromMode(readOptionalEnv('SITE_ACCESS_MODE')));
 }
 
 export function getAuthConfig(): AuthConfig {
@@ -264,9 +273,10 @@ export async function exchangeCodeForTokens(params: {
 /**
  * Silent re-authentication: exchange a stored `ft_refresh` cookie value for a fresh
  * ID/access token pair, without a full Auth0 `/authorize` redirect. Used by
- * `editorial-session.ts` when the ID token has expired. Rotation is enabled on the Auth0
- * application (`enable_refresh_token_rotation`), so Auth0 normally returns a new
- * `refresh_token` on every use — callers must persist it back into `ft_refresh`.
+ * `tryRefreshAuthCookies()` from editorial, admin, and `/signed-in` when the ID token
+ * has expired. Rotation is enabled on the Auth0 application
+ * (`enable_refresh_token_rotation`), so Auth0 normally returns a new `refresh_token`
+ * on every use — callers must persist it back into `ft_refresh`.
  */
 export async function exchangeRefreshTokenForTokens(params: {
   refreshToken: string;
@@ -313,6 +323,62 @@ export async function exchangeRefreshTokenForTokens(params: {
     // Fall back to the presented token if Auth0 does not rotate it for some reason.
     refreshToken: tokenResponse.refresh_token ?? refreshToken,
   };
+}
+
+/**
+ * When `ft_session` is missing, `verifyIdToken()` failed, or `accessTokenNeedsRefresh()`
+ * is true, exchange `ft_refresh` and reissue the auth cookies. Returns the new
+ * ID-token payload, or `null` if there is no refresh cookie, the exchange fails,
+ * or `roleCheck` rejects the new token.
+ */
+export async function tryRefreshAuthCookies(params: {
+  cookies: AstroCookies;
+  hostname: string;
+  requestId: string;
+  logPrefix: string;
+  roleCheck: (payload: JWTPayload) => boolean;
+}): Promise<JWTPayload | null> {
+  const refreshToken = params.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
+  if (!refreshToken) {
+    return null;
+  }
+
+  try {
+    const config = getAuthConfig();
+    const refreshed = await exchangeRefreshTokenForTokens({ refreshToken, config });
+    const payload = await verifyIdToken(refreshed.idToken, config);
+
+    if (!params.roleCheck(payload)) {
+      console.warn(`[${params.logPrefix}] refreshed token failed role check`, {
+        requestId: params.requestId,
+        roleDebug: getRoleClaimDebug(payload),
+      });
+      return null;
+    }
+
+    setAuthCookies(params.cookies, {
+      idToken: refreshed.idToken,
+      accessToken: refreshed.accessToken,
+      refreshToken: refreshed.refreshToken,
+      // Keep the existing double-submit token so a silent refresh does not
+      // invalidate an in-flight admin form. Mint only if none is present.
+      csrfToken: params.cookies.get(CSRF_COOKIE)?.value || makeState(),
+      cookieDomain: getCookieDomainForHost(params.hostname),
+    });
+
+    console.info(`[${params.logPrefix}] silently refreshed session via refresh_token`, {
+      requestId: params.requestId,
+    });
+
+    return payload;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[${params.logPrefix}] refresh_token exchange failed`, {
+      requestId: params.requestId,
+      message,
+    });
+    return null;
+  }
 }
 
 /**

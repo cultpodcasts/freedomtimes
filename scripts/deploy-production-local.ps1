@@ -14,21 +14,23 @@ param(
   Full production deploy (Terraform + secrets + worker) or worker-only build/deploy.
 
 .DESCRIPTION
-  Full deploy (default): Terraform apply, Auth0 .env.dev sync, secret sync,
-  build, wrangler deploy, post-deploy secret verify.
+  Full deploy (default): Turso rollback checkpoint, Terraform apply, Auth0
+  .env.dev sync, secret sync, build, emdash migrate, wrangler deploy,
+  emdash migrate --check, post-deploy secret verify.
 
-  -WorkerOnly: skip Terraform; build and deploy the web worker only. Does not
-  read Turso credentials — the worker uses existing Cloudflare TURSO_* secrets
-  at runtime. Requires -AllowProduction when using -WorkerOnly.
+  -WorkerOnly: skip Terraform; still backup + migrate + deploy the web worker.
+  Resolves Turso credentials for core migrate (runtime still uses Cloudflare
+  TURSO_* secrets). Requires -AllowProduction when using -WorkerOnly.
 
-  -DryRun: skip build and deploy. Verifies the live Worker has the required
-  secret *names* (including TURSO_*) via wrangler secret list. Does not resolve
-  local Turso credentials and cannot print secret values.
+  -DryRun: skip backup, migrate, build, and deploy. Verifies the live Worker
+  has the required secret *names* (including TURSO_*) via wrangler secret list.
 
   Version bump default: no bump unless -BumpVersion (production ships the version staging already bumped).
 
-  Full deploy creates a Turso rollback checkpoint before Terraform apply (WSL Turso CLI).
-  Skipped for -WorkerOnly, -DryRun, or -SkipTursoBackup.
+  Turso rollback checkpoint runs before migrate for full deploy and -WorkerOnly
+  (WSL Turso on Windows; native turso on Linux). -SkipTursoBackup requires a
+  rollback metadata file newer than 24h whose sourceDatabase matches the
+  production EmDash name about to be migrated. Skipped for -DryRun.
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1
@@ -59,10 +61,11 @@ Write-DeployStep "Starting local production $workflowLabel"
 
 Invoke-DeployPushSecretsPreflight
 
+if (-not $DryRun) {
+    Invoke-DeployEmDashTursoBackup -SkipTursoBackup:$SkipTursoBackup
+}
+
 if (-not $WorkerOnly) {
-    if (-not $DryRun) {
-        Invoke-DeployTursoRollbackCheckpoint -SkipTursoBackup:$SkipTursoBackup
-    }
     Invoke-DeployTerraformApplyWithRecovery
     Sync-DeployProductionAuth0EnvFromTerraform
     Assert-DeployAuth0SyncToEnv
@@ -81,7 +84,9 @@ if ($DryRun) {
 }
 
 Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
+Invoke-DeployEmdashCoreMigrate
 Invoke-DeployWorkerDeploy
+Invoke-DeployEmdashCoreMigrateCheck
 Invoke-DeployWorkerSecretVerification
 
 Write-DeployStep "Production deploy complete"

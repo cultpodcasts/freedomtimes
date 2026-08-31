@@ -22,15 +22,27 @@ import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-sche
 const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.ts', import.meta.url));
 const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
-// Build-time Turso is optional. Worker-only deploys leave TURSO_* unset; the
-// libsql shim prefers Cloudflare Worker secrets at runtime (kysely-libsql.ts).
+// Build-time Turso is required for `.emdash/migrations.json` + `emdash migrate`.
+// The libsql shim still prefers Cloudflare Worker secrets at runtime.
+const tursoDatabaseUrl =
+  process.env.TURSO_DATABASE_URL?.trim() || 'libsql://unused-at-build.invalid';
+
 const emdashDatabase = {
   entrypoint: libsqlShimEntryUrl,
   config: {
-    url: process.env.TURSO_DATABASE_URL?.trim() || 'libsql://unused-at-build.invalid',
+    url: tursoDatabaseUrl,
     authToken: process.env.TURSO_AUTH_TOKEN?.trim() || '',
   },
   type: 'sqlite',
+  // Keep the Worker shim for runtime secrets; official libSQL executor writes
+  // .emdash/migrations.json so `npx emdash migrate` can apply against Turso.
+  migrations: {
+    entrypoint: 'emdash/db/libsql-migrations',
+    manifestConfig: {
+      url: tursoDatabaseUrl,
+      authTokenEnv: 'TURSO_AUTH_TOKEN',
+    },
+  },
 } as const;
 
 const emdashStorage = r2({ binding: 'MEDIA' });
@@ -41,6 +53,12 @@ const sqliteShimPath = fileURLToPath(new URL('./src/shims/better-sqlite3.ts', im
 const bindingsShimPath = fileURLToPath(new URL('./src/shims/bindings.ts', import.meta.url));
 
 const isAstroBuild = process.argv.includes('build');
+const isAstroDev = process.argv.includes('dev') && !isAstroBuild;
+if (isAstroDev && /emdash-production/i.test(tursoDatabaseUrl)) {
+  throw new Error(
+    'astro dev refuses TURSO_DATABASE_URL that looks like production EmDash (migrations.dev is auto). Use a local or staging URL.',
+  );
+}
 
 /**
  * @astrojs/cloudflare 14 prebundles astro/assets/fonts/runtime.js during SSR optimizeDeps.
@@ -139,6 +157,14 @@ export default defineConfig({
     emdash({
       mcp: true,
       database: emdashDatabase,
+      // Staging/production must not auto-migrate on first request. Deploy
+      // scripts apply `npx emdash migrate` after Turso backup, then `--check`.
+      // `dev: "auto"` is local-only: astro.config refuses production-looking
+      // TURSO_DATABASE_URL so a mixed .env.dev cannot auto-migrate prod.
+      migrations: {
+        runtime: 'check',
+        dev: 'auto',
+      },
       storage: emdashStorage,
       // Official Cloudflare Email Sending provider for EmDash magic links / invites.
       // Activate under Admin → Extensions, then Settings → Email after deploy.
