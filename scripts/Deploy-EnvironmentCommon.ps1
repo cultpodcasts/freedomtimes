@@ -660,7 +660,7 @@ function Invoke-DeployEmdashCoreMigrate {
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {
-        & node .\scripts\emdash-core-migrate.mjs apply
+        & node (Join-Path "scripts" "emdash-core-migrate.mjs") apply
         if ($LASTEXITCODE -ne 0) {
             throw "EmDash core migrate apply failed (exit $LASTEXITCODE)."
         }
@@ -675,7 +675,7 @@ function Invoke-DeployEmdashCoreMigrateCheck {
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {
-        & node .\scripts\emdash-core-migrate.mjs check
+        & node (Join-Path "scripts" "emdash-core-migrate.mjs") check
         if ($LASTEXITCODE -ne 0) {
             throw "EmDash core migrate --check failed (exit $LASTEXITCODE)."
         }
@@ -764,7 +764,7 @@ function Invoke-DeployEnforceStagingPublishOnlyCollections {
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {
-        & node .\scripts\enforce-publish-only-collections.cjs
+        & node (Join-Path "scripts" "enforce-publish-only-collections.cjs")
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to enforce staging publish-only collection supports."
         }
