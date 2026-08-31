@@ -35,18 +35,19 @@ if (-not (Test-CommandAvailable -CommandName "gh")) {
 }
 
 $applyFlag = if ($TerraformMode -eq "apply") { "true" } else { "false" }
+$workerDeploy = if ($TerraformMode -eq "apply") { "true" } else { "false" }
 
 if ($TerraformMode -eq "apply") {
-    Write-Host "Reminder: this dispatch sets production_worker_deploy=true. CI creates a Turso rollback branch (metadata artifact + job summary), then emdash migrate (requires secret EMDASH_TARGET_FINGERPRINT_PRODUCTION) → wrangler → emdash migrate --check. Push to main is check-only." -ForegroundColor Yellow
+    Write-Host "Reminder: this dispatch sets production_worker_deploy=true. CI creates a Turso rollback branch (metadata artifact + job summary), then emdash migrate (requires secret EMDASH_TARGET_FINGERPRINT_PRODUCTION) → wrangler → emdash migrate --check. Push to main and -TerraformMode plan do not mutate EmDash/SQL/wrangler." -ForegroundColor Yellow
     Write-Host "Reminder: terraform-production.yml builds web/ from whatever is committed on main. Local staging deploy (deploy-staging-local.ps1, including -WorkerOnly and -WorkersOnly) bumps web/package.json by default; deploy-production-local.ps1 defaults to NOT bumping, so the deployed build carries whatever version staging already committed. If you want this dispatch to carry a bumped version (no prior staging bump this release), bump and commit web/package.json first (e.g. 'cd web; npm version patch --no-git-tag-version; cd ..; git add web/package.json web/package-lock.json; git commit -m \"chore: bump web version\"; git push')." -ForegroundColor Yellow
 }
 
-Write-Host "Dispatching terraform-production.yml (production_terraform_apply=$applyFlag, production_worker_deploy=true)" -ForegroundColor Cyan
+Write-Host "Dispatching terraform-production.yml (production_terraform_apply=$applyFlag, production_worker_deploy=$workerDeploy)" -ForegroundColor Cyan
 Invoke-Gh -Arguments @(
     "workflow", "run", "terraform-production.yml",
     "--repo", $Repository,
     "-f", "production_terraform_apply=$applyFlag",
-    "-f", "production_worker_deploy=true"
+    "-f", "production_worker_deploy=$workerDeploy"
 )
 
 Write-Host "Workflow dispatched successfully." -ForegroundColor Green

@@ -50,8 +50,6 @@ try {
   if (!hasEditorialRole(payload)) {
     console.warn('[signed-in] token verified but role check failed', {
       requestId,
-      sessionToken: token,
-      decodedPayload: payload,
       roleDebug: getRoleClaimDebug(payload),
     });
     for (const deleteOptions of deleteOptionsList) {

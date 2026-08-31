@@ -21,9 +21,9 @@ function Import-EnvFileForTurso {
         return
     }
 
-    Get-Content $Path | ForEach-Object {
-        $line = $_.Trim()
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) { return }
+    foreach ($rawLine in Get-Content -Path $Path) {
+        $line = $rawLine.Trim()
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) { continue }
         if ($line -match '^[A-Za-z_][A-Za-z0-9_]*=') {
             $parts = $line -split '=', 2
             $key = $parts[0].Trim().Trim([char]0xFEFF)

@@ -23,7 +23,7 @@ on:
         default: false
         type: boolean
       staging_worker_deploy:
-        description: "Backup EmDash Turso, apply core migrate, and wrangler deploy (true). PRs are check-only."
+        description: "Mutate staging (EmDash backup/apply, tips/subscriptions/scheduler SQL, wrangler). PRs are EmDash --check only; no SQL/wrangler."
         required: false
         default: false
         type: boolean
@@ -492,8 +492,22 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
+      - name: Decide worker / Turso mutate
+        id: emdash_mutate
+        run: |
+          set -euo pipefail
+          deploy=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.staging_worker_deploy }}" = "true" ]; then
+            deploy=true
+          fi
+          if [ "${STAGING_WORKER_DEPLOY}" = "true" ]; then
+            deploy=true
+          fi
+          echo "deploy_worker=$deploy" >> "$GITHUB_OUTPUT"
+          echo "Staging mutate (EmDash backup/apply, SQL db:deploy, wrangler): $deploy (PRs: EmDash --check only)"
+
       - name: Apply Scheduler Database Migration and Seed
-        if: steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
         working-directory: web
         env:
           TURSO_SCHEDULER_DATABASE_URL: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
@@ -514,7 +528,7 @@ jobs:
           npm run scheduler:db:deploy
 
       - name: Apply Subscriptions Database Migration and Seed
-        if: steps.tf_outputs.outputs.subscriptions_turso_database_url != '' && steps.tf_outputs.outputs.subscriptions_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.subscriptions_turso_database_url != '' && steps.tf_outputs.outputs.subscriptions_turso_database_url != 'null'
         working-directory: web
         env:
           TURSO_SUBSCRIPTIONS_DATABASE_URL: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
@@ -535,7 +549,7 @@ jobs:
           npm run subscriptions:db:deploy
 
       - name: Apply Tips Database Migration
-        if: steps.tf_outputs.outputs.tips_turso_database_url != '' && steps.tf_outputs.outputs.tips_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.tips_turso_database_url != '' && steps.tf_outputs.outputs.tips_turso_database_url != 'null'
         working-directory: web
         env:
           TURSO_TIPS_DATABASE_URL: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
@@ -554,20 +568,6 @@ jobs:
           fi
 
           npm run tips:db:deploy
-
-      - name: Decide EmDash worker mutate
-        id: emdash_mutate
-        run: |
-          set -euo pipefail
-          deploy=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.staging_worker_deploy }}" = "true" ]; then
-            deploy=true
-          fi
-          if [ "${STAGING_WORKER_DEPLOY}" = "true" ]; then
-            deploy=true
-          fi
-          echo "deploy_worker=$deploy" >> "$GITHUB_OUTPUT"
-          echo "EmDash worker mutate (backup + migrate apply + wrangler): $deploy (PRs are check-only)"
 
       - name: Backup EmDash Turso before core migrate
         if: steps.emdash_mutate.outputs.deploy_worker == 'true'

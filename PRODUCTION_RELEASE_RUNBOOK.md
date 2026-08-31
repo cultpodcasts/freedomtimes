@@ -12,8 +12,8 @@ This runbook is the single path for promoting all production-facing changes:
 
 | Change type | Deployment path | Notes |
 |---|---|---|
-| Layout/UI changes (`web/src/**`) | `terraform-production.yml` workflow | Includes Worker build/deploy and required runtime vars/secrets sync |
-| EmDash runtime updates (`web` dependencies/config) | `terraform-production.yml` workflow | Same workflow deploys updated Worker bundle |
+| Layout/UI changes (`web/src/**`) | `terraform-production.yml` via `production-release.ps1 -TerraformMode apply` (`production_worker_deploy=true`) | Push to `main` is plan + EmDash `--check` only. Worker wrangler/secrets ship only on apply dispatch (or manual `production_worker_deploy=true`). |
+| EmDash runtime updates (`web` dependencies/config) | Same apply dispatch | Same gate: merge does not wrangler production. |
 | Terraform/IaC changes (`infra/terraform/**`) | `terraform-production.yml` workflow (plan/apply) | Applies managed infrastructure and captures outputs |
 | EmDash **core** schema (`emdash migrate` / `.emdash/migrations.json`) | Deploy pipeline: local `deploy-*-local.ps1` or CI `production-release.ps1` (`production_worker_deploy=true`) | Backup first, then apply, wrangler, `--check`. Runtime stays `check` (no first-request auto-migrate). |
 | EmDash collection/field model | Cursor EmDash MCP (`schema_*` / content tools) against staging, then production | Not `npx emdash schema` for agents. Apply the same collection/field operations to production after staging validation. |
@@ -105,12 +105,12 @@ What this does:
 
 1. Dispatches `.github/workflows/terraform-production.yml`.
 2. Requests Terraform apply (`production_terraform_apply=true`) and Worker mutate (`production_worker_deploy=true`).
-3. The workflow creates a recoverable Turso rollback branch (metadata artifact + job summary), builds `web/` (writes `.emdash/migrations.json`), runs `npx emdash migrate` with `EMDASH_TARGET_FINGERPRINT_PRODUCTION`, deploys that same Worker build, then `npx emdash migrate --check`. This is EmDash **core** schema, not `pt:migrate` or tips/subscriptions SQL. Staging/production runtime stays on `check` (no first-request auto-migrate). A push to `main` without this dispatch is check-only (no backup, no apply, no wrangler).
+3. The workflow creates a recoverable Turso rollback branch (metadata artifact + job summary), applies tips/subscriptions/scheduler SQL, builds `web/` (writes `.emdash/migrations.json`), runs `npx emdash migrate` with `EMDASH_TARGET_FINGERPRINT_PRODUCTION`, deploys that same Worker build, then `npx emdash migrate --check`. Staging/production EmDash runtime stays on `check` (no first-request auto-migrate). A push to `main` or `-TerraformMode plan` does **not** mutate EmDash, SQL, or wrangler (Terraform plan + `emdash migrate --check` only).
 4. Watches run completion and exits non-zero on failure.
 
 **Web version:** CI builds from committed `main` — no automatic bump. Local staging/production version behavior: [DEPLOY.md § Web version bump](web/docs/DEPLOY.md#web-version-bump-on-deploy). Bump and commit manually before dispatch if you want a new semver on the release build.
 
-Plan-only dry path:
+Plan-only dry path (Terraform plan + `emdash migrate --check` only — **no** Turso rollback branch, SQL `*:db:deploy`, EmDash apply, or wrangler):
 
 ```powershell
 .\scripts\production-release.ps1 -TerraformMode plan -Watch -AllowProduction
