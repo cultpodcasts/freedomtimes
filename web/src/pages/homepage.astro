@@ -1,6 +1,6 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
-import { isLockedSiteAccess, readOptionalEnv, SESSION_COOKIE } from '../lib/auth';
+import { isLockedSiteAccess, readOptionalEnv, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
   HOMEPAGE_ROOT_REDIRECT_LOCATION,
   shouldRedirectHomepageToRoot,
@@ -32,10 +32,12 @@ const sessionContext = {
 
 if (isLocked) {
   const token = Astro.cookies.get(SESSION_COOKIE)?.value;
+  const refresh = Astro.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
 
   // Serve the same login screen as `/` without a redirect (embedded browsers
   // were showing a blank page on /homepage after 302 or nested HTML).
-  if (!token) {
+  // Missing ft_session is not "signed out" — ft_refresh can still silent-refresh.
+  if (!token && !refresh) {
     return Astro.rewrite('/');
   }
 

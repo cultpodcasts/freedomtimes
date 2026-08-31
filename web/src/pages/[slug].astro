@@ -3,7 +3,7 @@ import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../components/EmDashContentView.astro';
 import HomepageView from '../components/HomepageView.astro';
-import { isLockedSiteAccess, readOptionalEnv, SESSION_COOKIE } from '../lib/auth';
+import { isLockedSiteAccess, readOptionalEnv, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
 	HOMEPAGE_ROOT_REDIRECT_LOCATION,
 	shouldRedirectHomepageToRoot,
@@ -49,8 +49,9 @@ const sessionContext = {
 if (isHomepage) {
 	if (isLocked) {
 		const token = Astro.cookies.get(SESSION_COOKIE)?.value;
+		const refresh = Astro.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
 
-		if (!token) {
+		if (!token && !refresh) {
 			return Astro.rewrite('/');
 		}
 

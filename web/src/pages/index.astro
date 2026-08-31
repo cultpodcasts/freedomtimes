@@ -1,10 +1,22 @@
 ---
-import { isLockedSiteAccess } from '../lib/auth';
+import { getHomePath, isLockedSiteAccess } from '../lib/auth';
 import { getOptionalEditorialSession } from '../lib/editorial-session';
 
 const isLocked = isLockedSiteAccess();
 
 if (isLocked) {
+	const session = await getOptionalEditorialSession({
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+	});
+	if (session) {
+		// `/` is the anonymous wall only. A live (or silently refreshable) session
+		// belongs on `/homepage`. Showing the wall here sends people through
+		// `/auth/login` again; a failed callback clears cookies and signs them out.
+		return Astro.redirect(getHomePath());
+	}
 	// Separate route so newspaper CSS / getEmDashCollection never enter this response.
 	return Astro.rewrite('/login-wall' + Astro.url.search);
 }

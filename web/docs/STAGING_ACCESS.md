@@ -25,7 +25,7 @@ On locked staging, every HTML page and API route requires an Auth0 session **exc
 - `/_emdash/*` — EmDash CMS, OAuth, MCP (own auth; bypassed in `middleware.ts`)
 - `/.well-known/*` — OAuth metadata aliases for MCP clients, plus public Digital Asset Links (`assetlinks.json`)
 - `/auth/*` — login wall must stay reachable
-- `/` — staging login wall (`SecureAccessWall`)
+- `/` — staging login wall (`SecureAccessWall`) for anonymous visitors; a live Auth0 session 302s to `/homepage`
 
 **Never** add staging-only public exceptions. Do not add reader or editorial paths to `AUTH_BYPASS_RULES` in middleware.
 

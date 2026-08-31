@@ -37,7 +37,7 @@ Role detection checks `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` when configured, or
 | `admin` | EmDash CMS, broadsheet homepage, all Freedom Times `/admin/*` tools (public site traffic, tips desk, push diagnostics) |
 | `editor` | EmDash CMS, broadsheet homepage (no Freedom Times `/admin` hub) |
 
-After login, `admin` and `editor` users go to `/homepage`.
+After login, `admin` and `editor` users go to `/homepage`. A later GET `/` while those cookies are still valid (or silently refreshable) 302s to `/homepage` instead of showing the wall — otherwise “Log in with Google” starts a second Auth0 authorize whose failed callback clears cookies.
 
 ## Auth0 scope and consent
 
