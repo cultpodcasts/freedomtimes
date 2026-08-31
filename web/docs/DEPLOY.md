@@ -34,7 +34,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 - `scripts/Deploy-EnvironmentCommon.ps1` — dot-sourced helpers only
 - `scripts/terraform-run.ps1` — Terraform only; local deploy scripts call this internally on full deploy
 
-**GitHub PRs from a new cloud agent:** if PR create fails with `must be a collaborator`, do not stop. Device-login as **CultPodcasts** — **[docs/CLOUD_AGENT_GITHUB_PR.md](../../docs/CLOUD_AGENT_GITHUB_PR.md)** and **`AGENTS.md`** §9.
+**GitHub PRs from a new cloud agent:** if PR create fails with `must be a collaborator`, do not stop. Prefer Cursor environment secret **`CULTPODCASTS_GH_TOKEN`** (90-day PAT; rotate before ~2026-11-29), else device-login as **CultPodcasts** — **[docs/CLOUD_AGENT_GITHUB_PR.md](../../docs/CLOUD_AGENT_GITHUB_PR.md)** and **`AGENTS.md`** §9.
 
 **Guardrails before you run anything:**
 

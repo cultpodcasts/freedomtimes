@@ -14,25 +14,52 @@ New Cursor cloud agents often **push** a branch, then fail to open a PR with `mu
 
 `ManagePullRequest` uses the Cursor App identity. When it returns **must be a collaborator**, switch to a CultPodcasts `gh` session. Do not treat that error as a hard stop.
 
+## Cursor environment secret `CULTPODCASTS_GH_TOKEN`
+
+Exact secret name (case-sensitive). Stored on the **Cursor Cloud Agent environment** for this repo (dashboard secrets), not in git.
+
+| | |
+|---|---|
+| **Name** | `CULTPODCASTS_GH_TOKEN` |
+| **Value** | CultPodcasts classic PAT: scopes `repo`, `read:org`, `workflow` |
+| **Lifetime** | **90 days.** Token stored 2026-08-31 expires ~**2026-11-29**. Rotate the GitHub PAT and paste the new value into the same Cursor secret before expiry. |
+| **Dashboard** | Cloud Agent environment → Secrets |
+| **Not these names** | `GH_TOKEN`, `GITHUB_TOKEN` — those override the Cursor App credential used for `git push` |
+
+Per-boot `start` on the environment logs `gh` in with this secret (`--with-token --insecure-storage`) and `gh auth switch --user cultpodcasts`. Agents must still verify `gh api user` is `cultpodcasts` before `gh pr create` / reviews.
+
+If the secret is unset, expired, or `gh auth` fails: fall back to device login below. Do not invent another secret name.
+
 ## What agents must do
 
 1. Confirm the working branch is pushed (`git push -u origin <branch>`).
 2. Try `ManagePullRequest` once if that tool is available.
-3. If it fails with collaborator / integration 403, **start GitHub device login** and give the operator the code. Do not wait for them to invent a PAT.
+3. If that fails with collaborator / integration 403, use CultPodcasts `gh`:
 
-```bash
-gh auth login --hostname github.com --git-protocol https --web \
-  --scopes repo,read:org,workflow --insecure-storage
-```
+   **First — environment secret (preferred):**
 
-Answer **Yes** to “Authenticate Git with your GitHub credentials?” then send the operator:
+   ```bash
+   # Requires Cursor secret CULTPODCASTS_GH_TOKEN (90-day PAT; rotate before ~2026-11-29)
+   test -n "${CULTPODCASTS_GH_TOKEN:-}"
+   printf '%s\n' "$CULTPODCASTS_GH_TOKEN" | gh auth login --hostname github.com --with-token --insecure-storage
+   gh auth switch --user cultpodcasts
+   ```
 
-- URL: https://github.com/login/device
-- The one-time code printed by `gh` (for example `ABCD-1234`)
+   **Fallback — device login** only if the secret is missing or rejected. Do not wait for the operator to invent a PAT name.
 
-They must sign in as **CultPodcasts** (not a personal account) and authorize the CLI. Codes expire in about 15 minutes.
+   ```bash
+   gh auth login --hostname github.com --git-protocol https --web \
+     --scopes repo,read:org,workflow --insecure-storage
+   ```
 
-4. After they confirm, verify and create the PR:
+   Answer **Yes** to “Authenticate Git with your GitHub credentials?” then send the operator:
+
+   - URL: https://github.com/login/device
+   - The one-time code printed by `gh` (for example `ABCD-1234`)
+
+   They must sign in as **CultPodcasts** (not a personal account) and authorize the CLI. Codes expire in about 15 minutes.
+
+4. After login, verify and create the PR:
 
 ```bash
 gh auth switch --user cultpodcasts
@@ -59,4 +86,5 @@ gh pr view --head <branch> --json url,author
 - Leave only a compare URL after a collaborator failure.
 - Invite `cursor` as a collaborator or request GitHub access “as CultPodcasts” — that user **already has admin**.
 - Use the `cursor` App token (`ghs_…`) or `gh api …/pulls` with the git-remote `x-access-token` to create PRs (403).
+- Name or export the CultPodcasts PAT as `GH_TOKEN` / `GITHUB_TOKEN`.
 - Device-login as a personal GitHub user unless the operator explicitly says to.
