@@ -36,6 +36,10 @@ const secureAccessWallSource = readFileSync(
 	fileURLToPath(new URL('../src/components/SecureAccessWall.astro', import.meta.url)),
 	'utf8',
 );
+const loginWallPageSource = readFileSync(
+	fileURLToPath(new URL('../src/pages/login-wall.astro', import.meta.url)),
+	'utf8',
+);
 
 const PRODUCTION_APEX = [...PRODUCTION_PUBLIC_HOSTNAMES].find((host) => !host.startsWith('www.'))!;
 const PRODUCTION_WWW = [...PRODUCTION_PUBLIC_HOSTNAMES].find((host) => host.startsWith('www.'))!;
@@ -165,7 +169,8 @@ describe('homepage host wiring', () => {
 	it('production / renders the reader root directly (no rewrite loop through /homepage)', () => {
 		assert.doesNotMatch(indexPageSource, /Astro\.rewrite\('\/homepage'\)/);
 		assert.match(indexPageSource, /HomepageView/);
-		assert.match(indexPageSource, /SecureAccessWall/);
+		assert.match(indexPageSource, /Astro\.rewrite\('\/login-wall'/);
+		assert.match(loginWallPageSource, /SecureAccessWall/);
 		assert.doesNotMatch(
 			indexPageSource,
 			/import HomepageView from/,
@@ -174,12 +179,22 @@ describe('homepage host wiring', () => {
 		assert.match(indexPageSource, /import\('\.\.\/components\/HomepageView\.astro'\)/);
 	});
 
-	it('SecureAccessWall is an inline-centered blue gateway (styles must not be bundled away)', () => {
+	it('middleware 404s /login-wall on the public production worker', () => {
+		assert.match(middlewareSource, /normalizedPath === '\/login-wall'/);
+		assert.match(middlewareSource, /isLockedSiteAccess\(\)/);
+	});
+
+	it('SecureAccessWall keeps the original white centered gateway (inline so styles ship)', () => {
 		assert.match(secureAccessWallSource, /is:inline/);
 		assert.match(secureAccessWallSource, /place-items:\s*center/);
-		assert.match(secureAccessWallSource, /background:\s*#0044bb/);
+		assert.match(secureAccessWallSource, /background:\s*#ffffff/);
+		assert.match(secureAccessWallSource, /background:\s*#111111/);
 		assert.match(secureAccessWallSource, /min-height:\s*100vh/);
-		assert.match(secureAccessWallSource, /<!doctype html>/i);
+		assert.match(secureAccessWallSource, /font-family:\s*'Inter'/);
+		assert.doesNotMatch(
+			secureAccessWallSource,
+			/html,\s*body\s*\{[^}]*background:\s*#0044bb/,
+		);
 	});
 
 	it('[slug].astro also redirects a production /homepage fallback', () => {

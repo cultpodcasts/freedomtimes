@@ -1,32 +1,26 @@
 ---
-import SecureAccessWall from '../components/SecureAccessWall.astro';
 import { isLockedSiteAccess } from '../lib/auth';
 import { getOptionalEditorialSession } from '../lib/editorial-session';
 
-const denied = Astro.url.searchParams.get('denied') === '1';
 const isLocked = isLockedSiteAccess();
 
+if (isLocked) {
+	// Separate route so newspaper CSS / getEmDashCollection never enter this response.
+	return Astro.rewrite('/login-wall' + Astro.url.search);
+}
+
+const HomepageView = (await import('../components/HomepageView.astro')).default;
 let isAdmin = false;
 let isSignedIn = false;
-let HomepageView: typeof import('../components/HomepageView.astro').default | null = null;
-
-if (!isLocked) {
-	// Dynamic import keeps newspaper CSS + getEmDashCollection off the locked login wall.
-	HomepageView = (await import('../components/HomepageView.astro')).default;
-	const session = await getOptionalEditorialSession({
-		cookies: Astro.cookies,
-		url: Astro.url,
-		request: Astro.request,
-		redirect: Astro.redirect,
-	});
-	if (session) {
-		isAdmin = session.isAdmin;
-		isSignedIn = true;
-	}
+const session = await getOptionalEditorialSession({
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+});
+if (session) {
+	isAdmin = session.isAdmin;
+	isSignedIn = true;
 }
 ---
-{isLocked || !HomepageView ? (
-	<SecureAccessWall denied={denied} />
-) : (
-	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
-)}
+<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />

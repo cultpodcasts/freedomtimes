@@ -1,0 +1,6 @@
+---
+import SecureAccessWall from '../components/SecureAccessWall.astro';
+
+const denied = Astro.url.searchParams.get('denied') === '1';
+---
+<SecureAccessWall denied={denied} />
