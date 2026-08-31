@@ -338,6 +338,83 @@ function Get-DeployTursoAuthLoginHint {
     return "turso auth login"
 }
 
+function Test-DeployTursoTokenLooksLikeDatabaseJwt {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+
+    $v = $Value.Trim()
+    return $v.StartsWith("eyJ") -and (@($v.Split(".")).Count -ge 3)
+}
+
+function Get-DeployTursoPlatformApiTokenBinding {
+    $preferredKeys = @(
+        "TURSO_PLATFORM_API_TOKEN",
+        "TURSO_API_TOKEN",
+        "TF_VAR_turso_api_token"
+    )
+
+    foreach ($key in $preferredKeys) {
+        $fromProcess = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrWhiteSpace($fromProcess)) {
+            $fromProcess = Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key $key
+        }
+        if (-not [string]::IsNullOrWhiteSpace($fromProcess)) {
+            return [pscustomobject]@{ Key = $key; Value = $fromProcess.Trim() }
+        }
+    }
+
+    $legacy = [Environment]::GetEnvironmentVariable("TURSO_TOKEN", "Process")
+    if ([string]::IsNullOrWhiteSpace($legacy)) {
+        $legacy = Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TURSO_TOKEN"
+    }
+    if ([string]::IsNullOrWhiteSpace($legacy)) {
+        return $null
+    }
+
+    $trimmed = $legacy.Trim()
+    if (Test-DeployTursoTokenLooksLikeDatabaseJwt -Value $trimmed) {
+        Write-Warning "TURSO_TOKEN looks like a libsql database JWT; skipping for turso CLI auth. Use TURSO_PLATFORM_API_TOKEN (never TURSO_AUTH_TOKEN)."
+        return $null
+    }
+
+    return [pscustomobject]@{ Key = "TURSO_TOKEN"; Value = $trimmed }
+}
+
+function Set-DeployNativeTursoCliTokenFromEnv {
+    if (Test-DeployShouldUseWslTurso) {
+        return $false
+    }
+
+    $binding = Get-DeployTursoPlatformApiTokenBinding
+    if ($null -eq $binding) {
+        return $false
+    }
+
+    $exe = Get-DeployNativeTursoExe
+    if ([string]::IsNullOrWhiteSpace($exe)) {
+        return $false
+    }
+
+    $stdoutFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $proc = Start-Process -FilePath $exe -ArgumentList @("config", "set", "token", $binding.Value) `
+            -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile
+        if ($proc.ExitCode -ne 0) {
+            throw "turso config set token failed (exit $($proc.ExitCode)) using $($binding.Key). Token value not logged."
+        }
+        Write-Host "  Turso CLI token set from $($binding.Key)" -ForegroundColor DarkGray
+        return $true
+    }
+    finally {
+        Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-DeployTursoCli {
     param(
         [Parameter(Mandatory = $true)]
@@ -380,8 +457,17 @@ function Invoke-DeployTursoCli {
 
 function Assert-DeployTursoAuth {
     $loginHint = Get-DeployTursoAuthLoginHint
+    $null = Set-DeployNativeTursoCliTokenFromEnv
     $whoami = Invoke-DeployTursoCli -CaptureOutput -TursoArgs @("auth", "whoami")
     $whoamiText = ($whoami.Output | Out-String).Trim()
+    $whoamiUser = (
+        $whoamiText -split "(`r`n|`n)" |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Last 1
+    )
+    if (Test-DeployTursoTokenLooksLikeDatabaseJwt -Value $whoamiUser) {
+        $whoamiUser = "(redacted)"
+    }
 
     if ($whoami.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($whoamiText)) {
         throw @(
@@ -401,7 +487,7 @@ function Assert-DeployTursoAuth {
     }
 
     $via = if (Test-DeployShouldUseWslTurso) { "WSL" } else { "native" }
-    Write-Host "  Turso $via auth: $whoamiText" -ForegroundColor DarkGray
+    Write-Host "  Turso $via auth: $whoamiUser" -ForegroundColor DarkGray
 }
 
 function Assert-DeployTursoWslAuth {

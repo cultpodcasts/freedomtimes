@@ -23,9 +23,22 @@ if [[ -z "$DATABASE_NAME" ]]; then
   exit 1
 fi
 
-TOKEN="${TURSO_API_TOKEN:-${TURSO_TOKEN:-${TF_VAR_turso_api_token:-}}}"
+TOKEN=""
+if [[ -n "${TURSO_PLATFORM_API_TOKEN:-}" ]]; then
+  TOKEN="$TURSO_PLATFORM_API_TOKEN"
+elif [[ -n "${TURSO_API_TOKEN:-}" ]]; then
+  TOKEN="$TURSO_API_TOKEN"
+elif [[ -n "${TF_VAR_turso_api_token:-}" ]]; then
+  TOKEN="$TF_VAR_turso_api_token"
+elif [[ -n "${TURSO_TOKEN:-}" ]]; then
+  if [[ "$TURSO_TOKEN" == eyJ*.*.* ]]; then
+    echo "TURSO_TOKEN looks like a libsql database JWT; not using it for CLI auth. Set TURSO_PLATFORM_API_TOKEN." >&2
+  else
+    TOKEN="$TURSO_TOKEN"
+  fi
+fi
 if [[ -z "$TOKEN" ]]; then
-  echo "Missing Turso API token (TURSO_API_TOKEN / TURSO_TOKEN / TF_VAR_turso_api_token)." >&2
+  echo "Missing Turso Platform API token (TURSO_PLATFORM_API_TOKEN / TURSO_API_TOKEN / TF_VAR_turso_api_token / non-JWT TURSO_TOKEN)." >&2
   exit 1
 fi
 
@@ -41,7 +54,10 @@ if ! command -v turso >/dev/null 2>&1; then
   exit 1
 fi
 
-turso config set token "$TOKEN" >/dev/null
+if ! turso config set token "$TOKEN" >/dev/null 2>&1; then
+  echo "turso config set token failed (token value not logged)." >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"

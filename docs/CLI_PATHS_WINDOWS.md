@@ -54,12 +54,13 @@ pwsh scripts/terraform-run.ps1 -Environment staging -Operation plan -LoadEnvFile
 
 **On Windows, Turso is not a native CLI in this workspace.** It is installed and authenticated inside **WSL** (Ubuntu). Do not expect `where.exe turso` or `Get-Command turso` to succeed from Windows PowerShell.
 
-**On Linux** (Cursor cloud VMs, Grok Bot, CI): use native `turso` on `PATH` or `$HOME/.turso/turso`. Deploy scripts call that binary directly — they do **not** require `wsl`.
+**On Linux** (Cursor cloud VMs, Grok Bot, CI): use native `turso` on `PATH` or `$HOME/.turso/turso`. Deploy scripts call that binary directly — they do **not** require `wsl`. When `TURSO_PLATFORM_API_TOKEN` (or `TURSO_API_TOKEN` / `TF_VAR_turso_api_token` / non-JWT `TURSO_TOKEN`) is in the environment, `Assert-DeployTursoAuth` runs `turso config set token` (value never logged) then `whoami`. Never use `TURSO_AUTH_TOKEN` (database JWT). Backup is still `turso db export` / rollback after auth.
 
 ```bash
 # Install (Linux)
 curl -sSfL https://get.tur.so/install.sh | bash
-turso auth login
+# Prefer: turso config set token "$TURSO_PLATFORM_API_TOKEN"
+# Fallback when no platform token: turso auth login
 turso auth whoami
 turso db export <emdash-staging-db> --output-file .release/backups/emdash-staging-<stamp>.db
 ```
