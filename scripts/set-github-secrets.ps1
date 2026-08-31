@@ -28,6 +28,7 @@ function Main {
     Write-Host "[DEBUG] About to check $SyncCloudflareWorkerSecrets..." -ForegroundColor Cyan
     if ($SyncCloudflareWorkerSecrets) {
         Write-Host "[DEBUG] Entered Cloudflare Worker secret sync block" -ForegroundColor Cyan
+        Ensure-WranglerCloudflareApiTokenFromTfVar -EnvValues $baseEnvValues
         if ($Target -eq "Staging") {
             Write-Host "\nSyncing Cloudflare Worker secrets for STAGING..." -ForegroundColor Cyan
             Write-Host "Reading credentials from local env: .env.staging" -ForegroundColor Gray
@@ -490,6 +491,29 @@ function Get-TfcTokenFromCredentials {
     catch {
         return ""
     }
+}
+
+function Ensure-WranglerCloudflareApiTokenFromTfVar {
+    param([hashtable]$EnvValues = @{})
+
+    $current = [Environment]::GetEnvironmentVariable("CLOUDFLARE_API_TOKEN", "Process")
+    $currentOk = (-not [string]::IsNullOrWhiteSpace($current)) -and ($current.Trim().Length -ge 40) -and ($current -notmatch "\s")
+    if ($currentOk) {
+        return
+    }
+
+    $tfToken = [Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_API_TOKEN", "Process")
+    if ([string]::IsNullOrWhiteSpace($tfToken) -and $EnvValues.Count -gt 0) {
+        $tfToken = Get-EnvValue -Values $EnvValues -Keys @("TF_VAR_CLOUDFLARE_API_TOKEN")
+    }
+    if ([string]::IsNullOrWhiteSpace($tfToken) -or $tfToken.Trim().Length -lt 40) {
+        return
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
+        Write-Warning ("CLOUDFLARE_API_TOKEN is not usable for Wrangler (length {0}); using TF_VAR_CLOUDFLARE_API_TOKEN." -f $current.Trim().Length)
+    }
+    $env:CLOUDFLARE_API_TOKEN = $tfToken.Trim()
 }
 
 function Set-WorkerSecret {

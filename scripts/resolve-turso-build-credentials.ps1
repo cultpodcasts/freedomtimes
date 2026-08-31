@@ -265,17 +265,19 @@ function Resolve-ProductionEmdashTursoToken {
         [string]$ResolvedUrl
     )
 
-    $terraformToken = Try-TerraformOutputRaw -TerraformExe $TerraformExe -TerraformEnvDir $TerraformEnvDir -OutputName "turso_database_auth_token"
-    if (-not [string]::IsNullOrWhiteSpace($terraformToken)) {
-        return @{ Value = $terraformToken; Source = "terraform output turso_database_auth_token" }
-    }
-
+    # Terraform-minted turso_database_auth_token has 404'd on Cloud Agent
+    # deploys. Prefer an explicit production JWT when one is already set.
     $directToken = Get-FirstNonEmptyTursoValue @(
         ([Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_TOKEN", "Process")),
         (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_PRODUCTION_EMDASH_DB_TOKEN")
     )
     if (-not [string]::IsNullOrWhiteSpace($directToken)) {
         return @{ Value = $directToken; Source = "TURSO_PRODUCTION_EMDASH_DB_TOKEN" }
+    }
+
+    $terraformToken = Try-TerraformOutputRaw -TerraformExe $TerraformExe -TerraformEnvDir $TerraformEnvDir -OutputName "turso_database_auth_token"
+    if (-not [string]::IsNullOrWhiteSpace($terraformToken)) {
+        return @{ Value = $terraformToken; Source = "terraform output turso_database_auth_token" }
     }
 
     if (Test-IsProductionEmdashLibsqlUrl -Url $ResolvedUrl) {

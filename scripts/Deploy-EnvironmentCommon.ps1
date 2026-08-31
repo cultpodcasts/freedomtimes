@@ -248,19 +248,47 @@ function Set-DeployTursoBuildEnvFromTerraform {
     $env:TURSO_AUTH_TOKEN = Get-DeployTerraformOutputRaw -Name "turso_database_auth_token"
 }
 
+function Test-DeployCloudflareApiTokenPlausible {
+    param([string]$Token)
+
+    # Cloudflare API tokens used by Wrangler are typically 40+ characters.
+    # Cursor Cloud has injected a ~31-character CLOUDFLARE_API_TOKEN stub that
+    # shadows TF_VAR_CLOUDFLARE_API_TOKEN; wrangler then fails with
+    # Authorization header 6111 / API 9106.
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        return $false
+    }
+
+    $trimmed = $Token.Trim()
+    if ($trimmed.Length -lt 40) {
+        return $false
+    }
+
+    if ($trimmed -match "\s") {
+        return $false
+    }
+
+    return $true
+}
+
 function Ensure-DeployCloudflareWranglerAuthFromEnv {
     Ensure-DeployCloudflareAccountIdFromEnv
 
-    if (-not [string]::IsNullOrWhiteSpace($env:CLOUDFLARE_API_TOKEN)) {
-        return
-    }
-
-    $token = Get-DeployFirstNonEmpty -Values @(
+    $tfToken = Get-DeployFirstNonEmpty -Values @(
         ([Environment]::GetEnvironmentVariable("TF_VAR_CLOUDFLARE_API_TOKEN", "Process")),
         (Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TF_VAR_CLOUDFLARE_API_TOKEN")
     )
-    if (-not [string]::IsNullOrWhiteSpace($token)) {
-        $env:CLOUDFLARE_API_TOKEN = $token
+
+    $current = $env:CLOUDFLARE_API_TOKEN
+    if (Test-DeployCloudflareApiTokenPlausible -Token $current) {
+        return
+    }
+
+    if (Test-DeployCloudflareApiTokenPlausible -Token $tfToken) {
+        if (-not [string]::IsNullOrWhiteSpace($current)) {
+            Write-Warning ("CLOUDFLARE_API_TOKEN is not usable for Wrangler (length {0}); using TF_VAR_CLOUDFLARE_API_TOKEN." -f $current.Trim().Length)
+        }
+        $env:CLOUDFLARE_API_TOKEN = $tfToken.Trim()
     }
 }
 
@@ -494,6 +522,88 @@ function Assert-DeployTursoWslAuth {
     Assert-DeployTursoAuth
 }
 
+function Get-DeployLibsqlHostname {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return ""
+    }
+
+    $hostPart = $Url.Trim() -replace "^libsql://", "" -replace "^https://", ""
+    $hostPart = ($hostPart -split "\?")[0]
+    $at = $hostPart.LastIndexOf("@")
+    if ($at -ge 0) {
+        $hostPart = $hostPart.Substring($at + 1)
+    }
+
+    return $hostPart.TrimEnd("/").ToLowerInvariant()
+}
+
+function Test-DeployUrlLooksLikeProductionEmdash {
+    param([string]$Url)
+
+    $hostname = Get-DeployLibsqlHostname -Url $Url
+    return (-not [string]::IsNullOrWhiteSpace($hostname)) -and ($hostname -match "-emdash-production")
+}
+
+function Get-DeployProductionEmdashUrlCandidates {
+    $urls = [System.Collections.Generic.List[string]]::new()
+    foreach ($candidate in @(
+            [Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_URL", "Process"),
+            (Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key "TURSO_PRODUCTION_EMDASH_DB_URL"),
+            [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+        )) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+        if (-not (Test-DeployUrlLooksLikeProductionEmdash -Url $candidate)) {
+            continue
+        }
+        $urls.Add($candidate.Trim())
+    }
+
+    return $urls.ToArray()
+}
+
+function Test-DeployRollbackSourceMatchesProductionEmDash {
+    param(
+        [string]$SourceDatabase,
+        [string]$ExpectedDatabase = "",
+        [string[]]$ProductionUrls = @()
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SourceDatabase)) {
+        return $false
+    }
+
+    # Literal placeholder left in-repo by redaction — never treat it as a real DB name.
+    if ($SourceDatabase -eq "[REDACTED]-emdash-production" -or $SourceDatabase -match "REDACTED") {
+        return $false
+    }
+
+    $source = $SourceDatabase.Trim()
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedDatabase) -and $ExpectedDatabase -notmatch "REDACTED" -and $source -eq $ExpectedDatabase.Trim()) {
+        return $true
+    }
+
+    $urls = @($ProductionUrls)
+    if ($urls.Count -eq 0) {
+        $urls = @(Get-DeployProductionEmdashUrlCandidates)
+    }
+
+    foreach ($url in $urls) {
+        $hostname = Get-DeployLibsqlHostname -Url $url
+        if ([string]::IsNullOrWhiteSpace($hostname)) {
+            continue
+        }
+        if ($hostname.StartsWith($source.ToLowerInvariant(), [StringComparison]::Ordinal)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Get-DeployTursoDatabaseNameFromEnv {
     param(
         [string]$EnvKey,
@@ -586,7 +696,11 @@ function Assert-DeployFreshEmDashTursoBackup {
 
     $expectedDb = Get-DeployTursoDatabaseNameFromEnv `
         -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
-        -DefaultName "[REDACTED]-emdash-production"
+        -DefaultName ""
+    if ($expectedDb -eq "[REDACTED]-emdash-production" -or $expectedDb -match "REDACTED") {
+        $expectedDb = ""
+    }
+    $productionUrls = @(Get-DeployProductionEmdashUrlCandidates)
     $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
     $newestMeta = $null
     $candidates = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
@@ -605,8 +719,11 @@ function Assert-DeployFreshEmDashTursoBackup {
             Write-Warning "Ignoring rollback metadata $($candidate.Name) (missing sourceDatabase)."
             continue
         }
-        if ($sourceDatabase -ne $expectedDb) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' != '$expectedDb')."
+        if (-not (Test-DeployRollbackSourceMatchesProductionEmDash `
+                    -SourceDatabase $sourceDatabase `
+                    -ExpectedDatabase $expectedDb `
+                    -ProductionUrls $productionUrls)) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name or URL)."
             continue
         }
         $newestMeta = $candidate
@@ -614,7 +731,7 @@ function Assert-DeployFreshEmDashTursoBackup {
     }
     if ($null -eq $newestMeta) {
         throw @(
-            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h for sourceDatabase '$expectedDb' under .release/rollback-branches/.",
+            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h whose sourceDatabase matches TF_VAR_TURSO_DATABASE_NAME_PRODUCTION or the production EmDash URL host under .release/rollback-branches/.",
             "Run scripts/turso-create-rollback-branch.ps1 -AllowProduction or omit -SkipTursoBackup."
         ) -join " "
     }
@@ -816,6 +933,7 @@ function Ensure-DeployCloudflareAccountIdFromEnv {
 
 function Invoke-DeploySecretSync {
     Write-DeployStep "Syncing Cloudflare Worker secrets for $($script:DeployEnvironment)"
+    Ensure-DeployCloudflareWranglerAuthFromEnv
 
     if ($script:DeployIsStaging) {
         Ensure-DeployCloudflareAccountIdFromEnv
