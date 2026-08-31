@@ -169,7 +169,6 @@ describe('homepage host wiring', () => {
 	it('production / renders the reader root directly (no rewrite loop through /homepage)', () => {
 		assert.doesNotMatch(indexPageSource, /Astro\.rewrite\('\/homepage'\)/);
 		assert.match(indexPageSource, /HomepageView/);
-		assert.match(indexPageSource, /Astro\.rewrite\('\/login-wall'/);
 		assert.match(loginWallPageSource, /SecureAccessWall/);
 		assert.doesNotMatch(
 			indexPageSource,
@@ -179,9 +178,22 @@ describe('homepage host wiring', () => {
 		assert.match(indexPageSource, /import\('\.\.\/components\/HomepageView\.astro'\)/);
 	});
 
-	it('middleware 404s /login-wall on the public production worker', () => {
+	it('rewrites / to /login-wall only inside if (isLocked); public / must not 404 via that rewrite', () => {
+		// Astro.rewrite re-runs middleware. Public workers 404 /login-wall, so an
+		// ungated rewrite turns production GET / into 404 instead of HomepageView.
+		assert.match(
+			indexPageSource,
+			/if \(isLocked\) \{[\s\S]*Astro\.rewrite\('\/login-wall'/,
+		);
+		assert.doesNotMatch(
+			indexPageSource,
+			/Astro\.rewrite\('\/login-wall'[\s\S]*if \(isLocked\)/,
+		);
 		assert.match(middlewareSource, /normalizedPath === '\/login-wall'/);
-		assert.match(middlewareSource, /isLockedSiteAccess\(\)/);
+		assert.match(
+			middlewareSource,
+			/normalizedPath === '\/login-wall' && !isLockedSiteAccess\(\)/,
+		);
 	});
 
 	it('SecureAccessWall keeps the original white centered gateway (inline so styles ship)', () => {

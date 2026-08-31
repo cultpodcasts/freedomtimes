@@ -109,15 +109,15 @@ When the operator asks for a **full staging stack** (Terraform + workers), run t
 - Use **Cursor environment/repo secrets**, not Jon's Windows `.env.dev`.
 - Terraform Cloud: Cursor secret name is `TF_TOKEN_APP_TERRAFORM_IO`. `scripts/terraform-preflight.ps1` looks for `TF_TOKEN_app_terraform_io` (also `TF_TOKEN` / `TFE_TOKEN`). Copy the Cursor name into the preflight name in **process env** before deploy.
 - Copy `TF_VAR_CLOUDFLARE_API_TOKEN` / `TF_VAR_CLOUDFLARE_ACCOUNT_ID` into `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` when those names are missing.
-- **Turso hosts:** compare `TURSO_DATABASE_URL` and `TURSO_PRODUCTION_EMDASH_DB_URL`. If the hosts match, **refuse** — do not write that pair into `.env.dev`, do not migrate it. Staging Turso is database name `freedomtimes-emdash-staging`. Mint URL/token with `turso db show` / `turso db tokens create` after `turso config set token` from `TURSO_PLATFORM_API_TOKEN` (never `TURSO_AUTH_TOKEN` for CLI login). <!-- pragma: allowlist secret -->
-- Do **not** require `EMDASH_TARGET_FINGERPRINT_*` as Cursor secrets for this **local** script path (those pins are GitHub Actions). Local apply still uses `--status --json` then `--expected-target-fingerprint` from the helper.
+- **Turso hosts:** compare `TURSO_DATABASE_URL` and `TURSO_PRODUCTION_EMDASH_DB_URL`. If the hosts match, **refuse** — do not write that pair into `.env.dev`, do not migrate it, and do **not** fall back to process `TURSO_AUTH_TOKEN` (that token is the production DB JWT). Staging Turso is database name `freedomtimes-emdash-staging`. After apply, Terraform-minted `turso_database_auth_token` has **404'd** (`Set-DeployTursoBuildEnvFromTerraform` / `Resolve-StagingEmdashTursoToken` prefer that output). Do not then use process `TURSO_AUTH_TOKEN` because the hosts match. Mint a staging token with `turso db show` / `turso db tokens create` against that staging database after `turso config set token` from `TURSO_PLATFORM_API_TOKEN` (never `TURSO_AUTH_TOKEN` for CLI login). <!-- pragma: allowlist secret -->
+- Do **not** require `EMDASH_TARGET_FINGERPRINT_*` as Cursor secrets for this **local** script path (those pins are GitHub Actions; this Cloud env has not had them). Take the fingerprint from `emdash migrate --status --json` **after** `web/` build, then pass `--expected-target-fingerprint` from the helper.
 
 **Linux Cloud VM bootstrap (this image)**
 
-- Default `node` can be 22.14; need **22.22.2** (`registerHooks`) via nvm.
+- Default `node` can be 22.14; need **22.22.2** (`registerHooks`) via nvm. **`/exec-daemon/node` shadows nvm** — it stays first on `PATH` after `nvm use`, so `npm ci` still runs 22.14.0 (`EBADENGINE`). After `nvm install` / `nvm use 22.22.2`, invoke that nvm binary (`$NVM_DIR/versions/node/v22.22.2/bin/node` / `npm`) or **prepend** that directory to `PATH` so it beats `/exec-daemon/node`. Confirm `node -v` is `v22.22.2` before `npm ci` / `npm run build`.
 - Install `pwsh`, native `turso` (`$HOME/.turso/turso`), and `terraform` if missing.
 - `terraform init` on a VM with no `.terraform` is **required** before the first full staging apply. Treat that as a preflight, not a surprise failure: `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles`, then re-run the full deploy.
-- Do not commit incidental Linux provider hashes in `.terraform.lock.hcl` from that init unless the operator asked for a lockfile change. Revert if the only diff is platform hashes.
+- **Lockfile timing:** Linux `terraform init` dirties `.terraform.lock.hcl` with extra platform hashes. **Leave that file dirty through apply** (reverting before apply is the failure mode). After apply succeeds, revert the hash-only diff. Never commit those hashes unless the operator asked for a lockfile change.
 
 **Full staging command**
 
