@@ -1,5 +1,6 @@
 import * as libsql from '@libsql/client/web';
-import { env as cfEnv } from 'cloudflare:workers';
+import { env as cfEnv, waitUntil } from 'cloudflare:workers';
+import { kyselyLogOption } from 'emdash/database/instrumentation';
 import {
   Kysely,
   SqliteAdapter,
@@ -108,23 +109,55 @@ export function createCoalescingDialect(config: { url?: string; authToken?: stri
 }
 
 /**
+ * Official `RequestScopedDbOpts` (virtual:emdash/dialect). Libsql has no
+ * replica/bookmark routing — these fields are unused but typed so the shim
+ * matches Hyperdrive / D1 adapters.
+ */
+type RequestScopedDbOpts = {
+  config: unknown;
+  isAuthenticated: boolean;
+  endedAuthenticated?: () => boolean;
+  isWrite: boolean;
+  canUseCachedBinding?: boolean;
+  cookies: {
+    get(name: string): { value: string } | undefined;
+    set(name: string, value: string, options: Record<string, unknown>): void;
+  };
+  url: URL;
+  lastContentWriteAt?: number;
+};
+
+/**
  * Per-request Kysely + libsql client. Required on Cloudflare Workers: the
  * isolate-wide getDb() client is bound to the first request's fetch, and
  * later HTML requests hang (0 bytes) on workerd's cross-request I/O guard.
  * EmDash middleware then puts this handle in ALS so getDb() / redirect
  * queries stay on this request.
+ *
+ * Teardown follows Hyperdrive: idempotent `close()`, `waitUntil(destroy)`
+ * so workerd does not drop the client close when the response ends.
  */
-export function createRequestScopedDb(_opts: unknown): {
+export function createRequestScopedDb(_opts: RequestScopedDbOpts): {
   db: Kysely<unknown>;
   commit: () => void;
   close: () => void;
 } {
-  const db = new Kysely({ dialect: createDialect({}) });
+  const db = new Kysely({
+    dialect: createDialect({}),
+    log: kyselyLogOption(),
+  });
+  let closed = false;
   return {
     db,
     commit() {},
     close() {
-      void db.destroy();
+      if (closed) return;
+      closed = true;
+      waitUntil(
+        db.destroy().catch((error: unknown) => {
+          console.error('[ft-libsql] failed to close request-scoped client:', error);
+        }),
+      );
     },
   };
 }

@@ -14,7 +14,7 @@
 import { defineMiddleware } from 'astro:middleware';
 
 import { SESSION_COOKIE } from './lib/auth';
-import { shouldTraceFtMwPath } from './lib/emdash-exact-redirect';
+import { shouldTraceFtMwPath } from './lib/ft-mw-trace';
 import { createFtMwLogger } from './lib/ft-mw-log';
 
 const ASTRO_SESSION_COOKIE = 'astro-session';

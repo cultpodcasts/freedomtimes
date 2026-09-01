@@ -3,8 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { isHttpRedirectStatus, shouldTraceFtMwPath } from '../src/lib/emdash-exact-redirect.ts';
-import { withDeadline } from '../src/lib/with-deadline.ts';
+import { isHttpRedirectStatus, shouldTraceFtMwPath } from '../src/lib/ft-mw-trace.ts';
 
 const astroConfig = readFileSync(fileURLToPath(new URL('../astro.config.ts', import.meta.url)), 'utf8');
 const outerSource = readFileSync(
@@ -29,6 +28,9 @@ describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 		);
 		assert.match(shim, /export function createRequestScopedDb/);
 		assert.match(shim, /new Kysely/);
+		assert.match(shim, /kyselyLogOption/);
+		assert.match(shim, /waitUntil/);
+		assert.match(shim, /RequestScopedDbOpts/);
 	});
 
 	it('documents the official order so later hang fixes do not call getDb in outer', () => {
@@ -43,6 +45,7 @@ describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 		assert.match(routingDoc, /Do not add Worker slug maps/);
 		assert.match(routingDoc, /Astro\.rewrite/);
 		assert.match(routingDoc, /\/login-wall/);
+		assert.match(routingDoc, /rewrite is not the 0-byte hang mechanism/);
 	});
 
 	it('EmDash still registers runtime then redirect; outer is the only reorder', () => {
@@ -106,18 +109,5 @@ describe('ft-mw path helpers', () => {
 		assert.equal(isHttpRedirectStatus(301), true);
 		assert.equal(isHttpRedirectStatus(200), false);
 		assert.equal(isHttpRedirectStatus(410), false);
-	});
-});
-
-describe('withDeadline', () => {
-	it('resolves when the work finishes first', async () => {
-		assert.equal(await withDeadline(Promise.resolve('ok'), 50, 'fast'), 'ok');
-	});
-
-	it('rejects when the deadline wins', async () => {
-		await assert.rejects(
-			withDeadline(new Promise(() => {}), 10, 'hung-lookup'),
-			/hung-lookup timed out after 10ms/,
-		);
 	});
 });

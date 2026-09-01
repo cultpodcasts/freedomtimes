@@ -2,8 +2,8 @@
 
 This is the contract for Worker request handling. New HTML-hang or login-wall
 fixes must fit this model. Do not add Worker slug maps, app-owned
-`_emdash_redirects` queries, `getEmDashEntry` timeouts, or
-`Astro.rewrite` to `/login-wall`.
+`_emdash_redirects` queries, or `getEmDashEntry` timeouts. Do not
+`Astro.rewrite` `/` ↔ `/homepage` / `/login-wall` to compose two templates.
 
 ## Official middleware order
 
@@ -37,7 +37,8 @@ path (`emdash/src/db/adapters.ts`). When true, the adapter **must** export
 
 Freedom Times opts in on the Turso descriptor in `web/astro.config.ts` and
 implements `createRequestScopedDb` in `web/src/shims/kysely-libsql.ts`
-(fresh Kysely + libsql client; `close()` → `db.destroy()`).
+(fresh Kysely + libsql client; Hyperdrive-style `waitUntil(destroy)` on
+`close()`). Official `libsql()` still has no request-scope hook.
 
 This is the same hook D1 sessions / bookmark cookies use. It is not an
 app-level timeout around `getEmDashEntry`.
@@ -56,12 +57,14 @@ Secure Access wall after logout.
 | Locked | Anonymous wall (`secureAccessWallResponse`) | Newsroom (`HomepageView` only). No cookies → 302 `/`. Failed session → existing `requireEditorialSession` redirect (`/` or `/?denied=1`). |
 | Public | Newsroom (`HomepageView` only) | 301 `/` on production hosts |
 
-Do **not** `Astro.rewrite` between these URLs. Rewrite re-enters EmDash
-middleware; on the Cloudflare custom domain (not `*.workers.dev`) document
-requests hang at 0 bytes (staging version `230af65d`).
+Do **not** `Astro.rewrite` `/` ↔ `/homepage` (or `/login-wall`) to compose
+two templates — that is how newsroom CSS leaked onto the wall. After
+`supportsRequestScope`, rewrite is not the 0-byte hang mechanism (that was
+isolate-wide `getDb()`, seen on custom-domain version `230af65d` before the
+scoped client). Belt-and-suspenders: keep these two URLs as redirect or
+Response, not rewrite.
 
-`/login-wall` remains a fallback that returns the same wall Response. Pages
-must not rewrite to it.
+`/login-wall` remains a fallback that returns the same wall Response.
 
 CMS slug redirects stay in EmDash (`emdash/middleware/redirect` after
 runtime). The app does not reimplement `_emdash_redirects`.

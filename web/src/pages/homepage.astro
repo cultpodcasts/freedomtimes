@@ -27,8 +27,7 @@ const sessionContext = {
 
 // Newsroom only. Anonymous visitors 302 to `/` (resolveHomepageGet). Failed
 // session verification already redirects to `/` or `/?denied=1`. Do not render
-// the wall here and do not Astro.rewrite('/') — rewrite deadlocks HTML on the
-// custom domain (staging 230af65d).
+// the wall here and do not rewrite to `/` to compose two templates.
 let isAdmin = false;
 let isSignedIn = false;
 

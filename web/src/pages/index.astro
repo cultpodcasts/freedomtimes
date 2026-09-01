@@ -22,8 +22,8 @@ if (rootAction.kind === 'redirect') {
 }
 
 // Locked `/` is its own HTTP document. Do not compose the wall component in
-// this template (HomepageView CSS would win). Do not Astro.rewrite('/login-wall'):
-// rewrite re-runs EmDash middleware and hangs HTML on the custom domain.
+// this template (HomepageView CSS would win). Do not rewrite to `/login-wall`
+// to mix two documents — return the wall Response instead.
 if (rootAction.kind === 'login-wall') {
 	return secureAccessWallResponse(Astro.url.searchParams.get('denied') === '1');
 }

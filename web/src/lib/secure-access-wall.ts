@@ -7,8 +7,9 @@
  * after logout (serif type, no vertical center). A Response is the document
  * boundary; it does not include the newsroom stylesheet.
  *
- * Do not Astro.rewrite to `/login-wall` from `/`: rewrite re-enters EmDash
- * middleware and hangs HTML on the Cloudflare custom domain.
+ * Do not Astro.rewrite to `/login-wall` to compose two templates. The wall
+ * is a Response so Homepage CSS cannot leak. After `supportsRequestScope`,
+ * rewrite is not the hang mechanism (that was isolate-wide getDb).
  */
 export function renderSecureAccessWallHtml(denied = false): string {
 	const warn = denied
