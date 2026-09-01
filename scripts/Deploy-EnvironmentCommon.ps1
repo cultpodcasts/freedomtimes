@@ -54,6 +54,7 @@ function Initialize-DeployEnvironment {
 
     Initialize-WindowsCliPath
     Initialize-LinuxNvmNodePath
+    $script:DeployTerraformLockfileWasClean = $null
 }
 
 function Initialize-LinuxNvmNodePath {
@@ -171,11 +172,15 @@ function Get-DeployTerraformOutputRaw {
 
     Push-Location $script:DeployTerraformEnvDir
     try {
-        $value = (& terraform output -raw $Name).Trim()
-        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($value)) {
+        $value = & terraform output -raw $Name
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to read terraform output '$Name' from $($script:DeployTerraformEnvDir) (exit $LASTEXITCODE). If the lockfile was reverted, terraform CLI can no longer load providers — restore lockfile only after the last terraform output."
+        }
+        $trimmed = if ($null -eq $value) { "" } else { ([string]$value).Trim() }
+        if ([string]::IsNullOrWhiteSpace($trimmed)) {
             throw "Failed to read terraform output '$Name' from $($script:DeployTerraformEnvDir)."
         }
-        return $value
+        return $trimmed
     }
     finally {
         Pop-Location
@@ -780,7 +785,7 @@ function Get-DeployRollbackMetadataFreshnessUtc {
     }
     if ($null -ne $created) {
         try {
-            return ([datetime]$created).ToUniversalTime()
+            return ([datetime]$created.Trim()).ToUniversalTime()
         }
         catch {
             # Fall through to file mtime.
@@ -789,7 +794,7 @@ function Get-DeployRollbackMetadataFreshnessUtc {
 
     $mtime = $File.LastWriteTimeUtc
     # Cloud VM snapshots often stamp git files at Unix epoch. That is not a fresh checkpoint.
-    if ($mtime.Year -le 1970) {
+    if ($mtime -le [datetime]::UnixEpoch.AddMinutes(1)) {
         return [datetime]::MinValue
     }
 
@@ -804,7 +809,7 @@ function Assert-DeployFreshEmDashTursoBackup {
         $newest = Get-ChildItem -Path $backupDir -Filter "emdash-staging-*.db" -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
-        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff -or $newest.LastWriteTimeUtc.Year -le 1970) {
+        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff -or $newest.LastWriteTimeUtc -le [datetime]::UnixEpoch.AddMinutes(1)) {
             throw @(
                 "Refusing -SkipTursoBackup: no staging EmDash export newer than 24h under .release/backups/emdash-staging-*.db.",
                 "Create one (see web/CONTENT_PROMOTION_RUNBOOK.md) or omit -SkipTursoBackup."
@@ -918,14 +923,19 @@ function Ensure-DeployEmdashTargetFingerprintFromStatus {
 
     Write-DeployStep "Pinning EMDASH_TARGET_FINGERPRINT from same-run emdash migrate --status --json (local deploy; not a Cursor secret)"
     Push-Location (Join-Path $script:DeployRepoRoot "web")
+    $stderrFile = Join-Path ([IO.Path]::GetTempPath()) ("emdash-print-fingerprint-{0}.err" -f [guid]::NewGuid())
     try {
-        $raw = & node (Join-Path "scripts" "emdash-core-migrate.mjs") print-fingerprint 2>$null
+        $raw = & node (Join-Path "scripts" "emdash-core-migrate.mjs") print-fingerprint 2>$stderrFile
+        $errText = ""
+        if (Test-Path -LiteralPath $stderrFile) {
+            $errText = ((Get-Content -LiteralPath $stderrFile -Raw -ErrorAction SilentlyContinue) ?? "").Trim()
+        }
         if ($LASTEXITCODE -ne 0) {
-            throw "emdash-core-migrate.mjs print-fingerprint failed (exit $LASTEXITCODE)."
+            throw "emdash-core-migrate.mjs print-fingerprint failed (exit $LASTEXITCODE). $errText"
         }
         $fp = ([string]$raw).Trim()
         if ($fp -notmatch '^[0-9a-f]{64}$') {
-            throw "print-fingerprint did not return a 64-character SHA-256 hex digest."
+            throw "print-fingerprint did not return a 64-character SHA-256 hex digest. $errText"
         }
         $env:EMDASH_TARGET_FINGERPRINT = $fp
         if (-not $script:DeployIsStaging) {
@@ -934,6 +944,7 @@ function Ensure-DeployEmdashTargetFingerprintFromStatus {
         Write-Host "Pinned EMDASH_TARGET_FINGERPRINT from --status (process env only)." -ForegroundColor DarkGray
     }
     finally {
+        Remove-Item -LiteralPath $stderrFile -Force -ErrorAction SilentlyContinue
         Pop-Location
     }
 }
@@ -952,6 +963,9 @@ function Invoke-DeployEmdashCoreMigrate {
         throw "Missing $manifest after npm run build. Deploy aborted before migrate."
     }
 
+    # Local deploy always pins process env from same-run --status (CI GitHub
+    # secrets are not Cursor secrets). Production-looking hosts refuse apply
+    # without a pin; staging is harmless if already covered by migrate.mjs.
     Ensure-DeployEmdashTargetFingerprintFromStatus
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
@@ -993,6 +1007,8 @@ function Invoke-DeployTerraformApplyWithRecovery {
         Pop-Location
     }
 
+    $script:DeployTerraformLockfileWasClean = $lockfileWasClean
+
     $terraformDir = Join-Path $script:DeployTerraformEnvDir ".terraform"
     if (-not (Test-Path -LiteralPath $terraformDir)) {
         Write-DeployStep "No .terraform for $($script:DeployEnvironment); running terraform init first"
@@ -1033,7 +1049,19 @@ function Invoke-DeployTerraformApplyWithRecovery {
     }
 
     Write-DeployStep "Terraform apply succeeded"
-    Restore-DeployTerraformLockfileIfCleanStart -LockfileWasClean $lockfileWasClean
+}
+
+function Complete-DeployTerraformLockfileRestore {
+    if ($null -eq $script:DeployTerraformLockfileWasClean) {
+        return
+    }
+
+    Restore-DeployTerraformLockfileIfCleanStart -LockfileWasClean $script:DeployTerraformLockfileWasClean
+    $script:DeployTerraformLockfileWasClean = $null
+}
+
+function Write-DeployGithubCiNoiseNote {
+    Write-Host "CA-09: Ignore GitHub Apply to Staging / Android / iOS empty-step ~3s failures (Actions billing lock, not empty YAML). Local deploy is the staging/production path." -ForegroundColor DarkGray
 }
 
 function Sync-DeployProductionAuth0EnvFromTerraform {
@@ -1117,7 +1145,20 @@ function Ensure-DeployCloudflareAccountIdFromEnv {
     }
 }
 
+function Test-DeployProductionWorkerSecretOverlayPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+    Test-Path (Join-Path $RepoRoot ".env.production")
+}
+
 function Invoke-DeploySecretSync {
+    if (-not $script:DeployIsStaging -and -not (Test-DeployProductionWorkerSecretOverlayPresent -RepoRoot $script:DeployRepoRoot)) {
+        Write-Warning "CA-25: .env.production is missing. Skipping Cloudflare Worker secret sync (set-github-secrets.ps1 reads that file, not process EMDASH_AUTH_SECRET_PRODUCTION). Live Worker secrets stay as-is. Continue with wrangler deploy."
+        return
+    }
+
     Write-DeployStep "Syncing Cloudflare Worker secrets for $($script:DeployEnvironment)"
     Ensure-DeployCloudflareWranglerAuthFromEnv
 
