@@ -12,6 +12,7 @@ import {
   makeState,
   getStateCookieName,
   hasStaffLoginRole,
+  isLockedSiteAccess,
   isNativeAuthFlow,
   resolvePostLoginRedirect,
   sanitizeReturnToPath,
@@ -62,7 +63,7 @@ export const GET: APIRoute = async (ctx) => {
     const { idToken, accessToken, refreshToken } = await exchangeCodeForTokens({ code, redirectUri, config });
     const payload = await verifyIdToken(idToken, config);
 
-    if (!hasStaffLoginRole(payload)) {
+    if (!hasStaffLoginRole(payload, isLockedSiteAccess() ? 'locked' : 'public')) {
       console.warn('[auth.callback] user denied: missing required staff role claim', {
         requestId,
         idToken,

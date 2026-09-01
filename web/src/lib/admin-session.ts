@@ -159,11 +159,12 @@ export async function requireAdminPageSession<T extends AdminSessionBase = Admin
     return params.buildSession ? params.buildSession(base, verified.payload) : (base as T);
   }
 
-  wipeAuthCookies(params.context.cookies, params.context.url.hostname);
-
   if (verified.reason === 'forbidden') {
+    // Keep a valid content-page session (editor / staging-reader). Do not log them out.
     return params.context.redirect('/?denied=1');
   }
+
+  wipeAuthCookies(params.context.cookies, params.context.url.hostname);
 
   const loginPath = `/auth/login?next=${encodeURIComponent(params.loginNextPath)}`;
   return params.context.redirect(loginPath);
@@ -190,11 +191,11 @@ export async function authorizeAdminApiRequest<T extends AdminSessionBase = Admi
   });
 
   if (!verified.ok) {
-    wipeAuthCookies(params.cookies, params.url.hostname);
     if (verified.reason === 'forbidden') {
       return jsonAuthError('Forbidden', 403);
     }
 
+    wipeAuthCookies(params.cookies, params.url.hostname);
     return jsonAuthError('Unauthorized', 401);
   }
 

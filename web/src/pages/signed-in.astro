@@ -10,6 +10,7 @@ import {
   getDisplayName,
   getRoleClaimDebug,
   hasEditorialRole,
+  hasLockedSiteContentRole,
   readOptionalEnv,
   tryRefreshAuthCookies,
   verifyIdToken,
@@ -51,6 +52,9 @@ if (token) {
   try {
     const verified = await verifyIdToken(token, getAuthConfig());
     if (!hasEditorialRole(verified)) {
+      if (hasLockedSiteContentRole(verified)) {
+        return Astro.redirect('/homepage');
+      }
       console.warn('[signed-in] token verified but role check failed', {
         requestId,
         roleDebug: getRoleClaimDebug(verified),

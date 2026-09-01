@@ -66,7 +66,7 @@ See **Primary guardrails §4**. Staging (`SITE_ACCESS_MODE=locked`, `staging.fre
 - **Do not** add routes to `AUTH_BYPASS_RULES` in `web/src/middleware.ts` except EmDash/OAuth metadata.
 - **Do not** add staging-only public exceptions.
 - Production-public reader routes belong in `PUBLIC_READER_PATHS` (`web/src/lib/auth.ts`) and **must** call `authorizeReaderApiRequest` (API) or `requireReaderPageSession` (page) from `web/src/lib/editorial-session.ts`.
-- To test reader flows on staging: sign in first, then open the route.
+- To test reader flows on staging: sign in first (`admin`, `editor`, or `staging-reader`), then open the route. `staging-reader` is content pages only — not `/admin` and not EmDash CMS.
 
 Full policy: **`web/docs/STAGING_ACCESS.md`**.
 
