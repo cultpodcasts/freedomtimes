@@ -1,8 +1,9 @@
 ---
-import SecureAccessWall from '../components/SecureAccessWall.astro';
+import HomepageView from '../components/HomepageView.astro';
 import { isLockedSiteAccess } from '../lib/auth';
 import { getOptionalEditorialSession } from '../lib/editorial-session';
 import { resolveRootGet } from '../lib/root-route';
+import { secureAccessWallResponse } from '../lib/secure-access-wall';
 
 const isLocked = isLockedSiteAccess();
 const session = await getOptionalEditorialSession({
@@ -20,27 +21,18 @@ if (rootAction.kind === 'redirect') {
 	return Astro.redirect(rootAction.location, rootAction.status);
 }
 
-// Render the wall in this route. Do not Astro.rewrite('/login-wall'): rewrite
-// re-runs EmDash middleware and, on the Cloudflare custom domain (not
-// workers.dev), document requests hang at 0 bytes until timeout. Staging
-// version 230af65d (PR 88 /homepage→/ work) showed that split; 7a0ef658
-// answered because locked `/` rendered SecureAccessWall inline.
-const denied = Astro.url.searchParams.get('denied') === '1';
-const showLoginWall = rootAction.kind === 'login-wall';
+// Locked `/` is its own HTTP document. Do not compose the wall component in
+// this template (HomepageView CSS would win). Do not Astro.rewrite('/login-wall'):
+// rewrite re-runs EmDash middleware and hangs HTML on the custom domain.
+if (rootAction.kind === 'login-wall') {
+	return secureAccessWallResponse(Astro.url.searchParams.get('denied') === '1');
+}
 
 let isAdmin = false;
 let isSignedIn = false;
-const HomepageView = showLoginWall
-	? null
-	: (await import('../components/HomepageView.astro')).default;
-
-if (!showLoginWall && session) {
+if (session) {
 	isAdmin = session.isAdmin;
 	isSignedIn = true;
 }
 ---
-{showLoginWall ? (
-	<SecureAccessWall denied={denied} />
-) : HomepageView ? (
-	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
-) : null}
+<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />

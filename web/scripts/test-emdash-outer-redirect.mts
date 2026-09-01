@@ -31,6 +31,20 @@ describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 		assert.match(shim, /new Kysely/);
 	});
 
+	it('documents the official order so later hang fixes do not call getDb in outer', () => {
+		const routingDoc = readFileSync(
+			fileURLToPath(new URL('../docs/EMDASH_MIDDLEWARE_AND_ROUTING.md', import.meta.url)),
+			'utf8',
+		);
+		assert.match(routingDoc, /emdash\/middleware\/redirect/);
+		assert.match(routingDoc, /supportsRequestScope/);
+		assert.match(routingDoc, /createRequestScopedDb/);
+		assert.match(routingDoc, /secureAccessWallResponse/);
+		assert.match(routingDoc, /Do not add Worker slug maps/);
+		assert.match(routingDoc, /Astro\.rewrite/);
+		assert.match(routingDoc, /\/login-wall/);
+	});
+
 	it('EmDash still registers runtime then redirect; outer is the only reorder', () => {
 		assert.match(
 			integrationSource,

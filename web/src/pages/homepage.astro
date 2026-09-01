@@ -1,6 +1,5 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
-import SecureAccessWall from '../components/SecureAccessWall.astro';
 import { isLockedSiteAccess, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
   getOptionalEditorialSession,
@@ -26,11 +25,10 @@ const sessionContext = {
   redirect: Astro.redirect,
 };
 
-// Same wall as `/`, rendered here. Do not Astro.rewrite('/') or '/?denied=1':
-// rewrite re-enters middleware and can deadlock HTML on the custom domain
-// while workers.dev still answers (staging 230af65d).
-let showLoginWall = homepageAction.kind === 'login-wall';
-let denied = Astro.url.searchParams.get('denied') === '1';
+// Newsroom only. Anonymous visitors 302 to `/` (resolveHomepageGet). Failed
+// session verification already redirects to `/` or `/?denied=1`. Do not render
+// the wall here and do not Astro.rewrite('/') — rewrite deadlocks HTML on the
+// custom domain (staging 230af65d).
 let isAdmin = false;
 let isSignedIn = false;
 
@@ -38,13 +36,12 @@ if (homepageAction.kind === 'require-session') {
   const session = await requireEditorialSession(sessionContext);
 
   if (session instanceof Response) {
-    showLoginWall = true;
-    denied = true;
-  } else {
-    isAdmin = session.isAdmin;
-    isSignedIn = true;
+    return session;
   }
-} else if (!showLoginWall) {
+
+  isAdmin = session.isAdmin;
+  isSignedIn = true;
+} else {
   const session = await getOptionalEditorialSession(sessionContext);
   if (session) {
     isAdmin = session.isAdmin;
@@ -53,8 +50,4 @@ if (homepageAction.kind === 'require-session') {
 }
 ---
 
-{showLoginWall ? (
-  <SecureAccessWall denied={denied} />
-) : (
-  <HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
-)}
+<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />

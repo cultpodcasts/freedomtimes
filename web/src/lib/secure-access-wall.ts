@@ -1,11 +1,21 @@
----
-interface Props {
-	denied?: boolean;
-}
+/**
+ * Locked staging's anonymous document. Always returned as a complete HTTP
+ * Response — never composed in the same Astro template as HomepageView.
+ *
+ * Astro collects every `.astro` import's CSS onto the route. Putting the wall
+ * component next to HomepageView on `/` made newsroom `html,body` rules win
+ * after logout (serif type, no vertical center). A Response is the document
+ * boundary; it does not include the newsroom stylesheet.
+ *
+ * Do not Astro.rewrite to `/login-wall` from `/`: rewrite re-enters EmDash
+ * middleware and hangs HTML on the Cloudflare custom domain.
+ */
+export function renderSecureAccessWallHtml(denied = false): string {
+	const warn = denied
+		? '<p class="warn">Access denied.</p>'
+		: '';
 
-const { denied = false } = Astro.props;
----
-<!doctype html>
+	return `<!doctype html>
 <html lang="en">
 	<head>
 		<meta charset="UTF-8" />
@@ -14,8 +24,7 @@ const { denied = false } = Astro.props;
 		<link rel="preconnect" href="https://fonts.googleapis.com">
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
-		<!-- is:inline keeps these exact original rules in the HTML (Astro 7 dropped scoped/global wall CSS). -->
-		<style is:inline>
+		<style>
 			body {
 				margin: 0;
 				min-height: 100vh;
@@ -58,8 +67,20 @@ const { denied = false } = Astro.props;
 	<body>
 		<div class="card">
 			<p class="lead">Secure Access</p>
-			{denied && <p class="warn">Access denied.</p>}
+			${warn}
 			<a class="button" href="/auth/login">Log in with Google</a>
 		</div>
 	</body>
 </html>
+`;
+}
+
+export function secureAccessWallResponse(denied = false): Response {
+	return new Response(renderSecureAccessWallHtml(denied), {
+		status: 200,
+		headers: {
+			'content-type': 'text/html; charset=utf-8',
+			'cache-control': 'no-store',
+		},
+	});
+}
