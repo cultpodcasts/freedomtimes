@@ -213,6 +213,7 @@ module "auth0_app" {
   roles_claim_namespace   = trimsuffix(replace(var.editorial_roles_claim, "/roles", ""), "/")
   app_name                = "freedomtimes-admin-staging"
   create_shared_resources = false
+  create_staging_reader_role = true
   create_api_resource_server = true
   enable_machine_to_machine_grant = true
   jwt_signing_alg         = "RS256"
