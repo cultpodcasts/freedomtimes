@@ -75,7 +75,43 @@ function Get-FirstNonEmptyTursoValue {
 
 function Test-IsProductionEmdashLibsqlUrl {
     param([string]$Url)
-    return (-not [string]::IsNullOrWhiteSpace($Url)) -and ($Url -match 'freedomtimes-emdash-production')
+    return (-not [string]::IsNullOrWhiteSpace($Url)) -and ($Url -match '-emdash-production')
+}
+
+function Test-ProcessTursoUrlIsProductionShadow {
+    param(
+        [string]$ProcessUrl,
+        [string]$ProductionHint
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ProcessUrl)) {
+        return $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ProductionHint) -and (Test-TursoLibsqlUrlsEqual -Left $ProcessUrl -Right $ProductionHint)) {
+        return $true
+    }
+
+    return Test-IsProductionEmdashLibsqlUrl -Url $ProcessUrl
+}
+
+function Assert-StagingEmdashTursoUrlNotProduction {
+    param(
+        [string]$Url,
+        [string]$ProductionHint
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ProductionHint) -and (Test-TursoLibsqlUrlsEqual -Left $Url -Right $ProductionHint)) {
+        throw "TURSO_DATABASE_URL matches TURSO_PRODUCTION_EMDASH_DB_URL. Staging deploy would hit production EmDash. Keep TURSO_DATABASE_URL as staging in .env.dev (production on TURSO_PRODUCTION_EMDASH_DB_URL). Do not copy the process production pair into .env.dev."
+    }
+
+    if (Test-IsProductionEmdashLibsqlUrl -Url $Url) {
+        throw "TURSO_DATABASE_URL looks like production EmDash. Staging deploy would hit production EmDash. Keep TURSO_DATABASE_URL as staging in .env.dev. Do not copy the process production pair into .env.dev."
+    }
 }
 
 function Test-TursoLibsqlUrlsEqual {
@@ -109,6 +145,78 @@ function Get-ProductionEmdashUrlHint {
         ([Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_URL", "Process")),
         (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_PRODUCTION_EMDASH_DB_URL")
     )
+}
+
+# Cursor Cloud often injects process TURSO_DATABASE_URL / TURSO_AUTH_TOKEN that
+# point at production EmDash while .env.dev still has staging. Prefer the file
+# (or Terraform output). Never write the production pair into .env.dev.
+function Select-StagingEmdashTursoUrl {
+    param(
+        [string]$TerraformUrl,
+        [string]$ProcessUrl,
+        [string]$FileUrl,
+        [string]$ProductionHint
+    )
+
+    $processIsProductionShadow = Test-ProcessTursoUrlIsProductionShadow -ProcessUrl $ProcessUrl -ProductionHint $ProductionHint
+    if ($processIsProductionShadow) {
+        Write-Warning "Process TURSO_DATABASE_URL is production EmDash. Using staging Terraform / .env.dev instead. Not writing that pair into .env.dev."
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($TerraformUrl)) {
+        Assert-StagingEmdashTursoUrlNotProduction -Url $TerraformUrl -ProductionHint $ProductionHint
+        return @{
+            Value = $TerraformUrl
+            Source = "terraform output turso_database_url"
+            IgnoredProcessProductionShadow = $processIsProductionShadow
+        }
+    }
+
+    $candidate = ""
+    $source = ""
+    if (-not $processIsProductionShadow -and -not [string]::IsNullOrWhiteSpace($ProcessUrl)) {
+        $candidate = $ProcessUrl
+        $source = "TURSO_DATABASE_URL (process)"
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($FileUrl)) {
+        $candidate = $FileUrl
+        $source = "TURSO_DATABASE_URL (.env.dev)"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+        throw "Missing staging EmDash Turso URL. Set TURSO_DATABASE_URL in .env.dev or run terraform apply."
+    }
+
+    Assert-StagingEmdashTursoUrlNotProduction -Url $candidate -ProductionHint $ProductionHint
+
+    return @{
+        Value = $candidate
+        Source = $source
+        IgnoredProcessProductionShadow = $processIsProductionShadow
+    }
+}
+
+function Select-StagingEmdashTursoToken {
+    param(
+        [string]$TerraformToken,
+        [string]$ProcessToken,
+        [string]$FileToken,
+        [bool]$IgnoredProcessProductionShadow
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($TerraformToken)) {
+        return @{ Value = $TerraformToken; Source = "terraform output turso_database_auth_token" }
+    }
+
+    if (-not $IgnoredProcessProductionShadow -and -not [string]::IsNullOrWhiteSpace($ProcessToken)) {
+        return @{ Value = $ProcessToken; Source = "TURSO_AUTH_TOKEN (process)" }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($FileToken)) {
+        return @{ Value = $FileToken; Source = "TURSO_AUTH_TOKEN (.env.dev)" }
+    }
+
+    throw "Missing staging EmDash Turso token. Set TURSO_AUTH_TOKEN in .env.dev or run terraform apply."
 }
 
 function Get-TursoHostSuffixFromLibsqlUrl {
@@ -305,54 +413,34 @@ function Resolve-StagingEmdashTursoUrl {
     )
 
     $terraformUrl = Try-TerraformOutputRaw -TerraformExe $TerraformExe -TerraformEnvDir $TerraformEnvDir -OutputName "turso_database_url"
-    if (-not [string]::IsNullOrWhiteSpace($terraformUrl)) {
-        return @{ Value = $terraformUrl; Source = "terraform output turso_database_url" }
-    }
+    $processUrl = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+    $fileUrl = Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_DATABASE_URL"
+    $productionHint = Get-ProductionEmdashUrlHint -EnvDevPath $EnvDevPath
 
-    $envUrl = Get-FirstNonEmptyTursoValue @(
-        ([Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")),
-        (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_DATABASE_URL")
-    )
-    if (-not [string]::IsNullOrWhiteSpace($envUrl)) {
-        $productionHint = Get-ProductionEmdashUrlHint -EnvDevPath $EnvDevPath
-        if (-not [string]::IsNullOrWhiteSpace($productionHint) -and (Test-TursoLibsqlUrlsEqual -Left $envUrl -Right $productionHint)) {
-            throw "TURSO_DATABASE_URL matches TURSO_PRODUCTION_EMDASH_DB_URL. Staging WorkerOnly would hit production EmDash. Set TURSO_DATABASE_URL to the staging EmDash URL (keep production on TURSO_PRODUCTION_EMDASH_DB_URL)."
-        }
-        if ([string]::IsNullOrWhiteSpace($productionHint) -and (Test-IsProductionEmdashLibsqlUrl -Url $envUrl)) {
-            throw "TURSO_DATABASE_URL looks like production EmDash and TURSO_PRODUCTION_EMDASH_DB_URL is unset. Refusing staging migrate. Set TURSO_PRODUCTION_EMDASH_DB_URL for production and keep TURSO_DATABASE_URL as staging."
-        }
-        $source = if (-not [string]::IsNullOrWhiteSpace($productionHint)) {
-            "TURSO_DATABASE_URL (staging EmDash; production is TURSO_PRODUCTION_EMDASH_DB_URL)"
-        } else {
-            "TURSO_DATABASE_URL"
-        }
-        return @{ Value = $envUrl; Source = $source }
-    }
-
-    throw "Missing staging EmDash Turso URL. Set TURSO_DATABASE_URL in .env.dev or run terraform apply."
+    return Select-StagingEmdashTursoUrl `
+        -TerraformUrl $terraformUrl `
+        -ProcessUrl $processUrl `
+        -FileUrl $fileUrl `
+        -ProductionHint $productionHint
 }
 
 function Resolve-StagingEmdashTursoToken {
     param(
         [string]$EnvDevPath,
         [string]$TerraformExe,
-        [string]$TerraformEnvDir
+        [string]$TerraformEnvDir,
+        [bool]$IgnoredProcessProductionShadow = $false
     )
 
     $terraformToken = Try-TerraformOutputRaw -TerraformExe $TerraformExe -TerraformEnvDir $TerraformEnvDir -OutputName "turso_database_auth_token"
-    if (-not [string]::IsNullOrWhiteSpace($terraformToken)) {
-        return @{ Value = $terraformToken; Source = "terraform output turso_database_auth_token" }
-    }
+    $processToken = [Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")
+    $fileToken = Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_AUTH_TOKEN"
 
-    $envToken = Get-FirstNonEmptyTursoValue @(
-        ([Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")),
-        (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_AUTH_TOKEN")
-    )
-    if (-not [string]::IsNullOrWhiteSpace($envToken)) {
-        return @{ Value = $envToken; Source = "TURSO_AUTH_TOKEN" }
-    }
-
-    throw "Missing staging EmDash Turso token. Set TURSO_AUTH_TOKEN in .env.dev or run terraform apply."
+    return Select-StagingEmdashTursoToken `
+        -TerraformToken $terraformToken `
+        -ProcessToken $processToken `
+        -FileToken $fileToken `
+        -IgnoredProcessProductionShadow $IgnoredProcessProductionShadow
 }
 
 function Set-TursoBuildEnv {
@@ -387,7 +475,8 @@ function Set-TursoBuildEnv {
     }
     else {
         $urlBinding = Resolve-StagingEmdashTursoUrl -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir
-        $tokenBinding = Resolve-StagingEmdashTursoToken -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir
+        $ignoredShadow = [bool]$urlBinding.IgnoredProcessProductionShadow
+        $tokenBinding = Resolve-StagingEmdashTursoToken -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir -IgnoredProcessProductionShadow $ignoredShadow
     }
 
     $env:TURSO_DATABASE_URL = $urlBinding.Value

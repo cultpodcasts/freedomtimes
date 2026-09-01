@@ -1,6 +1,7 @@
 ---
-import SecureAccessWall from '../components/SecureAccessWall.astro';
+import { secureAccessWallResponse } from '../lib/secure-access-wall';
 
-const denied = Astro.url.searchParams.get('denied') === '1';
+// Fallback if something requests /login-wall directly. Locked `/` returns
+// the same Response from index.astro — do not rewrite here to mix documents.
+return secureAccessWallResponse(Astro.url.searchParams.get('denied') === '1');
 ---
-<SecureAccessWall denied={denied} />

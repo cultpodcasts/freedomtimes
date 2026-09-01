@@ -199,7 +199,15 @@ if (-not $env:TF_VAR_auth0_management_client_secret -and $env:TF_VAR_auth0_clien
     $env:TF_VAR_auth0_management_client_secret = $env:TF_VAR_auth0_client_secret
 }
 
-# Auto-load TFC token from local credentials file when not already present.
+# Auto-load TFC token. Cursor Cloud injects TF_TOKEN_APP_TERRAFORM_IO (uppercase
+# APP); terraform-preflight requires TF_TOKEN_app_terraform_io.
+if (-not $env:TF_TOKEN_app_terraform_io) {
+    $cursorTfToken = [Environment]::GetEnvironmentVariable("TF_TOKEN_APP_TERRAFORM_IO", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($cursorTfToken)) {
+        $env:TF_TOKEN_app_terraform_io = $cursorTfToken
+        Write-Host "Remapped TF_TOKEN_APP_TERRAFORM_IO to TF_TOKEN_app_terraform_io." -ForegroundColor DarkGray
+    }
+}
 if (-not $env:TF_TOKEN_app_terraform_io) {
     $token = Get-TfcTokenFromCredentials
     if (-not [string]::IsNullOrWhiteSpace($token)) {

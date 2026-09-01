@@ -6,6 +6,14 @@ import {
   SESSION_COOKIE_MAX_AGE_SECONDS,
 } from './auth-session-lifetime';
 import { editorialHomePath, siteAccessFromMode } from './root-route';
+import {
+  hasAdminRoleInClaims,
+  hasEditorialRoleInClaims,
+  hasLockedSiteContentRoleInClaims,
+  hasStaffLoginRoleInClaims,
+  hasStagingReaderRoleInClaims,
+  shouldDenyEmDashAdminForSiteSessionInClaims,
+} from './auth-roles';
 
 export {
   ACCESS_TOKEN_COOKIE_MAX_AGE_SECONDS,
@@ -13,6 +21,11 @@ export {
   SESSION_COOKIE_MAX_AGE_SECONDS,
   accessTokenNeedsRefresh,
 } from './auth-session-lifetime';
+
+export {
+  STAGING_READER_ROLE,
+  isEmDashAdminUiPath,
+} from './auth-roles';
 
 export const SESSION_COOKIE = 'ft_session';
 export const ACCESS_TOKEN_COOKIE = 'ft_access_token';
@@ -84,7 +97,7 @@ export function isLockedSiteAccess(): boolean {
  * from `editorial-session.ts` so locked staging requires an Auth0 session first.
  *
  * **Never** add staging-only public exceptions. To test reader flows on staging,
- * sign in at `/` (editor or admin role), then open the route.
+ * sign in at `/` (`admin`, `editor`, or `staging-reader`), then open the route.
  *
  * **Not listed here** (separate rules):
  * - `/_emdash/*` — EmDash OAuth/MCP; own auth in middleware (`AUTH_BYPASS_RULES`)
@@ -488,22 +501,46 @@ function decodeAuth0ClientSecret(secret: string): Uint8Array {
 }
 
 export function hasAdminRole(payload: JWTPayload): boolean {
-  for (const claim of getRoleClaims()) {
-    const value = payload[claim];
-    if (Array.isArray(value) && value.some((r) => String(r).toLowerCase() === 'admin')) {
-      return true;
-    }
-  }
+  return hasAdminRoleInClaims(payload, getRoleClaims());
+}
 
-  return false;
+export function hasStagingReaderRole(payload: JWTPayload): boolean {
+  return hasStagingReaderRoleInClaims(payload, getRoleClaims());
 }
 
 /**
- * Any role that may complete Auth0 login on the site (`admin` or `editor`).
- * Freedom Times `/admin/*` tools require `admin` only; `editor` is for editorial content.
+ * `admin` or `editor` — EmDash CMS and editorial chrome. Not `staging-reader`.
  */
-export function hasStaffLoginRole(payload: JWTPayload): boolean {
-  return hasEditorialRole(payload);
+export function hasEditorialRole(payload: JWTPayload): boolean {
+  return hasEditorialRoleInClaims(payload, getRoleClaims());
+}
+
+/**
+ * Locked staging content pages: `admin`, `editor`, or `staging-reader`.
+ * Production does not use this for anonymous newsroom reads.
+ */
+export function hasLockedSiteContentRole(payload: JWTPayload): boolean {
+  return hasLockedSiteContentRoleInClaims(payload, getRoleClaims());
+}
+
+/**
+ * Roles that may complete Auth0 login.
+ * Production (`public`): `admin` | `editor` only — `staging-reader` is denied.
+ * Locked staging: also `staging-reader`.
+ */
+export function hasStaffLoginRole(
+  payload: JWTPayload,
+  siteAccess: 'locked' | 'public' = isLockedSiteAccess() ? 'locked' : 'public',
+): boolean {
+  return hasStaffLoginRoleInClaims(payload, getRoleClaims(), siteAccess);
+}
+
+/**
+ * Staging-reader must not use EmDash admin. Staff (`admin`/`editor`) still can,
+ * including via EmDash magic link when there is no site session.
+ */
+export function shouldDenyEmDashAdminForSiteSession(payload: JWTPayload): boolean {
+  return shouldDenyEmDashAdminForSiteSessionInClaims(payload, getRoleClaims());
 }
 
 export function getPostLoginPath(_payload: JWTPayload): '/' | '/homepage' {
@@ -516,19 +553,6 @@ export function resolvePostLoginRedirect(
   payload: JWTPayload,
 ): string {
   return sanitizeReturnToPath(returnToCookie) ?? getPostLoginPath(payload);
-}
-
-export function hasEditorialRole(payload: JWTPayload): boolean {
-  const allowed = new Set(['admin', 'editor']);
-
-  for (const claim of getRoleClaims()) {
-    const value = payload[claim];
-    if (Array.isArray(value) && value.some((r) => allowed.has(String(r).toLowerCase()))) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 export function getRoleClaimDebug(payload: JWTPayload): Record<string, unknown> {

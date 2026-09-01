@@ -53,6 +53,88 @@ function Initialize-DeployEnvironment {
     $script:DeployBaseEnvPath = Join-Path $script:DeployRepoRoot ".env.dev"
 
     Initialize-WindowsCliPath
+    Initialize-LinuxNvmNodePath
+}
+
+function Initialize-LinuxNvmNodePath {
+    # Cloud VM: default node can be 22.14; /exec-daemon/node stays first on PATH
+    # after `nvm use`, so npm ci hits EBADENGINE. Prepend nvm 22.22.2.
+    if ($IsWindows -eq $true) {
+        return
+    }
+    if ($IsLinux -ne $true) {
+        return
+    }
+
+    $nvmRoot = if (-not [string]::IsNullOrWhiteSpace($env:NVM_DIR)) { $env:NVM_DIR } else { Join-Path $env:HOME ".nvm" }
+    $binDir = Join-Path $nvmRoot "versions/node/v22.22.2/bin"
+    $execDaemonOnPath = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { $_ -match "exec-daemon" }).Count -gt 0
+    if (-not (Test-Path -LiteralPath (Join-Path $binDir "node"))) {
+        $msg = "nvm Node v22.22.2 not found at $binDir. /exec-daemon/node can shadow nvm and leave npm on 22.14 (EBADENGINE). Install with nvm, then re-run deploy — do not rely on ``nvm use`` alone."
+        if ($execDaemonOnPath) {
+            throw $msg
+        }
+        Write-Warning $msg
+        return
+    }
+
+    $segments = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $env:PATH = $binDir + [IO.Path]::PathSeparator + (($segments | Where-Object { $_ -ne $binDir }) -join [IO.Path]::PathSeparator)
+    Write-Host "Prepended nvm Node v22.22.2 ahead of PATH (beats /exec-daemon/node)." -ForegroundColor DarkGray
+}
+
+function Test-DeployTerraformPluginCacheMismatch {
+    param([string[]]$Output)
+
+    $text = ($Output | Out-String)
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+
+    return ($text -match "Required plugins are not installed") -or
+        ($text -match "does not match any of the checksums recorded in the dependency lock file")
+}
+
+function Invoke-DeployTerraformInit {
+    Write-DeployStep "terraform init $($script:DeployEnvironment) (provider plugins / .terraform)"
+    $arguments = @(
+        "-File", $script:DeployTerraformRunScript,
+        "-Environment", $script:DeployEnvironment,
+        "-Operation", "init",
+        "-LoadEnvFiles"
+    )
+    $init = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
+    $init.Output | ForEach-Object { $_ }
+    if ($init.ExitCode -ne 0) {
+        throw "Terraform init failed (exit $($init.ExitCode))."
+    }
+}
+
+function Restore-DeployTerraformLockfileIfCleanStart {
+    param([bool]$LockfileWasClean)
+
+    if (-not $LockfileWasClean) {
+        Write-DeployStep "Leaving .terraform.lock.hcl as-is (it was already dirty before deploy)"
+        return
+    }
+
+    $lockRel = "infra/terraform/environments/$($script:DeployEnvironment)/.terraform.lock.hcl"
+    Push-Location $script:DeployRepoRoot
+    try {
+        $status = & git status --porcelain -- $lockRel 2>$null
+        if ([string]::IsNullOrWhiteSpace($status)) {
+            return
+        }
+
+        Write-DeployStep "Reverting Linux-only hash changes in $lockRel (do not commit unless asked)"
+        & git checkout -- $lockRel
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "git checkout -- $lockRel failed (exit $LASTEXITCODE). Revert the lockfile hash-only diff manually."
+        }
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 function Write-DeployStep {
@@ -244,8 +326,11 @@ function Get-DeployStagingWebWranglerVarArgs {
 }
 
 function Set-DeployTursoBuildEnvFromTerraform {
-    $env:TURSO_DATABASE_URL = Get-DeployTerraformOutputRaw -Name "turso_database_url"
-    $env:TURSO_AUTH_TOKEN = Get-DeployTerraformOutputRaw -Name "turso_database_auth_token"
+    # Same Select-Staging* / production-shadow rules as Worker build + migrate.
+    # Do not clobber TURSO_AUTH_TOKEN with an empty Terraform output (that used
+    # to leave process production JWT paired with a staging URL).
+    . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
+    $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
 }
 
 function Test-DeployCloudflareApiTokenPlausible {
@@ -289,7 +374,10 @@ function Ensure-DeployCloudflareWranglerAuthFromEnv {
             Write-Warning ("CLOUDFLARE_API_TOKEN is not usable for Wrangler (length {0}); using TF_VAR_CLOUDFLARE_API_TOKEN." -f $current.Trim().Length)
         }
         $env:CLOUDFLARE_API_TOKEN = $tfToken.Trim()
+        return
     }
+
+    throw "CLOUDFLARE_API_TOKEN is not usable for Wrangler and TF_VAR_CLOUDFLARE_API_TOKEN is missing or too short. Set TF_VAR_CLOUDFLARE_API_TOKEN (never print it). A short process stub causes Wrangler 6111 / 9106 after Terraform."
 }
 
 function Get-DeployWorkerName {
@@ -676,6 +764,38 @@ function Get-DeployFreshBackupCutoffUtc {
     return (Get-Date).ToUniversalTime().AddHours(-24)
 }
 
+function Get-DeployRollbackMetadataFreshnessUtc {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File,
+        [object]$Meta = $null
+    )
+
+    $created = $null
+    if ($null -ne $Meta) {
+        $prop = $Meta.PSObject.Properties["createdAtUtc"]
+        if ($null -ne $prop -and -not [string]::IsNullOrWhiteSpace([string]$prop.Value)) {
+            $created = [string]$prop.Value
+        }
+    }
+    if ($null -ne $created) {
+        try {
+            return ([datetime]$created).ToUniversalTime()
+        }
+        catch {
+            # Fall through to file mtime.
+        }
+    }
+
+    $mtime = $File.LastWriteTimeUtc
+    # Cloud VM snapshots often stamp git files at Unix epoch. That is not a fresh checkpoint.
+    if ($mtime.Year -le 1970) {
+        return [datetime]::MinValue
+    }
+
+    return $mtime
+}
+
 function Assert-DeployFreshEmDashTursoBackup {
     $cutoff = Get-DeployFreshBackupCutoffUtc
 
@@ -684,7 +804,7 @@ function Assert-DeployFreshEmDashTursoBackup {
         $newest = Get-ChildItem -Path $backupDir -Filter "emdash-staging-*.db" -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
-        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff) {
+        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff -or $newest.LastWriteTimeUtc.Year -le 1970) {
             throw @(
                 "Refusing -SkipTursoBackup: no staging EmDash export newer than 24h under .release/backups/emdash-staging-*.db.",
                 "Create one (see web/CONTENT_PROMOTION_RUNBOOK.md) or omit -SkipTursoBackup."
@@ -704,7 +824,6 @@ function Assert-DeployFreshEmDashTursoBackup {
     $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
     $newestMeta = $null
     $candidates = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
-        Where-Object { $_.LastWriteTimeUtc -ge $cutoff } |
         Sort-Object LastWriteTimeUtc -Descending
     foreach ($candidate in $candidates) {
         try {
@@ -724,6 +843,11 @@ function Assert-DeployFreshEmDashTursoBackup {
                     -ExpectedDatabase $expectedDb `
                     -ProductionUrls $productionUrls)) {
             Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name or URL)."
+            continue
+        }
+        $freshAt = Get-DeployRollbackMetadataFreshnessUtc -File $candidate -Meta $meta
+        if ($freshAt -lt $cutoff) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (createdAtUtc/mtime $freshAt is older than 24h; Unix-epoch snapshot mtimes do not count)."
             continue
         }
         $newestMeta = $candidate
@@ -785,6 +909,35 @@ function Invoke-DeployEmDashTursoBackup {
     Invoke-DeployTursoRollbackCheckpoint
 }
 
+function Ensure-DeployEmdashTargetFingerprintFromStatus {
+    $existing = [Environment]::GetEnvironmentVariable("EMDASH_TARGET_FINGERPRINT", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        Write-DeployStep "EMDASH_TARGET_FINGERPRINT already set in process env (not writing .env.dev)"
+        return
+    }
+
+    Write-DeployStep "Pinning EMDASH_TARGET_FINGERPRINT from same-run emdash migrate --status --json (local deploy; not a Cursor secret)"
+    Push-Location (Join-Path $script:DeployRepoRoot "web")
+    try {
+        $raw = & node (Join-Path "scripts" "emdash-core-migrate.mjs") print-fingerprint 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw "emdash-core-migrate.mjs print-fingerprint failed (exit $LASTEXITCODE)."
+        }
+        $fp = ([string]$raw).Trim()
+        if ($fp -notmatch '^[0-9a-f]{64}$') {
+            throw "print-fingerprint did not return a 64-character SHA-256 hex digest."
+        }
+        $env:EMDASH_TARGET_FINGERPRINT = $fp
+        if (-not $script:DeployIsStaging) {
+            $env:EMDASH_TARGET_FINGERPRINT_PRODUCTION = $fp
+        }
+        Write-Host "Pinned EMDASH_TARGET_FINGERPRINT from --status (process env only)." -ForegroundColor DarkGray
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 function Invoke-DeployEmdashCoreMigrate {
     Write-DeployStep "Applying EmDash core migrations (npx emdash migrate)"
 
@@ -798,6 +951,8 @@ function Invoke-DeployEmdashCoreMigrate {
     if (-not (Test-Path $manifest)) {
         throw "Missing $manifest after npm run build. Deploy aborted before migrate."
     }
+
+    Ensure-DeployEmdashTargetFingerprintFromStatus
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {
@@ -827,6 +982,23 @@ function Invoke-DeployEmdashCoreMigrateCheck {
 }
 
 function Invoke-DeployTerraformApplyWithRecovery {
+    $lockRel = "infra/terraform/environments/$($script:DeployEnvironment)/.terraform.lock.hcl"
+    $lockfileWasClean = $true
+    Push-Location $script:DeployRepoRoot
+    try {
+        $status = & git status --porcelain -- $lockRel 2>$null
+        $lockfileWasClean = [string]::IsNullOrWhiteSpace($status)
+    }
+    finally {
+        Pop-Location
+    }
+
+    $terraformDir = Join-Path $script:DeployTerraformEnvDir ".terraform"
+    if (-not (Test-Path -LiteralPath $terraformDir)) {
+        Write-DeployStep "No .terraform for $($script:DeployEnvironment); running terraform init first"
+        Invoke-DeployTerraformInit
+    }
+
     Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 1)"
     $arguments = @(
         "-File", $script:DeployTerraformRunScript,
@@ -840,6 +1012,19 @@ function Invoke-DeployTerraformApplyWithRecovery {
     $apply1.Output | ForEach-Object { $_ }
 
     if ($apply1.ExitCode -ne 0) {
+        $providersDir = Join-Path $script:DeployTerraformEnvDir ".terraform/providers"
+        $pluginMismatch = Test-DeployTerraformPluginCacheMismatch -Output @($apply1.Output)
+        $providersMissing = -not (Test-Path -LiteralPath $providersDir)
+        if ($pluginMismatch -or $providersMissing) {
+            Write-Warning "Terraform apply failed: provider plugin cache does not match the lockfile (or providers are missing). Running terraform init, then retrying apply once. Leave the lockfile dirty through this retry."
+            Invoke-DeployTerraformInit
+            Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 2 after init)"
+            $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
+            $apply1.Output | ForEach-Object { $_ }
+        }
+    }
+
+    if ($apply1.ExitCode -ne 0) {
         throw "Terraform apply failed (exit $($apply1.ExitCode))."
     }
 
@@ -847,7 +1032,8 @@ function Invoke-DeployTerraformApplyWithRecovery {
         throw "Terraform apply reported errors in output despite exit code $($apply1.ExitCode)."
     }
 
-    Write-DeployStep "Terraform apply succeeded on first attempt"
+    Write-DeployStep "Terraform apply succeeded"
+    Restore-DeployTerraformLockfileIfCleanStart -LockfileWasClean $lockfileWasClean
 }
 
 function Sync-DeployProductionAuth0EnvFromTerraform {

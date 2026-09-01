@@ -13,6 +13,7 @@ import {
 	getRoleClaimDebug,
 	hasAdminRole,
 	hasEditorialRole,
+	hasLockedSiteContentRole,
 	isPublicReaderPath,
 	tryRefreshAuthCookies,
 	verifyIdToken,
@@ -57,7 +58,7 @@ async function tryRefreshSession(
 		hostname: context.url.hostname,
 		requestId,
 		logPrefix: 'editorial-session',
-		roleCheck: hasEditorialRole,
+		roleCheck: hasLockedSiteContentRole,
 	});
 	return payload ? buildSession(payload, requestId) : null;
 }
@@ -72,7 +73,7 @@ export async function requireEditorialSession(
 	if (token) {
 		try {
 			const payload = await verifyIdToken(token, getAuthConfig());
-			if (!hasEditorialRole(payload)) {
+			if (!hasLockedSiteContentRole(payload)) {
 				console.warn('[editorial-session] token verified but role check failed', {
 					requestId,
 					roleDebug: getRoleClaimDebug(payload),
@@ -125,7 +126,7 @@ export async function getOptionalEditorialSession(
 	if (token) {
 		try {
 			const payload = await verifyIdToken(token, getAuthConfig());
-			if (hasEditorialRole(payload)) {
+			if (hasLockedSiteContentRole(payload)) {
 				if (accessTokenNeedsRefresh(context.cookies.get(ACCESS_TOKEN_COOKIE)?.value)) {
 					return (await tryRefreshSession(context, requestId)) ?? buildSession(payload, requestId);
 				}
@@ -166,7 +167,8 @@ type ReaderPageAccessHandlers = {
 
 /**
  * Gate reader-facing pages listed in `PUBLIC_READER_PATHS`.
- * Production: anonymous access allowed. Locked staging: requires editorial session.
+ * Production: anonymous access allowed. Locked staging: requires content-page session
+ * (`admin`, `editor`, or `staging-reader`).
  */
 export async function requireReaderPageSession(
 	context: EditorialSessionContext & { pathname: string },
@@ -195,7 +197,7 @@ export async function requireReaderPageSession(
 
 /**
  * Gate reader-facing API routes listed in `PUBLIC_READER_PATHS`.
- * Production: anonymous access allowed. Locked staging: requires editorial session (401).
+ * Production: anonymous access allowed. Locked staging: requires content-page session (401).
  */
 export async function authorizeReaderApiRequest(params: {
 	cookies: AstroCookies;

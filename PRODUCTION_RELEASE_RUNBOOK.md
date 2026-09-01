@@ -25,7 +25,7 @@ This runbook is the single path for promoting all production-facing changes:
 2. `gh` authenticated (`gh auth status`).
 3. EmDash staging and production API tokens available.
 4. Staging validation complete for schema/content and page rendering.
-5. Turso CLI access for production rollback checkpoints — **WSL on Windows, native `turso` on Linux** (**[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)**, AGENTS.md §7). Required for schema/content promotion and for reading CI rollback metadata; **local full production deploy** (`deploy-production-local.ps1`) creates a checkpoint automatically unless you pass `-SkipTursoBackup`. CI mutate (`production_worker_deploy=true`) also creates a Turso rollback branch and uploads the metadata artifact.
+5. Turso CLI access for production rollback checkpoints — **WSL on Windows, native `turso` on Linux** (**[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)**, AGENTS.md §7). Required for schema/content promotion and for reading CI rollback metadata; **local full production deploy** (`deploy-production-local.ps1`) creates a checkpoint automatically unless you pass `-SkipTursoBackup`. CI mutate (`production_worker_deploy=true`) also creates a Turso rollback branch and uploads the metadata artifact. **Cloud VM:** see **[web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md](web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md)** (CA-14…CA-17) — do not use `wsl`; do not skip backup because snapshot JSON files have 1970 mtimes; local deploy pins `EMDASH_TARGET_FINGERPRINT` from `--status` (CI still uses `EMDASH_TARGET_FINGERPRINT_PRODUCTION`).
 
 Merge rule for EmDash-dependent changes:
 

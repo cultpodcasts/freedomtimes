@@ -27,7 +27,9 @@ This runbook documents the repeatable process for getting verified staging conte
 
 ### Turso CLI in WSL
 
-**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](../docs/CLI_PATHS_WINDOWS.md)** — Turso is WSL-only in this workspace; auth, PATH quirks, verification, and invoke patterns live there.
+**Linux Cloud VM (not WSL):** native `turso` on PATH or `$HOME/.turso/turso`. Deploy scripts run `turso config set token` from `TURSO_PLATFORM_API_TOKEN`. Do not use `wsl`. Snapshot rollback JSON under `.release/rollback-branches/` may show Unix-epoch mtimes — that is **not** a fresh checkpoint ([CLOUD_AGENT_DEPLOY_ISSUES.md](docs/CLOUD_AGENT_DEPLOY_ISSUES.md) CA-16).
+
+**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](../docs/CLI_PATHS_WINDOWS.md)** — Turso is WSL-only **on Windows**; auth, PATH quirks, verification, and invoke patterns live there.
 
 From **PowerShell** at repo root:
 

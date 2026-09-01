@@ -9,6 +9,12 @@ variable "create_shared_resources" {
   default     = true
 }
 
+variable "create_staging_reader_role" {
+  description = "Create the Auth0 staging-reader role (no API scopes). Staging terraform only; the Worker honors it solely when SITE_ACCESS_MODE=locked."
+  type        = bool
+  default     = false
+}
+
 variable "create_api_resource_server" {
   description = "Whether to create the Auth0 API resource server and scopes for this audience."
   type        = bool

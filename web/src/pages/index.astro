@@ -1,7 +1,9 @@
 ---
+import HomepageView from '../components/HomepageView.astro';
 import { isLockedSiteAccess } from '../lib/auth';
 import { getOptionalEditorialSession } from '../lib/editorial-session';
 import { resolveRootGet } from '../lib/root-route';
+import { secureAccessWallResponse } from '../lib/secure-access-wall';
 
 const isLocked = isLockedSiteAccess();
 const session = await getOptionalEditorialSession({
@@ -19,12 +21,13 @@ if (rootAction.kind === 'redirect') {
 	return Astro.redirect(rootAction.location, rootAction.status);
 }
 
+// Locked `/` is its own HTTP document. Do not compose the wall component in
+// this template (HomepageView CSS would win). Do not rewrite to `/login-wall`
+// to mix two documents — return the wall Response instead.
 if (rootAction.kind === 'login-wall') {
-	// Separate route so newspaper CSS / getEmDashCollection never enter this response.
-	return Astro.rewrite('/login-wall' + Astro.url.search);
+	return secureAccessWallResponse(Astro.url.searchParams.get('denied') === '1');
 }
 
-const HomepageView = (await import('../components/HomepageView.astro')).default;
 let isAdmin = false;
 let isSignedIn = false;
 if (session) {

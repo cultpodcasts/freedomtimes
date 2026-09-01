@@ -32,6 +32,9 @@ export type RootGetAction =
  * `GET /` — locked staging is the anonymous wall unless a live/refreshable
  * editorial session exists (those go to `/homepage`). Public production
  * always renders the newsroom here.
+ *
+ * The wall is a complete Response (`secureAccessWallResponse`), not an Astro
+ * component beside HomepageView. See `web/docs/EMDASH_MIDDLEWARE_AND_ROUTING.md`.
  */
 export function resolveRootGet(input: {
 	siteAccess: SiteAccess;
@@ -47,15 +50,15 @@ export function resolveRootGet(input: {
 }
 
 export type HomepageGetAction =
-	| { kind: 'redirect'; location: '/'; status: 301 }
-	| { kind: 'login-wall' }
+	| { kind: 'redirect'; location: '/'; status: 301 | 302 }
 	| { kind: 'require-session' }
 	| { kind: 'render-newsroom' };
 
 /**
  * `GET /homepage` — production (and public non-staging workers) 301 to `/`.
- * Locked staging requires Auth0: no cookies → wall; session or refresh →
- * verify (silent refresh allowed).
+ * Locked staging: no cookies → 302 `/` (the wall lives only on `/`); session
+ * or refresh → verify (silent refresh allowed). Do not render the wall here —
+ * that would compile HomepageView CSS onto the anonymous document.
  */
 export function resolveHomepageGet(input: {
 	siteAccess: SiteAccess;
@@ -75,7 +78,7 @@ export function resolveHomepageGet(input: {
 
 	if (input.siteAccess === 'locked') {
 		if (!hasRefreshableAuthCookies(input)) {
-			return { kind: 'login-wall' };
+			return { kind: 'redirect', location: '/', status: 302 };
 		}
 		return { kind: 'require-session' };
 	}

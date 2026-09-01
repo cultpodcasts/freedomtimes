@@ -25,7 +25,7 @@ On locked staging, every HTML page and API route requires an Auth0 session **exc
 - `/_emdash/*` — EmDash CMS, OAuth, MCP (own auth; bypassed in `middleware.ts`)
 - `/.well-known/*` — OAuth metadata aliases for MCP clients, plus public Digital Asset Links (`assetlinks.json`)
 - `/auth/*` — login wall must stay reachable
-- `/` — staging login wall (`SecureAccessWall`) for anonymous visitors; a live Auth0 session 302s to `/homepage`
+- `/` — staging login wall (`secureAccessWallResponse`) for anonymous visitors; a live Auth0 session 302s to `/homepage`. `/homepage` without cookies 302s back to `/` (the wall is not compiled onto the newsroom page). See [EMDASH_MIDDLEWARE_AND_ROUTING.md](./EMDASH_MIDDLEWARE_AND_ROUTING.md).
 
 **Never** add staging-only public exceptions. Do not add reader or editorial paths to `AUTH_BYPASS_RULES` in middleware.
 
@@ -63,7 +63,7 @@ On locked staging, `isPublicReaderPath()` returns `false` for all of these. Hand
 
 ## Admin routes (always authenticated)
 
-`/admin/*` pages and `/api/admin/*` APIs require a valid Auth0 session and the Auth0 **`admin`** role on **both** production and locked staging. `SITE_ACCESS_MODE=public` does **not** open admin routes. The **`editor`** role does not grant admin access.
+`/admin/*` pages and `/api/admin/*` APIs require a valid Auth0 session and the Auth0 **`admin`** role on **both** production and locked staging. `SITE_ACCESS_MODE=public` does **not** open admin routes. The **`editor`** and **`staging-reader`** roles do not grant admin access. A signed-in `editor` or `staging-reader` who opens `/admin` is redirected to `/?denied=1` **without** clearing their content-page session.
 
 Shared helpers live in `web/src/lib/admin-session.ts` (`requireAdminPageSession`, `authorizeAdminApiRequest`); role-specific wrappers in `admin-dashboard-session.ts`, `tips-session.ts`, and `notification-diagnostics-session.ts`. All wrappers use `hasAdminRole` — there is no separate `tips` Auth0 role.
 
@@ -129,12 +129,25 @@ When adding a new production-public reader route:
 1. Open `https://staging.freedomtimes.news/` and sign in with Auth0 (`editor` or `admin` role).
 2. Navigate to the reader route (e.g. `/submit-a-tip`) or call the API with session cookies.
 3. Unauthenticated requests to reader routes on staging must return the login wall (pages) or `401` (APIs).
+4. Assign `staging-reader` in Auth0 after the staging Terraform apply, then sign in the same way. That role must reach newsroom content and must **not** reach `/admin` or `/_emdash/admin` (site session redirects to `/homepage`). Do not invite those users as EmDash CMS users.
 
 Alternatively, use the temporary smoke test above to mimic anonymous production reader access — then revert to `locked`.
 
 ## Editorial content (separate from reader bypass)
 
-Posts, pages, archives, and `/homepage` use `requireEditorialSession` on locked staging. On public production they are readable without login. That gating is per-page, not via `PUBLIC_READER_PATHS`.
+Posts, pages, archives, and `/homepage` use `requireEditorialSession` on locked staging (`admin`, `editor`, or `staging-reader`). On public production they are readable without login. That gating is per-page, not via `PUBLIC_READER_PATHS`.
+
+### Staging-only Auth0 role: `staging-reader`
+
+Created by staging Terraform (`infra/terraform/modules/auth0_app` `auth0_role.staging_reader`, enabled with `create_staging_reader_role = true` in `environments/staging`). Production terraform does **not** create or honor it for login.
+
+| Can | Cannot |
+|-----|--------|
+| Sign in on locked staging | Sign in on production (`/?denied=1`) |
+| Read newsroom, posts, pages, archives | `/admin/*` and `/api/admin/*` |
+| Use locked staging copies of `PUBLIC_READER_PATHS` after login | EmDash CMS (`/_emdash/admin` while the site session is `staging-reader` only) |
+
+Assign the role in Auth0 after the staging apply outputs `auth0_staging_reader_role_id`.
 
 ## Related docs
 

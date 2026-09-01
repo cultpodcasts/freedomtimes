@@ -37,7 +37,7 @@ const homepageViewSource = readFileSync(
 	'utf8',
 );
 const secureAccessWallSource = readFileSync(
-	fileURLToPath(new URL('../src/components/SecureAccessWall.astro', import.meta.url)),
+	fileURLToPath(new URL('../src/lib/secure-access-wall.ts', import.meta.url)),
 	'utf8',
 );
 const loginWallPageSource = readFileSync(
@@ -173,46 +173,58 @@ describe('homepage host wiring', () => {
 
 	it('production / renders the reader root directly (no rewrite loop through /homepage)', () => {
 		assert.doesNotMatch(indexPageSource, /Astro\.rewrite\('\/homepage'\)/);
-		assert.match(indexPageSource, /HomepageView/);
-		assert.match(loginWallPageSource, /SecureAccessWall/);
-		assert.doesNotMatch(
-			indexPageSource,
-			/import HomepageView from/,
-			'static HomepageView import leaks newspaper CSS + EmDash fetch onto the locked login wall',
-		);
-		assert.match(indexPageSource, /import\('\.\.\/components\/HomepageView\.astro'\)/);
+		assert.match(indexPageSource, /import HomepageView from/);
+		assert.match(loginWallPageSource, /secureAccessWallResponse/);
+		assert.match(indexPageSource, /secureAccessWallResponse/);
+		const wallReturn = indexPageSource.indexOf('return secureAccessWallResponse');
+		const homepageMarkup = indexPageSource.indexOf('<HomepageView');
+		assert.ok(wallReturn >= 0 && homepageMarkup > wallReturn);
 	});
 
-	it('rewrites / to /login-wall only for the login-wall action; public / must not 404 via that rewrite', () => {
-		// Astro.rewrite re-runs middleware. Public workers 404 /login-wall, so an
-		// ungated rewrite turns production GET / into 404 instead of HomepageView.
+	it('locked / returns the wall Response (no rewrite to /login-wall)', () => {
+		// A Response is the document boundary so Homepage CSS cannot override
+		// Inter / place-items:center. Do not rewrite `/` to `/login-wall` to
+		// compose two templates. The old 0-byte custom-domain hang was
+		// isolate-wide getDb, not rewrite.
 		assert.match(indexPageSource, /resolveRootGet/);
 		assert.match(indexPageSource, /rootAction\.kind === 'login-wall'/);
-		assert.match(indexPageSource, /Astro\.rewrite\('\/login-wall'/);
+		assert.match(indexPageSource, /return secureAccessWallResponse/);
+		assert.doesNotMatch(indexPageSource, /SecureAccessWall/);
+		assert.doesNotMatch(indexPageSource, /return Astro\.rewrite\(/);
 		assert.match(middlewareSource, /normalizedPath === '\/login-wall'/);
 		assert.match(middlewareSource, /resolveLoginWallGet/);
+	});
+
+	it('locked /homepage is newsroom-only (anonymous 302 to /, no wall component)', () => {
+		assert.doesNotMatch(homepagePageSource, /SecureAccessWall/);
+		assert.doesNotMatch(homepagePageSource, /secureAccessWallResponse/);
+		assert.match(homepagePageSource, /session instanceof Response/);
+		assert.doesNotMatch(homepagePageSource, /return Astro\.rewrite\(/);
+		assert.doesNotMatch(slugPageSource, /return Astro\.rewrite\(/);
+		assert.doesNotMatch(slugPageSource, /SecureAccessWall/);
 	});
 
 	it('locked / sends a live session to /homepage instead of the anonymous wall', () => {
 		assert.match(indexPageSource, /getOptionalEditorialSession/);
 		assert.match(indexPageSource, /resolveRootGet/);
 		assert.match(indexPageSource, /Astro\.redirect\(rootAction\.location, rootAction\.status\)/);
-		const wallRewrite = indexPageSource.indexOf("Astro.rewrite('/login-wall'");
+		const wallRender = indexPageSource.indexOf('return secureAccessWallResponse');
 		const sessionRedirect = indexPageSource.indexOf('Astro.redirect(rootAction.location, rootAction.status)');
-		assert.ok(wallRewrite >= 0 && sessionRedirect >= 0);
+		assert.ok(wallRender >= 0 && sessionRedirect >= 0);
 		assert.ok(
-			sessionRedirect < wallRewrite,
-			'signed-in redirect must run before the anonymous wall rewrite',
+			sessionRedirect < wallRender,
+			'signed-in redirect must run before the anonymous wall Response',
 		);
 	});
 
-	it('SecureAccessWall keeps the original white centered gateway (inline so styles ship)', () => {
-		assert.match(secureAccessWallSource, /is:inline/);
+	it('Secure Access wall keeps the original white centered gateway', () => {
 		assert.match(secureAccessWallSource, /place-items:\s*center/);
 		assert.match(secureAccessWallSource, /background:\s*#ffffff/);
 		assert.match(secureAccessWallSource, /background:\s*#111111/);
 		assert.match(secureAccessWallSource, /min-height:\s*100vh/);
 		assert.match(secureAccessWallSource, /font-family:\s*'Inter'/);
+		assert.doesNotMatch(secureAccessWallSource, /Source Serif/);
+		assert.doesNotMatch(secureAccessWallSource, /front-grid/);
 		assert.doesNotMatch(
 			secureAccessWallSource,
 			/html,\s*body\s*\{[^}]*background:\s*#0044bb/,

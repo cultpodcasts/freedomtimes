@@ -4,8 +4,9 @@ import { SITE_DISPLAY_NAME } from './lib/site-brand';
 
 const workerScope = self as ServiceWorkerGlobalScope;
 
-const CACHE_NAME = 'freedomtimes-shell-v1';
-const SHELL_ASSETS = ['/', '/favicon.ico', '/favicon.svg', '/manifest.webmanifest'];
+const CACHE_NAME = 'freedomtimes-shell-v2'; // pragma: allowlist secret
+const SHELL_ASSETS = ['/favicon.ico', '/favicon.svg', '/manifest.webmanifest'];
+const ASSET_FETCH_TIMEOUT_MS = 4_000;
 
 type PushNotificationPayload = {
   title?: string;
@@ -18,17 +19,44 @@ type PushNotificationPayload = {
   image?: string;
 };
 
-workerScope.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => workerScope.skipWaiting()),
-  );
-});
-
 workerScope.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
     ).then(() => workerScope.clients.claim()),
+  );
+});
+
+function isDocumentNavigation(request: Request): boolean {
+  return request.mode === 'navigate' || request.destination === 'document';
+}
+
+async function fetchWithTimeout(request: Request, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(request, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+workerScope.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await Promise.race([
+          cache.addAll(SHELL_ASSETS),
+          new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('shell precache timeout')), ASSET_FETCH_TIMEOUT_MS);
+          }),
+        ]);
+      } catch {
+        // Precache is best-effort so a slow origin cannot block skipWaiting.
+      }
+      await workerScope.skipWaiting();
+    })(),
   );
 });
 
@@ -44,14 +72,19 @@ workerScope.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/')));
+  // Let the browser talk to the origin for documents. Unbounded fetch() here
+  // freezes the tab when SSR is slow or the isolate is wedged.
+  if (isDocumentNavigation(request)) {
     return;
   }
 
-  if (SHELL_ASSETS.includes(requestUrl.pathname)) {
-    event.respondWith(caches.match(request).then((response) => response ?? fetch(request)));
+  if (!SHELL_ASSETS.includes(requestUrl.pathname)) {
+    return;
   }
+
+  event.respondWith(
+    caches.match(request).then((cached) => cached ?? fetchWithTimeout(request, ASSET_FETCH_TIMEOUT_MS)),
+  );
 });
 
 const READER_TEST_NOTIFICATION_TAGS = new Set([

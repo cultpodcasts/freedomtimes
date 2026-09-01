@@ -39,7 +39,6 @@ let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let resolvedIsPreview = false;
 let resolvedLabel = 'Page';
 let resolvedCollectionKey: 'pages' | 'posts' | null = null;
-
 const sessionContext = {
 	cookies: Astro.cookies,
 	url: Astro.url,
@@ -59,15 +58,11 @@ if (isHomepage) {
 		return Astro.redirect(homepageAction.location, homepageAction.status);
 	}
 
-	if (homepageAction.kind === 'login-wall') {
-		return Astro.rewrite('/');
-	}
-
 	if (homepageAction.kind === 'require-session') {
 		const session = await requireEditorialSession(sessionContext);
 
 		if (session instanceof Response) {
-			return Astro.rewrite('/?denied=1');
+			return session;
 		}
 
 		isAdmin = session.isAdmin;

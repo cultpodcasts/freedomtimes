@@ -16,6 +16,7 @@ import {
 	siteAccessFromMode,
 	type SiteAccess,
 } from '../src/lib/root-route.ts';
+import { renderSecureAccessWallHtml } from '../src/lib/secure-access-wall.ts';
 
 const PRODUCTION_APEX = [...PRODUCTION_PUBLIC_HOSTNAMES].find((host) => !host.startsWith('www.'))!;
 const PRODUCTION_WWW = [...PRODUCTION_PUBLIC_HOSTNAMES].find((host) => host.startsWith('www.'))!;
@@ -80,11 +81,15 @@ describe('GET /homepage', () => {
 		hostname: PRODUCTION_APEX,
 	};
 
-	it('staging locked: no auth cookies rewrite to the wall via /', () => {
-		assert.deepEqual(resolveHomepageGet({ ...lockedStaging }), { kind: 'login-wall' });
+	it('staging locked: no auth cookies 302s to / (wall lives only on /)', () => {
+		assert.deepEqual(resolveHomepageGet({ ...lockedStaging }), {
+			kind: 'redirect',
+			location: '/',
+			status: 302,
+		});
 		assert.deepEqual(
 			resolveHomepageGet({ ...lockedStaging, sessionCookie: '', refreshCookie: '  ' }),
-			{ kind: 'login-wall' },
+			{ kind: 'redirect', location: '/', status: 302 },
 		);
 	});
 
@@ -117,9 +122,19 @@ describe('GET /homepage', () => {
 			{ kind: 'render-newsroom' },
 		);
 		assert.notEqual(
-			resolveHomepageGet({ siteAccess: 'locked', hostname: STAGING_HOSTNAME }).kind,
+			resolveHomepageGet({
+				siteAccess: 'locked',
+				hostname: STAGING_HOSTNAME,
+				sessionCookie: 'id-token',
+			}).kind,
 			'redirect',
 		);
+		const anonymous = resolveHomepageGet({ siteAccess: 'locked', hostname: STAGING_HOSTNAME });
+		assert.equal(anonymous.kind, 'redirect');
+		if (anonymous.kind === 'redirect') {
+			assert.equal(anonymous.status, 302);
+			assert.equal(anonymous.location, '/');
+		}
 	});
 
 	it('production apex and www: /homepage 301s to same-host / for every cookie state', () => {
@@ -211,6 +226,20 @@ describe('post-login landing', () => {
 			'/admin/tips',
 		);
 		assert.equal(resolvePostLoginLanding({ siteAccess: 'public', returnTo: '/signed-in' }), '/signed-in');
+	});
+});
+
+describe('secure access wall document', () => {
+	it('is a complete HTML document with Inter and centered body, not newsroom CSS', () => {
+		const html = renderSecureAccessWallHtml(false);
+		assert.match(html, /<!doctype html>/i);
+		assert.match(html, /Secure Access/);
+		assert.match(html, /place-items:\s*center/);
+		assert.match(html, /font-family:\s*'Inter'/);
+		assert.doesNotMatch(html, /Access denied/);
+		assert.doesNotMatch(html, /Source Serif/);
+		assert.doesNotMatch(html, /front-grid/);
+		assert.match(renderSecureAccessWallHtml(true), /Access denied/);
 	});
 });
 

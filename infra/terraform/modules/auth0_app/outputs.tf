@@ -23,6 +23,11 @@ output "admin_role_id" {
   value       = var.create_shared_resources ? auth0_role.admin[0].id : null
 }
 
+output "staging_reader_role_id" {
+  description = "staging-reader role ID (set only when create_staging_reader_role is true)"
+  value       = var.create_staging_reader_role ? auth0_role.staging_reader[0].id : null
+}
+
 # Output the Auth0 client secret (for automation)
 output "client_secret" {
   description = "Auth0 application client secret (for automation only, do not expose in logs)"

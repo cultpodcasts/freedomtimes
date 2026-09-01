@@ -1,5 +1,5 @@
 ---
-import { getEmDashCollection, getEmDashEntry } from 'emdash';
+import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../../components/EmDashContentView.astro';
 import Layout from '../../layouts/Layout.astro';
@@ -11,6 +11,18 @@ import {
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
+const ssrStarted = performance.now();
+const cfRay = Astro.request.headers.get('cf-ray') ?? '';
+
+function logPostSsr(event: string, extra: Record<string, string | number | boolean | null | undefined> = {}) {
+	console.log('[ft-ssr]', JSON.stringify({
+		event,
+		cfRay,
+		pathname: Astro.url.pathname,
+		elapsedMs: Math.round(performance.now() - ssrStarted),
+		...extra,
+	}));
+}
 
 let displayName = 'Reader';
 let isAdmin = false;
@@ -23,10 +35,14 @@ const sessionContext = {
 	redirect: Astro.redirect,
 };
 
+// Editorial 302s are EmDash's (`emdash/middleware/redirect` after getRuntime).
+// This page only runs on a miss. Do not second-guess getEmDashEntry / edit / preview.
+logPostSsr('session-start', { locked: isLocked });
 if (isLocked) {
 	const session = await requireEditorialSession(sessionContext);
 
 	if (session instanceof Response) {
+		logPostSsr('session-redirect', { status: session.status });
 		return session;
 	}
 
@@ -41,71 +57,41 @@ if (isLocked) {
 		isSignedIn = true;
 	}
 }
+logPostSsr('session-end', { isSignedIn, isAdmin });
 
 const slug = Astro.params.slug;
 let entry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let isPreview = false;
 let notFound = false;
 
-function isExpectedLookupMiss(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error);
-	const lower = message.toLowerCase();
-
-	return lower.includes('not found')
-		|| lower.includes('no row')
-		|| lower.includes('missing')
-		|| lower.includes('no such table')
-		|| lower.includes('does not exist')
-		|| lower.includes('unknown collection');
-}
-
-function readSlug(data: Record<string, unknown>): string | null {
-	return typeof data.slug === 'string' && data.slug.length > 0 ? data.slug : null;
-}
-
 if (!slug) {
 	notFound = true;
 	Astro.response.status = 404;
 } else {
+	logPostSsr('entry-start', { slug });
 	const result = await getEmDashEntry('posts', slug);
 	entry = result.entry;
 	isPreview = result.isPreview;
+	logPostSsr('entry-end', { slug, hasEntry: Boolean(entry), isPreview });
 
 	if (result.error) {
-		if (isExpectedLookupMiss(result.error)) {
-			const { entries, error } = await getEmDashCollection('posts', {
-				limit: 100,
-				orderBy: { updated_at: 'desc' },
-			});
-
-			if (error) {
-				if (isExpectedLookupMiss(error)) {
-					notFound = true;
-					Astro.response.status = 404;
-				} else {
-					throw error;
-				}
-			} else {
-				const fallback = entries.find((candidate) => {
-					const data = candidate.data as Record<string, unknown>;
-					const candidateDataSlug = readSlug(data);
-					return candidate.id === slug || candidateDataSlug === slug;
-				});
-
-				if (fallback) {
-					entry = fallback;
-					notFound = false;
-				} else {
-					notFound = true;
-					Astro.response.status = 404;
-				}
-			}
-		} else {
+		const message = result.error instanceof Error ? result.error.message : String(result.error);
+		logPostSsr('entry-error', { slug, error: message });
+		const lower = message.toLowerCase();
+		const isExpectedLookupMiss =
+			lower.includes('not found')
+			|| lower.includes('no row')
+			|| lower.includes('missing')
+			|| lower.includes('no such table')
+			|| lower.includes('does not exist')
+			|| lower.includes('unknown collection');
+		if (!isExpectedLookupMiss) {
 			throw result.error;
 		}
+		entry = null;
 	}
 
-	if (!entry && !notFound) {
+	if (!entry) {
 		notFound = true;
 		Astro.response.status = 404;
 	}

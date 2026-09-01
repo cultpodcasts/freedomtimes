@@ -18,15 +18,6 @@ if (homepageAction.kind === 'redirect') {
   return Astro.redirect(homepageAction.location, homepageAction.status);
 }
 
-// Serve the same login screen as `/` without a redirect (embedded browsers
-// were showing a blank page on /homepage after 302 or nested HTML).
-if (homepageAction.kind === 'login-wall') {
-  return Astro.rewrite('/');
-}
-
-let isAdmin = false;
-let isSignedIn = false;
-
 const sessionContext = {
   cookies: Astro.cookies,
   url: Astro.url,
@@ -34,11 +25,17 @@ const sessionContext = {
   redirect: Astro.redirect,
 };
 
+// Newsroom only. Anonymous visitors 302 to `/` (resolveHomepageGet). Failed
+// session verification already redirects to `/` or `/?denied=1`. Do not render
+// the wall here and do not rewrite to `/` to compose two templates.
+let isAdmin = false;
+let isSignedIn = false;
+
 if (homepageAction.kind === 'require-session') {
   const session = await requireEditorialSession(sessionContext);
 
   if (session instanceof Response) {
-    return Astro.rewrite('/?denied=1');
+    return session;
   }
 
   isAdmin = session.isAdmin;

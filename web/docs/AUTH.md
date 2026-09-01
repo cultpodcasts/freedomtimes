@@ -30,14 +30,17 @@ Copy `web/.env.example` to `web/.env`. Local development uses pure runtime names
 | `COOKIE_BASE_DOMAIN` | Parent domain for auth cookies |
 | `API_BASE_URL` | Editorial API base URL (when used) |
 
-Role detection checks `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` when configured, or plain `roles`. Login succeeds when the user has at least one staff role (case-insensitive):
+Role detection checks `${AUTH0_ROLES_CLAIM_NAMESPACE}/roles` when configured, or plain `roles`. Login succeeds when the user has at least one allowed role (case-insensitive):
 
-| Role | Access |
-|------|--------|
-| `admin` | EmDash CMS, broadsheet homepage, all Freedom Times `/admin/*` tools (public site traffic, tips desk, push diagnostics) |
-| `editor` | EmDash CMS, broadsheet homepage (no Freedom Times `/admin` hub) |
+| Role | Production (`SITE_ACCESS_MODE=public`) | Locked staging |
+|------|----------------------------------------|----------------|
+| `admin` | EmDash CMS, newsroom, all Freedom Times `/admin/*` tools | Same |
+| `editor` | EmDash CMS, newsroom (no Freedom Times `/admin` hub) | Same |
+| `staging-reader` | **Denied** at `/auth/callback` (`/?denied=1`) | Newsroom, posts, pages, archives, and production-public reader routes that still require a session. **Not** `/admin/*`, **not** `/signed-in`, **not** `/_emdash/admin` |
 
-After login, `admin` and `editor` users go to `/homepage`. A later GET `/` while those cookies are still valid (or silently refreshable) 302s to `/homepage` instead of showing the wall — otherwise “Log in with Google” starts a second Auth0 authorize whose failed callback clears cookies.
+The Auth0 `staging-reader` role is created by **staging Terraform** (`create_staging_reader_role`). It has no API scopes. Assign the role to users in the Auth0 tenant, then they sign in on staging only.
+
+After login, `admin`, `editor`, and (on locked staging) `staging-reader` users go to `/homepage`. A later GET `/` while those cookies are still valid (or silently refreshable) 302s to `/homepage` instead of showing the wall.
 
 ## Auth0 scope and consent
 
@@ -74,7 +77,7 @@ Use this when validating login on staging at [https://staging.freedomtimes.news]
 1. `GET /auth/login`
 2. Redirect to Auth0 authorize endpoint (Authorization Code flow, scope `openid offline_access`, API audience requested)
 3. `GET /auth/callback?code=...&state=...`
-4. Role check passes for `admin` or `editor`
+4. Role check passes for `admin` or `editor` (or `staging-reader` on locked staging only)
 5. Redirect to `GET /homepage`, or `GET /signed-in` for the admin test page
 6. Token verifies and page renders
 

@@ -1,7 +1,14 @@
 import { defineMiddleware } from 'astro:middleware';
 import { env as cfEnv } from 'cloudflare:workers';
 
-import { isLockedSiteAccess } from './lib/auth';
+import {
+  isLockedSiteAccess,
+  isEmDashAdminUiPath,
+  getAuthConfig,
+  SESSION_COOKIE,
+  shouldDenyEmDashAdminForSiteSession,
+  verifyIdToken,
+} from './lib/auth';
 import { resolveLoginWallGet } from './lib/root-route';
 import {
   HOMEPAGE_ROOT_REDIRECT_LOCATION,
@@ -294,6 +301,23 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (normalizedPath === '/_emdash/api/auth/magic-link/verify') {
     const response = await next();
     return maybeMagicLinkVerifyLander(response);
+  }
+
+  // Locked staging: a site session that is only `staging-reader` must not open
+  // EmDash admin. Staff still use EmDash (including magic link with no ft_session).
+  // Do not add this path to AUTH_BYPASS exceptions — EmDash stays on its own auth.
+  if (isLockedSiteAccess() && isEmDashAdminUiPath(normalizedPath)) {
+    const token = context.cookies.get(SESSION_COOKIE)?.value;
+    if (token) {
+      try {
+        const payload = await verifyIdToken(token, getAuthConfig());
+        if (shouldDenyEmDashAdminForSiteSession(payload)) {
+          return context.redirect('/homepage', 302);
+        }
+      } catch {
+        // Invalid or expired site cookie — EmDash login still applies.
+      }
+    }
   }
 
   // Keep EmDash and MCP OAuth endpoints free of outer Auth0 gating.
