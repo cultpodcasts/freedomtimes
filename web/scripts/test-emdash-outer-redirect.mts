@@ -34,7 +34,17 @@ describe('EmDash middleware.outer wraps EmDash redirect (not an app slug map)', 
 		assert.match(outerSource, /emdashRedirect\(/);
 		assert.doesNotMatch(outerSource, /selectFrom\(/);
 		assert.doesNotMatch(outerSource, /from 'emdash\/runtime'/);
-		assert.match(outerSource, /then `next\(\)` into getRuntime when there is no editorial 302/);
+	});
+
+	it('posts/[slug] uses getEmDashEntry and does not invent a lookup timeout or preview gate', () => {
+		const postPage = readFileSync(
+			fileURLToPath(new URL('../src/pages/posts/[slug].astro', import.meta.url)),
+			'utf8',
+		);
+		assert.match(postPage, /getEmDashEntry\('posts', slug\)/);
+		assert.doesNotMatch(postPage, /getEmDashCollection/);
+		assert.doesNotMatch(postPage, /Post lookup timed out/);
+		assert.doesNotMatch(postPage, /shouldRenderPublicPost/);
 	});
 
 	it('logs [ft-mw] enter, redirect-check, next, and redirect-return', () => {

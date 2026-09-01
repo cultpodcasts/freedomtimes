@@ -8,17 +8,11 @@ import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../../lib/editorial-session';
-import {
-	isExplicitPreviewRequest,
-	shouldRenderPublicPost,
-} from '../../lib/published-post-entry';
-import { withDeadline } from '../../lib/with-deadline';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
 const ssrStarted = performance.now();
 const cfRay = Astro.request.headers.get('cf-ray') ?? '';
-const allowPreview = isExplicitPreviewRequest(Astro.url);
 
 function logPostSsr(event: string, extra: Record<string, string | number | boolean | null | undefined> = {}) {
 	console.log('[ft-ssr]', JSON.stringify({
@@ -41,46 +35,29 @@ const sessionContext = {
 	redirect: Astro.redirect,
 };
 
-// Redirects already ran in middleware.outer (EmDash's own handler) before
-// this page. Session + getEmDashEntry run only on a redirect miss.
+// Editorial 302s are EmDash's (`middleware.outer` → `emdash/middleware/redirect`).
+// This page only runs on a miss. Do not second-guess getEmDashEntry / edit / preview.
 logPostSsr('session-start', { locked: isLocked });
-try {
-	if (isLocked) {
-		const session = await withDeadline(
-			requireEditorialSession(sessionContext),
-			5_000,
-			'requireEditorialSession',
-		);
+if (isLocked) {
+	const session = await requireEditorialSession(sessionContext);
 
-		if (session instanceof Response) {
-			logPostSsr('session-redirect', { status: session.status });
-			return session;
-		}
+	if (session instanceof Response) {
+		logPostSsr('session-redirect', { status: session.status });
+		return session;
+	}
 
+	displayName = session.displayName;
+	isAdmin = session.isAdmin;
+	isSignedIn = true;
+} else {
+	const session = await getOptionalEditorialSession(sessionContext);
+	if (session) {
 		displayName = session.displayName;
 		isAdmin = session.isAdmin;
 		isSignedIn = true;
-	} else {
-		const session = await withDeadline(
-			getOptionalEditorialSession(sessionContext),
-			5_000,
-			'getOptionalEditorialSession',
-		);
-		if (session) {
-			displayName = session.displayName;
-			isAdmin = session.isAdmin;
-			isSignedIn = true;
-		}
 	}
-	logPostSsr('session-end', { isSignedIn, isAdmin });
-} catch (error) {
-	const message = error instanceof Error ? error.message : String(error);
-	logPostSsr('session-timeout', { error: message });
-	return new Response('Editorial session timed out', {
-		status: 503,
-		headers: { 'content-type': 'text/plain; charset=utf-8' },
-	});
 }
+logPostSsr('session-end', { isSignedIn, isAdmin });
 
 const slug = Astro.params.slug;
 let entry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
@@ -91,41 +68,30 @@ if (!slug) {
 	notFound = true;
 	Astro.response.status = 404;
 } else {
-	logPostSsr('entry-start', { slug, allowPreview });
-	let result: Awaited<ReturnType<typeof getEmDashEntry>>;
-	try {
-		result = await withDeadline(getEmDashEntry('posts', slug), 8_000, 'getEmDashEntry');
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		logPostSsr('entry-timeout', { slug, error: message });
-		return new Response('Post lookup timed out', {
-			status: 503,
-			headers: { 'content-type': 'text/plain; charset=utf-8' },
-		});
-	}
+	logPostSsr('entry-start', { slug });
+	const result = await getEmDashEntry('posts', slug);
 	entry = result.entry;
 	isPreview = result.isPreview;
 	logPostSsr('entry-end', { slug, hasEntry: Boolean(entry), isPreview });
 
 	if (result.error) {
-		logPostSsr('entry-error', {
-			slug,
-			error: result.error instanceof Error ? result.error.message : String(result.error),
-		});
+		const message = result.error instanceof Error ? result.error.message : String(result.error);
+		logPostSsr('entry-error', { slug, error: message });
+		const lower = message.toLowerCase();
+		const isExpectedLookupMiss =
+			lower.includes('not found')
+			|| lower.includes('no row')
+			|| lower.includes('missing')
+			|| lower.includes('no such table')
+			|| lower.includes('does not exist')
+			|| lower.includes('unknown collection');
+		if (!isExpectedLookupMiss) {
+			throw result.error;
+		}
 		entry = null;
 	}
 
-	// No collection scan. A 100-row fallback can hydrate
-	// weekly-summary-30-august-2026-unpublished and wedge the isolate.
-	if (!shouldRenderPublicPost({ slug, isPreview, entry, allowPreview })) {
-		logPostSsr('entry-refused', {
-			slug,
-			isPreview,
-			allowPreview,
-			hasEntry: Boolean(entry),
-		});
-		entry = null;
-		isPreview = false;
+	if (!entry) {
 		notFound = true;
 		Astro.response.status = 404;
 	}
