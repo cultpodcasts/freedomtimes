@@ -96,11 +96,10 @@ try {
     Write-DeployStep "Production deploy complete"
     Write-Host "Worker: $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
     Write-DeployGithubCiNoiseNote
+    # Native helpers can leave LASTEXITCODE non-zero after a successful wrangler
+    # deploy; exit here so a throw above does not fall through to a forced 0.
+    exit 0
 }
 finally {
     Complete-DeployTerraformLockfileRestore
 }
-
-# Native helpers (where.exe / terraform output probes) can leave LASTEXITCODE non-zero
-# even after a successful wrangler deploy; force a clean success exit.
-exit 0

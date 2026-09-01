@@ -921,7 +921,7 @@ function Ensure-DeployEmdashTargetFingerprintFromStatus {
         return
     }
 
-    Write-DeployStep "Pinning EMDASH_TARGET_FINGERPRINT from same-run emdash migrate --status --json (local production; not a Cursor secret)"
+    Write-DeployStep "Pinning EMDASH_TARGET_FINGERPRINT from same-run emdash migrate --status --json (local deploy; not a Cursor secret)"
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     $stderrFile = Join-Path ([IO.Path]::GetTempPath()) ("emdash-print-fingerprint-{0}.err" -f [guid]::NewGuid())
     try {
@@ -963,12 +963,10 @@ function Invoke-DeployEmdashCoreMigrate {
         throw "Missing $manifest after npm run build. Deploy aborted before migrate."
     }
 
-    # Production-looking Turso hosts refuse apply without a pin (CI secrets are
-    # not on this Cloud VM). Staging non-prod URLs keep the same-run --status
-    # path in emdash-core-migrate.mjs when the env pin is unset.
-    if (-not $script:DeployIsStaging) {
-        Ensure-DeployEmdashTargetFingerprintFromStatus
-    }
+    # Local deploy always pins process env from same-run --status (CI GitHub
+    # secrets are not Cursor secrets). Production-looking hosts refuse apply
+    # without a pin; staging is harmless if already covered by migrate.mjs.
+    Ensure-DeployEmdashTargetFingerprintFromStatus
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {
@@ -1063,7 +1061,7 @@ function Complete-DeployTerraformLockfileRestore {
 }
 
 function Write-DeployGithubCiNoiseNote {
-    Write-Host "CA-09: Ignore GitHub Apply to Staging / Android / iOS jobs that fail in ~3s with empty steps. This local deploy is the staging/production path." -ForegroundColor DarkGray
+    Write-Host "CA-09: Ignore GitHub Apply to Staging / Android / iOS empty-step ~3s failures (Actions billing lock, not empty YAML). Local deploy is the staging/production path." -ForegroundColor DarkGray
 }
 
 function Sync-DeployProductionAuth0EnvFromTerraform {
