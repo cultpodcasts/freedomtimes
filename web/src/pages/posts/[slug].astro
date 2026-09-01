@@ -1,5 +1,5 @@
 ---
-import { getEmDashCollection, getEmDashEntry } from 'emdash';
+import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../../components/EmDashContentView.astro';
 import Layout from '../../layouts/Layout.astro';
@@ -8,12 +8,17 @@ import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../../lib/editorial-session';
+import {
+	isExplicitPreviewRequest,
+	shouldRenderPublicPost,
+} from '../../lib/published-post-entry';
 import { withDeadline } from '../../lib/with-deadline';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
 const ssrStarted = performance.now();
 const cfRay = Astro.request.headers.get('cf-ray') ?? '';
+const allowPreview = isExplicitPreviewRequest(Astro.url);
 
 function logPostSsr(event: string, extra: Record<string, string | number | boolean | null | undefined> = {}) {
 	console.log('[ft-ssr]', JSON.stringify({
@@ -36,6 +41,8 @@ const sessionContext = {
 	redirect: Astro.redirect,
 };
 
+// Redirects already ran in middleware.outer (EmDash's own handler) before
+// this page. Session + getEmDashEntry run only on a redirect miss.
 logPostSsr('session-start', { locked: isLocked });
 try {
 	if (isLocked) {
@@ -80,27 +87,11 @@ let entry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let isPreview = false;
 let notFound = false;
 
-function isExpectedLookupMiss(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error);
-	const lower = message.toLowerCase();
-
-	return lower.includes('not found')
-		|| lower.includes('no row')
-		|| lower.includes('missing')
-		|| lower.includes('no such table')
-		|| lower.includes('does not exist')
-		|| lower.includes('unknown collection');
-}
-
-function readSlug(data: Record<string, unknown>): string | null {
-	return typeof data.slug === 'string' && data.slug.length > 0 ? data.slug : null;
-}
-
 if (!slug) {
 	notFound = true;
 	Astro.response.status = 404;
 } else {
-	logPostSsr('entry-start', { slug });
+	logPostSsr('entry-start', { slug, allowPreview });
 	let result: Awaited<ReturnType<typeof getEmDashEntry>>;
 	try {
 		result = await withDeadline(getEmDashEntry('posts', slug), 8_000, 'getEmDashEntry');
@@ -117,51 +108,24 @@ if (!slug) {
 	logPostSsr('entry-end', { slug, hasEntry: Boolean(entry), isPreview });
 
 	if (result.error) {
-		if (isExpectedLookupMiss(result.error)) {
-			try {
-				const { entries, error } = await withDeadline(
-					getEmDashCollection('posts', {
-						limit: 100,
-						orderBy: { updated_at: 'desc' },
-					}),
-					3_000,
-					'getEmDashCollection',
-				);
-
-				if (error) {
-					if (isExpectedLookupMiss(error)) {
-						notFound = true;
-						Astro.response.status = 404;
-					} else {
-						throw error;
-					}
-				} else {
-					const fallback = entries.find((candidate) => {
-						const data = candidate.data as Record<string, unknown>;
-						const candidateDataSlug = readSlug(data);
-						return candidate.id === slug || candidateDataSlug === slug;
-					});
-
-					if (fallback) {
-						entry = fallback;
-						notFound = false;
-					} else {
-						notFound = true;
-						Astro.response.status = 404;
-					}
-				}
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				logPostSsr('collection-timeout', { slug, error: message });
-				notFound = true;
-				Astro.response.status = 503;
-			}
-		} else {
-			throw result.error;
-		}
+		logPostSsr('entry-error', {
+			slug,
+			error: result.error instanceof Error ? result.error.message : String(result.error),
+		});
+		entry = null;
 	}
 
-	if (!entry && !notFound) {
+	// No collection scan. A 100-row fallback can hydrate
+	// weekly-summary-30-august-2026-unpublished and wedge the isolate.
+	if (!shouldRenderPublicPost({ slug, isPreview, entry, allowPreview })) {
+		logPostSsr('entry-refused', {
+			slug,
+			isPreview,
+			allowPreview,
+			hasEntry: Boolean(entry),
+		});
+		entry = null;
+		isPreview = false;
 		notFound = true;
 		Astro.response.status = 404;
 	}

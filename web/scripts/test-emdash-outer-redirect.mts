@@ -34,6 +34,7 @@ describe('EmDash middleware.outer wraps EmDash redirect (not an app slug map)', 
 		assert.match(outerSource, /emdashRedirect\(/);
 		assert.doesNotMatch(outerSource, /selectFrom\(/);
 		assert.doesNotMatch(outerSource, /from 'emdash\/runtime'/);
+		assert.match(outerSource, /then `next\(\)` into getRuntime when there is no editorial 302/);
 	});
 
 	it('logs [ft-mw] enter, redirect-check, next, and redirect-return', () => {
