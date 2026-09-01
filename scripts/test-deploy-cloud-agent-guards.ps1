@@ -194,6 +194,18 @@ if (-not $IsWindows) {
     }
 }
 
+Write-Host "=== Test-DeployProductionWorkerSecretOverlayPresent ==="
+$overlayTmp = Join-Path ([IO.Path]::GetTempPath()) ("prod-overlay-" + [guid]::NewGuid().ToString("n"))
+New-Item -ItemType Directory -Force -Path $overlayTmp | Out-Null
+try {
+    Assert-True (-not (Test-DeployProductionWorkerSecretOverlayPresent -RepoRoot $overlayTmp)) "missing .env.production is absent"
+    Set-Content -LiteralPath (Join-Path $overlayTmp ".env.production") -Value ""
+    Assert-True (Test-DeployProductionWorkerSecretOverlayPresent -RepoRoot $overlayTmp) "present .env.production is detected"
+}
+finally {
+    Remove-Item -LiteralPath $overlayTmp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {

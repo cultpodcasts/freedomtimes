@@ -34,6 +34,7 @@ Status: **scripted** = `deploy-*-local.ps1` handles it; **doc** = agents must kn
 | CA-22 | Child `pwsh` | TF remap / nvm PATH | Child inherits `PATH`; TF remap runs **inside** `terraform-run.ps1` → preflight, not in the parent | Do not skip `-LoadEnvFiles` / preflight | Direct `terraform` without `terraform-run.ps1` misses the remap |
 | CA-23 | Production 2026-09-01 | Apply succeeded (`0 added, 1 changed` holding page), then `terraform output` / Auth0 sync crashed: `You cannot call a method on a null-valued expression` + plugin checksum errors | `Restore-DeployTerraformLockfileIfCleanStart` ran **immediately after apply**, then `terraform output -raw` could not load providers. `.Trim()` on `$null` | Restore lockfile only **after** the last `terraform output` (Auth0 sync, worker name, secret helpers). `Get-DeployTerraformOutputRaw` no longer `.Trim()`s a null. Leave lockfile dirty through apply **and** output | If this still fires, do not re-apply blindly. Finish with `-WorkerOnly -AllowProduction` after fixing scripts. Do not commit Linux lockfile hashes |
 | CA-24 | Same abort | Operator said hold before wrangler | Full production apply had started | Stopped before Worker build/migrate/wrangler. Turso rollback `prod-rollback-20260901-182545` exists. Live `/submit-a-tip` still shows pre-#90 SHA until wrangler | Next production deploy from the follow-up branch; omit `-SkipTursoBackup` unless that checkpoint is still <24h |
+| CA-25 | Production WorkerOnly 2026-09-01 | `-SyncCloudflareWorkerSecrets` throws `Missing EMDASH_AUTH_SECRET_PRODUCTION` even when that process env var is set | `set-github-secrets.ps1` reads `.env.production`, which is not on this Cloud VM (credentials live in Cursor secrets / `.env.dev`) | Skip Worker secret sync when `.env.production` is missing; wrangler deploy leaves existing Worker secrets | Do not invent `.env.production`. Finish with `-WorkerOnly -AllowProduction` **without** `-SyncCloudflareWorkerSecrets` if an older script still throws |
 
 ## Production local deploy (operator must ask)
 
@@ -41,9 +42,9 @@ Full stack: `pwsh ./scripts/deploy-production-local.ps1` (no `-WorkerOnly`, no `
 
 If Terraform **succeeds** and a later step fails: do **not** re-apply blindly. Finish with:
 
-`pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SyncCloudflareWorkerSecrets`
+`pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction`
 
-(omit `-SkipTursoBackup` unless a checkpoint newer than 24h matches). If Terraform itself failed: **STOP** before wrangler.
+(omit `-SkipTursoBackup` unless a checkpoint newer than 24h matches). Add `-SyncCloudflareWorkerSecrets` only when `.env.production` exists (CA-25). If Terraform itself failed: **STOP** before wrangler.
 
 Probe production apex `/` (200 newsroom, not Secure Access) and `/homepage` (301 → `/` on the same host). Do not require `www`. Staging probes stay the locked wall.
 

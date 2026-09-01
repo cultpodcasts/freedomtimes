@@ -162,6 +162,8 @@ pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun
 pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SyncCloudflareWorkerSecrets
 ```
 
+`-SyncCloudflareWorkerSecrets` needs `.env.production` (CA-25). On Cloud VMs that file is usually missing; skip the flag. Scripts now skip sync when the overlay file is absent.
+
 ### `Deploy-EnvironmentCommon.ps1`
 
 Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only. Contains shared step functions and the step matrix table in the file header. **Do not invoke directly.**
@@ -600,7 +602,8 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 | Terraform: `No such module "node:module"` on worker script | Terraform trying to push holding template over Wrangler bundle | Ensure `lifecycle.ignore_changes` on `cloudflare_workers_script`; deploy via Wrangler |
 | Wrangler auth / non-interactive failure | OAuth not available | Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` |
 | Wrangler `6111` / `9106` (invalid Authorization header) during `secret put` or deploy | Process `CLOUDFLARE_API_TOKEN` is a short Cursor stub shadowing `TF_VAR_CLOUDFLARE_API_TOKEN` | Deploy scripts replace tokens shorter than 40 characters with `TF_VAR_CLOUDFLARE_API_TOKEN`. If a session still has the stub, export the TF_VAR value over `CLOUDFLARE_API_TOKEN` (never print it). |
-| Terraform apply succeeded then `You cannot call a method on a null-valued expression` / plugin checksum on `terraform output` | Lockfile reverted before Auth0/`terraform output` | Leave lockfile dirty until the last terraform CLI read. See [CLOUD_AGENT_DEPLOY_ISSUES.md](./CLOUD_AGENT_DEPLOY_ISSUES.md) CA-23. Do not re-apply blindly; finish `-WorkerOnly` |
+| Terraform apply succeeded then `You cannot call a method on a null-valued expression` / plugin checksum on `terraform output` | Lockfile reverted before Auth0/`terraform output` | Leave lockfile dirty until the last terraform CLI read. See [CLOUD_AGENT_DEPLOY_ISSUES.md](./CLOUD_AGENT_DEPLOY_ISSUES.md) CA-23. Do not re-apply blindly; finish `-WorkerOnly` **without** `-SyncCloudflareWorkerSecrets` unless `.env.production` exists |
+| `Missing EMDASH_AUTH_SECRET_PRODUCTION` during Worker secret sync | Sync reads `.env.production`, not process Cursor secrets | Skip sync when that file is missing (CA-25). Finish `-WorkerOnly -AllowProduction`. Do not invent `.env.production` |
 | Refusing EmDash apply without `EMDASH_TARGET_FINGERPRINT` on Cloud VM | Production-looking Turso URL; CI pins are not Cursor secrets | Local `deploy-*-local.ps1` pins process `EMDASH_TARGET_FINGERPRINT` from same-run `--status` after build (`print-fingerprint`). Do not invent Cursor secrets. See [CLOUD_AGENT_DEPLOY_ISSUES.md](./CLOUD_AGENT_DEPLOY_ISSUES.md) CA-08 / CA-15 |
 | `-SkipTursoBackup` refuses despite `.release/rollback-branches/*.json` | Snapshot file mtime is Unix epoch (1970); JSON `createdAtUtc` is old | Skip check uses `createdAtUtc` and ignores 1970 mtimes. Omit `-SkipTursoBackup` and let the script create a new rollback branch (CA-16) |
 | Staging migrate would hit production EmDash / process `TURSO_DATABASE_URL` is production | Cursor Cloud injects production EmDash as process `TURSO_*` while `.env.dev` is staging | `Select-StagingEmdashTursoUrl` skips the process URL (even when Terraform URL is set) and `Select-StagingEmdashTursoToken` skips process JWT when `IgnoredProcessProductionShadow` is set. Do **not** copy production into `.env.dev`. If resolve throws, fix `.env.dev` / Terraform staging URL and mint a staging JWT |

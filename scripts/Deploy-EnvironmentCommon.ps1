@@ -1147,7 +1147,20 @@ function Ensure-DeployCloudflareAccountIdFromEnv {
     }
 }
 
+function Test-DeployProductionWorkerSecretOverlayPresent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+    Test-Path (Join-Path $RepoRoot ".env.production")
+}
+
 function Invoke-DeploySecretSync {
+    if (-not $script:DeployIsStaging -and -not (Test-DeployProductionWorkerSecretOverlayPresent -RepoRoot $script:DeployRepoRoot)) {
+        Write-Warning "CA-25: .env.production is missing. Skipping Cloudflare Worker secret sync (set-github-secrets.ps1 reads that file, not process EMDASH_AUTH_SECRET_PRODUCTION). Live Worker secrets stay as-is. Continue with wrangler deploy."
+        return
+    }
+
     Write-DeployStep "Syncing Cloudflare Worker secrets for $($script:DeployEnvironment)"
     Ensure-DeployCloudflareWranglerAuthFromEnv
 
