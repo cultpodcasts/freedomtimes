@@ -44,6 +44,27 @@ try {
     $env:TF_VAR_CLOUDFLARE_API_TOKEN = "c" * 53
     Ensure-DeployCloudflareWranglerAuthFromEnv
     Assert-True ($env:CLOUDFLARE_API_TOKEN -eq ("d" * 53)) "keeps a plausible process token"
+
+    $env:CLOUDFLARE_API_TOKEN = "F" * 31
+    $env:TF_VAR_CLOUDFLARE_API_TOKEN = ""
+    $previousBase = $script:DeployBaseEnvPath
+    $tmpRoot = $env:TMPDIR
+    if ([string]::IsNullOrWhiteSpace($tmpRoot)) { $tmpRoot = "/tmp" }
+    $emptyEnv = Join-Path $tmpRoot "empty-cloudflare.env"
+    Set-Content -LiteralPath $emptyEnv -Value ""
+    $script:DeployBaseEnvPath = $emptyEnv
+    $ensureThrew = $false
+    try {
+        Ensure-DeployCloudflareWranglerAuthFromEnv
+    }
+    catch {
+        $ensureThrew = $true
+    }
+    finally {
+        $script:DeployBaseEnvPath = $previousBase
+        Remove-Item -LiteralPath $emptyEnv -Force -ErrorAction SilentlyContinue
+    }
+    Assert-True $ensureThrew "throws when process token is a stub and TF_VAR is missing"
 }
 finally {
     if ($null -eq $previousCf) { Remove-Item Env:CLOUDFLARE_API_TOKEN -ErrorAction SilentlyContinue } else { $env:CLOUDFLARE_API_TOKEN = $previousCf }
@@ -91,6 +112,23 @@ Assert-True ($selected.Source -match "\.env\.dev") "source is .env.dev"
 
 $tfSelected = Select-StagingEmdashTursoUrl -TerraformUrl $stagingUrl -ProcessUrl $prodUrl -FileUrl $prodUrl -ProductionHint $prodUrl
 Assert-True ($tfSelected.Value -eq $stagingUrl) "prefers terraform staging URL over process production"
+Assert-True ($tfSelected.IgnoredProcessProductionShadow -eq $true) "flags process production shadow even when terraform URL wins"
+
+$noHint = Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint ""
+Assert-True ($noHint.Value -eq $stagingUrl) "skips process production URL when TURSO_PRODUCTION_EMDASH_DB_URL is unset"
+Assert-True ($noHint.IgnoredProcessProductionShadow -eq $true) "flags process production shadow without a production hint"
+
+$tokenAfterTfUrl = Select-StagingEmdashTursoToken -TerraformToken "" -ProcessToken "process-prod-jwt" -FileToken "file-staging-jwt" -IgnoredProcessProductionShadow $true
+Assert-True ($tokenAfterTfUrl.Value -eq "file-staging-jwt") "with terraform URL and empty terraform token, uses .env.dev token not process JWT"
+
+$tfUrlProdThrew = $false
+try {
+    Select-StagingEmdashTursoUrl -TerraformUrl $prodUrl -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint $prodUrl | Out-Null
+}
+catch {
+    $tfUrlProdThrew = $true
+}
+Assert-True $tfUrlProdThrew "refuses terraform URL that is production EmDash"
 
 $threw = $false
 try {

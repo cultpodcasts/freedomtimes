@@ -59,14 +59,22 @@ function Initialize-DeployEnvironment {
 function Initialize-LinuxNvmNodePath {
     # Cloud VM: default node can be 22.14; /exec-daemon/node stays first on PATH
     # after `nvm use`, so npm ci hits EBADENGINE. Prepend nvm 22.22.2.
-    if ($IsWindows) {
+    if ($IsWindows -eq $true) {
+        return
+    }
+    if ($IsLinux -ne $true) {
         return
     }
 
     $nvmRoot = if (-not [string]::IsNullOrWhiteSpace($env:NVM_DIR)) { $env:NVM_DIR } else { Join-Path $env:HOME ".nvm" }
     $binDir = Join-Path $nvmRoot "versions/node/v22.22.2/bin"
+    $execDaemonOnPath = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { $_ -match "exec-daemon" }).Count -gt 0
     if (-not (Test-Path -LiteralPath (Join-Path $binDir "node"))) {
-        Write-Warning "nvm Node v22.22.2 not found at $binDir. /exec-daemon/node can shadow nvm and leave npm on 22.14 (EBADENGINE). Install with nvm, then re-run deploy — do not rely on ``nvm use`` alone."
+        $msg = "nvm Node v22.22.2 not found at $binDir. /exec-daemon/node can shadow nvm and leave npm on 22.14 (EBADENGINE). Install with nvm, then re-run deploy — do not rely on ``nvm use`` alone."
+        if ($execDaemonOnPath) {
+            throw $msg
+        }
+        Write-Warning $msg
         return
     }
 
@@ -318,8 +326,11 @@ function Get-DeployStagingWebWranglerVarArgs {
 }
 
 function Set-DeployTursoBuildEnvFromTerraform {
-    $env:TURSO_DATABASE_URL = Get-DeployTerraformOutputRaw -Name "turso_database_url"
-    $env:TURSO_AUTH_TOKEN = Get-DeployTerraformOutputRaw -Name "turso_database_auth_token"
+    # Same Select-Staging* / production-shadow rules as Worker build + migrate.
+    # Do not clobber TURSO_AUTH_TOKEN with an empty Terraform output (that used
+    # to leave process production JWT paired with a staging URL).
+    . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
+    $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
 }
 
 function Test-DeployCloudflareApiTokenPlausible {
@@ -363,7 +374,10 @@ function Ensure-DeployCloudflareWranglerAuthFromEnv {
             Write-Warning ("CLOUDFLARE_API_TOKEN is not usable for Wrangler (length {0}); using TF_VAR_CLOUDFLARE_API_TOKEN." -f $current.Trim().Length)
         }
         $env:CLOUDFLARE_API_TOKEN = $tfToken.Trim()
+        return
     }
+
+    throw "CLOUDFLARE_API_TOKEN is not usable for Wrangler and TF_VAR_CLOUDFLARE_API_TOKEN is missing or too short. Set TF_VAR_CLOUDFLARE_API_TOKEN (never print it). A short process stub causes Wrangler 6111 / 9106 after Terraform."
 }
 
 function Get-DeployWorkerName {
@@ -930,12 +944,17 @@ function Invoke-DeployTerraformApplyWithRecovery {
     $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
     $apply1.Output | ForEach-Object { $_ }
 
-    if ($apply1.ExitCode -ne 0 -and (Test-DeployTerraformPluginCacheMismatch -Output @($apply1.Output))) {
-        Write-Warning "Terraform apply failed: provider plugin cache does not match the lockfile. Running terraform init, then retrying apply once. Leave the lockfile dirty through this retry."
-        Invoke-DeployTerraformInit
-        Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 2 after init)"
-        $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
-        $apply1.Output | ForEach-Object { $_ }
+    if ($apply1.ExitCode -ne 0) {
+        $providersDir = Join-Path $script:DeployTerraformEnvDir ".terraform/providers"
+        $pluginMismatch = Test-DeployTerraformPluginCacheMismatch -Output @($apply1.Output)
+        $providersMissing = -not (Test-Path -LiteralPath $providersDir)
+        if ($pluginMismatch -or $providersMissing) {
+            Write-Warning "Terraform apply failed: provider plugin cache does not match the lockfile (or providers are missing). Running terraform init, then retrying apply once. Leave the lockfile dirty through this retry."
+            Invoke-DeployTerraformInit
+            Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 2 after init)"
+            $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
+            $apply1.Output | ForEach-Object { $_ }
+        }
     }
 
     if ($apply1.ExitCode -ne 0) {

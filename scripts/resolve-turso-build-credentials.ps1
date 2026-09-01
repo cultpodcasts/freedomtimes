@@ -75,7 +75,43 @@ function Get-FirstNonEmptyTursoValue {
 
 function Test-IsProductionEmdashLibsqlUrl {
     param([string]$Url)
-    return (-not [string]::IsNullOrWhiteSpace($Url)) -and ($Url -match 'freedomtimes-emdash-production')
+    return (-not [string]::IsNullOrWhiteSpace($Url)) -and ($Url -match '-emdash-production')
+}
+
+function Test-ProcessTursoUrlIsProductionShadow {
+    param(
+        [string]$ProcessUrl,
+        [string]$ProductionHint
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ProcessUrl)) {
+        return $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ProductionHint) -and (Test-TursoLibsqlUrlsEqual -Left $ProcessUrl -Right $ProductionHint)) {
+        return $true
+    }
+
+    return Test-IsProductionEmdashLibsqlUrl -Url $ProcessUrl
+}
+
+function Assert-StagingEmdashTursoUrlNotProduction {
+    param(
+        [string]$Url,
+        [string]$ProductionHint
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ProductionHint) -and (Test-TursoLibsqlUrlsEqual -Left $Url -Right $ProductionHint)) {
+        throw "TURSO_DATABASE_URL matches TURSO_PRODUCTION_EMDASH_DB_URL. Staging deploy would hit production EmDash. Keep TURSO_DATABASE_URL as staging in .env.dev (production on TURSO_PRODUCTION_EMDASH_DB_URL). Do not copy the process production pair into .env.dev."
+    }
+
+    if (Test-IsProductionEmdashLibsqlUrl -Url $Url) {
+        throw "TURSO_DATABASE_URL looks like production EmDash. Staging deploy would hit production EmDash. Keep TURSO_DATABASE_URL as staging in .env.dev. Do not copy the process production pair into .env.dev."
+    }
 }
 
 function Test-TursoLibsqlUrlsEqual {
@@ -122,14 +158,18 @@ function Select-StagingEmdashTursoUrl {
         [string]$ProductionHint
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($TerraformUrl)) {
-        return @{ Value = $TerraformUrl; Source = "terraform output turso_database_url"; IgnoredProcessProductionShadow = $false }
+    $processIsProductionShadow = Test-ProcessTursoUrlIsProductionShadow -ProcessUrl $ProcessUrl -ProductionHint $ProductionHint
+    if ($processIsProductionShadow) {
+        Write-Warning "Process TURSO_DATABASE_URL is production EmDash. Using staging Terraform / .env.dev instead. Not writing that pair into .env.dev."
     }
 
-    $processIsProductionShadow = (-not [string]::IsNullOrWhiteSpace($ProductionHint)) -and
-        (Test-TursoLibsqlUrlsEqual -Left $ProcessUrl -Right $ProductionHint)
-    if ($processIsProductionShadow) {
-        Write-Warning "Process TURSO_DATABASE_URL host matches TURSO_PRODUCTION_EMDASH_DB_URL (production EmDash). Using staging .env.dev / Terraform instead. Not writing that pair into .env.dev."
+    if (-not [string]::IsNullOrWhiteSpace($TerraformUrl)) {
+        Assert-StagingEmdashTursoUrlNotProduction -Url $TerraformUrl -ProductionHint $ProductionHint
+        return @{
+            Value = $TerraformUrl
+            Source = "terraform output turso_database_url"
+            IgnoredProcessProductionShadow = $processIsProductionShadow
+        }
     }
 
     $candidate = ""
@@ -147,13 +187,7 @@ function Select-StagingEmdashTursoUrl {
         throw "Missing staging EmDash Turso URL. Set TURSO_DATABASE_URL in .env.dev or run terraform apply."
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($ProductionHint) -and (Test-TursoLibsqlUrlsEqual -Left $candidate -Right $ProductionHint)) {
-        throw "TURSO_DATABASE_URL matches TURSO_PRODUCTION_EMDASH_DB_URL. Staging deploy would hit production EmDash. Keep TURSO_DATABASE_URL as staging in .env.dev (production on TURSO_PRODUCTION_EMDASH_DB_URL). Do not copy the process production pair into .env.dev."
-    }
-
-    if ([string]::IsNullOrWhiteSpace($ProductionHint) -and (Test-IsProductionEmdashLibsqlUrl -Url $candidate)) {
-        throw "TURSO_DATABASE_URL looks like production EmDash and TURSO_PRODUCTION_EMDASH_DB_URL is unset. Refusing staging migrate. Set TURSO_PRODUCTION_EMDASH_DB_URL for production and keep TURSO_DATABASE_URL as staging."
-    }
+    Assert-StagingEmdashTursoUrlNotProduction -Url $candidate -ProductionHint $ProductionHint
 
     return @{
         Value = $candidate
