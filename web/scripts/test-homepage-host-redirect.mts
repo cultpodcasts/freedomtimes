@@ -183,26 +183,35 @@ describe('homepage host wiring', () => {
 		assert.match(indexPageSource, /import\('\.\.\/components\/HomepageView\.astro'\)/);
 	});
 
-	it('rewrites / to /login-wall only for the login-wall action; public / must not 404 via that rewrite', () => {
-		// Astro.rewrite re-runs middleware. Public workers 404 /login-wall, so an
-		// ungated rewrite turns production GET / into 404 instead of HomepageView.
+	it('locked / renders SecureAccessWall inline (no rewrite to /login-wall)', () => {
+		// Astro.rewrite re-runs middleware and, on the Cloudflare custom domain,
+		// document requests hang at 0 bytes (staging 230af65d). workers.dev still
+		// answered. 7a0ef658 rendered the wall inline on `/` and served HTML.
 		assert.match(indexPageSource, /resolveRootGet/);
 		assert.match(indexPageSource, /rootAction\.kind === 'login-wall'/);
-		assert.match(indexPageSource, /Astro\.rewrite\('\/login-wall'/);
+		assert.match(indexPageSource, /import SecureAccessWall from/);
+		assert.match(indexPageSource, /showLoginWall/);
+		assert.doesNotMatch(indexPageSource, /Astro\.rewrite\(/);
 		assert.match(middlewareSource, /normalizedPath === '\/login-wall'/);
 		assert.match(middlewareSource, /resolveLoginWallGet/);
+	});
+
+	it('locked /homepage renders the wall inline (no rewrite to /)', () => {
+		assert.match(homepagePageSource, /import SecureAccessWall from/);
+		assert.doesNotMatch(homepagePageSource, /Astro\.rewrite\(/);
+		assert.doesNotMatch(slugPageSource, /Astro\.rewrite\(/);
 	});
 
 	it('locked / sends a live session to /homepage instead of the anonymous wall', () => {
 		assert.match(indexPageSource, /getOptionalEditorialSession/);
 		assert.match(indexPageSource, /resolveRootGet/);
 		assert.match(indexPageSource, /Astro\.redirect\(rootAction\.location, rootAction\.status\)/);
-		const wallRewrite = indexPageSource.indexOf("Astro.rewrite('/login-wall'");
+		const wallRender = indexPageSource.indexOf('showLoginWall');
 		const sessionRedirect = indexPageSource.indexOf('Astro.redirect(rootAction.location, rootAction.status)');
-		assert.ok(wallRewrite >= 0 && sessionRedirect >= 0);
+		assert.ok(wallRender >= 0 && sessionRedirect >= 0);
 		assert.ok(
-			sessionRedirect < wallRewrite,
-			'signed-in redirect must run before the anonymous wall rewrite',
+			sessionRedirect < wallRender,
+			'signed-in redirect must run before the anonymous wall render',
 		);
 	});
 

@@ -57,10 +57,12 @@ describe('EmDash middleware.outer wraps EmDash redirect (not an app slug map)', 
 });
 
 describe('ft-mw path helpers', () => {
-	it('traces /posts/* and /auth/login only', () => {
+	it('traces HTML hang surfaces: posts, login, root, homepage', () => {
 		assert.equal(shouldTraceFtMwPath('/posts/weekly-summary-30-august-2026'), true);
 		assert.equal(shouldTraceFtMwPath('/auth/login'), true);
-		assert.equal(shouldTraceFtMwPath('/homepage'), false);
+		assert.equal(shouldTraceFtMwPath('/'), true);
+		assert.equal(shouldTraceFtMwPath('/homepage'), true);
+		assert.equal(shouldTraceFtMwPath('/login-wall'), true);
 		assert.equal(shouldTraceFtMwPath('/_emdash/admin'), false);
 	});
 

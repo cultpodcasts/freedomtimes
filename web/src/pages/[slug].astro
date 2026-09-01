@@ -3,6 +3,7 @@ import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../components/EmDashContentView.astro';
 import HomepageView from '../components/HomepageView.astro';
+import SecureAccessWall from '../components/SecureAccessWall.astro';
 import { isLockedSiteAccess, readOptionalEnv, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
 	HOMEPAGE_ROOT_REDIRECT_LOCATION,
@@ -39,6 +40,8 @@ let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let resolvedIsPreview = false;
 let resolvedLabel = 'Page';
 let resolvedCollectionKey: 'pages' | 'posts' | null = null;
+let showHomepageLoginWall = false;
+let homepageLoginDenied = false;
 
 const sessionContext = {
 	cookies: Astro.cookies,
@@ -60,18 +63,19 @@ if (isHomepage) {
 	}
 
 	if (homepageAction.kind === 'login-wall') {
-		return Astro.rewrite('/');
-	}
-
-	if (homepageAction.kind === 'require-session') {
+		// Render below. Do not rewrite to `/` — custom-domain HTML hang (230af65d).
+		showHomepageLoginWall = true;
+		homepageLoginDenied = Astro.url.searchParams.get('denied') === '1';
+	} else if (homepageAction.kind === 'require-session') {
 		const session = await requireEditorialSession(sessionContext);
 
 		if (session instanceof Response) {
-			return Astro.rewrite('/?denied=1');
+			showHomepageLoginWall = true;
+			homepageLoginDenied = true;
+		} else {
+			isAdmin = session.isAdmin;
+			isSignedIn = true;
 		}
-
-		isAdmin = session.isAdmin;
-		isSignedIn = true;
 	}
 } else if (isLocked) {
 	const session = await requireEditorialSession(sessionContext);
@@ -147,7 +151,9 @@ if (!isHomepage) {
 }
 ---
 
-{isHomepage ? (
+{showHomepageLoginWall ? (
+	<SecureAccessWall denied={homepageLoginDenied} />
+) : isHomepage ? (
 	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
 ) : (
 	<EmDashContentView

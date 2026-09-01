@@ -1,6 +1,12 @@
 /** Paths that get `[ft-mw]` structured logs for wrangler tail. */
 export function shouldTraceFtMwPath(pathname: string): boolean {
-	return pathname.startsWith('/posts/') || pathname === '/auth/login';
+	return (
+		pathname.startsWith('/posts/')
+		|| pathname === '/auth/login'
+		|| pathname === '/'
+		|| pathname === '/homepage'
+		|| pathname === '/login-wall'
+	);
 }
 
 export function isHttpRedirectStatus(status: number): boolean {

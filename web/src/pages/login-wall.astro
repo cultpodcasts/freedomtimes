@@ -1,6 +1,8 @@
 ---
 import SecureAccessWall from '../components/SecureAccessWall.astro';
 
+// Fallback if something requests /login-wall directly. Locked `/` renders
+// SecureAccessWall inline — do not rewrite here from index.astro (custom-domain hang).
 const denied = Astro.url.searchParams.get('denied') === '1';
 ---
 <SecureAccessWall denied={denied} />
