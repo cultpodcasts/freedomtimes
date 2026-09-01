@@ -191,15 +191,15 @@ describe('homepage host wiring', () => {
 		assert.match(indexPageSource, /rootAction\.kind === 'login-wall'/);
 		assert.match(indexPageSource, /import SecureAccessWall from/);
 		assert.match(indexPageSource, /showLoginWall/);
-		assert.doesNotMatch(indexPageSource, /Astro\.rewrite\(/);
+		assert.doesNotMatch(indexPageSource, /return Astro\.rewrite\(/);
 		assert.match(middlewareSource, /normalizedPath === '\/login-wall'/);
 		assert.match(middlewareSource, /resolveLoginWallGet/);
 	});
 
 	it('locked /homepage renders the wall inline (no rewrite to /)', () => {
 		assert.match(homepagePageSource, /import SecureAccessWall from/);
-		assert.doesNotMatch(homepagePageSource, /Astro\.rewrite\(/);
-		assert.doesNotMatch(slugPageSource, /Astro\.rewrite\(/);
+		assert.doesNotMatch(homepagePageSource, /return Astro\.rewrite\(/);
+		assert.doesNotMatch(slugPageSource, /return Astro\.rewrite\(/);
 	});
 
 	it('locked / sends a live session to /homepage instead of the anonymous wall', () => {

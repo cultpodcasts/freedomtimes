@@ -80,7 +80,7 @@ describe('GET /homepage', () => {
 		hostname: PRODUCTION_APEX,
 	};
 
-	it('staging locked: no auth cookies rewrite to the wall via /', () => {
+	it('staging locked: no auth cookies is the login wall (inline, not a rewrite)', () => {
 		assert.deepEqual(resolveHomepageGet({ ...lockedStaging }), { kind: 'login-wall' });
 		assert.deepEqual(
 			resolveHomepageGet({ ...lockedStaging, sessionCookie: '', refreshCookie: '  ' }),
