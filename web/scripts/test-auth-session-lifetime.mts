@@ -96,11 +96,19 @@ describe('auth session lifetime', () => {
 		assert.match(adminSessionSource, /function wipeAuthCookies/);
 		assert.match(
 			adminSessionSource,
-			/if \(verified\.ok\) \{[\s\S]*wipeAuthCookies\(params\.context\.cookies/,
+			/if \(verified\.reason === 'forbidden'\) \{\s*[\s\S]*return params\.context\.redirect\('\/\?denied=1'\);/,
 		);
 		assert.match(
 			adminSessionSource,
-			/if \(!verified\.ok\) \{\s*wipeAuthCookies\(params\.cookies, params\.url\.hostname\);/,
+			/wipeAuthCookies\(params\.context\.cookies, params\.context\.url\.hostname\);/,
+		);
+		assert.match(
+			adminSessionSource,
+			/if \(verified\.reason === 'forbidden'\) \{\s*return jsonAuthError\('Forbidden', 403\);/,
+		);
+		assert.match(
+			adminSessionSource,
+			/wipeAuthCookies\(params\.cookies, params\.url\.hostname\);\s*return jsonAuthError\('Unauthorized', 401\);/,
 		);
 	});
 
