@@ -14,6 +14,7 @@
 | [PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md) | Full `.env.dev` push key reference |
 | [EMDASH_CLOUDFLARE_EMAIL.md](./EMDASH_CLOUDFLARE_EMAIL.md) | EmDash magic links via Cloudflare Email Sending (`EMAIL` binding) |
 | [scripts/set-github-secrets.md](../../scripts/set-github-secrets.md) | Cloudflare token permissions for CI |
+| [CLOUD_AGENT_DEPLOY_ISSUES.md](./CLOUD_AGENT_DEPLOY_ISSUES.md) | Cloud VM staging/production deploy pitfalls (CA-01…); scripted vs STOP |
 
 ---
 
@@ -599,6 +600,8 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 | Terraform: `No such module "node:module"` on worker script | Terraform trying to push holding template over Wrangler bundle | Ensure `lifecycle.ignore_changes` on `cloudflare_workers_script`; deploy via Wrangler |
 | Wrangler auth / non-interactive failure | OAuth not available | Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` |
 | Wrangler `6111` / `9106` (invalid Authorization header) during `secret put` or deploy | Process `CLOUDFLARE_API_TOKEN` is a short Cursor stub shadowing `TF_VAR_CLOUDFLARE_API_TOKEN` | Deploy scripts replace tokens shorter than 40 characters with `TF_VAR_CLOUDFLARE_API_TOKEN`. If a session still has the stub, export the TF_VAR value over `CLOUDFLARE_API_TOKEN` (never print it). |
+| Refusing EmDash apply without `EMDASH_TARGET_FINGERPRINT` on Cloud VM | Production-looking Turso URL; CI pins are not Cursor secrets | Local `deploy-*-local.ps1` pins process `EMDASH_TARGET_FINGERPRINT` from same-run `--status` after build (`print-fingerprint`). Do not invent Cursor secrets. See [CLOUD_AGENT_DEPLOY_ISSUES.md](./CLOUD_AGENT_DEPLOY_ISSUES.md) CA-08 / CA-15 |
+| `-SkipTursoBackup` refuses despite `.release/rollback-branches/*.json` | Snapshot file mtime is Unix epoch (1970); JSON `createdAtUtc` is old | Skip check uses `createdAtUtc` and ignores 1970 mtimes. Omit `-SkipTursoBackup` and let the script create a new rollback branch (CA-16) |
 | Staging migrate would hit production EmDash / process `TURSO_DATABASE_URL` is production | Cursor Cloud injects production EmDash as process `TURSO_*` while `.env.dev` is staging | `Select-StagingEmdashTursoUrl` skips the process URL (even when Terraform URL is set) and `Select-StagingEmdashTursoToken` skips process JWT when `IgnoredProcessProductionShadow` is set. Do **not** copy production into `.env.dev`. If resolve throws, fix `.env.dev` / Terraform staging URL and mint a staging JWT |
 | Terraform `Required plugins are not installed` / lockfile checksum mismatch on Linux | Fresh VM has no `.terraform`, or Linux `terraform init` added extra platform hashes | Full `deploy-*-local.ps1` inits when `.terraform` is missing and retries apply **once**. **Leave the lockfile dirty through apply**; scripts revert hash-only after success. Do **not** `git checkout` the lockfile before retry |
 | Terraform Cloud auth missing on Cloud Agent | Cursor secret is `TF_TOKEN_APP_TERRAFORM_IO`; CLI wants `TF_TOKEN_app_terraform_io` | `terraform-preflight.ps1` remaps the Cursor name. If it still fails, copy that secret into `TF_TOKEN_app_terraform_io` in process env (never print it) |

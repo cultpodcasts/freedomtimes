@@ -764,6 +764,38 @@ function Get-DeployFreshBackupCutoffUtc {
     return (Get-Date).ToUniversalTime().AddHours(-24)
 }
 
+function Get-DeployRollbackMetadataFreshnessUtc {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]$File,
+        [object]$Meta = $null
+    )
+
+    $created = $null
+    if ($null -ne $Meta) {
+        $prop = $Meta.PSObject.Properties["createdAtUtc"]
+        if ($null -ne $prop -and -not [string]::IsNullOrWhiteSpace([string]$prop.Value)) {
+            $created = [string]$prop.Value
+        }
+    }
+    if ($null -ne $created) {
+        try {
+            return ([datetime]$created).ToUniversalTime()
+        }
+        catch {
+            # Fall through to file mtime.
+        }
+    }
+
+    $mtime = $File.LastWriteTimeUtc
+    # Cloud VM snapshots often stamp git files at Unix epoch. That is not a fresh checkpoint.
+    if ($mtime.Year -le 1970) {
+        return [datetime]::MinValue
+    }
+
+    return $mtime
+}
+
 function Assert-DeployFreshEmDashTursoBackup {
     $cutoff = Get-DeployFreshBackupCutoffUtc
 
@@ -772,7 +804,7 @@ function Assert-DeployFreshEmDashTursoBackup {
         $newest = Get-ChildItem -Path $backupDir -Filter "emdash-staging-*.db" -ErrorAction SilentlyContinue |
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
-        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff) {
+        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff -or $newest.LastWriteTimeUtc.Year -le 1970) {
             throw @(
                 "Refusing -SkipTursoBackup: no staging EmDash export newer than 24h under .release/backups/emdash-staging-*.db.",
                 "Create one (see web/CONTENT_PROMOTION_RUNBOOK.md) or omit -SkipTursoBackup."
@@ -792,7 +824,6 @@ function Assert-DeployFreshEmDashTursoBackup {
     $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
     $newestMeta = $null
     $candidates = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
-        Where-Object { $_.LastWriteTimeUtc -ge $cutoff } |
         Sort-Object LastWriteTimeUtc -Descending
     foreach ($candidate in $candidates) {
         try {
@@ -812,6 +843,11 @@ function Assert-DeployFreshEmDashTursoBackup {
                     -ExpectedDatabase $expectedDb `
                     -ProductionUrls $productionUrls)) {
             Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name or URL)."
+            continue
+        }
+        $freshAt = Get-DeployRollbackMetadataFreshnessUtc -File $candidate -Meta $meta
+        if ($freshAt -lt $cutoff) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (createdAtUtc/mtime $freshAt is older than 24h; Unix-epoch snapshot mtimes do not count)."
             continue
         }
         $newestMeta = $candidate
@@ -873,6 +909,35 @@ function Invoke-DeployEmDashTursoBackup {
     Invoke-DeployTursoRollbackCheckpoint
 }
 
+function Ensure-DeployEmdashTargetFingerprintFromStatus {
+    $existing = [Environment]::GetEnvironmentVariable("EMDASH_TARGET_FINGERPRINT", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        Write-DeployStep "EMDASH_TARGET_FINGERPRINT already set in process env (not writing .env.dev)"
+        return
+    }
+
+    Write-DeployStep "Pinning EMDASH_TARGET_FINGERPRINT from same-run emdash migrate --status --json (local deploy; not a Cursor secret)"
+    Push-Location (Join-Path $script:DeployRepoRoot "web")
+    try {
+        $raw = & node (Join-Path "scripts" "emdash-core-migrate.mjs") print-fingerprint 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            throw "emdash-core-migrate.mjs print-fingerprint failed (exit $LASTEXITCODE)."
+        }
+        $fp = ([string]$raw).Trim()
+        if ($fp -notmatch '^[0-9a-f]{64}$') {
+            throw "print-fingerprint did not return a 64-character SHA-256 hex digest."
+        }
+        $env:EMDASH_TARGET_FINGERPRINT = $fp
+        if (-not $script:DeployIsStaging) {
+            $env:EMDASH_TARGET_FINGERPRINT_PRODUCTION = $fp
+        }
+        Write-Host "Pinned EMDASH_TARGET_FINGERPRINT from --status (process env only)." -ForegroundColor DarkGray
+    }
+    finally {
+        Pop-Location
+    }
+}
+
 function Invoke-DeployEmdashCoreMigrate {
     Write-DeployStep "Applying EmDash core migrations (npx emdash migrate)"
 
@@ -886,6 +951,8 @@ function Invoke-DeployEmdashCoreMigrate {
     if (-not (Test-Path $manifest)) {
         throw "Missing $manifest after npm run build. Deploy aborted before migrate."
     }
+
+    Ensure-DeployEmdashTargetFingerprintFromStatus
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {

@@ -154,6 +154,20 @@ Assert-True (Test-DeployTerraformPluginCacheMismatch -Output @("Required plugins
 Assert-True (Test-DeployTerraformPluginCacheMismatch -Output @("the cached package for registry.terraform.io/cloudflare/cloudflare 5.22.0 (in .terraform/providers) does not match any of the checksums recorded in the dependency lock file")) "detects lockfile checksum mismatch"
 Assert-True (-not (Test-DeployTerraformPluginCacheMismatch -Output @("Apply complete! Resources: 0 added, 1 changed, 0 destroyed."))) "does not treat a successful apply as a cache mismatch"
 
+Write-Host "=== Get-DeployRollbackMetadataFreshnessUtc prefers createdAtUtc and ignores epoch mtime ==="
+$tmpRoot = $env:TMPDIR
+if ([string]::IsNullOrWhiteSpace($tmpRoot)) { $tmpRoot = "/tmp" }
+$metaPath = Join-Path $tmpRoot "rollback-freshness-test.json"
+Set-Content -LiteralPath $metaPath -Value '{"createdAtUtc":"2026-09-01T12:00:00Z","sourceDatabase":"example-emdash-production"}'
+$metaFile = Get-Item -LiteralPath $metaPath
+$metaFile.LastWriteTimeUtc = [datetime]::SpecifyKind([datetime]"1970-01-01T00:00:00", "Utc")
+$metaObj = Get-Content -LiteralPath $metaPath -Raw | ConvertFrom-Json
+$freshAt = Get-DeployRollbackMetadataFreshnessUtc -File $metaFile -Meta $metaObj
+Assert-True ($freshAt.Year -eq 2026) "uses JSON createdAtUtc instead of Unix-epoch file mtime"
+$epochOnly = Get-DeployRollbackMetadataFreshnessUtc -File $metaFile -Meta ([pscustomobject]@{})
+Assert-True ($epochOnly -eq [datetime]::MinValue) "epoch mtime without createdAtUtc is not a fresh checkpoint"
+Remove-Item -LiteralPath $metaPath -Force -ErrorAction SilentlyContinue
+
 if (-not $IsWindows) {
     Write-Host "=== Initialize-LinuxNvmNodePath prepends nvm 22.22.2 ==="
     $tmpRoot = $env:TMPDIR

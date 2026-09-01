@@ -95,7 +95,7 @@ Context-specific runbooks (link to canonical doc for script details): [PRODUCTIO
 
 ### Cloud Agents (Linux VM — staging and production)
 
-When the operator asks for a **full staging or production stack** (Terraform + workers), run the **full** script. Do **not** default to `-WorkerOnly` / `-WorkersOnly`. Canonical step order stays in **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — do not duplicate it here. This subsection is Cloud VM pitfalls and **staging-deploy contingencies** (scripts now handle most of them; do not work around by writing production Turso into `.env.dev`).
+When the operator asks for a **full staging or production stack** (Terraform + workers), run the **full** script. Do **not** default to `-WorkerOnly` / `-WorkersOnly`. Canonical step order stays in **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — do not duplicate it here. This subsection is Cloud VM pitfalls. Full issue log: **[web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md](web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md)** (CA-01…). Scripts now handle most of them; do not work around by writing production Turso into `.env.dev`.
 
 **Hard rules**
 
@@ -128,7 +128,9 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 | Missing Terraform Cloud token | Remap `TF_TOKEN_APP_TERRAFORM_IO` → `TF_TOKEN_app_terraform_io` | Copy that Cursor secret into the preflight name in process env (never print it) |
 | Wrangler `6111` / `9106` | Replace short `CLOUDFLARE_API_TOKEN` stub with `TF_VAR_CLOUDFLARE_API_TOKEN` | Same overwrite in process env |
 | `EBADENGINE` / Node 22.14 | Prepend nvm 22.22.2 | Install that nvm version; prepend its `bin` |
-| `EMDASH_TARGET_FINGERPRINT` unset | Same-run `--status` fingerprint (local non-prod) | Only pin if migrate refuses a production-looking host |
+| `EMDASH_TARGET_FINGERPRINT` unset | Local deploy pins from same-run `--status` after build (`print-fingerprint`) | Only if apply still refuses (wrong host). Do not invent Cursor secrets |
+| Production process URL = production hint; `.env.dev` stays staging | Production resolve uses `TURSO_PRODUCTION_EMDASH_DB_TOKEN` / paired JWT. Never write that pair into `.env.dev` | Copy process JWT into `TURSO_PRODUCTION_EMDASH_DB_TOKEN` only |
+| Rollback JSON mtime 1970 / old `createdAtUtc` | Skip check uses `createdAtUtc`; epoch mtime is not fresh | Omit `-SkipTursoBackup`; create a new rollback branch |
 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Ignore | Do not treat as this VM deploy failing |
 | Staging `/` 1–3s with `Server-Timing` | Success | A hang is **0-byte pending**, not a slow 200 |
 | `punycode` deprecation / `patch-cloudflare-bundle` patched 0 | Ignore | Noise |
@@ -147,7 +149,7 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 - Full stack: `pwsh ./scripts/deploy-production-local.ps1` with **no** `-WorkerOnly`. That creates a Turso rollback branch, applies Terraform, syncs Worker secrets, builds, migrates, and deploys. Do **not** pass `-SkipTursoBackup` unless a checkpoint newer than 24h already matches (scripts match `sourceDatabase` to `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` **or** the production EmDash URL host — `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` is often unset here).
 - **`TURSO_PRODUCTION_EMDASH_DB_TOKEN`** is often unset as a Cursor secret. If process `TURSO_DATABASE_URL` is production EmDash, copy process `TURSO_AUTH_TOKEN` into `TURSO_PRODUCTION_EMDASH_DB_TOKEN` only. Do **not** write that pair into `.env.dev` as `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` (file `TURSO_DATABASE_URL` stays staging). Do **not** source staging Turso PATH overlays during a production deploy.
 - Resolve helpers now prefer `TURSO_PRODUCTION_EMDASH_DB_TOKEN` over Terraform-minted `turso_database_auth_token` (that output has **404'd**). Still mint/set the production JWT; do not use process `TURSO_AUTH_TOKEN` as a *staging* token when the hosts match.
-- Fingerprint: after `web/` build against the **production** host, take `emdash migrate --status --json` and set `EMDASH_TARGET_FINGERPRINT` plus `EMDASH_TARGET_FINGERPRINT_PRODUCTION`. Do not require those names as Cursor secrets.
+- Fingerprint: after `web/` build, `Ensure-DeployEmdashTargetFingerprintFromStatus` sets process `EMDASH_TARGET_FINGERPRINT` from `node web/scripts/emdash-core-migrate.mjs print-fingerprint` when unset. Do not require `EMDASH_TARGET_FINGERPRINT_*` as Cursor secrets. Do not write the pin into `.env.dev`.
 - If Terraform apply **succeeds** and a later step fails: do not re-apply blindly. Finish with `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SyncCloudflareWorkerSecrets` (omit `-SkipTursoBackup` unless the skip check passes). If Terraform itself failed: **STOP** before wrangler.
 - Apply delta of `0 added, 1 changed, 0 destroyed` on the holding-page Worker is expected (`last_deployed_from = wrangler`).
 - Probe apex `/` (200 newsroom, not Secure Access) and `/homepage` (301 → `/` on the same host). Do not require `www` (may have no DNS). Staging probes stay the locked wall.

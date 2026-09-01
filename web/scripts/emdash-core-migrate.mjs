@@ -4,8 +4,8 @@
  *
  * Uses the project CLI (`npx --no-fund emdash migrate`) against
  * `.emdash/migrations.json` from `npm run build`. Apply uses a pre-reviewed
- * `EMDASH_TARGET_FINGERPRINT` in CI/production; local non-prod may take the
- * fingerprint from `--status --json` after logging a redacted host.
+ * `EMDASH_TARGET_FINGERPRINT` in CI/production; local deploy may pin from
+ * `--status --json` (`print-fingerprint` / same-run apply for non-prod).
  *
  * Requires TURSO_DATABASE_URL + TURSO_AUTH_TOKEN. Refuses the Astro build
  * placeholder URL so Worker-only deploys cannot migrate the wrong target.
@@ -21,8 +21,8 @@ const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = resolve(webRoot, ".emdash/migrations.json");
 
 const mode = (process.argv[2] || "").trim();
-if (!["apply", "check", "status"].includes(mode)) {
-	console.error("Usage: node scripts/emdash-core-migrate.mjs <apply|check|status>");
+if (!["apply", "check", "status", "print-fingerprint"].includes(mode)) {
+	console.error("Usage: node scripts/emdash-core-migrate.mjs <apply|check|status|print-fingerprint>");
 	process.exit(1);
 }
 
@@ -151,6 +151,13 @@ console.error(`EmDash migrate target host: ${redactedTursoHost(tursoUrl)} (mode=
 if (mode === "status") {
 	const result = runEmdashMigrate(["--status"]);
 	process.exit(result.status ?? 1);
+}
+
+if (mode === "print-fingerprint") {
+	const status = runEmdashMigrate(["--status", "--json"], { capture: true });
+	const report = parseStatusReport(status);
+	process.stdout.write(`${readStatusFingerprint(report)}\n`);
+	process.exit(0);
 }
 
 if (mode === "check") {
