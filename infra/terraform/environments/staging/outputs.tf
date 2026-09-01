@@ -24,6 +24,11 @@ output "auth0_api_identifier" {
   value       = module.auth0_app.api_identifier
 }
 
+output "auth0_staging_reader_role_id" {
+  description = "Auth0 staging-reader role ID (assign in Auth0; honored only on locked staging)"
+  value       = module.auth0_app.staging_reader_role_id
+}
+
 /*
 output "azure_resource_group_name" {
   description = "Resource Group name for staging editorial API resources"

@@ -119,6 +119,14 @@ resource "auth0_role" "admin" {
   description = "Can manage all content, delete stories, manage subscribers"
 }
 
+# Staging-reader — Auth0 tenant role created by staging terraform. No API
+# permissions. The production Worker must not treat this as a login role.
+resource "auth0_role" "staging_reader" {
+  count       = var.create_staging_reader_role ? 1 : 0
+  name        = "staging-reader"
+  description = "Read published content pages on locked staging. Not /admin and not EmDash CMS."
+}
+
 # Editor role permissions
 resource "auth0_role_permissions" "editor_permissions" {
   count   = var.create_shared_resources ? 1 : 0
