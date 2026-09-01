@@ -156,8 +156,9 @@ export default defineConfig({
     },
     emdash({
       mcp: true,
-      // Reorders EmDash's own `emdash/middleware/redirect` ahead of getRuntime.
-      // Do not replace editorial 302s with an app slug map — see emdash-outer-middleware.ts.
+      // [ft-mw] logs only. Do not run `emdash/middleware/redirect` here:
+      // its getDb() singleton hangs later HTML requests on workerd.
+      // Official redirect stays after getRuntime (scoped db).
       middleware: {
         outer: './src/emdash-outer-middleware.ts',
       },

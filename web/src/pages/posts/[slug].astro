@@ -35,7 +35,7 @@ const sessionContext = {
 	redirect: Astro.redirect,
 };
 
-// Editorial 302s are EmDash's (`middleware.outer` → `emdash/middleware/redirect`).
+// Editorial 302s are EmDash's (`emdash/middleware/redirect` after getRuntime).
 // This page only runs on a miss. Do not second-guess getEmDashEntry / edit / preview.
 logPostSsr('session-start', { locked: isLocked });
 if (isLocked) {

@@ -16,7 +16,7 @@ const integrationSource = readFileSync(
 	'utf8',
 );
 
-describe('EmDash middleware.outer wraps EmDash redirect (not an app slug map)', () => {
+describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 	it('registers middleware.outer before getRuntime in astro.config', () => {
 		assert.ok(astroConfig.includes("outer: './src/emdash-outer-middleware.ts'"));
 	});
@@ -29,11 +29,14 @@ describe('EmDash middleware.outer wraps EmDash redirect (not an app slug map)', 
 		assert.match(integrationSource, /config\.middleware\?\.outer/);
 	});
 
-	it('outer delegates to emdash/middleware/redirect and does not query _emdash_redirects itself', () => {
-		assert.match(outerSource, /from 'emdash\/middleware\/redirect'/);
-		assert.match(outerSource, /emdashRedirect\(/);
+	it('outer does not call getDb or emdash/middleware/redirect before runtime', () => {
+		assert.doesNotMatch(outerSource, /from 'emdash\/middleware\/redirect'/);
+		assert.doesNotMatch(outerSource, /emdashRedirect\(/);
+		assert.doesNotMatch(outerSource, /await getDb\(/);
+		assert.doesNotMatch(outerSource, /getDb\(\)/);
 		assert.doesNotMatch(outerSource, /selectFrom\(/);
 		assert.doesNotMatch(outerSource, /from 'emdash\/runtime'/);
+		assert.match(outerSource, /official-redirect-after-runtime/);
 	});
 
 	it('posts/[slug] uses getEmDashEntry and does not invent a lookup timeout or preview gate', () => {
@@ -47,14 +50,11 @@ describe('EmDash middleware.outer wraps EmDash redirect (not an app slug map)', 
 		assert.doesNotMatch(postPage, /shouldRenderPublicPost/);
 	});
 
-	it('logs [ft-mw] enter, redirect-check, next, and redirect-return', () => {
+	it('logs [ft-mw] enter, defer to official redirect, and next timing', () => {
 		assert.match(outerSource, /\[ft-mw\]/);
 		for (const event of [
 			"'enter'",
-			"'redirect-check start'",
-			"'redirect-check hit'",
-			"'redirect-check miss'",
-			"'redirect-return'",
+			"'redirect-check defer'",
 			"'next-start'",
 			"'next-end'",
 			"'next-hang'",
