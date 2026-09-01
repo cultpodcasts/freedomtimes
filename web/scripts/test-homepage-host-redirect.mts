@@ -182,10 +182,10 @@ describe('homepage host wiring', () => {
 	});
 
 	it('locked / returns the wall Response (no rewrite to /login-wall)', () => {
-		// Astro.rewrite re-runs middleware and, on the Cloudflare custom domain,
-		// document requests hang at 0 bytes (staging 230af65d). workers.dev still
-		// answered. A Response is the document boundary so Homepage CSS cannot
-		// override Inter / place-items:center after logout.
+		// A Response is the document boundary so Homepage CSS cannot override
+		// Inter / place-items:center. Do not rewrite `/` to `/login-wall` to
+		// compose two templates. The old 0-byte custom-domain hang was
+		// isolate-wide getDb, not rewrite.
 		assert.match(indexPageSource, /resolveRootGet/);
 		assert.match(indexPageSource, /rootAction\.kind === 'login-wall'/);
 		assert.match(indexPageSource, /return secureAccessWallResponse/);
