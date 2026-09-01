@@ -8,9 +8,22 @@ import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../../lib/editorial-session';
+import { withDeadline } from '../../lib/with-deadline';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
+const ssrStarted = performance.now();
+const cfRay = Astro.request.headers.get('cf-ray') ?? '';
+
+function logPostSsr(event: string, extra: Record<string, string | number | boolean | null | undefined> = {}) {
+	console.log('[ft-ssr]', JSON.stringify({
+		event,
+		cfRay,
+		pathname: Astro.url.pathname,
+		elapsedMs: Math.round(performance.now() - ssrStarted),
+		...extra,
+	}));
+}
 
 let displayName = 'Reader';
 let isAdmin = false;
@@ -23,23 +36,43 @@ const sessionContext = {
 	redirect: Astro.redirect,
 };
 
-if (isLocked) {
-	const session = await requireEditorialSession(sessionContext);
+logPostSsr('session-start', { locked: isLocked });
+try {
+	if (isLocked) {
+		const session = await withDeadline(
+			requireEditorialSession(sessionContext),
+			5_000,
+			'requireEditorialSession',
+		);
 
-	if (session instanceof Response) {
-		return session;
-	}
+		if (session instanceof Response) {
+			logPostSsr('session-redirect', { status: session.status });
+			return session;
+		}
 
-	displayName = session.displayName;
-	isAdmin = session.isAdmin;
-	isSignedIn = true;
-} else {
-	const session = await getOptionalEditorialSession(sessionContext);
-	if (session) {
 		displayName = session.displayName;
 		isAdmin = session.isAdmin;
 		isSignedIn = true;
+	} else {
+		const session = await withDeadline(
+			getOptionalEditorialSession(sessionContext),
+			5_000,
+			'getOptionalEditorialSession',
+		);
+		if (session) {
+			displayName = session.displayName;
+			isAdmin = session.isAdmin;
+			isSignedIn = true;
+		}
 	}
+	logPostSsr('session-end', { isSignedIn, isAdmin });
+} catch (error) {
+	const message = error instanceof Error ? error.message : String(error);
+	logPostSsr('session-timeout', { error: message });
+	return new Response('Editorial session timed out', {
+		status: 503,
+		headers: { 'content-type': 'text/plain; charset=utf-8' },
+	});
 }
 
 const slug = Astro.params.slug;
@@ -67,38 +100,61 @@ if (!slug) {
 	notFound = true;
 	Astro.response.status = 404;
 } else {
-	const result = await getEmDashEntry('posts', slug);
+	logPostSsr('entry-start', { slug });
+	let result: Awaited<ReturnType<typeof getEmDashEntry>>;
+	try {
+		result = await withDeadline(getEmDashEntry('posts', slug), 8_000, 'getEmDashEntry');
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		logPostSsr('entry-timeout', { slug, error: message });
+		return new Response('Post lookup timed out', {
+			status: 503,
+			headers: { 'content-type': 'text/plain; charset=utf-8' },
+		});
+	}
 	entry = result.entry;
 	isPreview = result.isPreview;
+	logPostSsr('entry-end', { slug, hasEntry: Boolean(entry), isPreview });
 
 	if (result.error) {
 		if (isExpectedLookupMiss(result.error)) {
-			const { entries, error } = await getEmDashCollection('posts', {
-				limit: 100,
-				orderBy: { updated_at: 'desc' },
-			});
+			try {
+				const { entries, error } = await withDeadline(
+					getEmDashCollection('posts', {
+						limit: 100,
+						orderBy: { updated_at: 'desc' },
+					}),
+					3_000,
+					'getEmDashCollection',
+				);
 
-			if (error) {
-				if (isExpectedLookupMiss(error)) {
-					notFound = true;
-					Astro.response.status = 404;
+				if (error) {
+					if (isExpectedLookupMiss(error)) {
+						notFound = true;
+						Astro.response.status = 404;
+					} else {
+						throw error;
+					}
 				} else {
-					throw error;
-				}
-			} else {
-				const fallback = entries.find((candidate) => {
-					const data = candidate.data as Record<string, unknown>;
-					const candidateDataSlug = readSlug(data);
-					return candidate.id === slug || candidateDataSlug === slug;
-				});
+					const fallback = entries.find((candidate) => {
+						const data = candidate.data as Record<string, unknown>;
+						const candidateDataSlug = readSlug(data);
+						return candidate.id === slug || candidateDataSlug === slug;
+					});
 
-				if (fallback) {
-					entry = fallback;
-					notFound = false;
-				} else {
-					notFound = true;
-					Astro.response.status = 404;
+					if (fallback) {
+						entry = fallback;
+						notFound = false;
+					} else {
+						notFound = true;
+						Astro.response.status = 404;
+					}
 				}
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				logPostSsr('collection-timeout', { slug, error: message });
+				notFound = true;
+				Astro.response.status = 503;
 			}
 		} else {
 			throw result.error;

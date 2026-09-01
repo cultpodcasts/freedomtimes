@@ -156,6 +156,11 @@ export default defineConfig({
     },
     emdash({
       mcp: true,
+      // Reorders EmDash's own `emdash/middleware/redirect` ahead of getRuntime.
+      // Do not replace editorial 302s with an app slug map — see emdash-outer-middleware.ts.
+      middleware: {
+        outer: './src/emdash-outer-middleware.ts',
+      },
       database: emdashDatabase,
       // Staging/production must not auto-migrate on first request. Deploy
       // scripts apply `npx emdash migrate` after Turso backup, then `--check`.
