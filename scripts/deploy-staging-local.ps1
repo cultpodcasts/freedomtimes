@@ -65,39 +65,49 @@ if ($WorkersOnly) {
 
 if (-not $skipTerraform) {
     Invoke-DeployTerraformApplyWithRecovery
-    Assert-DeployAuth0SyncToEnv
-    Invoke-DeployEnforceStagingPublishOnlyCollections
-    Invoke-DeploySecretSync
 }
-elseif ($SyncCloudflareWorkerSecrets) {
-    if (-not $WorkersOnly) {
-        Ensure-DeployCloudflareAccountIdFromEnv
+
+try {
+    if (-not $skipTerraform) {
+        Assert-DeployAuth0SyncToEnv
+        Invoke-DeployEnforceStagingPublishOnlyCollections
+        Invoke-DeploySecretSync
     }
-    Invoke-DeploySecretSync
+    elseif ($SyncCloudflareWorkerSecrets) {
+        if (-not $WorkersOnly) {
+            Ensure-DeployCloudflareAccountIdFromEnv
+        }
+        Invoke-DeploySecretSync
+    }
+
+    Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly -SkipVersionBump:$SkipVersionBump
+
+    if ($WorkersOnly) {
+        $webDistDir = Join-Path $script:DeployRepoRoot "web" "dist"
+        Assert-DeployFreshWebBuild -DistDir $webDistDir -BuildStartedAt $script:DeployWebBuildStartedAt
+        $webVarArgs = Get-DeployStagingWebWranglerVarArgs
+        Invoke-DeployEmdashCoreMigrate
+        Invoke-DeployWorkerDeploy -WranglerVarArgs $webVarArgs
+        Invoke-DeployEmdashCoreMigrateCheck
+        Invoke-DeploySchedulerWorkerDeploy
+
+        Write-DeployStep "Staging deploy complete"
+        Write-Host "Web worker:    $(Get-DeployWorkerName -WorkerOnly:$true)" -ForegroundColor Green
+        Write-Host "Scheduler:     deployed (staging env)" -ForegroundColor Green
+        Write-DeployGithubCiNoiseNote
+    }
+    else {
+        Invoke-DeployEmdashCoreMigrate
+        Invoke-DeployWorkerDeploy
+        Invoke-DeployEmdashCoreMigrateCheck
+        Invoke-DeployWorkerSecretVerification
+
+        Write-DeployStep "Staging deploy complete"
+        Write-Host "Worker: $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
+        Write-DeployGithubCiNoiseNote
+    }
 }
-
-Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly -SkipVersionBump:$SkipVersionBump
-
-if ($WorkersOnly) {
-    $webDistDir = Join-Path $script:DeployRepoRoot "web" "dist"
-    Assert-DeployFreshWebBuild -DistDir $webDistDir -BuildStartedAt $script:DeployWebBuildStartedAt
-    $webVarArgs = Get-DeployStagingWebWranglerVarArgs
-    Invoke-DeployEmdashCoreMigrate
-    Invoke-DeployWorkerDeploy -WranglerVarArgs $webVarArgs
-    Invoke-DeployEmdashCoreMigrateCheck
-    Invoke-DeploySchedulerWorkerDeploy
-
-    Write-DeployStep "Staging deploy complete"
-    Write-Host "Web worker:    $(Get-DeployWorkerName -WorkerOnly:$true)" -ForegroundColor Green
-    Write-Host "Scheduler:     deployed (staging env)" -ForegroundColor Green
-}
-else {
-    Invoke-DeployEmdashCoreMigrate
-    Invoke-DeployWorkerDeploy
-    Invoke-DeployEmdashCoreMigrateCheck
-    Invoke-DeployWorkerSecretVerification
-
-    Write-DeployStep "Staging deploy complete"
-    Write-Host "Worker: $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
+finally {
+    Complete-DeployTerraformLockfileRestore
 }
 

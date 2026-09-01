@@ -67,30 +67,40 @@ if (-not $DryRun) {
 
 if (-not $WorkerOnly) {
     Invoke-DeployTerraformApplyWithRecovery
-    Sync-DeployProductionAuth0EnvFromTerraform
-    Assert-DeployAuth0SyncToEnv
-    Invoke-DeploySecretSync
-}
-elseif ($SyncCloudflareWorkerSecrets) {
-    Invoke-DeploySecretSync
 }
 
-if ($DryRun) {
-    Write-DeployStep "Dry run — verifying live Worker secrets (no build or deploy)"
+try {
+    if (-not $WorkerOnly) {
+        Sync-DeployProductionAuth0EnvFromTerraform
+        Assert-DeployAuth0SyncToEnv
+        Invoke-DeploySecretSync
+    }
+    elseif ($SyncCloudflareWorkerSecrets) {
+        Invoke-DeploySecretSync
+    }
+
+    if ($DryRun) {
+        Write-DeployStep "Dry run — verifying live Worker secrets (no build or deploy)"
+        Invoke-DeployWorkerSecretVerification
+        Write-DeployStep "Dry run complete — skipping build and deploy"
+        Write-Host "Worker name (display): $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
+        exit 0
+    }
+
+    Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
+    Invoke-DeployEmdashCoreMigrate
+    Invoke-DeployWorkerDeploy
+    Invoke-DeployEmdashCoreMigrateCheck
     Invoke-DeployWorkerSecretVerification
-    Write-DeployStep "Dry run complete — skipping build and deploy"
-    Write-Host "Worker name (display): $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
-    exit 0
+
+    Write-DeployStep "Production deploy complete"
+    Write-Host "Worker: $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
+    Write-DeployGithubCiNoiseNote
+}
+finally {
+    Complete-DeployTerraformLockfileRestore
 }
 
-Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
-Invoke-DeployEmdashCoreMigrate
-Invoke-DeployWorkerDeploy
-Invoke-DeployEmdashCoreMigrateCheck
-Invoke-DeployWorkerSecretVerification
-
-Write-DeployStep "Production deploy complete"
-Write-Host "Worker: $(Get-DeployWorkerName -WorkerOnly:$WorkerOnly)" -ForegroundColor Green
 # Native helpers (where.exe / terraform output probes) can leave LASTEXITCODE non-zero
 # even after a successful wrangler deploy; force a clean success exit.
 exit 0
