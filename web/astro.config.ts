@@ -34,6 +34,9 @@ const emdashDatabase = {
     authToken: process.env.TURSO_AUTH_TOKEN?.trim() || '',
   },
   type: 'sqlite',
+  // Fresh libsql client per request (see createRequestScopedDb in the shim).
+  // Without this, EmDash uses isolate-wide getDb() and staging HTML hangs.
+  supportsRequestScope: true,
   // Keep the Worker shim for runtime secrets; official libSQL executor writes
   // .emdash/migrations.json so `npx emdash migrate` can apply against Turso.
   migrations: {

@@ -21,6 +21,16 @@ describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 		assert.ok(astroConfig.includes("outer: './src/emdash-outer-middleware.ts'"));
 	});
 
+	it('enables per-request libsql scope so getDb is not isolate-wide on Workers', () => {
+		assert.match(astroConfig, /supportsRequestScope:\s*true/);
+		const shim = readFileSync(
+			fileURLToPath(new URL('../src/shims/kysely-libsql.ts', import.meta.url)),
+			'utf8',
+		);
+		assert.match(shim, /export function createRequestScopedDb/);
+		assert.match(shim, /new Kysely/);
+	});
+
 	it('EmDash still registers runtime then redirect; outer is the only reorder', () => {
 		assert.match(
 			integrationSource,

@@ -1,6 +1,7 @@
 import * as libsql from '@libsql/client/web';
 import { env as cfEnv } from 'cloudflare:workers';
 import {
+  Kysely,
   SqliteAdapter,
   SqliteIntrospector,
   SqliteQueryCompiler,
@@ -104,6 +105,28 @@ export function createDialect(config: { url?: string; authToken?: string }) {
 /** EmDash optional cold-start dialect; libsql has no session coalescing — reuse createDialect. */
 export function createCoalescingDialect(config: { url?: string; authToken?: string }) {
   return createDialect(config);
+}
+
+/**
+ * Per-request Kysely + libsql client. Required on Cloudflare Workers: the
+ * isolate-wide getDb() client is bound to the first request's fetch, and
+ * later HTML requests hang (0 bytes) on workerd's cross-request I/O guard.
+ * EmDash middleware then puts this handle in ALS so getDb() / redirect
+ * queries stay on this request.
+ */
+export function createRequestScopedDb(_opts: unknown): {
+  db: Kysely<unknown>;
+  commit: () => void;
+  close: () => void;
+} {
+  const db = new Kysely({ dialect: createDialect({}) });
+  return {
+    db,
+    commit() {},
+    close() {
+      void db.destroy();
+    },
+  };
 }
 
 class LibsqlDriver {
