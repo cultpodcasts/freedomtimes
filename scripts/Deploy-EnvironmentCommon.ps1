@@ -53,6 +53,80 @@ function Initialize-DeployEnvironment {
     $script:DeployBaseEnvPath = Join-Path $script:DeployRepoRoot ".env.dev"
 
     Initialize-WindowsCliPath
+    Initialize-LinuxNvmNodePath
+}
+
+function Initialize-LinuxNvmNodePath {
+    # Cloud VM: default node can be 22.14; /exec-daemon/node stays first on PATH
+    # after `nvm use`, so npm ci hits EBADENGINE. Prepend nvm 22.22.2.
+    if ($IsWindows) {
+        return
+    }
+
+    $nvmRoot = if (-not [string]::IsNullOrWhiteSpace($env:NVM_DIR)) { $env:NVM_DIR } else { Join-Path $env:HOME ".nvm" }
+    $binDir = Join-Path $nvmRoot "versions/node/v22.22.2/bin"
+    if (-not (Test-Path -LiteralPath (Join-Path $binDir "node"))) {
+        Write-Warning "nvm Node v22.22.2 not found at $binDir. /exec-daemon/node can shadow nvm and leave npm on 22.14 (EBADENGINE). Install with nvm, then re-run deploy — do not rely on ``nvm use`` alone."
+        return
+    }
+
+    $segments = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    $env:PATH = $binDir + [IO.Path]::PathSeparator + (($segments | Where-Object { $_ -ne $binDir }) -join [IO.Path]::PathSeparator)
+    Write-Host "Prepended nvm Node v22.22.2 ahead of PATH (beats /exec-daemon/node)." -ForegroundColor DarkGray
+}
+
+function Test-DeployTerraformPluginCacheMismatch {
+    param([string[]]$Output)
+
+    $text = ($Output | Out-String)
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $false
+    }
+
+    return ($text -match "Required plugins are not installed") -or
+        ($text -match "does not match any of the checksums recorded in the dependency lock file")
+}
+
+function Invoke-DeployTerraformInit {
+    Write-DeployStep "terraform init $($script:DeployEnvironment) (provider plugins / .terraform)"
+    $arguments = @(
+        "-File", $script:DeployTerraformRunScript,
+        "-Environment", $script:DeployEnvironment,
+        "-Operation", "init",
+        "-LoadEnvFiles"
+    )
+    $init = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
+    $init.Output | ForEach-Object { $_ }
+    if ($init.ExitCode -ne 0) {
+        throw "Terraform init failed (exit $($init.ExitCode))."
+    }
+}
+
+function Restore-DeployTerraformLockfileIfCleanStart {
+    param([bool]$LockfileWasClean)
+
+    if (-not $LockfileWasClean) {
+        Write-DeployStep "Leaving .terraform.lock.hcl as-is (it was already dirty before deploy)"
+        return
+    }
+
+    $lockRel = "infra/terraform/environments/$($script:DeployEnvironment)/.terraform.lock.hcl"
+    Push-Location $script:DeployRepoRoot
+    try {
+        $status = & git status --porcelain -- $lockRel 2>$null
+        if ([string]::IsNullOrWhiteSpace($status)) {
+            return
+        }
+
+        Write-DeployStep "Reverting Linux-only hash changes in $lockRel (do not commit unless asked)"
+        & git checkout -- $lockRel
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "git checkout -- $lockRel failed (exit $LASTEXITCODE). Revert the lockfile hash-only diff manually."
+        }
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 function Write-DeployStep {
@@ -827,6 +901,23 @@ function Invoke-DeployEmdashCoreMigrateCheck {
 }
 
 function Invoke-DeployTerraformApplyWithRecovery {
+    $lockRel = "infra/terraform/environments/$($script:DeployEnvironment)/.terraform.lock.hcl"
+    $lockfileWasClean = $true
+    Push-Location $script:DeployRepoRoot
+    try {
+        $status = & git status --porcelain -- $lockRel 2>$null
+        $lockfileWasClean = [string]::IsNullOrWhiteSpace($status)
+    }
+    finally {
+        Pop-Location
+    }
+
+    $terraformDir = Join-Path $script:DeployTerraformEnvDir ".terraform"
+    if (-not (Test-Path -LiteralPath $terraformDir)) {
+        Write-DeployStep "No .terraform for $($script:DeployEnvironment); running terraform init first"
+        Invoke-DeployTerraformInit
+    }
+
     Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 1)"
     $arguments = @(
         "-File", $script:DeployTerraformRunScript,
@@ -839,6 +930,14 @@ function Invoke-DeployTerraformApplyWithRecovery {
     $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
     $apply1.Output | ForEach-Object { $_ }
 
+    if ($apply1.ExitCode -ne 0 -and (Test-DeployTerraformPluginCacheMismatch -Output @($apply1.Output))) {
+        Write-Warning "Terraform apply failed: provider plugin cache does not match the lockfile. Running terraform init, then retrying apply once. Leave the lockfile dirty through this retry."
+        Invoke-DeployTerraformInit
+        Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 2 after init)"
+        $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
+        $apply1.Output | ForEach-Object { $_ }
+    }
+
     if ($apply1.ExitCode -ne 0) {
         throw "Terraform apply failed (exit $($apply1.ExitCode))."
     }
@@ -847,7 +946,8 @@ function Invoke-DeployTerraformApplyWithRecovery {
         throw "Terraform apply reported errors in output despite exit code $($apply1.ExitCode)."
     }
 
-    Write-DeployStep "Terraform apply succeeded on first attempt"
+    Write-DeployStep "Terraform apply succeeded"
+    Restore-DeployTerraformLockfileIfCleanStart -LockfileWasClean $lockfileWasClean
 }
 
 function Sync-DeployProductionAuth0EnvFromTerraform {

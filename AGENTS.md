@@ -87,7 +87,7 @@ Full policy: **`web/docs/STAGING_ACCESS.md`**.
 **Hard rules for agents:**
 
 - Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**.
-- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Staging `turso db export` uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default (do not require that env key as a Cursor secret). **Compare hosts** on `TURSO_DATABASE_URL` and `TURSO_PRODUCTION_EMDASH_DB_URL`: if they match, **refuse** — do not write that pair into `.env.dev`, do not migrate it (on this Cursor environment those hosts have been equal — production EmDash). Staging Turso is database name `freedomtimes-emdash-staging`. Do not pass `-SkipTursoBackup` unless a checkpoint newer than 24h already exists. <!-- pragma: allowlist secret -->
+- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Staging `turso db export` uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default (do not require that env key as a Cursor secret). **Turso hosts:** process `TURSO_DATABASE_URL` on this Cloud env is often **production** EmDash and equals `TURSO_PRODUCTION_EMDASH_DB_URL`. Staging deploy scripts (`Select-StagingEmdashTursoUrl`) **skip that process pair** and use staging `.env.dev` / Terraform outputs. **Never** copy the process production pair into `.env.dev`. Still **refuse** if `.env.dev` itself is production. Staging Turso is database name `freedomtimes-emdash-staging`. Do not pass `-SkipTursoBackup` unless a checkpoint newer than 24h already exists. <!-- pragma: allowlist secret -->
 - Deploy scripts ship Workers and infra; they do **not** publish EmDash content (**Primary guardrails §5** for `content_publish`).
 - On deploy failure, use the canonical doc's [Quick symptom index](web/docs/DEPLOY.md#quick-symptom-index) — do not improvise alternate script names.
 
@@ -95,7 +95,7 @@ Context-specific runbooks (link to canonical doc for script details): [PRODUCTIO
 
 ### Cloud Agents (Linux VM — staging and production)
 
-When the operator asks for a **full staging or production stack** (Terraform + workers), run the **full** script. Do **not** default to `-WorkerOnly` / `-WorkersOnly`. Canonical step order stays in **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — do not duplicate it here. This subsection is only Cloud VM pitfalls.
+When the operator asks for a **full staging or production stack** (Terraform + workers), run the **full** script. Do **not** default to `-WorkerOnly` / `-WorkersOnly`. Canonical step order stays in **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — do not duplicate it here. This subsection is Cloud VM pitfalls and **staging-deploy contingencies** (scripts now handle most of them; do not work around by writing production Turso into `.env.dev`).
 
 **Hard rules**
 
@@ -107,25 +107,40 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 **Secrets / env (names only; never print values)**
 
 - Use **Cursor environment/repo secrets**, not Jon's Windows `.env.dev`.
-- Terraform Cloud: Cursor secret name is `TF_TOKEN_APP_TERRAFORM_IO`. `scripts/terraform-preflight.ps1` looks for `TF_TOKEN_app_terraform_io` (also `TF_TOKEN` / `TFE_TOKEN`). Copy the Cursor name into the preflight name in **process env** before deploy.
+- Terraform Cloud: Cursor secret name is `TF_TOKEN_APP_TERRAFORM_IO`. `scripts/terraform-preflight.ps1` remaps it to `TF_TOKEN_app_terraform_io` (also accepts `TF_TOKEN` / `TFE_TOKEN`). Do not copy it by hand unless preflight still reports a missing token. Never print the value.
 - Copy `TF_VAR_CLOUDFLARE_API_TOKEN` / `TF_VAR_CLOUDFLARE_ACCOUNT_ID` into `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` when those names are missing. **If `CLOUDFLARE_API_TOKEN` is already set but shorter than 40 characters, it is a stub** — overwrite it with `TF_VAR_CLOUDFLARE_API_TOKEN` (deploy scripts do this). A short process token makes Wrangler fail with `6111` / `9106` after Terraform has already succeeded. Never print token values.
-- **Turso hosts:** compare `TURSO_DATABASE_URL` and `TURSO_PRODUCTION_EMDASH_DB_URL`. If the hosts match, **refuse** — do not write that pair into `.env.dev`, do not migrate it, and do **not** fall back to process `TURSO_AUTH_TOKEN` (that token is the production DB JWT). Staging Turso is database name `freedomtimes-emdash-staging`. After apply, Terraform-minted `turso_database_auth_token` has **404'd**. Production resolve now prefers `TURSO_PRODUCTION_EMDASH_DB_TOKEN`; staging resolve still prefers the Terraform output (`Resolve-StagingEmdashTursoToken`). Do not then use process `TURSO_AUTH_TOKEN` because the hosts match. Mint a staging token with `turso db show` / `turso db tokens create` against that staging database after `turso config set token` from `TURSO_PLATFORM_API_TOKEN` (never `TURSO_AUTH_TOKEN` for CLI login). <!-- pragma: allowlist secret -->
-- Do **not** require `EMDASH_TARGET_FINGERPRINT_*` as Cursor secrets for this **local** script path (those pins are GitHub Actions; this Cloud env has not had them). Take the fingerprint from `emdash migrate --status --json` **after** `web/` build, then pass `--expected-target-fingerprint` from the helper.
+- **Turso hosts (staging):** process `TURSO_DATABASE_URL` on this Cloud env is often **production** EmDash and equals `TURSO_PRODUCTION_EMDASH_DB_URL`. `Select-StagingEmdashTursoUrl` / `Select-StagingEmdashTursoToken` **skip that process pair** and use Terraform `turso_database_url` or `.env.dev` staging. **Never** copy the process production pair into `.env.dev`. Do **not** unset process vars by hand unless resolve still selected production. **Refuse** if `.env.dev` / Terraform staging URL is itself production. Staging Turso is database name `freedomtimes-emdash-staging`. After apply, Terraform-minted `turso_database_auth_token` has **404'd**. Staging resolve still prefers the Terraform output when it is present; if it 404s, use `.env.dev` staging `TURSO_AUTH_TOKEN` (not process `TURSO_AUTH_TOKEN` after a production URL shadow). Mint a staging token with `turso db show` / `turso db tokens create` against that staging database after `turso config set token` from `TURSO_PLATFORM_API_TOKEN` (never `TURSO_AUTH_TOKEN` for CLI login). <!-- pragma: allowlist secret -->
+- Do **not** require `EMDASH_TARGET_FINGERPRINT_*` as Cursor secrets for this **local** script path (those pins are GitHub Actions; this Cloud env has not had them). Local staging `web/scripts/emdash-core-migrate.mjs` uses the same-run `emdash migrate --status` fingerprint when the env pin is unset. Do not invent those secret names. Production-looking Turso hosts still require a pin.
 
 **Linux Cloud VM bootstrap (this image)**
 
-- Default `node` can be 22.14; need **22.22.2** (`registerHooks`) via nvm. **`/exec-daemon/node` shadows nvm** — it stays first on `PATH` after `nvm use`, so `npm ci` still runs 22.14.0 (`EBADENGINE`). After `nvm install` / `nvm use 22.22.2`, invoke that nvm binary (`$NVM_DIR/versions/node/v22.22.2/bin/node` / `npm`) or **prepend** that directory to `PATH` so it beats `/exec-daemon/node`. Confirm `node -v` is `v22.22.2` before `npm ci` / `npm run build`.
+- Default `node` can be 22.14; need **22.22.2** (`registerHooks`) via nvm. **`/exec-daemon/node` shadows nvm** — it stays first on `PATH` after `nvm use`, so `npm ci` still runs 22.14.0 (`EBADENGINE`). `Initialize-LinuxNvmNodePath` (called from `deploy-*-local.ps1`) prepends `$NVM_DIR/versions/node/v22.22.2/bin`. If that binary is missing: `nvm install 22.22.2`, then prepend that directory (or invoke that `node`/`npm` directly). Confirm `node -v` is `v22.22.2` before `npm ci` / `npm run build`. Do not rely on `nvm use` alone.
 - Install `pwsh`, native `turso` (`$HOME/.turso/turso`), and `terraform` if missing.
-- `terraform init` on a VM with no `.terraform` is **required** before the first full apply for **that** environment. Treat that as a preflight, not a surprise failure: `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles` (or `-Environment production`), then re-run the full deploy.
-- **Lockfile timing:** Linux `terraform init` dirties `.terraform.lock.hcl` with extra platform hashes. **Leave that file dirty through apply** (reverting before apply is the failure mode). After apply succeeds, revert the hash-only diff. Never commit those hashes unless the operator asked for a lockfile change.
+- `terraform init` on a VM with no `.terraform` is **required** before the first full apply for **that** environment. Full `deploy-*-local.ps1` (`Invoke-DeployTerraformApplyWithRecovery`) does that init, then apply. If apply fails with missing plugins or lockfile checksum mismatch, it inits and **retries apply once**. Manual `pwsh ./scripts/terraform-run.ps1 -Environment staging -Operation init -LoadEnvFiles` is only a contingency when you are not using the full deploy script, or that retry still failed.
+- **Lockfile timing:** Linux `terraform init` dirties `.terraform.lock.hcl` with extra platform hashes. **Leave that file dirty through apply** (reverting before apply is the failure mode). After apply succeeds, the deploy script reverts the hash-only diff when the lockfile was clean at start. Never commit those hashes unless the operator asked for a lockfile change.
+
+**Staging-deploy contingencies (do not work around by editing `.env.dev` to production)**
+
+| Symptom | Scripted path | If it still fails |
+|---------|---------------|-------------------|
+| Process `TURSO_DATABASE_URL` = production EmDash | Skip process URL/token; use Terraform / `.env.dev` staging | **STOP**. Do not write that pair into `.env.dev`. Fix staging file/Terraform URL; mint a staging JWT |
+| No `.terraform` / plugin checksum vs lockfile | Auto-init; retry apply once; leave lockfile dirty | Manual `terraform-run.ps1 -Operation init` then full deploy. Do **not** `git checkout` the lockfile before apply |
+| Missing Terraform Cloud token | Remap `TF_TOKEN_APP_TERRAFORM_IO` → `TF_TOKEN_app_terraform_io` | Copy that Cursor secret into the preflight name in process env (never print it) |
+| Wrangler `6111` / `9106` | Replace short `CLOUDFLARE_API_TOKEN` stub with `TF_VAR_CLOUDFLARE_API_TOKEN` | Same overwrite in process env |
+| `EBADENGINE` / Node 22.14 | Prepend nvm 22.22.2 | Install that nvm version; prepend its `bin` |
+| `EMDASH_TARGET_FINGERPRINT` unset | Same-run `--status` fingerprint (local non-prod) | Only pin if migrate refuses a production-looking host |
+| GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Ignore | Do not treat as this VM deploy failing |
+| Staging `/` 1–3s with `Server-Timing` | Success | A hang is **0-byte pending**, not a slow 200 |
+| `punycode` deprecation / `patch-cloudflare-bundle` patched 0 | Ignore | Noise |
 
 **Full staging command**
 
-- `pwsh ./scripts/deploy-staging-local.ps1 -SkipVersionBump` with **no** `-WorkerOnly` / `-WorkersOnly`. That **does** run Terraform.
+- `pwsh ./scripts/deploy-staging-local.ps1 -SkipVersionBump` with **no** `-WorkerOnly` / `-WorkersOnly`. That **does** run Terraform (init + apply recovery above).
 - Staging backup is `turso db export` of `freedomtimes-emdash-staging` → `.release/backups/emdash-staging-<stamp>.db`. Export does **not** require `TF_VAR_TURSO_DATABASE_NAME_STAGING` (Terraform default name). After a successful export, retry may use `-SkipTursoBackup` against that fresh file. <!-- pragma: allowlist secret -->
-- A successful Terraform mutate can be small (example: `0 added, 2 changed, 0 destroyed`). That is not a required delta next time.
+- A successful Terraform mutate can be small (example: `0 added, 2 changed, 0 destroyed`). That is not a required delta next time. Apply delta of `0 added, 1 changed, 0 destroyed` on the holding-page Worker is expected (`last_deployed_from = wrangler`).
 - After apply: `emdash migrate` apply, wrangler staging, `emdash migrate --check`. Pending none is success.
-- Probe `https://staging.freedomtimes.news/` HTTP 200 is the **locked holding page** (title Secure Access, Log in with Google). That is success, not a worker failure. Staging stays locked (**Primary guardrails §4**). <!-- pragma: allowlist secret -->
+- Probe `https://staging.freedomtimes.news/` HTTP 200 is the **locked holding page** (title Secure Access, Log in with Google). That is success, not a worker failure. Staging stays locked (**Primary guardrails §4**). Cold `/` with `Server-Timing` in 1–3s is not a hang. <!-- pragma: allowlist secret -->
+- **`staging-reader`:** staging Terraform can create the Auth0 role (`create_staging_reader_role = true`). Deploy does **not** assign users. The operator must assign the role in Auth0. Do not invite those users as EmDash CMS users. Locked `/homepage` without cookies stays 302 `/`.
 
 **Production extras (only when the operator asked in this chat)**
 
