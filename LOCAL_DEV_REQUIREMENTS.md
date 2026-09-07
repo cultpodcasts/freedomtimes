@@ -12,7 +12,7 @@ Copy [`.env.dev.example`](.env.dev.example) → `.env.dev` (repo root) and [`web
 
 - Git
 - GitHub CLI (`gh`) with access to this repository
-- Terraform CLI (IaC) and Turso CLI (backups, rollback branches) — see **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (Terraform on Windows; Turso in WSL). Turso backup workflow: [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md)
+- Terraform CLI (IaC) and Turso CLI (backups, rollback branches) — see **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (Terraform on Windows; Turso in WSL). Turso backup / promote: [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md). Production EmDash disaster recovery (canonical): sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 - A code editor (VS Code recommended)
 
 ## Verified in This Workspace

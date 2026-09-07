@@ -7,7 +7,7 @@ These guardrails define how ticket work moves from development to production.
 Canonical copy: **`AGENTS.md`** § *Primary guardrails*. Summary for agents working in this repo:
 
 1. **EmDash MCP — IF MCP FAILS WE DO NOT FALL BACK TO SHELL.** When Cursor EmDash MCP is unavailable, errored, or auth fails: **STOP**, tell the operator to fix MCP (**Tools & MCP**, restart Cursor, enable `freedomtimes-staging` / `freedomtimes-production`, refresh tokens via `emdash login` / PAT, check **Output → MCP Logs**), then **wait**. **Never** fall back to `emdash-mcp-tools-call.mjs`, `npx emdash content`, REST curl, or CLI. Operators may run shell helpers manually; AI agents may not.
-2. **Database backup before any mutate** — Turso rollback branch or export before CMS/DB writes.
+2. **Database backup before any mutate** — Turso rollback branch or export before CMS/DB writes. Production EmDash: Worker-resolved `backup-production-emdash.ps1`, then commit `freedomtimes-agents/data/backups/prod-emdash-*.json`. Outage / rollback: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (do not overwrite named production first).
 3. **EmDash MCP-only for content JSON** — not EmDash CLI for `posts`/`pages` Portable Text shape.
 4. **Staging locked** — no anonymous staging reader routes (`web/docs/STAGING_ACCESS.md`).
 5. **No production publish without explicit operator ask** — push notifications are irreversible.
@@ -48,7 +48,7 @@ Canonical copy: **`AGENTS.md`** § *Primary guardrails*. Summary for agents work
 
 - If the branch changes code that depends on EmDash collections or fields, do not merge until production matches staging for the touched collections in both schema semantics and manifest visibility.
 - Use `./scripts/promote-schema-to-production.ps1 -AllowProduction -DryRun` to verify parity and `./scripts/promote-schema-to-production.ps1 -AllowProduction` to apply missing schema changes.
-- Before any non-dry-run production schema change, migration, or content promotion, a Turso rollback branch must be created and recorded.
+- Before any non-dry-run production schema change, migration, or content promotion, a **verified Worker-resolved** Turso backup must be created and recorded (`backup-production-emdash.ps1` + commit `freedomtimes-agents/data/backups/prod-emdash-*.json`). Do not assume named `freedomtimes-emdash-production`. Disaster recovery: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 - The script is not the full gate by itself. Manual review must also confirm collection metadata parity and that the production manifest/admin route expose the touched collections.
 - Content promotion is not approved if it relies on manual copy/paste or any path that does not preserve UTF-8 payloads end to end.
 - For promoted items, manual review must also confirm staging-versus-production parity for rendered text-bearing fields and reject mojibake signatures.

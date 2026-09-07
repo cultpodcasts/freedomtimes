@@ -58,7 +58,9 @@ Create a checkpoint branch from the production database before doing anything el
 **GitHub Actions release path** (`production-release.ps1`) and **schema/content promotion** — run manually:
 
 ```powershell
-.\scripts\turso-create-rollback-branch.ps1 -ProductionDatabaseName <production-database-name> -AllowProduction
+pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
+# Creates Turso branch prod-backup-YYYYMMDD-HHMMSS from the Worker-resolved DB
+# (never assume named freedomtimes-emdash-production). Commit the agents log.
 ```
 
 **Local full production deploy** — automatic before Terraform apply (unless skipped):
@@ -68,13 +70,13 @@ pwsh ./scripts/deploy-production-local.ps1
 # Opt out: pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 ```
 
-Database name defaults from `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` in `.env.dev` (fallback: `freedomtimes-emdash-production`). Turso group defaults from `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (fallback: `freedomtimes-production`). Metadata is written under `.release/rollback-branches/`.
+**Resolve the Worker Turso host first** (`node web/scripts/resolve-production-worker-turso.mjs`). Do not default to `freedomtimes-emdash-production` (that named DB has been a stale thin corpus while the Worker used another branch). Turso group defaults from `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (fallback: `freedomtimes-production`). Metadata is written under `.release/rollback-branches/`. **Commit** the operator log `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. Disaster recovery (canonical): sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md) — retarget Worker; do not overwrite named production first.
 
 Record these with the release notes:
 
-1. rollback database name
+1. backup Turso branch name (`prod-backup-YYYYMMDD-HHMMSS`)
 2. creation timestamp
-3. source production database name
+3. Worker-resolved source database name
 
 The metadata file written to `.release/rollback-branches` includes:
 
@@ -253,8 +255,10 @@ npx --prefix web emdash media upload .\path\to\asset.png --alt "Archive cover" -
 
 ## 6. Rollback Strategy
 
+**Prefer sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md):** identify last verified `prod-backup-*` (or legacy `prod-rollback-*`) / agents log, then **retarget the Worker** to that branch. Do not restore onto named production as the first step.
+
 1. Revert code on `main` and re-run production workflow.
-2. If data rollback is needed, switch production runtime from the primary database credentials to the pre-release Turso rollback branch credentials.
+2. If data rollback is needed, switch production runtime from the current Worker Turso credentials to the pre-release Turso rollback branch credentials (`pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <name>`).
 
 ```powershell
 .\scripts\switch-production-turso-secrets.ps1 \

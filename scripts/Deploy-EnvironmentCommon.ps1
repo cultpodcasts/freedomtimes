@@ -536,6 +536,20 @@ function Set-DeployNativeTursoCliTokenFromEnv {
     }
 }
 
+function Convert-DeployWindowsPathToWsl {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    # WSL turso cannot write to a Windows-style C:\… path; map to /mnt/<drive>/…
+    if ($Path -match '^[A-Za-z]:[\\/]') {
+        $full = [System.IO.Path]::GetFullPath($Path)
+        $drive = $full.Substring(0, 1).ToLowerInvariant()
+        $rest = $full.Substring(2) -replace '\\', '/'
+        return "/mnt/$drive/$rest"
+    }
+
+    return $Path
+}
+
 function Invoke-DeployTursoCli {
     param(
         [Parameter(Mandatory = $true)]
@@ -545,7 +559,8 @@ function Invoke-DeployTursoCli {
 
     if (Test-DeployShouldUseWslTurso) {
         $quoted = foreach ($arg in $TursoArgs) {
-            "'" + ($arg -replace "'", "'\''") + "'"
+            $mapped = Convert-DeployWindowsPathToWsl -Path $arg
+            "'" + ($mapped -replace "'", "'\''") + "'"
         }
         $bashLine = 'export PATH="$HOME/.turso:$PATH"; turso ' + ($quoted -join " ")
         $lines = & wsl bash -lc $bashLine 2>&1
@@ -728,40 +743,30 @@ function Invoke-DeployTursoRollbackCheckpoint {
 
     Assert-DeployTursoAuth
 
-    $databaseName = Get-DeployTursoDatabaseNameFromEnv `
-        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
-        -DefaultName "freedomtimes-emdash-production"
     $tursoGroup = Get-DeployTursoDatabaseNameFromEnv `
         -EnvKey "TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION" `
         -DefaultName "freedomtimes-production"
 
-    $rollbackScript = Join-Path $script:DeployCommonScriptRoot "turso-create-rollback-branch.ps1"
-    Write-DeployStep "Creating Turso production rollback checkpoint from '$databaseName' (group: $tursoGroup)"
+    # NEVER assume freedomtimes-emdash-production — resolve the Worker DB first.
+    $backupScript = Join-Path $script:DeployCommonScriptRoot "backup-production-emdash.ps1"
+    Write-DeployStep "Creating verified Worker-resolved production EmDash backup (not the named thin DB)"
 
-    $rollbackArgs = @(
-        "-File", $rollbackScript,
-        "-ProductionDatabaseName", $databaseName,
-        "-TursoGroup", $tursoGroup,
+    $backupArgs = @(
+        "-File", $backupScript,
         "-AllowProduction",
-        "-Notes", "deploy-production-local.ps1 EmDash core migrate backup"
+        "-TursoGroup", $tursoGroup,
+        "-SkipStagingCompare",
+        "-Notes", "deploy-production-local.ps1 Worker-resolved EmDash backup"
     )
     if (-not (Test-DeployShouldUseWslTurso)) {
-        $rollbackArgs += "-UseNativeTurso"
+        $backupArgs += "-UseNativeTurso"
     }
 
-    $result = Invoke-DeployChildPwsh -CaptureOutput -Arguments $rollbackArgs
+    $result = Invoke-DeployChildPwsh -CaptureOutput -Arguments $backupArgs
     $result.Output | ForEach-Object { $_ }
 
     if ($result.ExitCode -ne 0) {
-        throw "Turso rollback checkpoint failed (exit $($result.ExitCode))."
-    }
-
-    $metadataLine = $result.Output | Where-Object { $_ -match '^Rollback metadata saved:' } | Select-Object -Last 1
-    if ($metadataLine) {
-        Write-Host $metadataLine -ForegroundColor Green
-    }
-    else {
-        Write-Warning "Turso rollback checkpoint completed but metadata path was not found in script output."
+        throw "Production EmDash backup/verify failed (exit $($result.ExitCode)). Do not migrate. See scripts/backup-production-emdash.ps1."
     }
 }
 
@@ -843,11 +848,23 @@ function Assert-DeployFreshEmDashTursoBackup {
             Write-Warning "Ignoring rollback metadata $($candidate.Name) (missing sourceDatabase)."
             continue
         }
-        if (-not (Test-DeployRollbackSourceMatchesProductionEmDash `
-                    -SourceDatabase $sourceDatabase `
-                    -ExpectedDatabase $expectedDb `
-                    -ProductionUrls $productionUrls)) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name or URL)."
+        $verifiedPass = $false
+        if ($null -ne $meta.PSObject.Properties["verificationPass"]) {
+            $verifiedPass = [bool]$meta.verificationPass
+        }
+        elseif ($null -ne $meta.verification -and $null -ne $meta.verification.PSObject.Properties["pass"]) {
+            $verifiedPass = [bool]$meta.verification.pass
+        }
+        $matchesNamedOrUrl = Test-DeployRollbackSourceMatchesProductionEmDash `
+            -SourceDatabase $sourceDatabase `
+            -ExpectedDatabase $expectedDb `
+            -ProductionUrls $productionUrls
+        $workerResolved = $verifiedPass -and (
+            $sourceDatabase -match '^(prod-rollback-|prod-work-|prod-recovery-|prod-backup-)' -or
+            [string]$meta.kind -eq "production-emdash-content-backup"
+        )
+        if (-not $matchesNamedOrUrl -and -not $workerResolved) {
+            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name/URL and is not a verified Worker-resolved backup)."
             continue
         }
         $freshAt = Get-DeployRollbackMetadataFreshnessUtc -File $candidate -Meta $meta
@@ -860,8 +877,8 @@ function Assert-DeployFreshEmDashTursoBackup {
     }
     if ($null -eq $newestMeta) {
         throw @(
-            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h whose sourceDatabase matches TF_VAR_TURSO_DATABASE_NAME_PRODUCTION or the production EmDash URL host under .release/rollback-branches/.",
-            "Run scripts/turso-create-rollback-branch.ps1 -AllowProduction or omit -SkipTursoBackup."
+            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h whose sourceDatabase matches the Worker-resolved production EmDash DB (or a verified backup log).",
+            "Run pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction or omit -SkipTursoBackup."
         ) -join " "
     }
     Write-DeployStep "Using existing production rollback metadata $($newestMeta.Name) for '$expectedDb' (SkipTursoBackup)"

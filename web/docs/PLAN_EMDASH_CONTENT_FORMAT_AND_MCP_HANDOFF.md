@@ -75,6 +75,7 @@ When Cursor **EmDash MCP** is unavailable, errored, auth invalid, or `call_mcp_t
 - **`web/src/components/EmDashContentView.astro`** — Wires EmDash `PortableText` (`emdash/ui`) + `Audio.astro` override; youtube/embed via plugin-embeds / core Embed.
 - **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — Dependency bump checks + **canary** to classify `data.content` as PT vs string.
 - **`web/CONTENT_PROMOTION_RUNBOOK.md`** — Staging → production promotion, schema parity, UTF-8 notes.
+- Sibling **`freedomtimes-agents/docs/DISASTER_RECOVERY.md`** — Canonical production EmDash disaster recovery (retarget Worker; do not overwrite named production).
 - **EmDash versions** — `web/package.json`: **`emdash`** and **`@emdash-cms/cloudflare`** on **`^0.9.0`**. As of **2026-05-04**, npm **`latest`** for both packages is still **0.9.0** (`npm install …@latest` does not advance further). **`emdash@1.0.0`** exists on the registry but is **deprecated** (“Please install the latest version”), and **`@emdash-cms/cloudflare@0.9.0`** declares a **pinned** dependency **`emdash@0.9.0`**, so the Worker integration cannot move to 1.x until a new adapter release ships. The CLI banner may show **`v0.0.0`** even when the installed package is **0.9.0** (cosmetic upstream issue).
 
 ---
@@ -98,7 +99,7 @@ When Cursor **EmDash MCP** is unavailable, errored, auth invalid, or `call_mcp_t
 
 1. **Production parity** — Confirm **`posts.content`** field type in **`/_emdash/admin`** on **production** and run **`node web/scripts/canary-emdash-content-shape.mjs https://freedomtimes.news posts <slug> --mcp`** (and/or Turso `json_type`) on representative slugs **before** large promotions.
 2. **Promote / ship** — Use **`node web/scripts/promote-post-staging-to-production.mjs`** (MCP staging snapshot by default) for flagship **`posts`** after production bylines/media prerequisites; re-verify live page + MCP readback.
-3. **Bulk migration** — **Skip** unless you later find **production** posts whose **`content`** is genuinely a **string** in Turso; then treat as a separate project with **`content update`** + rollback discipline (**`web/CONTENT_PROMOTION_RUNBOOK.md`**).
+3. **Bulk migration** — **Skip** unless you later find **production** posts whose **`content`** is genuinely a **string** in Turso; then treat as a separate project with **`content update`** + rollback discipline (**`web/CONTENT_PROMOTION_RUNBOOK.md`**; production outage: sibling **`freedomtimes-agents/docs/DISASTER_RECOVERY.md`**).
 4. **MCP hardening** — Keep **`scripts/set-emdash-mcp-tokens.ps1`** / IDE MCP URLs aligned with **`emdash login`** hosts; after **`emdash`** bumps, smoke **`content_get`** (IDE or **`canary … --mcp`**) and a no-op or test promote path if you add one.
 5. **Per-collection HTML** — Defer until product needs a non-PT body field on a non-`posts` collection; keep **`posts.content`** on PT.
 
@@ -131,6 +132,7 @@ When Cursor **EmDash MCP** is unavailable, errored, auth invalid, or `call_mcp_t
 | Seed / intended schema | `web/.emdash/seed.json` |
 | PR / canary | `web/docs/PR_CHECKLIST_EMDASH_CONTENT.md` |
 | Promotion | `web/CONTENT_PROMOTION_RUNBOOK.md` |
+| Production EmDash DR (canonical) | sibling `freedomtimes-agents/docs/DISASTER_RECOVERY.md` |
 | English glosses / global audience | `web/docs/EDITORIAL_ENGLISH_GLOSSES.md` |
 | Staging PT patch + publish | `web/scripts/merge-staging-post-from-patch.mjs`, `web/.emdash/article-patches/*.json` |
 | MCP token helper | `scripts/set-emdash-mcp-tokens.ps1` |

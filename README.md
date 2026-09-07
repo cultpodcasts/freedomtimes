@@ -74,6 +74,7 @@ Deeper design: [ARCHITECTURE.md](ARCHITECTURE.md).
 | Doc | What you'll find |
 |---|---|
 | [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md) | Staging → production CMS promotion, Turso backups |
+| Sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md) | **Canonical** production EmDash disaster recovery (retarget Worker; do not overwrite named production) |
 | [web/docs/EDITORIAL_ENGLISH_GLOSSES.md](web/docs/EDITORIAL_ENGLISH_GLOSSES.md) | English ledes, French glosses, Portable Text patterns |
 | [web/docs/PR_CHECKLIST_EMDASH_CONTENT.md](web/docs/PR_CHECKLIST_EMDASH_CONTENT.md) | Content PR checklist |
 | [web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md](web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md) | EmDash format, CLI vs MCP |

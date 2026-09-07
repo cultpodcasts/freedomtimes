@@ -1,7 +1,7 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "engines": {
     "node": ">=22.22.2"
   },
@@ -54,7 +54,10 @@
     "pt:migrate:scan": "node scripts/migrate-pt-content.mjs posts --scan --transforms video",
     "emdash:migrate": "node scripts/emdash-core-migrate.mjs apply",
     "emdash:migrate:check": "node scripts/emdash-core-migrate.mjs check",
-    "emdash:migrate:status": "node scripts/emdash-core-migrate.mjs status"
+    "emdash:migrate:status": "node scripts/emdash-core-migrate.mjs status",
+    "emdash:prod-turso:resolve": "node scripts/resolve-production-worker-turso.mjs --inventory",
+    "emdash:prod-backup:verify": "node scripts/verify-production-emdash-backup.mjs --check-metadata auto",
+    "test:prod-backup-inventory": "node --test scripts/lib/production-emdash-inventory.test.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.2.3",

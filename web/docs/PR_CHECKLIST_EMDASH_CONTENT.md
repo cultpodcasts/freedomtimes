@@ -119,7 +119,7 @@ Remove-Item Env:EMDASH_STAGING_PAT -ErrorAction SilentlyContinue
 
 ## 4. Merge / promotion hygiene
 
-- [ ] **Schema parity**: staging field types match production before promoting content (see `CONTENT_PROMOTION_RUNBOOK.md`).
+- [ ] **Schema parity**: staging field types match production before promoting content (see `CONTENT_PROMOTION_RUNBOOK.md`). Production EmDash outage / rollback: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 - [ ] **No silent body coercion**: if you POST a PT array but **`content get`** still shows **`STR`**, fix schema or API path before bulk migration — do not assume the web app alone can fix storage.
 
 ---
@@ -128,3 +128,4 @@ Remove-Item Env:EMDASH_STAGING_PAT -ErrorAction SilentlyContinue
 
 - [ ] Revert the dependency commit and redeploy **or** roll the Worker / site to the previous release in Cloudflare.
 - [ ] Re-run the **canary** in §2 on staging to confirm restored behaviour.
+- [ ] Production EmDash **data** rollback: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (retarget Worker; do not overwrite named production).

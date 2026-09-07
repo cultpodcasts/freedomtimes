@@ -66,7 +66,7 @@ Same pattern applies to `npm run build` (see [SOCIAL_IMAGES_AND_FAVICONS.md](./S
 | Cloudflare API / zone | `TF_VAR_CLOUDFLARE_*` | Cloudflare dashboard → API tokens |
 | Auth0 tenant + Management API | `TF_VAR_AUTH0_DOMAIN`, `TF_VAR_AUTH0_MANAGEMENT_*` | Auth0 dashboard; see [NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md) |
 | Auth0 login app (per env) | `AUTH0_LOGIN_APP_CLIENT_ID_STAGING`, `_PRODUCTION`, secrets | Terraform outputs after `terraform apply`; `scripts/terraform-run.ps1` can write staging keys into `.env.dev` |
-| EmDash Turso (CMS) | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | `sync-production-turso-env-dev.ps1` or Terraform production outputs |
+| EmDash Turso (CMS) | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | `sync-production-turso-env-dev.ps1` or Terraform production outputs. Production outage: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (Worker-resolved; do not assume named `freedomtimes-emdash-production`) |
 | Scheduler / subscriptions / tips Turso | `TURSO_STAGING_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_SCHEDULER_*`, `TURSO_STAGING_TIPS_DB_*`, `TURSO_TIPS_*`, `TURSO_PRODUCTION_TIPS_DB_*` | `sync-staging-turso-env-dev.ps1`, `sync-production-turso-env-dev.ps1` |
 | Turso Platform API (Terraform create DBs) | **`TURSO_PLATFORM_API_TOKEN`** or `TF_VAR_turso_api_token` (production); **`TURSO_TOKEN_STAGING`** (staging) | Turso dashboard → Settings → API tokens. May be JWT-shaped but must pass the Platform API probe (`GET /v1/organizations`). Do not copy `TURSO_AUTH_TOKEN` or `TURSO_*_DB_TOKEN` into `TURSO_TOKEN` / `TURSO_PLATFORM_API_TOKEN`. |
 | Turso Platform API (mint DB JWTs) | `TF_VAR_TURSO_ORGANIZATION` | Turso dashboard → organization slug |

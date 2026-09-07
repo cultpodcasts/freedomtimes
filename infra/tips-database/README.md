@@ -41,7 +41,7 @@ Production `.env.dev` aliases: `TURSO_TIPS_DATABASE_URL`, `TURSO_TIPS_AUTH_TOKEN
 
 ## Migrations
 
-**Back up first** (see `web/CONTENT_PROMOTION_RUNBOOK.md` — Turso backups before mutating work):
+**Back up first** (see `web/CONTENT_PROMOTION_RUNBOOK.md` — Turso backups before mutating work). Production EmDash outage is a different path: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 
 ```powershell
 # Example: export before first migrate

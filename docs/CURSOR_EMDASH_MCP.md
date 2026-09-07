@@ -8,7 +8,7 @@ Operator runbook for **freedomtimes-staging** and **freedomtimes-production** MC
 
 **Ctrl+Shift+J → Tools & MCP** — both servers green, **51 tools enabled** each.
 
-If red/missing: follow [Repair workflow](#repair-workflow) below. **AI agents:** see `AGENTS.md` Primary guardrails §1 — STOP if MCP unavailable; do not shell-fallback.
+If red/missing: follow [Repair workflow](#repair-workflow) below. **AI agents:** see `AGENTS.md` Primary guardrails §1 — STOP if MCP unavailable; do not shell-fallback. Production EmDash outage / rollback: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 
 ## Why not direct HTTP MCP?
 

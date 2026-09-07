@@ -19,9 +19,18 @@
  * Usage (from repo root):
  *   node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production
  *
+ * Backup gate (Step 0): refuses unless `.release/rollback-branches/*.json` has
+ * verification.pass=true newer than 24h. Refresh with:
+ *   pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
+ *   (creates Turso prod-backup-YYYYMMDD-HHMMSS of the Worker-resolved DB)
+ * or the wrapper:
+ *   pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug <slug> -AllowProduction
+ * Emergency only: --skip-backup-verify
+ *
  * Requires ~/.config/emdash/auth.json with accessToken for both URLs.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -32,6 +41,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const STAGING_DEFAULT = "https://staging.freedomtimes.news";
 const PROD_DEFAULT = "https://freedomtimes.news";
 const PRODUCTION_FLAG = "--i-understand-production";
+const SKIP_BACKUP_VERIFY_FLAG = "--skip-backup-verify";
 
 function loadAuth() {
 	const p = join(homedir(), ".config", "emdash", "auth.json");
@@ -255,7 +265,10 @@ async function main() {
 		);
 		process.exit(1);
 	}
-	const positional = rawArgs.filter((a) => a !== PRODUCTION_FLAG);
+	const skipBackupVerify = rawArgs.includes(SKIP_BACKUP_VERIFY_FLAG);
+	const positional = rawArgs.filter(
+		(a) => a !== PRODUCTION_FLAG && a !== SKIP_BACKUP_VERIFY_FLAG,
+	);
 	const collection = positional[0] || "posts";
 	const slug = positional[1];
 	if (!slug) {
@@ -263,6 +276,32 @@ async function main() {
 			`Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug> ${PRODUCTION_FLAG}`,
 		);
 		process.exit(1);
+	}
+
+	const repoRootForGate = join(__dirname, "..", "..");
+	if (skipBackupVerify) {
+		console.warn(
+			"WARNING: --skip-backup-verify is set. Promote will not check a verified Worker-resolved production backup.",
+		);
+	} else {
+		const verifyScript = join(__dirname, "verify-production-emdash-backup.mjs");
+		const gate = spawnSync(
+			process.execPath,
+			[verifyScript, "--check-metadata", "auto", "--max-age-hours", "24"],
+			{ cwd: repoRootForGate, encoding: "utf8" },
+		);
+		if (gate.stdout) process.stdout.write(gate.stdout);
+		if (gate.stderr) process.stderr.write(gate.stderr);
+		if (gate.status !== 0) {
+			console.error(
+				"REFUSED: no fresh verified production EmDash backup (Worker-resolved, not the named thin DB).\n" +
+					"Step 0: pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction\n" +
+					"Then commit freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json\n" +
+					"Or use: pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug <slug> -AllowProduction\n" +
+					`Emergency only: add ${SKIP_BACKUP_VERIFY_FLAG}`,
+			);
+			process.exit(1);
+		}
 	}
 
 	const stagingUrl = process.env.EMDASH_STAGING_URL || STAGING_DEFAULT;

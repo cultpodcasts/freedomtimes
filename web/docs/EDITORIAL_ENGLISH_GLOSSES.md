@@ -157,4 +157,5 @@ Keep `_type: "audio"` for podcast iframes. Fields: typically **`url`**, **`alt`*
 ## Related docs
 
 - **`web/CONTENT_PROMOTION_RUNBOOK.md`** — promotion, UTF-8, backups.
+- Sibling **`freedomtimes-agents/docs/DISASTER_RECOVERY.md`** — canonical production EmDash disaster recovery.
 - **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** — Portable Text and MCP as source of truth for `posts.content`.
