@@ -59,10 +59,10 @@ function parseRobotsTxt(body: string): RobotsGroup[] {
 }
 
 /**
- * Most specific matching User-agent group (longest token), then longest-match
- * path rule. Equal-length Allow wins. No matching rule → allowed.
+ * Most specific matching User-agent group (longest token). `*` is a match of
+ * specificity 0; a named token contained in the UA wins when longer.
  */
-function isRobotsPathAllowed(body: string, userAgent: string, path: string): boolean {
+function selectRobotsGroup(body: string, userAgent: string): RobotsGroup | null {
 	const groups = parseRobotsTxt(body);
 	const ua = userAgent.toLowerCase();
 	let bestGroup: RobotsGroup | null = null;
@@ -81,6 +81,15 @@ function isRobotsPathAllowed(body: string, userAgent: string, path: string): boo
 		}
 	}
 
+	return bestGroup;
+}
+
+/**
+ * Google-style: longest matching path rule. Equal-length Allow wins.
+ * No matching rule → allowed.
+ */
+function isRobotsPathAllowed(body: string, userAgent: string, path: string): boolean {
+	const bestGroup = selectRobotsGroup(body, userAgent);
 	if (!bestGroup) return true;
 
 	let bestLen = -1;
@@ -95,6 +104,21 @@ function isRobotsPathAllowed(body: string, userAgent: string, path: string): boo
 		}
 	}
 	return allowed;
+}
+
+/**
+ * First matching rule in the chosen group wins (document order).
+ * No matching rule → allowed. Do not weaken this if the generator emits
+ * `Allow: /` — `/` prefixes every path and would allow admin/MCP.
+ */
+function isRobotsPathAllowedFirstMatch(body: string, userAgent: string, path: string): boolean {
+	const bestGroup = selectRobotsGroup(body, userAgent);
+	if (!bestGroup) return true;
+
+	for (const rule of bestGroup.rules) {
+		if (path.startsWith(rule.path)) return rule.allow;
+	}
+	return true;
 }
 
 describe('buildRobotsTxt', () => {
@@ -115,7 +139,18 @@ describe('buildRobotsTxt', () => {
 		assert.ok(allowIdx >= 0, 'missing * Allow for public media');
 		assert.ok(disallowIdx >= 0, 'missing * Disallow for /_emdash/');
 		assert.ok(allowIdx < disallowIdx, 'Allow media must precede Disallow /_emdash/ for first-match parsers');
+		assert.doesNotMatch(wildcard, /^Allow: \/$/m, '* must not emit Allow: / (first-match would allow all /_emdash/)');
 		assert.match(wildcard, /# Disallow admin and API routes/);
+	});
+
+	it('Allows the public media path in the named-agent group before Disallow /_emdash/', () => {
+		const named = body.slice(0, body.indexOf('User-agent: *'));
+		const allowIdx = named.indexOf(`Allow: ${ROBOTS_PUBLIC_MEDIA_PATH}`);
+		const disallowIdx = named.indexOf(`Disallow: ${ROBOTS_EMDASH_PREFIX}`);
+		assert.ok(allowIdx >= 0, 'missing named Allow for public media');
+		assert.ok(disallowIdx >= 0, 'missing named Disallow for /_emdash/');
+		assert.ok(allowIdx < disallowIdx, 'named Allow media must precede Disallow /_emdash/ for first-match parsers');
+		assert.doesNotMatch(named, /^Allow: \/$/m, 'named group must not emit Allow: /');
 	});
 
 	it('still disallows the rest of /_emdash/ for * and named social agents', () => {
@@ -129,9 +164,31 @@ describe('buildRobotsTxt', () => {
 	});
 
 	it('lets unlisted preview crawlers fetch og:image via User-agent: *', () => {
-		for (const agent of ['TelegramBot', 'WhatsApp', 'Iframely', 'Slackbot-LinkExpanding 1.0']) {
+		const unlisted = ['TelegramBot', 'WhatsApp', 'Iframely', 'Embedly'];
+		for (const token of SOCIAL_PREVIEW_USER_AGENTS) {
+			for (const agent of unlisted) {
+				assert.equal(
+					agent.toLowerCase().includes(token.toLowerCase()),
+					false,
+					`${agent} must not contain named token ${token}`,
+				);
+			}
+		}
+		for (const agent of unlisted) {
+			const group = selectRobotsGroup(body, agent);
+			assert.ok(group, `${agent} should match a group`);
+			assert.deepEqual(group.agents, ['*'], `${agent} must use the * group`);
 			assert.equal(isRobotsPathAllowed(body, agent, OG_IMAGE_PATH), true, agent);
 			assert.equal(isRobotsPathAllowed(body, agent, EMDASH_ADMIN_PATH), false, `${agent} admin`);
+		}
+	});
+
+	it('first-match allows og:image and / but disallows admin and MCP for * and a named agent', () => {
+		for (const agent of ['*', 'Googlebot', 'Redditbot']) {
+			assert.equal(isRobotsPathAllowedFirstMatch(body, agent, OG_IMAGE_PATH), true, `${agent} first-match og:image`);
+			assert.equal(isRobotsPathAllowedFirstMatch(body, agent, '/'), true, `${agent} first-match /`);
+			assert.equal(isRobotsPathAllowedFirstMatch(body, agent, EMDASH_ADMIN_PATH), false, `${agent} first-match admin`);
+			assert.equal(isRobotsPathAllowedFirstMatch(body, agent, EMDASH_API_PATH), false, `${agent} first-match mcp`);
 		}
 	});
 });

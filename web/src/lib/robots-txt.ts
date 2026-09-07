@@ -24,9 +24,11 @@ export const SOCIAL_PREVIEW_USER_AGENTS = [
  * og:image URLs under /_emdash/api/media/file/.
  *
  * Named social agents keep an explicit group. `User-agent: *` also Allows the
- * public media path (longest-match wins over Disallow /_emdash/) so Reddit,
- * Slack, Discord, Google, and any other site can read the image without being
- * listed. The rest of /_emdash/ stays disallowed.
+ * public media path immediately before Disallow /_emdash/ so first-match and
+ * longest-match parsers both permit og:image URLs. Do not emit `Allow: /`:
+ * first-match treats `/` as a prefix of every URL and would never reach the
+ * media Allow or /_emdash/ Disallow. Paths with no matching rule are allowed.
+ * The rest of /_emdash/ stays disallowed.
  */
 export function buildRobotsTxt(origin: string): string {
 	const sitemapUrl = `${origin}/sitemap.xml`;
@@ -38,7 +40,6 @@ export function buildRobotsTxt(origin: string): string {
 		`Disallow: ${ROBOTS_EMDASH_PREFIX}`,
 		'',
 		'User-agent: *',
-		'Allow: /',
 		`Allow: ${ROBOTS_PUBLIC_MEDIA_PATH}`,
 		'',
 		'# Disallow admin and API routes',

@@ -2,7 +2,7 @@
 
 ## Primary guardrails (AI agents)
 
-These apply to **every** Cursor agent session. When a guardrail blocks progress, **STOP and wait** for the operator — do not work around unless they **explicitly** override in that same chat.
+Numbered items **1–9** apply to **every** Cursor agent session. When one of those guardrails blocks progress, **STOP and wait** for the operator — do not work around unless they **explicitly** override in that same chat. The package-bump note after item 9 is a checklist, not a halt.
 
 1. **EmDash MCP — IF MCP FAILS WE DO NOT FALL BACK TO SHELL.** When Cursor EmDash MCP (`freedomtimes-staging` / `freedomtimes-production`, or equivalent servers under **Tools & MCP**) is **unavailable**, **errored**, **auth invalid**, or **`call_mcp_tool` is not registered**: **STOP immediately.** Tell the operator: *"EmDash MCP is not available in this session. Enable the EmDash MCP servers under Tools & MCP, restart Cursor if needed, refresh tokens (`emdash login` / PAT), and check Output → MCP Logs. Tell me when ready."* Then **wait**. **Never** fall back to `node web/scripts/emdash-mcp-tools-call.mjs`, `npx emdash content …`, `npx emdash schema …`, REST curl, or other shell/CLI workarounds. **Operators** may run shell helpers manually; **AI agents may not.**
 
@@ -24,7 +24,7 @@ These apply to **every** Cursor agent session. When a guardrail blocks progress,
 
    **Prefer the Cursor environment secret `CULTPODCASTS_GH_TOKEN`** (exact name; CultPodcasts PAT with `repo`, `read:org`, `workflow`). **90-day expiry** — the token stored 2026-08-31 lapses ~2026-11-29; rotate the GitHub PAT and update this secret before then. The secret is injected on every cloud agent; **do not assume `gh` is already `cultpodcasts` at boot** (environment `start` is detached and git token-refresh can leave the Cursor App account active). Always: `printf '%s\n' "$CULTPODCASTS_GH_TOKEN" | gh auth login --hostname github.com --with-token --insecure-storage` then `gh auth switch --user cultpodcasts`. **Never** name or export this as `GH_TOKEN` / `GITHUB_TOKEN` (that replaces the App token used for `git push`). If the secret is missing or `gh auth` fails: device-login as **CultPodcasts** (https://github.com/login/device + one-time code), then switch and `gh pr create`. Full steps: **[docs/CLOUD_AGENT_GITHUB_PR.md](docs/CLOUD_AGENT_GITHUB_PR.md)**.
 
-10. **Every PR must bump `web/package.json`.** Do not open or ship a pull request without a semver bump. **Patch** unless the change warrants minor/major. Sync the **same** version in `web/package-lock.json` (root `version` and `packages[""].version`). One bump per PR — do not bump again on follow-up commits to the same PR. Do not bump `scheduler-worker/package.json` unless that package changed. Include the bump in the PR (commit it on the branch) before considering the PR complete. This is **independent** of the staging-deploy bump in `scripts/bump-web-version.ps1` / [DEPLOY.md § Web version bump](web/docs/DEPLOY.md#web-version-bump-on-deploy): PRs must still bump even when a later deploy uses `-SkipVersionBump`.
+**PR packaging (not a STOP guardrail):** every PR must bump `web/package.json`. If the bump is missing, **add it and continue** — do not halt. Canonical checklist: **[docs/CLOUD_AGENT_GITHUB_PR.md](docs/CLOUD_AGENT_GITHUB_PR.md)** § *What agents must do*.
 
 ## CLI paths (Windows vs WSL)
 
