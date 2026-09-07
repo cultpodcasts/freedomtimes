@@ -19,6 +19,7 @@ This runs the full local staging deploy in deterministic order. **Script matrix,
 **Recovery-specific notes:**
 
 - **Turso backup:** staging local/CI deploy now exports the EmDash staging DB (`turso db export`) before `emdash migrate`. For extra isolation, you can still create a rollback branch manually before risky work.
+- **Production EmDash outage** is a different path — canonical: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (retarget Worker; do not overwrite named production).
 - **Scheduler / Azure Function:** full deploy and `-WorkerOnly` do **not** deploy the scheduler worker or Azure Function App. Use `-WorkersOnly` or manual steps (§2.5) when needed.
 - **Web + scheduler without Terraform:** `deploy-staging-local.ps1 -WorkersOnly`.
 

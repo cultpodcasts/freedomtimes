@@ -371,7 +371,7 @@ npm run subscriptions:send-test -- --target staging --subscription-id <uuid> --f
 
 **Purpose:** `DELETE` one row from `sent_article_notifications` so the scheduler can send that article again.
 
-**Backup first** — see [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) (Turso backups).
+**Backup first** — see [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) (Turso backups). Production EmDash outage: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 
 ```powershell
 npm run subscriptions:reset-sent-article -- --article-id weekly-summary-22-june-2026 --target staging
@@ -591,5 +591,6 @@ Workers must declare `"compatibility_flags": ["nodejs_compat"]` in `scheduler-wo
 - **[PUSH_NOTIFICATIONS_TEST_PLAN.md](./PUSH_NOTIFICATIONS_TEST_PLAN.md)** — **entry point**: local testing, doc map, staging checklist, consolidated troubleshooting
 - **[MULTI_BROWSER_PRODUCTION_PUSH_TEST.md](./MULTI_BROWSER_PRODUCTION_PUSH_TEST.md)** — production browser matrix, like-for-like payload guarantee
 - **[CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md)** — Turso backups before mutating subscriptions DB
+- Sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md)** — canonical production EmDash disaster recovery
 - **`.env.dev.example`** — template with comments for Platform API vs DB tokens
 - **`AGENTS.md`** (repo root) — EmDash MCP rules (not for Turso push scripts)

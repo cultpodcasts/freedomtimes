@@ -190,7 +190,7 @@ pwsh scripts/terraform-run.ps1 -Environment production -Operation apply -LoadEnv
 
 `terraform-run.ps1 -UsePlanFile` runs both guard scripts automatically before apply.
 
-Before any production apply that touches Turso tokens or Worker secrets, export all four production databases via WSL Turso (see [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md)):
+Before any production apply that touches Turso tokens or Worker secrets, create a **Worker-resolved** EmDash backup first (`pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction` — never assume named `freedomtimes-emdash-production` is live). Then export the other production databases via WSL Turso (see [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md)). Production EmDash outage: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (retarget Worker; do not overwrite named production). Extra file exports of named DBs (scheduler / subscriptions / tips, and named EmDash if you still want a named-DB snapshot) :
 
 ```powershell
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"

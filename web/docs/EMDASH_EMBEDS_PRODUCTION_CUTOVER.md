@@ -4,7 +4,7 @@
 
 **Not in scope:** production publish of unrelated posts; Auth0 changes; agents MD→PT follow-up (sibling `freedomtimes-agents` — see PR notes).
 
-**Hard rules:** Turso backup / rollback branch **before** any production EmDash mutate. Production `content_publish` may notify subscribers — warn, then publish when migrating live posts. Agents use Cursor EmDash MCP only (no shell MCP fallback).
+**Hard rules:** Turso backup / rollback branch **before** any production EmDash mutate. Use Worker-resolved `backup-production-emdash.ps1` (never assume named `freedomtimes-emdash-production`). Production `content_publish` may notify subscribers — warn, then publish when migrating live posts. Agents use Cursor EmDash MCP only (no shell MCP fallback). Outage / rollback: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (retarget Worker; do not overwrite named production).
 
 **Production content = video transform only.** Do **not** copy staging bodies, apply `web/.emdash/article-patches/*`, swap podcast/YouTube URLs, or otherwise “bring production in line with staging.” Staging-only editorial fixes (e.g. Inès Radio France audio URL, Ahmadi BBC YouTube) stay on staging until the operator explicitly asks for a separate production content edit.
 
@@ -43,20 +43,11 @@ Expected production migrate targets (confirm with scan):
      ```
    - Record `origin/main` SHA that production is running (or the SHA of the last green production release).
 
-2. **Turso rollback branch (mandatory)**  
-   From repo root:
+2. **Turso rollback branch (mandatory)** — Worker-resolved (do **not** hardcode named `freedomtimes-emdash-production`):
    ```powershell
-   pwsh ./scripts/turso-create-rollback-branch.ps1 `
-     -ProductionDatabaseName freedomtimes-emdash-production `
-     -AllowProduction `
-     -Notes "emdash-embeds cutover pre-migrate"
+   pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction -Notes "emdash-embeds cutover pre-migrate"
    ```
-   Keep the JSON under `.release/rollback-branches/`. Generate DB URL + token for that branch (Turso dashboard / CLI) and store with the metadata — required for Phase R.
-
-3. **File export (second belt)**  
-   ```powershell
-   wsl bash -lc 'export PATH="$HOME/.turso:$PATH"; mkdir -p .release/backups; turso db export freedomtimes-emdash-production --output-file ./.release/backups/emdash-production-$(date +%Y%m%d-%H%M%S)-pre-embeds.db'
-   ```
+   Commit `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. Keep companion metadata under `.release/rollback-branches/`. That script also exports the local `.db`. Disaster recovery later: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 
 ### Phase 1 — Deploy code (Worker only is enough for this PR)
 
@@ -142,21 +133,15 @@ npx wrangler rollback --config wrangler.jsonc --env production <deployment-id>
 
 ### R3 — Restore **database** (EmDash content)
 
-Use the Phase 0 Turso **rollback branch** (point-in-time clone), not a blind re-migrate.
+**Canonical:** sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md). Identify the last verified agents log, then **retarget the Worker** to that branch. Do **not** restore onto named production as step 1.
 
 ```powershell
-# Values from Turso for the rollback branch named in .release/rollback-branches/*.json
-pwsh ./scripts/switch-production-turso-secrets.ps1 `
-  -DatabaseUrl "<rollback-libsql-url>" `
-  -AuthToken "<rollback-db-token>" `
-  -DatabaseName "<rollback-db-name>" `
-  -SyncGitHub `
-  -AllowProduction
+pwsh ./scripts/disaster-recover-production-emdash.ps1 `
+  -AllowProduction `
+  -FromBranch prod-backup-YYYYMMDD-HHMMSS
 ```
 
-Then redeploy or restart Worker secrets sync so production Worker reads the rollback DB (see script output / [PRODUCTION_RELEASE_RUNBOOK.md §6](../../PRODUCTION_RELEASE_RUNBOOK.md#6-rollback-strategy)).
-
-**File export fallback** (if branch switch unavailable): restore from `.release/backups/emdash-production-*-pre-embeds.db` via Turso support/import procedures — slower; prefer the rollback branch.
+Then see script probes / [PRODUCTION_RELEASE_RUNBOOK.md §6](../../PRODUCTION_RELEASE_RUNBOOK.md#6-rollback-strategy).
 
 ### R4 — Verify rollback
 
@@ -183,6 +168,7 @@ Then redeploy or restart Worker secrets sync so production Worker reads the roll
 ## Related docs
 
 - [web/docs/DEPLOY.md](./DEPLOY.md) — deploy script matrix
-- [web/CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) — Turso backups
+- Sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) — **canonical** production EmDash DR
+- [web/CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) — promote + Turso backups
 - [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) — CI release + §6 rollback
 - [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) — WSL Turso

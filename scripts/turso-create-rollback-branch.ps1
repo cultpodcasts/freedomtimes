@@ -1,5 +1,8 @@
 [CmdletBinding()]
 param(
+    # MUST be the Turso DB the production Worker actually uses (resolve Worker
+    # TURSO_DATABASE_URL hostname → db name). Do NOT blindly pass
+    # freedomtimes-emdash-production — that named DB can be a stale thin corpus.
     [Parameter(Mandatory = $true)]
     [string]$ProductionDatabaseName,
     [string]$BranchName,
@@ -15,7 +18,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 if (-not $AllowProduction) {
-    throw "Refusing to create production rollback checkpoint without -AllowProduction."
+    throw "Refusing to create production EmDash backup checkpoint without -AllowProduction."
 }
 
 function Test-CommandAvailable {
@@ -74,7 +77,7 @@ Push-Location $repoRoot
 try {
     $timestampUtc = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     if ([string]::IsNullOrWhiteSpace($BranchName)) {
-        $BranchName = "prod-rollback-$timestampUtc"
+        $BranchName = "prod-backup-$timestampUtc"
     }
 
     $headHash = (Invoke-External -FilePath "git" -Arguments @("rev-parse", "HEAD") -CaptureOutput).Output[0].Trim()
@@ -92,7 +95,7 @@ try {
         Write-Host "[dry-run] turso db create $BranchName --from-db $ProductionDatabaseName$dryExtra" -ForegroundColor Yellow
     }
     else {
-        Write-Host "Creating Turso rollback branch '$BranchName' from '$ProductionDatabaseName'" -ForegroundColor Cyan
+        Write-Host "Creating Turso backup branch '$BranchName' from '$ProductionDatabaseName' (always prod-backup-<stamp> unless overridden)" -ForegroundColor Cyan
         if ($UseWslTurso) {
             function Escape-BashSingleQuoted {
                 param([string]$Value)
@@ -111,7 +114,7 @@ try {
             }
             $null = Invoke-External -FilePath "turso" -Arguments $tursoArgs
         }
-        Write-Host "Turso rollback branch created." -ForegroundColor Green
+        Write-Host "Turso backup branch created: $BranchName" -ForegroundColor Green
     }
 
     $metadataPath = Join-Path $repoRoot $MetadataDirectory
@@ -125,6 +128,7 @@ try {
     $metadata = [ordered]@{
         createdAtUtc = [DateTime]::UtcNow.ToString("o")
         sourceDatabase = $ProductionDatabaseName
+        backupDatabase = $BranchName
         rollbackDatabase = $BranchName
         notes = $Notes
         git = [ordered]@{
@@ -139,7 +143,7 @@ try {
 
     $metadata | ConvertTo-Json -Depth 8 | Set-Content -Path $metadataFilePath -Encoding UTF8
 
-    Write-Host "Rollback metadata saved: $metadataFilePath" -ForegroundColor Green
+    Write-Host "Backup metadata saved: $metadataFilePath" -ForegroundColor Green
     Write-Host "Next: generate branch token and database URL for emergency failback secret switching." -ForegroundColor Cyan
 }
 finally {

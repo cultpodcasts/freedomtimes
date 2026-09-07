@@ -11,6 +11,7 @@ Operator guide for testing browser and native push delivery on Freedom Times. Us
 | **[PUSH_NOTIFICATIONS_OPERATOR.md](./PUSH_NOTIFICATIONS_OPERATOR.md)** | `.env.dev` setup (sync scripts, var names, common mistakes), every `subscriptions:*` npm script, `shared/push` module, local vs worker architecture |
 | **[MULTI_BROWSER_PRODUCTION_PUSH_TEST.md](./MULTI_BROWSER_PRODUCTION_PUSH_TEST.md)** | Production multi-browser session on `https://freedomtimes.news` (June 15 slug example, like-for-like payload guarantee, per-browser checklist) |
 | [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) | Turso backups before mutating subscriptions DB |
+| Sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) | Production EmDash outage / Worker retarget (canonical) |
 | [LOCAL_DEV_REQUIREMENTS.md](../../LOCAL_DEV_REQUIREMENTS.md) | Android Capacitor build, Firebase config, JDK/SDK for native app testing |
 
 All operator scripts run from **`web/`** and load repo-root **`.env.dev`** (see OPERATOR Section A).

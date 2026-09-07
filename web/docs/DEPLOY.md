@@ -7,6 +7,7 @@
 | Doc | Use for |
 |-----|---------|
 | [AGENTS.md](../../AGENTS.md) | AI guardrails (MCP, Turso auth, production publish) |
+| Sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) | **Canonical** production EmDash disaster recovery (retarget Worker) |
 | [docs/CLI_PATHS_WINDOWS.md](../../docs/CLI_PATHS_WINDOWS.md) | Windows Terraform PATH; Turso CLI (WSL on Windows, native on Linux) |
 | [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) | CI release workflow (`production-release.ps1`), schema/content promotion |
 | [STAGING_RECOVERY.md](../../STAGING_RECOVERY.md) | Staging teardown/recovery checklist, worker rename |
@@ -92,7 +93,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 **EmDash core schema (not `pt:migrate`, not tips/subscriptions SQL):** after Turso backup and `npm run build`, local deploy applies `npx emdash migrate` (non-interactive, `--expected-target-fingerprint`), then wrangler of **that same build**, then `npx emdash migrate --check`. CI apply still requires a pre-reviewed GitHub secret (`EMDASH_TARGET_FINGERPRINT_STAGING` / `EMDASH_TARGET_FINGERPRINT_PRODUCTION`) mapped to `EMDASH_TARGET_FINGERPRINT`. Local `deploy-*-local.ps1` pins process `EMDASH_TARGET_FINGERPRINT` from same-run `--status` after build; do not invent those names as Cursor secrets. Staging/production runtime is `migrations: { runtime: "check", dev: "auto" }` in `web/astro.config.ts` — first-request auto-migrate is off. `astro dev` stays `dev: "auto"` and refuses production-looking `TURSO_*` hosts.
 
-**Production Turso rollback:** full deploy **and** `-WorkerOnly` create a rollback checkpoint **before** migrate (WSL Turso on Windows; native `turso` on Linux). Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h whose `sourceDatabase` matches the production EmDash name about to be migrated. Metadata path is logged under `.release/rollback-branches/`.
+**Production Turso rollback:** full deploy **and** `-WorkerOnly` create a **verified Worker-resolved** backup **before** migrate (`scripts/backup-production-emdash.ps1` — WSL Turso on Windows; native `turso` on Linux). Do **not** assume named `freedomtimes-emdash-production`. Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h from a matching or **verified** Worker-resolved backup. Commit `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. Disaster recovery (canonical): sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 
 **CI / release path (not local deploy):** `production-release.ps1 -TerraformMode apply` dispatches `terraform-production.yml` with `production_worker_deploy=true` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). That apply dispatch creates a recoverable Turso rollback branch (metadata uploaded as a workflow artifact + job summary), applies tips/subscriptions/scheduler SQL, applies core migrate, deploys, then `--check`. Push to `main` and `-TerraformMode plan` are **check-only** (Terraform plan + `emdash migrate --check`; no SQL, no EmDash apply, no wrangler). Section 1 remains the operator-facing record for content promotion and for local schema work that is not going through this dispatch.
 
@@ -142,7 +143,7 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 **Full deploy (default) — step order:**
 
 1. Push secrets preflight (`Assert-ProductionPushSecretsReady`)
-2. Turso production rollback checkpoint (`turso-create-rollback-branch.ps1` via WSL on Windows / native `turso` on Linux; `-SkipTursoBackup` only if metadata newer than 24h exists)
+2. Turso production rollback checkpoint (`backup-production-emdash.ps1` — Worker-resolved; WSL Turso on Windows / native `turso` on Linux; `-SkipTursoBackup` only if verified metadata newer than 24h exists)
 3. Terraform apply
 4. Write Auth0 production credentials from Terraform output into `.env.dev`, then verify
 5. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction`)
@@ -173,6 +174,7 @@ Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only
 | Situation | Use instead |
 |-----------|-------------|
 | EmDash content promotion staging → production | [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) + EmDash MCP |
+| Production EmDash outage / rollback | Sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) |
 | Schema-only changes without Worker deploy | EmDash CLI / MCP; optional `terraform-run.ps1` if infra changed |
 | Terraform plan/validate only (no deploy) | `scripts/terraform-run.ps1 -Operation plan\|validate` |
 | Official production release on `main` | `production-release.ps1` — [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md) |
@@ -317,7 +319,7 @@ Two secret sources apply to the **web** Worker:
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | **Wrangler / deploy CI / `switch-production-turso-secrets.ps1`** — **not Terraform** | EmDash CMS Turso connection |
 | `AUTH0_*`, `EMDASH_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_TIPS_*`, `PUSH_*`, … | **`set-github-secrets.ps1`** / CI | Auth, tips DB, subscriptions, web push |
 
-**Production outage (July 2026):** Terraform apply overwrote `TURSO_*` on the live Worker with credentials from a drifted plan (wrong libsql host → HTTP 404 on every CMS query → blank homepage). Restore with `scripts/switch-production-turso-secrets.ps1`. See `infra/terraform/README.md` § Worker Turso secrets.
+**Production outage (July 2026):** Terraform apply overwrote `TURSO_*` on the live Worker with credentials from a drifted plan (wrong libsql host → HTTP 404 on every CMS query → blank homepage). Canonical recovery: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (`disaster-recover-production-emdash.ps1` retargets the Worker; do not overwrite named production). See `infra/terraform/README.md` § Worker Turso secrets.
 
 After rename, verify EmDash Turso secrets exist on the **new** script name:
 
@@ -542,7 +544,7 @@ If sync still warns about missing outputs, run `terraform output` in `infra/terr
 
 ### When it runs
 
-`deploy-production-local.ps1` (full **and** `-WorkerOnly`) calls `scripts/turso-create-rollback-branch.ps1` **before** `emdash migrate`. Creates a full Turso copy of the production EmDash database and writes metadata JSON under `.release/rollback-branches/`. Staging local deploy exports the EmDash staging DB to `.release/backups/` the same way.
+`deploy-production-local.ps1` (full **and** `-WorkerOnly`) calls `scripts/backup-production-emdash.ps1` **before** `emdash migrate`. That resolves the **Worker** Turso DB (never assumes named `freedomtimes-emdash-production`), creates `prod-backup-YYYYMMDD-HHMMSS` (legacy restore sources may still be `prod-rollback-*`), exports `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`, verifies inventory, writes `.release/rollback-branches/` metadata, and writes the committed log in sibling `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. Staging local deploy exports the EmDash staging DB to `.release/backups/` the same way. Production outage: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (retarget Worker; do not overwrite named production).
 
 | Mode | Turso backup |
 |------|----------------|
@@ -552,7 +554,7 @@ If sync still warns about missing outputs, run `terraform output` in `infra/terr
 | `-DryRun` | Skipped |
 | Staging (`deploy-staging-local.ps1`, including `-WorkerOnly` / `-WorkersOnly`) | **Yes** — `turso db export` |
 
-Database name: `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` from `.env.dev` (default `freedomtimes-emdash-production`). Group: `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (default `freedomtimes-production`).
+Database name: **Worker-resolved** via `web/scripts/resolve-production-worker-turso.mjs` (do not default to `freedomtimes-emdash-production`). Group: `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION` (default `freedomtimes-production`).
 
 Staging export uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default. Do not require `TF_VAR_TURSO_DATABASE_NAME_STAGING` as a Cursor secret. Staging migrate skips a production process URL (hint match or `*-emdash-production-*`) and still flags `IgnoredProcessProductionShadow` when Terraform URL wins. It **throws** if the selected Terraform or `.env.dev` URL is production. Never write the process production pair into `.env.dev` (Cloud Agents: **`AGENTS.md`**).
 

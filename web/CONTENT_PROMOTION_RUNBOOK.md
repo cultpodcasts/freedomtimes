@@ -2,6 +2,13 @@
 
 This runbook documents the repeatable process for getting verified staging content live on production.
 
+## Contents
+
+- [Turso backups before any mutating work](#turso-backups-before-any-mutating-work) — **where backups live**, naming, Worker-resolve rule
+- [Production backup verify (promote gate)](#production-backup-verify-promote-gate)
+- [Step 0 before content promote](#0-step-0-verified-production-backup-mandatory)
+- [Disaster recovery](#disaster-recovery) — **canonical:** sibling `freedomtimes-agents/docs/DISASTER_RECOVERY.md` (retarget Worker; do not overwrite named production)
+
 ## Scope
 
 - Promote entries (for example `posts`, `pages`, `archives`) from staging to production.
@@ -20,48 +27,94 @@ This runbook documents the repeatable process for getting verified staging conte
 1. Node dependencies installed in `web/` (`npm install`).
 2. EmDash API token for staging and production.
 3. Collection schema parity between staging and production.
-4. A Turso rollback branch has been created for production before any migration or production content promotion.
+4. A **verified Worker-resolved** production EmDash backup exists (branch + local file + agents log). Do **not** assume `freedomtimes-emdash-production` is live.
 5. The promotion path being used is scripted and UTF-8-safe. Do not use manual copy/paste or ad hoc terminal redirection for content payloads.
 
 ## Turso backups before any mutating work
+
+**MUST BE CLEAR WHERE IT IS.** After every production EmDash backup, look here first. Production **outage / rollback** is not this file — sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../freedomtimes-agents/docs/DISASTER_RECOVERY.md)** (retarget Worker; do not overwrite named production).
+
+| Artifact | Exact path pattern | Committed? |
+|----------|-------------------|------------|
+| **Canonical operator log** | `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` | **Yes — commit in freedomtimes-agents** |
+| Staging log (when recorded) | `freedomtimes-agents/data/backups/staging-emdash-YYYYMMDD-HHMMSS.json` | Yes |
+| Turso backup branch | `prod-backup-YYYYMMDD-HHMMSS` | Turso only (THE production EmDash content backup — **always this name**, never `prod-work-embeds-…`. Legacy restore sources may still be `prod-rollback-*`.) |
+| Local file | `freedomtimes/.release/backups/emdash-production-YYYYMMDD-HHMMSS.db` | No (gitignored binary) |
+| Local metadata | `freedomtimes/.release/rollback-branches/YYYYMMDD-HHMMSS-prod-backup-YYYYMMDD-HHMMSS.json` | No (gitignored; includes `sourceDatabase` = Worker-resolved live DB, `workerTursoHost`, `postCount`, `weeklySlugsSample`, `verification`) |
+
+Do **not** commit tokens or `.db` files into freedomtimes-agents. After backup, **write + commit** the JSON log.
+
+### Hard rule: back up the DB the production Worker actually uses
+
+Resolve Worker `TURSO_DATABASE_URL` hostname → Turso database name. **Never** blindly assume `freedomtimes-emdash-production`.
+
+Incident 2026-09-07: named `freedomtimes-emdash-production` was a **stale thin corpus** (15 July-capped posts) while the live Worker used `prod-work-embeds-20260729-183444` (23 posts). Restoring “named production” backups could not recover August/September. That work-embeds name is a **source**, not a backup. The next backup of whatever the Worker uses will be named `prod-backup-<stamp>`.
+
+Canonical command (Windows WSL Turso / Linux native):
+
+```powershell
+pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
+```
+
+That script:
+
+1. Resolves the live Worker Turso host (`web/scripts/resolve-production-worker-turso.mjs`) — **whatever** DB the Worker uses.
+2. Creates Turso branch `prod-backup-YYYYMMDD-HHMMSS` **from that resolved name** (never named after the source).
+3. Exports `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`.
+4. Verifies backup published slugs match live Worker inventory (FAIL if thin / missing weeklies).
+5. Writes metadata under `.release/rollback-branches/`.
+6. Writes the committed log under `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`.
+
+Then **commit the agents log** (operator/agent required step — do not skip):
+
+```powershell
+cd ..\freedomtimes-agents
+git add data/backups/prod-emdash-YYYYMMDD-HHMMSS.json
+git commit -m "Record production EmDash backup prod-emdash-YYYYMMDD-HHMMSS"
+```
 
 ### Turso CLI in WSL
 
 **Linux Cloud VM (not WSL):** native `turso` on PATH or `$HOME/.turso/turso`. Deploy scripts run `turso config set token` from `TURSO_PLATFORM_API_TOKEN`. Do not use `wsl`. Snapshot rollback JSON under `.release/rollback-branches/` may show Unix-epoch mtimes — that is **not** a fresh checkpoint ([CLOUD_AGENT_DEPLOY_ISSUES.md](docs/CLOUD_AGENT_DEPLOY_ISSUES.md) CA-16).
 
-**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](../docs/CLI_PATHS_WINDOWS.md)** — Turso is WSL-only **on Windows**; auth, PATH quirks, verification, and invoke patterns live there.
+**Primary reference:** **[docs/CLI_PATHS_WINDOWS.md](../docs/CLI_PATHS_WINDOWS.md)** — Turso is WSL-only **on Windows**.
 
 From **PowerShell** at repo root:
 
 ```powershell
 wsl bash -lic "turso db list"
-# or: wsl bash -lc '$HOME/.turso/turso db list'
 ```
 
-Rollback-branch helper from WSL: `./scripts/turso-create-rollback-branch-wsl.sh`.
+**Rule:** create a **recoverable backup** of the **specific Turso database** you are about to change **before** migrations, seeds, manual SQL, content promotion, or bulk CMS updates.
 
-**Rule:** create a **recoverable backup** of the **specific Turso database** you are about to change **before** migrations, seeds, manual SQL, content promotion, or bulk CMS updates. Do not skip this for small or “obvious” edits.
-
-**Option A — file export (any Turso DB you can access with the CLI)**  
-After `turso auth login` in **WSL** (see [Turso CLI introduction](https://docs.turso.tech/cli/introduction)). From repo root in PowerShell:
+**Staging file export** (not the production Worker path):
 
 ```powershell
 wsl bash -lc 'export PATH="$HOME/.turso:$PATH"; mkdir -p .release/backups; turso db export freedomtimes-emdash-staging --output-file ./.release/backups/emdash-staging-$(date +%Y%m%d-%H%M%S).db'
 ```
 
-Or inside an interactive WSL shell:
-
-```bash
-export PATH="$HOME/.turso:$PATH"
-turso db export freedomtimes-emdash-staging --output-file ./.release/backups/emdash-staging-$(date +%Y%m%d-%H%M%S).db
-```
-
-Use the real database name from `turso db list` (for example `freedomtimes-emdash-staging`, `freedomtimes-scheduler-staging`). Keep the file until the change is verified. Add `--overwrite` only when re-running the same command intentionally.
-
-**Option B — production rollback branch (EmDash production before risky work)**  
-Use `scripts/turso-create-rollback-branch.ps1` with `-AllowProduction` as already required in the prerequisites below; keep the emitted JSON under `.release/rollback-branches/`.
+Record a staging log with `node web/scripts/write-emdash-backup-log.mjs` (`environment: staging`) and commit `data/backups/staging-emdash-*.json` in freedomtimes-agents.
 
 Agents and operators should treat **scheduler** and **subscriptions** databases the same way whenever `web/scripts/apply-turso-sql.ts` or direct SQL is used against them.
+
+### Production backup verify (promote gate)
+
+```powershell
+node web/scripts/verify-production-emdash-backup.mjs --backup-db .release/backups/emdash-production-YYYYMMDD-HHMMSS.db --from-worker --compare-staging
+node web/scripts/verify-production-emdash-backup.mjs --check-metadata auto
+```
+
+**FAIL (non-zero)** when:
+
+- Any live published slug (`ec_posts` where `deleted_at IS NULL` and `status = published`) is missing from the backup.
+- Backup post count is thinner than the live Worker inventory.
+- Live weeklies that exist on staging/live are missing from the backup.
+
+`promote-post-staging-to-production.mjs` invokes `--check-metadata auto` and **refuses to proceed** on failure. Use the wrapper to refresh then promote:
+
+```powershell
+pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug <slug> -AllowProduction
+```
 
 For **PR review** (EmDash version bumps, `content` / Portable Text refactors), use **`docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — includes a **canary `content get`** to verify whether `data.content` is PT (`array`) or a legacy string.
 
@@ -75,6 +128,24 @@ $env:EMDASH_PRODUCTION_URL = "https://freedomtimes.news"
 $env:EMDASH_STAGING_TOKEN = "<staging-token>"
 $env:EMDASH_PRODUCTION_TOKEN = "<production-token>"
 ```
+
+## 0. Step 0: Verified production backup (mandatory)
+
+Before any staging→production content promote:
+
+```powershell
+pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug <slug> -AllowProduction
+```
+
+Or, separately:
+
+```powershell
+pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
+# commit ../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json
+node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production
+```
+
+Promote **fails** without a verified metadata file newer than 24h (`verification.pass = true`). `--skip-backup-verify` is emergency-only.
 
 ## 1. Step 1: Prove Production Matches Staging Before Content Promotion
 
@@ -174,11 +245,14 @@ Bylines are **not** set by copying `primaryBylineId` in a raw JSON file: the API
 **Scripted path (recommended for `posts`):** from repo root, after `emdash login` for both URLs:
 
 ```powershell
-node web/scripts/promote-post-staging-to-production.mjs posts <slug>
+pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug <slug> -AllowProduction
+# equivalent after Step 0 backup:
+# node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production
 ```
 
 This script:
 
+0. Wrapper / promote gate: verified Worker-resolved production backup (`--check-metadata auto`) or refuse.
 1. Loads staging **`data` via MCP `content_get` only** (keeps **Portable Text** arrays in `data.content`). There is **no** CLI fallback.
 2. Writes production with **MCP** `content_create` / `content_update` / `content_publish` (not `npx emdash content …`).
 3. If `data.featured_image` references a media id that does not exist in production, downloads the file from the **public** staging URL `/_emdash/api/media/file/<storageKey>`, uploads it to production, and rewrites `featured_image` before create/update.
@@ -253,6 +327,7 @@ After metadata is aligned, reload admin and re-test the collection route.
 
 ## 6. Production Go-Live Checklist
 
+0. Step 0 backup verified (Worker-resolved) and `data/backups/prod-emdash-*.json` committed in freedomtimes-agents.
 1. Schema parity confirmed (`schema list/get`).
 2. Staging source item validated as published.
 3. Production item created/updated and published.
@@ -315,3 +390,9 @@ If MCP/Indexing API is unavailable:
 - Daily Indexing API quota is limited (~200 URL notifications). Prefer the new/changed URLs, not a full-site flood every promote.
 - Staging URLs must **never** be submitted for indexing (`staging.freedomtimes.news` is locked / not public).
 - Same step applies after **in-place production edits** that change reader-visible copy or SEO fields — publish first (§3), then request indexing for the same live URL.
+
+## Disaster recovery
+
+**Canonical:** sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../freedomtimes-agents/docs/DISASTER_RECOVERY.md)** — immediate run plan, Worker-resolve, verify-or-fail, and the retarget script. This runbook stays the promote path (Steps 0–7 above). Do **not** treat this file as a second full DR source of truth.
+
+First minutes (do **not** overwrite named `freedomtimes-emdash-production`): identify last verified `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` → `pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <destination.tursoBranch>`.

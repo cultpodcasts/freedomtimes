@@ -878,14 +878,16 @@ Recommended pre-apply checkpoint and rollback helpers:
 > Turso CLI operations: see **[docs/CLI_PATHS_WINDOWS.md](docs/CLI_PATHS_WINDOWS.md)** (WSL-only in this workspace).
 
 ```bash
-# GitHub Actions release path — manual checkpoint before dispatch:
-.\scripts\turso-create-rollback-branch.ps1 -ProductionDatabaseName <prod-db-name> -AllowProduction
+# GitHub Actions release path — Worker-resolved backup (do not assume named freedomtimes-emdash-production):
+.\scripts\backup-production-emdash.ps1 -AllowProduction
+# then commit freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json
 
 # Local full deploy — automatic unless -SkipTursoBackup:
 # pwsh ./scripts/deploy-production-local.ps1
 
-# Emergency failback: point production Worker to rollback Turso branch
-.\scripts\switch-production-turso-secrets.ps1 -DatabaseUrl <rollback-url> -AuthToken <rollback-token> -DatabaseName <rollback-db-name> -SyncGitHub -AllowProduction
+# Emergency failback: retarget Worker to last verified branch (canonical DR):
+# sibling freedomtimes-agents/docs/DISASTER_RECOVERY.md
+.\scripts\disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-backup-YYYYMMDD-HHMMSS>
 ```
 
 ```bash

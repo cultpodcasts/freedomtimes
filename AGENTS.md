@@ -4,9 +4,11 @@
 
 Numbered items **1–9** apply to **every** Cursor agent session. When one of those guardrails blocks progress, **STOP and wait** for the operator — do not work around unless they **explicitly** override in that same chat. The package-bump note after item 9 is a checklist, not a halt.
 
+**Disaster recovery (production outage / blank homepage / migrate 503 / thin corpus):** Canonical runbook is sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md)**. First minutes: identify last verified `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` → retarget the Worker to `destination.tursoBranch` (`prod-backup-*`, or legacy `prod-rollback-*`). Do **not** overwrite named `freedomtimes-emdash-production` first. Script: `pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-backup-stamp>`.
+
 1. **EmDash MCP — IF MCP FAILS WE DO NOT FALL BACK TO SHELL.** When Cursor EmDash MCP (`freedomtimes-staging` / `freedomtimes-production`, or equivalent servers under **Tools & MCP**) is **unavailable**, **errored**, **auth invalid**, or **`call_mcp_tool` is not registered**: **STOP immediately.** Tell the operator: *"EmDash MCP is not available in this session. Enable the EmDash MCP servers under Tools & MCP, restart Cursor if needed, refresh tokens (`emdash login` / PAT), and check Output → MCP Logs. Tell me when ready."* Then **wait**. **Never** fall back to `node web/scripts/emdash-mcp-tools-call.mjs`, `npx emdash content …`, `npx emdash schema …`, REST curl, or other shell/CLI workarounds. **Operators** may run shell helpers manually; **AI agents may not.**
 
-2. **Database backup before any mutate.** Before Turso/libSQL writes, SQL migrations, seeds, or EmDash content writes (`content_update`, `content_publish`, etc.), create a **recoverable backup** of the target database first. See **`web/CONTENT_PROMOTION_RUNBOOK.md`** and **`docs/CLI_PATHS_WINDOWS.md`**.
+2. **Database backup before any mutate.** Before Turso/libSQL writes, SQL migrations, seeds, or EmDash content writes (`content_update`, `content_publish`, etc.), create a **recoverable backup** of the target database first. For **production EmDash**, back up the DB the **Worker actually uses** (resolve `TURSO_DATABASE_URL` hostname — never assume `freedomtimes-emdash-production`). Canonical command: `pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction`. Then **write + commit** `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` (source DB, dest Turso branch **`prod-backup-YYYYMMDD-HHMMSS`** + `emdash-production-<stamp>.db`, post counts — no tokens). Promote/backup steps: **`web/CONTENT_PROMOTION_RUNBOOK.md`**. Outage / rollback: sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md)**. CLI paths: **`docs/CLI_PATHS_WINDOWS.md`**.
 
 3. **EmDash MCP-only for schema and content JSON.** Do **not** use `npx emdash schema …` / `npx emdash content …` to inspect or edit stored **`posts` / `pages` `content`** (Portable Text). Use Cursor MCP (`content_get`, `content_update`, …). CLI exceptions: `emdash login`, `emdash media upload` (binary / official OG cards — see §8), `emdash doctor` — auth/upload/diagnostics only. **When writing body content via MCP:** send a **Portable Text array**, never a raw markdown string (see § *EmDash: MCP only* below; sibling **freedomtimes-agents** [AGENTS.md](../freedomtimes-agents/AGENTS.md) §3).
 
@@ -33,7 +35,7 @@ Numbered items **1–9** apply to **every** Cursor agent session. When one of th
 - Quick check: `where.exe terraform` (Windows). Turso: `wsl bash -lic "turso auth whoami"` then `turso db list` in WSL; on Linux `turso auth whoami` / `$HOME/.turso/turso`.
 - Do not run parallel Terraform operations on the same environment (staging/production/auth0-shared); `scripts/terraform-run.ps1` enforces a per-environment file lock.
 - Auth failures: **Primary guardrails §6–§7** — STOP; do not bypass.
-- Turso backups and rollback branches: **[web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md)** (Turso backups section).
+- Turso backups and verify-or-fail promote gate: **[web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md)**. Disaster recovery (canonical): sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md)**. Committed record: `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`.
 
 ## EmDash: MCP only for schema and content (hard rule)
 
@@ -59,7 +61,14 @@ Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section *
 
 See **Primary guardrails §2**. Before **any** mutating operation on a database or CMS-backed store (Turso / libSQL, SQL migrations, seeds, EmDash content writes, MCP updates), create a **recoverable backup** of the **target** database first. Do not skip this for small edits.
 
-Concrete steps and examples (Turso `db export`, rollback branches, scheduler/subscriptions — Turso CLI in **WSL on Windows**, **native on Linux**): see **`web/CONTENT_PROMOTION_RUNBOOK.md`** section *Turso backups before any mutating work*; invoke patterns in **`docs/CLI_PATHS_WINDOWS.md`**.
+**Production EmDash (content / promote / migrate):**
+
+1. `pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction` — snapshot of **whatever Turso DB the production Worker is using**; Turso branch is always `prod-backup-YYYYMMDD-HHMMSS` (never `prod-work-embeds-…`) + `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`. Legacy `prod-rollback-*` branches remain valid DR restore sources.
+2. Verify must PASS (backup published count ≥ live Worker; no missing weeklies) or promote/deploy stops.
+3. Commit `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` (required operator artifact).
+4. **Disaster recovery:** sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md)** — retarget the Worker to the backup branch first; do **not** restore onto named production. Script: `pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-backup-stamp>` (legacy `prod-rollback-*` also accepted).
+
+Staging / scheduler / subscriptions file dumps: **`web/CONTENT_PROMOTION_RUNBOOK.md`**; Turso CLI in **WSL on Windows**, **native on Linux** — **`docs/CLI_PATHS_WINDOWS.md`**.
 
 ## Staging access: NOTHING IS PUBLIC (hard rule for AI agents)
 
