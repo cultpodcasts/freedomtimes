@@ -1,6 +1,6 @@
 # Cloud agents: GitHub PRs as CultPodcasts
 
-**Canonical agent rule:** **`AGENTS.md`** § *Primary guardrails* §9.
+**Canonical agent rule:** **`AGENTS.md`** § *Primary guardrails* §9 (open PRs as CultPodcasts) and **§10** (every PR must bump `web/package.json` + lockfile; one bump per PR).
 
 New Cursor cloud agents often **push** a branch, then fail to open a PR with `must be a collaborator` or `Resource not accessible by integration`. That is expected. Do **not** stop at a compare URL.
 
@@ -32,7 +32,7 @@ If the secret is unset, expired, or `gh auth` fails: fall back to device login b
 
 ## What agents must do
 
-1. Confirm the working branch is pushed (`git push -u origin <branch>`).
+1. Confirm the working branch is pushed (`git push -u origin <branch>`). **Every PR must include a `web/package.json` semver bump** synced to `web/package-lock.json` (root `version` and `packages[""].version`) — **AGENTS.md** §10. Patch unless minor/major is warranted. One bump per PR.
 2. Try `ManagePullRequest` once if that tool is available.
 3. If that fails with collaborator / integration 403, use CultPodcasts `gh`:
 
