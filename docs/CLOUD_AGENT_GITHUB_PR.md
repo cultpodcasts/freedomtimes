@@ -1,6 +1,6 @@
 # Cloud agents: GitHub PRs as CultPodcasts
 
-**Canonical agent rule:** **`AGENTS.md`** § *Primary guardrails* §9.
+**Canonical agent rules:** **`AGENTS.md`** § *Primary guardrails* §9 (open PRs as CultPodcasts). **PR packaging** (not a STOP guardrail): every PR must bump `web/package.json` + lockfile — see § *What agents must do* below.
 
 New Cursor cloud agents often **push** a branch, then fail to open a PR with `must be a collaborator` or `Resource not accessible by integration`. That is expected. Do **not** stop at a compare URL.
 
@@ -32,7 +32,7 @@ If the secret is unset, expired, or `gh auth` fails: fall back to device login b
 
 ## What agents must do
 
-1. Confirm the working branch is pushed (`git push -u origin <branch>`).
+1. Confirm the working branch is pushed (`git push -u origin <branch>`). **Every PR must include a `web/package.json` semver bump** synced to `web/package-lock.json` (root `version` and `packages[""].version`). **Patch** unless minor/major is warranted. One bump per PR — do not bump again on follow-up commits to the same PR. Do not bump `scheduler-worker/package.json` unless that package changed. Include the bump in the PR before considering it complete. This is **independent** of the staging-deploy bump in `scripts/bump-web-version.ps1` / [DEPLOY.md § Web version bump](../web/docs/DEPLOY.md#web-version-bump-on-deploy): PRs must still bump even when a later deploy uses `-SkipVersionBump`. If the bump is missing, **add it and continue** — do not STOP.
 2. Try `ManagePullRequest` once if that tool is available.
 3. If that fails with collaborator / integration 403, use CultPodcasts `gh`:
 

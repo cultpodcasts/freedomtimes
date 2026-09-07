@@ -15,6 +15,7 @@ import {
   shouldRedirectHomepageToRoot,
 } from './lib/homepage-host';
 import { recordPageView } from './lib/page-view-analytics';
+import { buildRobotsTxt } from './lib/robots-txt';
 
 enum PathMode {
   Exact = 'exact',
@@ -46,30 +47,6 @@ function validatePathRules(rules: PathRule[]): void {
 }
 
 validatePathRules(AUTH_BYPASS_RULES);
-
-/** Override EmDash default robots.txt so link-preview crawlers can fetch og:image URLs under /_emdash/api/media/file/. */
-function buildRobotsTxt(origin: string): string {
-	const sitemapUrl = `${origin}/sitemap.xml`;
-	return [
-		'# Social preview crawlers: allow public media (og:image, etc.) under /_emdash/api/media/file/',
-		'# while keeping the rest of /_emdash/ disallowed for these agents.',
-		'User-agent: Twitterbot',
-		'User-agent: facebookexternalhit',
-		'User-agent: Facebot',
-		'User-agent: LinkedInBot',
-		'Disallow: /_emdash/',
-		'Allow: /_emdash/api/media/file/',
-		'',
-		'User-agent: *',
-		'Allow: /',
-		'',
-		'# Disallow admin and API routes',
-		'Disallow: /_emdash/',
-		'',
-		`Sitemap: ${sitemapUrl}`,
-		'',
-	].join('\n');
-}
 
 function isAuthBypassPath(path: string): boolean {
   return AUTH_BYPASS_RULES.some((rule) => {
