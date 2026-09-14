@@ -64,9 +64,10 @@ See **Primary guardrails §2**. Before **any** mutating operation on a database 
 **Production EmDash (content / promote / migrate):**
 
 1. `pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction` — snapshot of **whatever Turso DB the production Worker is using**; Turso branch is always `prod-backup-YYYYMMDD-HHMMSS` (never `prod-work-embeds-…`) + `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`. Legacy `prod-rollback-*` branches remain valid DR restore sources.
-2. Verify must PASS (backup published count ≥ live Worker; no missing weeklies) or promote/deploy stops.
-3. Commit `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` (required operator artifact).
-4. **Disaster recovery:** sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md)** — retarget the Worker to the backup branch first; do **not** restore onto named production. Script: `pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-backup-stamp>` (legacy `prod-rollback-*` also accepted).
+2. After `turso db export`, **verify the file** exists and is a non-trivial size (`ls -lh`; optional `sqlite3` integrity) before any promote/content mutate. Export alone is not enough — see **Verify** in **`web/CONTENT_PROMOTION_RUNBOOK.md`**.
+3. Inventory verify must PASS (backup published count ≥ live Worker; no missing weeklies) or promote/deploy stops.
+4. Commit `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` (required operator artifact). <!-- pragma: allowlist secret -->
+5. **Disaster recovery:** sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md)** — retarget the Worker to the backup branch first; do **not** restore onto named production. Script: `pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-backup-stamp>` (legacy `prod-rollback-*` also accepted). <!-- pragma: allowlist secret -->
 
 Staging / scheduler / subscriptions file dumps: **`web/CONTENT_PROMOTION_RUNBOOK.md`**; Turso CLI in **WSL on Windows**, **native on Linux** — **`docs/CLI_PATHS_WINDOWS.md`**.
 

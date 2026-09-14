@@ -5,6 +5,7 @@ This runbook documents the repeatable process for getting verified staging conte
 ## Contents
 
 - [Turso backups before any mutating work](#turso-backups-before-any-mutating-work) — **where backups live**, naming, Worker-resolve rule
+- [Verify after `turso db export`](#verify-after-turso-db-export) — **file exists + non-trivial size** before any promote mutate
 - [Production backup verify (promote gate)](#production-backup-verify-promote-gate)
 - [Step 0 before content promote](#0-step-0-verified-production-backup-mandatory)
 - [Disaster recovery](#disaster-recovery) — **canonical:** sibling `freedomtimes-agents/docs/DISASTER_RECOVERY.md` (retarget Worker; do not overwrite named production)
@@ -61,9 +62,10 @@ That script:
 1. Resolves the live Worker Turso host (`web/scripts/resolve-production-worker-turso.mjs`) — **whatever** DB the Worker uses.
 2. Creates Turso branch `prod-backup-YYYYMMDD-HHMMSS` **from that resolved name** (never named after the source).
 3. Exports `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`.
-4. Verifies backup published slugs match live Worker inventory (FAIL if thin / missing weeklies).
-5. Writes metadata under `.release/rollback-branches/`.
-6. Writes the committed log under `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`.
+4. **Verify** that export file exists and is a non-trivial size (see [Verify after `turso db export`](#verify-after-turso-db-export)). Export alone is not enough.
+5. Verifies backup published slugs match live Worker inventory (FAIL if thin / missing weeklies).
+6. Writes metadata under `.release/rollback-branches/`.
+7. Writes the committed log under `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. <!-- pragma: allowlist secret -->
 
 Then **commit the agents log** (operator/agent required step — do not skip):
 
@@ -96,6 +98,37 @@ wsl bash -lc 'export PATH="$HOME/.turso:$PATH"; mkdir -p .release/backups; turso
 Record a staging log with `node web/scripts/write-emdash-backup-log.mjs` (`environment: staging`) and commit `data/backups/staging-emdash-*.json` in freedomtimes-agents.
 
 Agents and operators should treat **scheduler** and **subscriptions** databases the same way whenever `web/scripts/apply-turso-sql.ts` or direct SQL is used against them.
+
+### Verify (after `turso db export`)
+
+**Export is not enough.** Confirm the backup file exists and is a recoverable size **before** any promote or content mutate. Do **not** promote until this verify passes.
+
+If `turso auth whoami` fails: **STOP**, tell the operator, and wait — never bypass (**`AGENTS.md`** §7).
+
+After export (scripted `backup-production-emdash.ps1` or a manual `turso db export`):
+
+```bash
+ls -lh .release/backups/emdash-production-<stamp>.db
+```
+
+- The file must exist.
+- Size must be **non-zero / non-trivial**. Production EmDash exports are typically **multi-MB**. A missing, 0-byte, or kilobyte-scale file is a failed backup — do not promote.
+
+Optional, when `sqlite3` is available:
+
+```bash
+sqlite3 .release/backups/emdash-production-<stamp>.db "PRAGMA integrity_check;"
+```
+
+Expect `ok`. Skip this command if `sqlite3` is not installed; the `ls -lh` size check is still required.
+
+Illustrative naming only (a label suffix is optional; the scripted `emdash-production-YYYYMMDD-HHMMSS.db` stamp remains valid):
+
+```text
+.release/backups/emdash-production-<utc>-pre-weekly-<label>.db
+```
+
+Then run the inventory/slug promote gate below. Both the file-size verify and the inventory verify must pass.
 
 ### Production backup verify (promote gate)
 
@@ -145,7 +178,7 @@ pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
 node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production
 ```
 
-Promote **fails** without a verified metadata file newer than 24h (`verification.pass = true`). `--skip-backup-verify` is emergency-only.
+Promote **fails** without a verified metadata file newer than 24h (`verification.pass = true`). `--skip-backup-verify` is emergency-only. Also do not promote until the export-file **Verify** (`ls -lh` / non-trivial size) in [Verify after `turso db export`](#verify-after-turso-db-export) has passed.
 
 ## 1. Step 1: Prove Production Matches Staging Before Content Promotion
 
@@ -327,7 +360,7 @@ After metadata is aligned, reload admin and re-test the collection route.
 
 ## 6. Production Go-Live Checklist
 
-0. Step 0 backup verified (Worker-resolved) and `data/backups/prod-emdash-*.json` committed in freedomtimes-agents.
+0. Step 0 backup verified (Worker-resolved): export file exists and is a non-trivial size ([Verify after `turso db export`](#verify-after-turso-db-export)), inventory/slug gate passes, and `data/backups/prod-emdash-*.json` committed in freedomtimes-agents. <!-- pragma: allowlist secret -->
 1. Schema parity confirmed (`schema list/get`).
 2. Staging source item validated as published.
 3. Production item created/updated and published.
