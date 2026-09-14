@@ -1,0 +1,66 @@
+---
+/**
+ * Portable Text `_type: "embed"` override.
+ * Self-hosted video (`provider: "video"`) gets a native <video> plus optional
+ * WebVTT <track kind="captions"> list from PT extras (see videoCaptionTracks.ts):
+ *
+ *   captionsUrl?: string                    // legacy single English track
+ *   captions?: { url, srclang, label, default? }[]
+ *   captionsDefaultOn?: boolean             // false = tracks listed, no `default` attr
+ *
+ * MCP / authors: set those keys on the embed node (schema has no captions field;
+ * extras persist via content_update). Other embeds fall through to EmDash core Embed.
+ */
+import { Embed as CoreEmbed } from 'emdash/ui';
+import { resolveVideoCaptionTracks } from '../lib/content/videoCaptionTracks';
+
+const props = Astro.props as Record<string, unknown>;
+const node =
+	(props.node as Record<string, unknown> | undefined)
+	?? (props.value as Record<string, unknown> | undefined)
+	?? props;
+
+function readString(input: unknown): string | null {
+	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+}
+
+const url = readString(node.url);
+const provider = readString(node.provider);
+const caption = readString(node.caption);
+const isSelfHostedVideo = provider === 'video' && !!url;
+const captionTracks =
+	isSelfHostedVideo && url ? resolveVideoCaptionTracks(node, url) : [];
+---
+
+{
+	isSelfHostedVideo && url ? (
+		<figure class="emdash-embed">
+			<div class="emdash-embed-video">
+				<video controls preload="metadata">
+					<source src={url} type="video/mp4" />
+					{captionTracks.map((track) =>
+						track.isDefault ? (
+							<track
+								kind="captions"
+								src={track.src}
+								srclang={track.srclang}
+								label={track.label}
+								default
+							/>
+						) : (
+							<track
+								kind="captions"
+								src={track.src}
+								srclang={track.srclang}
+								label={track.label}
+							/>
+						),
+					)}
+				</video>
+			</div>
+			{caption && <figcaption>{caption}</figcaption>}
+		</figure>
+	) : (
+		<CoreEmbed node={node} />
+	)
+}

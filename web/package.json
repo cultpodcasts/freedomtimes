@@ -1,7 +1,7 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "engines": {
     "node": ">=22.22.2"
   },
@@ -68,13 +68,13 @@
     "@capacitor/core": "^8.4.1",
     "@capacitor/ios": "^8.4.1",
     "@capacitor/push-notifications": "^8.1.2",
-    "@emdash-cms/cloudflare": "^0.35.0",
-    "@emdash-cms/plugin-embeds": "^0.1.43",
+    "@emdash-cms/cloudflare": "^0.37.0",
+    "@emdash-cms/plugin-embeds": "^0.1.45",
     "@libsql/client": "^0.17.4",
     "@libsql/kysely-libsql": "^0.4.1",
     "astro": "^7.2.4",
     "drizzle-orm": "^0.45.2",
-    "emdash": "^0.35.0",
+    "emdash": "^0.37.0",
     "jose": "^6.2.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

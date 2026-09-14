@@ -116,13 +116,13 @@ At render time the server emits a real **`<blockquote>`** for step 1, then **`<d
 
 ## Portable Text: media embeds (official EmDash alignment)
 
-Reader bodies use EmDash’s `PortableText` (`emdash/ui`): core defaults + `@emdash-cms/plugin-embeds`, with **one** Freedom Times override — **`audio`** — for Apple/Spotify iframe podcast players (no official plugin type yet).
+Reader bodies use EmDash’s `PortableText` (`emdash/ui`): core defaults + `@emdash-cms/plugin-embeds`, with Freedom Times overrides for **`image`**, **`embed`** (self-hosted video + WebVTT), and **`audio`** (Apple/Spotify iframe podcasts).
 
 | Stored `_type` | Renderer | Use for |
 |----------------|----------|---------|
-| `image` | EmDash default `Image` | Media library images (`asset.url` / `_ref`, `alt`, `caption`) |
+| `image` | FT `ImageWithLink.astro` (overrides EmDash `Image`) | Media library images (`asset.url` / `_ref`, `alt`, `caption`). Renders `<figcaption>` from `caption` and wraps the `<img>` in `<a href={fullUrl} target="_blank" rel="noopener noreferrer">` for phone zoom. Markdown `![alt](url)` does **not** carry caption — set `caption` on the PT node (or patch via JSON). |
 | `youtube` / `vimeo` / … | `@emdash-cms/plugin-embeds` | Social/video slash inserts and YouTube URLs |
-| `embed` | EmDash default `Embed` | Self-hosted video/audio files (`provider: "video"` \| `"audio"`, `url`) |
+| `embed` | FT `EmbedWithCaptions.astro` (falls through to EmDash `Embed` for non-video) | Self-hosted video (`provider: "video"`, `url`) with optional `captionsUrl` / `captions[]` / `captionsDefaultOn` WebVTT tracks; other embed providers use core Embed |
 | `audio` | FT `Audio.astro` | Podcast web players (Apple Podcasts, Spotify embed URLs) |
 
 Agent drafts convert markdown video `<!--ec:block …-->` markers to `youtube` or `embed`+`provider:"video"` (see sibling freedomtimes-agents `markdown-to-portable-text.mts`). Keep `_type: "audio"` for podcast iframes.
