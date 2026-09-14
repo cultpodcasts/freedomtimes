@@ -8,6 +8,7 @@ This runbook documents the repeatable process for getting verified staging conte
 - [Verify after `turso db export`](#verify-after-turso-db-export) — **file exists + non-trivial size** before any promote mutate
 - [Production backup verify (promote gate)](#production-backup-verify-promote-gate)
 - [Step 0 before content promote](#0-step-0-verified-production-backup-mandatory)
+- [HARD RULE — weekly promote: keep prior weeklies published](#hard-rule-14-sep-2026--weekly-promote-keep-prior-weeklies-published)
 - [Disaster recovery](#disaster-recovery) — **canonical:** sibling `freedomtimes-agents/docs/DISASTER_RECOVERY.md` (retarget Worker; do not overwrite named production)
 
 ## Scope
@@ -243,17 +244,30 @@ node scripts/emdash-mcp-tools-call.mjs --url $env:EMDASH_STAGING_URL content_pub
 
 ## 3. Promote Content to Production
 
+### HARD RULE (14 Sep 2026) — weekly promote: keep prior weeklies published
+
+When promoting a new Sunday weekly roundup:
+
+1. **Backup** (Step 0) → **promote new slug** → **preserve `publishedAt`** → **GSC notify** the new post + homepage.
+2. The **prior weekly stays published** for the homepage archive (ordered by `publishedAt`: new first, prior second).
+3. **Do not** `content_unpublish` last Sunday’s weekly as part of promote.
+4. **Do not** add a default EmDash **302** from prior weekly → new weekly. EmDash 302 / Turso `_emdash_redirects` is **only** for a **true slug move** (same edition renamed) — **never** as a routine last-Sunday→this-Sunday promote step.
+
+Incident: unpublishing 6 Sep when promoting 13 Sep broke the homepage archive; Jon republished/renamed and restored `publishedAt` — never again. Sibling agents: [freedomtimes-agents/AGENTS.md](../../freedomtimes-agents/AGENTS.md) §12; [editions/weekly-summary-13-september-2026.md](../../freedomtimes-agents/docs/editions/weekly-summary-13-september-2026.md).
+
 Recommended operational pattern:
 
 1. Read source item from staging via **MCP `content_get`** (or the promote script below).
 2. Create or update the same slug in production via **MCP** (or the promote script — it uses `content_create` / `content_update` / `content_publish`).
 3. Do **not** use `npx emdash content …` for these steps when you need the real stored JSON (**`AGENTS.md`**).
+4. For weeklies: leave the previous Sunday’s post **published** (see HARD RULE above).
 
 Hard rule:
 
 - Do not manually copy JSON between terminals, editors, clipboards, or shell redirection steps when promoting content.
 - Use a scripted UTF-8-safe path only (promote script writes `.tmp` artifacts as UTF-8).
 - If the promotion path cannot prove UTF-8 preservation, do not use it for production.
+- **Do not** unpublish the previous weekly after promoting the new one; **do not** default-302 prior → new.
 
 Manual MCP verification (optional):
 
@@ -370,6 +384,7 @@ After metadata is aligned, reload admin and re-test the collection route.
 7. Staging-versus-production text-bearing fields were compared for the promoted items.
 8. No mojibake signatures appear in production content or on the rendered public route.
 9. **Request Google indexing** for the live public URL(s) (§7) — do not treat promote as complete until this is done (or explicitly deferred by the operator).
+10. **Weekly archive HARD RULE:** prior Sunday’s weekly still **published**; no default 302 prior→new (§3 HARD RULE).
 
 ## 7. Request indexing (Google Search Console)
 
@@ -397,8 +412,9 @@ After the public route is verified live:
 
 1. **`inspect_url`** on the live URL — note coverage state (indexed / discovered / unknown).
 2. **`submit_url`** (single) or **`submit_batch`** (`URL_UPDATED`) for the promoted URL. For a weekly roundup, always include at least:
-   - `https://freedomtimes.news/posts/<slug>`
-   - optionally `https://freedomtimes.news/` if the homepage card/listing changed
+   - `https://freedomtimes.news/posts/<slug>` (the **new** weekly)
+   - `https://freedomtimes.news/` (homepage archive — new first, prior second via `publishedAt`)
+   - the **prior** weekly URL **only** if you actually moved/redirected that slug (not a routine promote)
 3. Resubmit sitemaps so Google refreshes the index (domain property — use OAuth + Search Console API if MCP `list_sitemaps` / `submit_sitemap` rewrites to a missing URL-prefix):
    - `https://freedomtimes.news/sitemap.xml`
    - `https://freedomtimes.news/sitemap-posts.xml`
