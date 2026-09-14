@@ -4,6 +4,8 @@ import Header from "../components/Header.astro";
 import PushNotificationsCallout from "../components/PushNotificationsCallout.astro";
 import ReaderDataProvenance from "../components/ReaderDataProvenance.astro";
 import Audio from "../components/Audio.astro";
+import EmbedWithCaptions from "./EmbedWithCaptions.astro";
+import ImageWithLink from "./ImageWithLink.astro";
 import EntryHeader from "./content/EntryHeader.astro";
 import EntryMedia from "./content/EntryMedia.astro";
 import EntryBody from "./content/EntryBody.astro";
@@ -75,12 +77,16 @@ const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
 	},
 });
 // EmDash PortableText merges: defaults < plugin-embeds < user overrides.
-// - image / link: EmDash defaults
-// - youtube / embed: plugin-embeds + EmDash Embed
+// - image: FT ImageWithLink (figcaption + open full media in new tab)
+// - link: EmDash defaults
+// - youtube: plugin-embeds
+// - embed: FT override (self-hosted video + optional WebVTT track; else core Embed)
 // - audio: FT override (Apple/Spotify iframe podcasts — no official type yet)
 const portableComponents = {
 	type: {
 		audio: Audio,
+		embed: EmbedWithCaptions,
+		image: ImageWithLink,
 	},
 };
 
@@ -308,6 +314,12 @@ const showReaderDataProvenance = entrySlug === "privacy-policy";
 		border: 1px solid #eeeeee;
 	}
 
+	.content-card :global(.emdash-image-link) {
+		display: block;
+		color: inherit;
+		text-decoration: none;
+	}
+
 	.content-card :global(.emdash-image figcaption) {
 		margin: 0.75rem 0 0;
 		font-family: "Inter", sans-serif;
@@ -494,6 +506,44 @@ const showReaderDataProvenance = entrySlug === "privacy-policy";
 		height: auto;
 		border: 1px solid #eeeeee;
 		background: #000000;
+	}
+
+	/*
+	 * Single VTT cue per turn: continuous "NAME: dialogue" (no forced \\n).
+	 * Overlap stack uses VTT line:% (speaking order).
+	 * Name vs speech is typographic (caps + colon) — no hair spaces.
+	 * Colours: <c.jt|mccallum|gardiner|sidney|hall> + ::cue(.class).
+	 * ::cue(v[voice="…"]) is ignored in Chromium/Firefox — do not rely on it.
+	 */
+	.content-card :global(.emdash-embed-video video::cue) {
+		font-family: "Inter", system-ui, sans-serif;
+		/* Smaller on ~375px so two cue stacks fit above controls */
+		font-size: clamp(0.72rem, 2.6vw, 1.05rem);
+		font-weight: 700;
+		line-height: 1.2;
+		color: #E8E8E8;
+		background-color: rgba(0, 0, 0, 0.72);
+		white-space: normal;
+	}
+
+	.content-card :global(.emdash-embed-video video::cue(.jt)) {
+		color: #E8E8E8;
+	}
+
+	.content-card :global(.emdash-embed-video video::cue(.mccallum)) {
+		color: #9EC9FF;
+	}
+
+	.content-card :global(.emdash-embed-video video::cue(.gardiner)) {
+		color: #E8D48A;
+	}
+
+	.content-card :global(.emdash-embed-video video::cue(.sidney)) {
+		color: #C9A0E8;
+	}
+
+	.content-card :global(.emdash-embed-video video::cue(.hall)) {
+		color: #888888;
 	}
 
 	.content-card :global(.emdash-embed-video iframe),

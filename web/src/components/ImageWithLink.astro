@@ -1,0 +1,82 @@
+---
+/**
+ * Portable Text `_type: "image"` override.
+ * EmDash core Image already renders `caption` as <figcaption>; this wrapper
+ * also links the image to the full media URL (new tab) for phone zoom.
+ *
+ * PT shape (extras persist via content_update):
+ *   { _type: "image", alt?, caption?, asset: { url | _ref } }
+ */
+const props = Astro.props as Record<string, unknown>;
+const node =
+	(props.node as Record<string, unknown> | undefined)
+	?? (props.value as Record<string, unknown> | undefined)
+	?? props;
+
+function readString(input: unknown): string | null {
+	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+}
+
+const asset =
+	node.asset && typeof node.asset === 'object'
+		? (node.asset as Record<string, unknown>)
+		: null;
+const alt = readString(node.alt) ?? '';
+const caption = readString(node.caption);
+const alignment = readString(node.alignment);
+
+let src =
+	readString(asset?.url)
+	?? (readString(asset?._ref) ? `/_emdash/api/media/file/${readString(asset?._ref)}` : null);
+
+const width =
+	typeof node.displayWidth === 'number'
+		? node.displayWidth
+		: typeof node.width === 'number'
+			? node.width
+			: undefined;
+const height =
+	typeof node.displayHeight === 'number'
+		? node.displayHeight
+		: typeof node.height === 'number'
+			? node.height
+			: undefined;
+---
+
+{
+	src ? (
+		<figure
+			class:list={[
+				'emdash-image',
+				alignment && `emdash-image--align-${alignment}`,
+			]}
+		>
+			<a href={src} target="_blank" rel="noopener noreferrer" class="emdash-image-link">
+				<img
+					src={src}
+					alt={alt}
+					width={width}
+					height={height}
+					loading="lazy"
+					decoding="async"
+				/>
+			</a>
+			{caption && <figcaption>{caption}</figcaption>}
+		</figure>
+	) : null
+}
+
+<style>
+	.emdash-image-link {
+		display: block;
+		color: inherit;
+		text-decoration: none;
+	}
+	.emdash-image-link:focus-visible {
+		outline: 2px solid currentColor;
+		outline-offset: 2px;
+	}
+	.emdash-image-link img {
+		cursor: zoom-in;
+	}
+</style>

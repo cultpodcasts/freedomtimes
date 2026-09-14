@@ -106,8 +106,9 @@ function extractFirstJsonObject(text) {
 }
 
 function runEmdashMigrate(args, { capture = false } = {}) {
-	const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-	const result = spawnSync(npx, ["--no-fund", "emdash", "migrate", ...args], {
+	// Prefer bare `npx` on Windows too: Volta/Node resolve `npx` / `npx.exe`,
+	// while `spawnSync("npx.cmd", …)` without `shell: true` fails with EINVAL.
+	const result = spawnSync("npx", ["--no-fund", "emdash", "migrate", ...args], {
 		cwd: webRoot,
 		env: process.env,
 		encoding: "utf8",
