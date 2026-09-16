@@ -111,5 +111,5 @@ Only the **last two** patches report per-needle `found` / `applied` counters. Al
 ## Related docs
 
 - Build pipeline and Wrangler configs: [../README.md](../README.md)
-- EmDash publish / MCP workflow: [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md), [PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md](PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md)
+- EmDash publish / MCP workflow: [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md), [PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md](PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md), [SELF_HOSTED_VIDEO_EMBEDS.md](SELF_HOSTED_VIDEO_EMBEDS.md)
 - Architecture note on removing these patches: [ARCHITECTURE.md](../../ARCHITECTURE.md) (remaining decisions and deliverable §8.3)

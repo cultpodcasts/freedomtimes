@@ -1,3 +1,4 @@
+import { embedVideoUrlTransform } from './embed-video-url.mjs';
 import { videoTransform } from './video.mjs';
 
 /** @typedef {typeof videoTransform} PtTransform */
@@ -5,6 +6,7 @@ import { videoTransform } from './video.mjs';
 /** Registry of content transforms. Add new migrations here as we expand. */
 export const TRANSFORMS = {
 	video: videoTransform,
+	'embed-video-url': embedVideoUrlTransform,
 };
 
 export function listTransforms() {

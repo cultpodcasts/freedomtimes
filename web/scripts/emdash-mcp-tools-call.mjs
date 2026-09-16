@@ -8,45 +8,52 @@
  *
  * Usage (from repo root):
  *   node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> [argumentsJson]
+ *   node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> --args-file path.json
  *
  * Token resolution (same as emdash-mcp-cursor-bridge.mjs):
  *   EMDASH_MCP_TOKEN → EMDASH_STAGING_PAT / EMDASH_PRODUCTION_PAT →
  *   EMDASH_STAGING_TOKEN / EMDASH_PRODUCTION_TOKEN → ~/.config/emdash/auth.json
  *   (process env, then Windows User env on win32)
  */
+import { readFileSync } from 'node:fs';
 import { emdashMcpToolsCall } from './emdash-mcp-client.mjs';
 import {
 	resolveBaseUrl,
 	resolveEmDashBearer,
-	STAGING_DEFAULT,
 } from './lib/emdash-mcp-auth.mjs';
 
 function parseArgs(argv) {
 	let url = resolveBaseUrl(argv);
+	let argsFile = '';
 	const rest = [];
 	for (let i = 2; i < argv.length; i++) {
 		if (argv[i] === '--url' && argv[i + 1]) {
 			url = argv[++i].replace(/\/$/, '');
 			continue;
 		}
+		if (argv[i] === '--args-file' && argv[i + 1]) {
+			argsFile = argv[++i];
+			continue;
+		}
 		rest.push(argv[i]);
 	}
 	const toolName = rest[0];
 	const argsJson = rest[1] ?? '{}';
-	return { url, toolName, argsJson };
+	return { url, toolName, argsJson, argsFile };
 }
 
 async function main() {
-	const { url, toolName, argsJson } = parseArgs(process.argv);
+	const { url, toolName, argsJson, argsFile } = parseArgs(process.argv);
 	if (!toolName) {
 		console.error(
-			'Usage: node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> [argumentsJson]',
+			'Usage: node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> [argumentsJson | --args-file path.json]',
 		);
 		process.exit(1);
 	}
 	let toolArgs;
 	try {
-		toolArgs = JSON.parse(argsJson);
+		const raw = argsFile ? readFileSync(argsFile, 'utf8') : argsJson;
+		toolArgs = JSON.parse(raw);
 	} catch (e) {
 		console.error('Invalid JSON arguments:', e.message);
 		process.exit(1);

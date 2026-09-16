@@ -1,4 +1,7 @@
-import { resolveVideoCaptionTracks } from '../src/lib/content/videoCaptionTracks.ts';
+import {
+	resolveSelfHostedVideoUrl,
+	resolveVideoCaptionTracks,
+} from '../src/lib/content/videoCaptionTracks.ts';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -50,5 +53,38 @@ describe('resolveVideoCaptionTracks', () => {
 			videoUrl,
 		);
 		assert.equal(tracks.length, 0);
+	});
+});
+
+describe('resolveSelfHostedVideoUrl', () => {
+	it('prefers url over id', () => {
+		assert.equal(
+			resolveSelfHostedVideoUrl({
+				provider: 'video',
+				url: videoUrl,
+				id: '/_emdash/api/media/file/OTHER.mp4',
+			}),
+			videoUrl,
+		);
+	});
+
+	it('falls back to id when it is an EmDash media path', () => {
+		assert.equal(
+			resolveSelfHostedVideoUrl({
+				provider: 'video',
+				id: videoUrl,
+			}),
+			videoUrl,
+		);
+	});
+
+	it('ignores a non-media id', () => {
+		assert.equal(
+			resolveSelfHostedVideoUrl({
+				provider: 'video',
+				id: 'youtube-ish-id',
+			}),
+			null,
+		);
 	});
 });

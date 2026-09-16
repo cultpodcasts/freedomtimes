@@ -47,7 +47,7 @@ Numbered items **1–9** apply to **every** Cursor agent session. When one of th
 
 **AI agents — Cursor MCP only:** Use **Cursor** EmDash MCP servers (`freedomtimes-staging`, `freedomtimes-production`) when they appear under **Tools & MCP**. Setup/repair on Windows: **`docs/CURSOR_EMDASH_MCP.md`**; operator skill **`~/.cursor/skills/freedomtimes-emdash-mcp/SKILL.md`**. Call **`content_get`**, **`content_update`**, **`content_publish`**, **`content_create`**, **`schema_list_collections`**, **`schema_get_collection`**, etc. via **`call_mcp_tool`** — not via shell. **If MCP fails, see Primary guardrails §1 — STOP; do not use shell.**
 
-**Operators (humans) — shell MCP helper (optional):** From a terminal, `node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> '<json-args>'` hits the same `POST /_emdash/api/mcp` + JSON-RPC `tools/call` as the IDE. Token: `~/.config/emdash/auth.json` or `EMDASH_STAGING_TOKEN` / `EMDASH_PRODUCTION_TOKEN` / `EMDASH_MCP_TOKEN`. Operators may choose this when Cursor MCP is awkward; **AI agents must not** — see **Primary guardrails §1**.
+**Operators (humans) — shell MCP helper (optional):** From a terminal, `node web/scripts/emdash-mcp-tools-call.mjs [--url <origin>] <toolName> '<json-args>'` (or `--args-file path.json` for large PT) hits the same `POST /_emdash/api/mcp` + JSON-RPC `tools/call` as the IDE. Token: `~/.config/emdash/auth.json` or `EMDASH_STAGING_TOKEN` / `EMDASH_PRODUCTION_TOKEN` / `EMDASH_MCP_TOKEN`. Operators may choose this when Cursor MCP is awkward; **AI agents must not** — see **Primary guardrails §1**. Large self-hosted video / PT writes: **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
 
 **Examples:** `content_get` → `{"collection":"posts","id":"<slug>"}`; **`schema_list_collections`** → `{}`; **`schema_get_collection`** → `{"slug":"posts"}` (there is no `schema_get` tool).
 
@@ -57,7 +57,7 @@ Repo scripts **`promote-post-staging-to-production.mjs`** and **`merge-staging-p
 
 **Cursor `call_mcp_tool` vs this repo:** Some agent sessions only register built-in MCP servers (e.g. `cursor-ide-browser`) and do **not** see Freedom Times EmDash servers. That is a **Primary guardrails §1 blocker** — enable servers under **Ctrl+Shift+J → Tools & MCP**, restart Cursor, check **Output → MCP Logs**, then **wait** for the operator.
 
-Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section **CLI vs MCP**) and **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** (§**2.0a**). For **English-ledes, French outlet glosses, hoisting stakes, and the canonical French `blockquote` + English translation `<details>` PT block order**, see **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`**.
+Details: **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** (section **CLI vs MCP**) and **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** (§**2.0a**). For **English-ledes, French outlet glosses, hoisting stakes, and the canonical French `blockquote` + English translation `<details>` PT block order**, see **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`**. Published self-hosted `<video>` missing after an editor save, or a large PT `content_update` that will not fit in Cursor MCP: **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
 
 ## Databases: backup before any change
 
