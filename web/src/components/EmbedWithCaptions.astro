@@ -2,7 +2,8 @@
 /**
  * Portable Text `_type: "embed"` override.
  * Self-hosted video (`provider: "video"`) gets a native <video> plus optional
- * WebVTT <track kind="captions"> list from PT extras (see videoCaptionTracks.ts):
+ * WebVTT <track kind="captions"> list from PT extras (see videoCaptionTracks.ts).
+ * Video src is `url`, or `id` when the CMS editor stored the media-file path there:
  *
  *   captionsUrl?: string                    // legacy single English track
  *   captions?: { url, srclang, label, default? }[]
@@ -12,7 +13,10 @@
  * extras persist via content_update). Other embeds fall through to EmDash core Embed.
  */
 import { Embed as CoreEmbed } from 'emdash/ui';
-import { resolveVideoCaptionTracks } from '../lib/content/videoCaptionTracks';
+import {
+	resolveSelfHostedVideoUrl,
+	resolveVideoCaptionTracks,
+} from '../lib/content/videoCaptionTracks';
 
 const props = Astro.props as Record<string, unknown>;
 const node =
@@ -24,7 +28,7 @@ function readString(input: unknown): string | null {
 	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
 }
 
-const url = readString(node.url);
+const url = resolveSelfHostedVideoUrl(node);
 const provider = readString(node.provider);
 const caption = readString(node.caption);
 const isSelfHostedVideo = provider === 'video' && !!url;

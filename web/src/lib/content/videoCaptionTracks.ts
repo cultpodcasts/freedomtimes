@@ -23,7 +23,8 @@
  * // false → emit all <track>s but no `default` (CC menu available; starts off)
  * ```
  *
- * Authors (MCP): set these on the embed node alongside `url` + `provider: "video"`.
+ * Authors (MCP): set these on the embed node alongside `url` (or `id`) + `provider: "video"`.
+ * The EmDash editor stores the MP4 path on `id`; the reader accepts either field.
  * Relative `/_emdash/api/media/file/<id>.vtt` paths are kept as-is after sanitize.
  */
 
@@ -69,6 +70,20 @@ export function sanitizeCaptionsUrl(url: string): string | null {
 	if (EMDASH_MEDIA_FILE.test(path) && path.toLowerCase().endsWith('.vtt')) {
 		return path;
 	}
+	return null;
+}
+
+/**
+ * Self-hosted video src for `_type: "embed"` + `provider: "video"`.
+ * Prefer `url`; fall back to `id` when the editor stored the media-file path there.
+ */
+export function resolveSelfHostedVideoUrl(node: Record<string, unknown>): string | null {
+	const url = readString(node.url);
+	if (url) return url;
+	const id = readString(node.id);
+	if (!id) return null;
+	const path = normalizeMediaPath(id);
+	if (path.startsWith('/_emdash/api/media/file/')) return path;
 	return null;
 }
 
