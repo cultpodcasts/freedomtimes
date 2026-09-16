@@ -122,7 +122,7 @@ Reader bodies use EmDash’s `PortableText` (`emdash/ui`): core defaults + `@emd
 |----------------|----------|---------|
 | `image` | FT `ImageWithLink.astro` (overrides EmDash `Image`) | Media library images (`asset.url` / `_ref`, `alt`, `caption`). Renders `<figcaption>` from `caption` and wraps the `<img>` in `<a href={fullUrl} target="_blank" rel="noopener noreferrer">` for phone zoom. Markdown `![alt](url)` does **not** carry caption — set `caption` on the PT node (or patch via JSON). |
 | `youtube` / `vimeo` / … | `@emdash-cms/plugin-embeds` | Social/video slash inserts and YouTube URLs |
-| `embed` | FT `EmbedWithCaptions.astro` (falls through to EmDash `Embed` for non-video) | Self-hosted video (`provider: "video"`, `url`) with optional `captionsUrl` / `captions[]` / `captionsDefaultOn` WebVTT tracks; other embed providers use core Embed |
+| `embed` | FT `EmbedWithCaptions.astro` (falls through to EmDash `Embed` for non-video) | Self-hosted video (`provider: "video"`, `url` **or** media-file `id`) with optional `captionsUrl` / `captions[]` / `captionsDefaultOn` WebVTT tracks; other embed providers use core Embed. If the published player vanishes after an editor save, see **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**. |
 | `audio` | FT `Audio.astro` | Podcast web players (Apple Podcasts, Spotify embed URLs) |
 
 Agent drafts convert markdown video `<!--ec:block …-->` markers to `youtube` or `embed`+`provider:"video"` (see sibling freedomtimes-agents `markdown-to-portable-text.mts`). Keep `_type: "audio"` for podcast iframes.
@@ -135,6 +135,10 @@ Use **`web/scripts/migrate-pt-content.mjs`** — dry-run by default, writes a ch
 cd web
 npm run pt:migrate:scan
 # or: node scripts/migrate-pt-content.mjs posts --scan --transforms video
+
+# Restore url when the editor left the MP4 on id only:
+npm run pt:migrate:scan:embed-url
+node scripts/migrate-pt-content.mjs posts <slug> --transforms embed-video-url --apply --publish
 
 # Apply one slug (example):
 node scripts/migrate-pt-content.mjs posts <slug> --transforms video --apply --publish
@@ -156,6 +160,7 @@ Keep `_type: "audio"` for podcast iframes. Fields: typically **`url`**, **`alt`*
 
 ## Related docs
 
+- **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`** — prevent / fix published `<video>` vanishing (`id` vs `url`).
 - **`web/CONTENT_PROMOTION_RUNBOOK.md`** — promotion, UTF-8, backups.
 - Sibling **`freedomtimes-agents/docs/DISASTER_RECOVERY.md`** — canonical production EmDash disaster recovery.
 - **`web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md`** — Portable Text and MCP as source of truth for `posts.content`.

@@ -7,10 +7,10 @@
  *
  * Usage (from web/):
  *   node scripts/migrate-pt-content.mjs --list-transforms
- *   node scripts/migrate-pt-content.mjs posts --scan
+ *   node scripts/migrate-pt-content.mjs posts --scan --transforms embed-video-url
  *   node scripts/migrate-pt-content.mjs posts <slug>                 # dry-run (default)
  *   node scripts/migrate-pt-content.mjs posts <slug> --transforms video
- *   node scripts/migrate-pt-content.mjs posts <slug> --apply --publish
+ *   node scripts/migrate-pt-content.mjs posts <slug> --transforms embed-video-url --apply --publish
  *   node scripts/migrate-pt-content.mjs posts <slug> --apply --publish --url https://staging.freedomtimes.news
  *
  * Reports land under data/pt-migrate/<slug>-<timestamp>.json
@@ -37,8 +37,8 @@ const reportDir = path.join(__dirname, '../data/pt-migrate');
 function usage() {
 	console.log(`Usage:
   node scripts/migrate-pt-content.mjs --list-transforms
-  node scripts/migrate-pt-content.mjs <collection> --scan [--transforms video]
-  node scripts/migrate-pt-content.mjs <collection> <slug> [--transforms video] [--apply] [--publish]
+  node scripts/migrate-pt-content.mjs <collection> --scan [--transforms video,embed-video-url]
+  node scripts/migrate-pt-content.mjs <collection> <slug> [--transforms video,embed-video-url] [--apply] [--publish]
   node scripts/migrate-pt-content.mjs … --url ${STAGING_DEFAULT}
 
 Default is dry-run: fetch live content, print a change table, write a report JSON.

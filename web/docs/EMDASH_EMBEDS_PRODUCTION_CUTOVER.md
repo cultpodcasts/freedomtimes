@@ -167,6 +167,7 @@ Then see script probes / [PRODUCTION_RELEASE_RUNBOOK.md §6](../../PRODUCTION_RE
 
 ## Related docs
 
+- [web/docs/SELF_HOSTED_VIDEO_EMBEDS.md](./SELF_HOSTED_VIDEO_EMBEDS.md) — published player missing after editor save (`id` vs `url`)
 - [web/docs/DEPLOY.md](./DEPLOY.md) — deploy script matrix
 - Sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) — **canonical** production EmDash DR
 - [web/CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) — promote + Turso backups

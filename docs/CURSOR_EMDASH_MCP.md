@@ -175,7 +175,7 @@ Do **not** deploy production from this change unless an operator explicitly asks
 | `web/docs/DEPLOY.md` | Canonical deploy reference + symptom index (links here) |
 | `web/docs/PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md` | MCP vs CLI for Portable Text |
 | `web/docs/SOCIAL_IMAGES_AND_FAVICONS.md` | Official OG card sizes and `generate-social-images.ts` |
-| `scripts/set-emdash-mcp-tokens.ps1` | PAT env var setup |
+| `web/docs/SELF_HOSTED_VIDEO_EMBEDS.md` | Published `<video>` missing; large PT `content_update` |
 
 ## Large media uploads (avoid MCP base64 truncation)
 
@@ -218,3 +218,13 @@ Read **`storageKey`** / **`storage_key`** from the JSON (not the bare `id`). The
 Staging example that worked **23 Aug 2026**: `seo.image` = `/_emdash/api/media/file/01M0QT8Y0RP9SEZSKVMHXBYEXQ.png`.
 
 If MCP is unavailable, **STOP** (`AGENTS.md` Primary guardrails §1). Do **not** fall back to MCP `media_upload` base64, JPEG-crush, or a homemade card.
+
+## Large Portable Text `content_update` (avoid IDE argument truncation)
+
+A long article’s `data.content` array is often **50–80KB** of JSON. That is a normal document and a **bad Cursor MCP tool argument**. `content_update` with a truncated or stringified body is treated as markdown and **destroys embeds**.
+
+**Do not** paste the full PT array into `call_mcp_tool` / `CallDynamicTool`.
+
+**Operators:** `node web/scripts/migrate-pt-content.mjs` (reads/writes MCP over HTTP) or `emdash-mcp-tools-call.mjs … --args-file payload.json`. Runbook: **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
+
+**AI agents:** `content_get` via Cursor MCP is fine. For a large `content_update`, stop and have the operator run that script. Do not use the shell helper as an MCP fallback (`AGENTS.md` §1).
