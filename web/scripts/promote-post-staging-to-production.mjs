@@ -6,18 +6,24 @@
  * - **Same slug on staging and production** — this script never renames; `<slug>` must match staging.
  * - featured_image / social_image: if production lacks staging media id, download from
  *   staging public file URL, upload to production, patch `data`.
+ * - Inline Portable Text media paths (images, embed video/audio, captions VTT, PDF/mp3
+ *   hrefs): upload staging `/_emdash/api/media/file/<key>` blobs to production and rewrite
+ *   paths. Large files (>~50MB) may be slow via multipart — R2 put with the same key is OK.
  * - bylines: staging `primaryBylineId` → MCP `content_update` with `bylines: [{ bylineId }]`.
  *
  * SAFETY: production `content_publish` sends push notifications to subscribers.
  * Requires `--i-understand-production` — pass only when the operator explicitly requested
- * production publish in the current session.
+ * production content write in the current session.
+ * Optional `--draft-only`: write create/update (+ bylines) but **skip** `content_publish`
+ * (operator asked to hold off publishing).
  *
- * After a successful promote, complete go-live: request Google indexing for
+ * After a successful **publish**, complete go-live: request Google indexing for
  * https://freedomtimes.news/posts/<slug> (GSC MCP submit_url / submit_batch).
- * See web/CONTENT_PROMOTION_RUNBOOK.md §7 Request indexing.
+ * See web/CONTENT_PROMOTION_RUNBOOK.md §7 Request indexing. Skip indexing for `--draft-only`.
  *
  * Usage (from repo root):
  *   node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production
+ *   node web/scripts/promote-post-staging-to-production.mjs posts <slug> --i-understand-production --draft-only
  *
  * Backup gate (Step 0): refuses unless `.release/rollback-branches/*.json` has
  * verification.pass=true newer than 24h. Refresh with:
@@ -42,6 +48,7 @@ const STAGING_DEFAULT = "https://staging.freedomtimes.news";
 const PROD_DEFAULT = "https://freedomtimes.news";
 const PRODUCTION_FLAG = "--i-understand-production";
 const SKIP_BACKUP_VERIFY_FLAG = "--skip-backup-verify";
+const DRAFT_ONLY_FLAG = "--draft-only";
 
 function loadAuth() {
 	const p = join(homedir(), ".config", "emdash", "auth.json");
@@ -124,17 +131,25 @@ async function downloadStagingMediaFile(stagingBase, storageKey) {
 	return Buffer.from(await r.arrayBuffer());
 }
 
-function guessImageMime(filename) {
+function guessMediaMime(filename) {
 	const lower = filename.toLowerCase();
 	if (lower.endsWith(".png")) return "image/png";
 	if (lower.endsWith(".webp")) return "image/webp";
 	if (lower.endsWith(".gif")) return "image/gif";
-	return "image/jpeg";
+	if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+	if (lower.endsWith(".mp4")) return "video/mp4";
+	if (lower.endsWith(".webm")) return "video/webm";
+	if (lower.endsWith(".mp3")) return "audio/mpeg";
+	if (lower.endsWith(".m4a")) return "audio/mp4";
+	if (lower.endsWith(".wav")) return "audio/wav";
+	if (lower.endsWith(".vtt")) return "text/vtt";
+	if (lower.endsWith(".pdf")) return "application/pdf";
+	return "application/octet-stream";
 }
 
 async function uploadMediaProd(prodBase, prodToken, buf, filename, alt) {
 	const form = new FormData();
-	const mime = guessImageMime(filename);
+	const mime = guessMediaMime(filename);
 	form.append("file", new Blob([buf], { type: mime }), filename);
 	if (alt !== undefined && alt !== null) form.append("alt", alt);
 	const url = apiUrl(prodBase, "/media");
@@ -219,22 +234,53 @@ async function ensureProdMediaFile(stagingUrl, prodUrl, prodToken, storageKey, f
 	return cache.get(storageKey);
 }
 
+/**
+ * Remap every `/_emdash/api/media/file/<key>` string in Portable Text (images, embed
+ * video/audio urls+ids, link hrefs, captionsUrl, etc.). Staging R2 keys are not on
+ * production — promote must upload (or leave broken media).
+ */
 async function remapPortableTextMedia(stagingUrl, prodUrl, prodToken, content, cache) {
 	if (!Array.isArray(content)) return;
-	for (const block of content) {
-		if (block?._type !== "image" || !block.asset || typeof block.asset !== "object") continue;
-		const sk = storageKeyFromMediaPath(block.asset.url);
-		if (!sk) continue;
-		const { prodPath } = await ensureProdMediaFile(
-			stagingUrl,
-			prodUrl,
-			prodToken,
-			sk,
-			`${sk.split(".")[0] || "inline"}.${sk.includes(".") ? sk.split(".").pop() : "jpg"}`,
-			block.alt ?? "",
-			cache,
-		);
-		block.asset.url = prodPath;
+
+	async function rewriteValue(value, altHint) {
+		if (typeof value === "string") {
+			const sk = storageKeyFromMediaPath(value);
+			if (!sk) return value;
+			const ext = sk.includes(".") ? sk.split(".").pop() : "bin";
+			const { prodPath } = await ensureProdMediaFile(
+				stagingUrl,
+				prodUrl,
+				prodToken,
+				sk,
+				`${sk.split(".")[0] || "inline"}.${ext}`,
+				altHint ?? "",
+				cache,
+			);
+			return prodPath;
+		}
+		if (Array.isArray(value)) {
+			for (let i = 0; i < value.length; i++) {
+				value[i] = await rewriteValue(value[i], altHint);
+			}
+			return value;
+		}
+		if (value && typeof value === "object") {
+			const alt =
+				typeof value.alt === "string"
+					? value.alt
+					: typeof value.caption === "string"
+						? value.caption
+						: altHint;
+			for (const key of Object.keys(value)) {
+				value[key] = await rewriteValue(value[key], alt);
+			}
+			return value;
+		}
+		return value;
+	}
+
+	for (let i = 0; i < content.length; i++) {
+		content[i] = await rewriteValue(content[i], "");
 	}
 }
 
@@ -259,21 +305,23 @@ async function main() {
 	const rawArgs = process.argv.slice(2);
 	if (!rawArgs.includes(PRODUCTION_FLAG)) {
 		console.error(
-			`REFUSED: production promote publishes to ${PROD_DEFAULT} and sends push notifications.\n` +
-				`Pass ${PRODUCTION_FLAG} only when the operator explicitly requested production publish.\n` +
-				`Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug> ${PRODUCTION_FLAG}`,
+			`REFUSED: production promote writes to ${PROD_DEFAULT} (publish may notify subscribers).\n` +
+				`Pass ${PRODUCTION_FLAG} only when the operator explicitly requested a production content write.\n` +
+				`Add ${DRAFT_ONLY_FLAG} to skip content_publish.\n` +
+				`Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug> ${PRODUCTION_FLAG} [${DRAFT_ONLY_FLAG}]`,
 		);
 		process.exit(1);
 	}
 	const skipBackupVerify = rawArgs.includes(SKIP_BACKUP_VERIFY_FLAG);
+	const draftOnly = rawArgs.includes(DRAFT_ONLY_FLAG);
 	const positional = rawArgs.filter(
-		(a) => a !== PRODUCTION_FLAG && a !== SKIP_BACKUP_VERIFY_FLAG,
+		(a) => a !== PRODUCTION_FLAG && a !== SKIP_BACKUP_VERIFY_FLAG && a !== DRAFT_ONLY_FLAG,
 	);
 	const collection = positional[0] || "posts";
 	const slug = positional[1];
 	if (!slug) {
 		console.error(
-			`Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug> ${PRODUCTION_FLAG}`,
+			`Usage: node web/scripts/promote-post-staging-to-production.mjs <collection> <slug> ${PRODUCTION_FLAG} [${DRAFT_ONLY_FLAG}]`,
 		);
 		process.exit(1);
 	}
@@ -449,23 +497,36 @@ async function main() {
 		});
 	}
 
-	// 5) Publish (MCP)
-	await emdashMcpToolsCall(prodUrl, prodToken, "content_publish", { collection, id: slug });
+	// 5) Publish (MCP) — skipped when operator asked to hold off publishing
+	if (draftOnly) {
+		console.warn(
+			`DRAFT-ONLY: skipped content_publish for ${collection}/${slug}. Live readers still see the previous revision (or 404 if new).`,
+		);
+	} else {
+		await emdashMcpToolsCall(prodUrl, prodToken, "content_publish", { collection, id: slug });
+	}
 
 	// 6) Verify (MCP content_get)
 	const { item: outItem } = await emdashMcpContentGet(prodUrl, prodToken, { collection, id: slug });
-	if (outItem.status !== "published") {
+	if (!draftOnly && outItem.status !== "published") {
 		throw new Error(`Expected published status after promote; got ${outItem.status}`);
+	}
+	if (draftOnly && outItem.status === "published" && !outItem.draftRevisionId) {
+		// Existing published entry updated into a draft revision — status stays published until next publish.
+		console.log("Note: production entry remains live; new body is a draft revision until publish.");
 	}
 	console.log(
 		JSON.stringify(
 			{
 				ok: true,
+				draftOnly,
+				status: outItem.status ?? null,
+				draftRevisionId: outItem.draftRevisionId ?? null,
 				slug: outItem.slug,
 				primaryBylineId: outItem.primaryBylineId ?? null,
 				byline: outItem.byline?.displayName ?? null,
 				featuredMediaId: outItem.data?.featured_image?.id ?? null,
-				url: `${prodUrl}/${slug}`,
+				url: `${prodUrl}/posts/${slug}`,
 			},
 			null,
 			2,
