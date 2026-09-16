@@ -10,6 +10,7 @@
 
 .EXAMPLE
   pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug weekly-summary-6-september-2026 -AllowProduction
+  pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug sham-aberdeen-ambush-james-taylor-jr-1970 -AllowProduction -DraftOnly
 #>
 [CmdletBinding()]
 param(
@@ -17,7 +18,8 @@ param(
     [string]$Slug,
     [string]$Collection = "posts",
     [switch]$AllowProduction,
-    [switch]$SkipBackupRefresh
+    [switch]$SkipBackupRefresh,
+    [switch]$DraftOnly
 )
 
 Set-StrictMode -Version Latest
@@ -49,8 +51,20 @@ try {
         Write-Host "Using existing verified production backup metadata (<24h)." -ForegroundColor Green
     }
 
-    Write-Host "Promoting $Collection/$Slug (push notifications may fire)…" -ForegroundColor Yellow
-    & node (Join-Path $repoRoot "web/scripts/promote-post-staging-to-production.mjs") $Collection $Slug --i-understand-production
+    $promoteArgs = @(
+        (Join-Path $repoRoot "web/scripts/promote-post-staging-to-production.mjs"),
+        $Collection,
+        $Slug,
+        "--i-understand-production"
+    )
+    if ($DraftOnly) {
+        Write-Host "Promoting $Collection/$Slug as DRAFT ONLY (no content_publish)…" -ForegroundColor Yellow
+        $promoteArgs += "--draft-only"
+    }
+    else {
+        Write-Host "Promoting $Collection/$Slug (push notifications may fire)…" -ForegroundColor Yellow
+    }
+    & node @promoteArgs
     if ($LASTEXITCODE -ne 0) {
         throw "promote-post-staging-to-production.mjs failed (exit $LASTEXITCODE)"
     }
