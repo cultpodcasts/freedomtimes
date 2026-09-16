@@ -154,6 +154,8 @@ For **PR review** (EmDash version bumps, `content` / Portable Text refactors), u
 
 For **English copy** that cites French media or institutions (glosses on *France Inter*, *France Info*, hoisting stakes in the lede), use **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md`** — including the **canonical Portable Text pattern** for a **French `blockquote` + English `<details>`** translation fold (same section).
 
+Self-hosted hall/video embed present in the editor but missing on the published article, or a body too large for Cursor `content_update`: **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
+
 Set local env vars before running commands:
 
 ```powershell

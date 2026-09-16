@@ -14,6 +14,8 @@
  *   node scripts/migrate-pt-content.mjs posts <slug> --apply --publish --url https://staging.freedomtimes.news
  *
  * Reports land under data/pt-migrate/<slug>-<timestamp>.json
+ *
+ * Self-hosted video `id` without `url`: see web/docs/SELF_HOSTED_VIDEO_EMBEDS.md
  */
 import fs from 'node:fs';
 import path from 'node:path';

@@ -60,7 +60,7 @@ When Cursor **EmDash MCP** is unavailable, errored, auth invalid, or `call_mcp_t
 
 **When the CLI is still appropriate:** quick human checks, CI that only needs title/slug/status, or flows that intentionally consume markdown. Do **not** use CLI-only JSON to decide whether Portable Text exists in storage.
 
-**HTTP MCP notes (operators — non-IDE callers):** `POST /_emdash/api/mcp` expects header **`Accept: application/json, text/event-stream`**. Stale **`EMDASH_*_PAT`** env values may return `INVALID_TOKEN`; **`~/.config/emdash/auth.json`** access tokens from `emdash login` often work for the same host. **AI agents:** use Cursor MCP only — if auth fails, **STOP** per **Primary guardrails** above; do not switch to shell.
+**HTTP MCP notes (operators — non-IDE callers):** `POST /_emdash/api/mcp` expects header **`Accept: application/json, text/event-stream`**. Stale **`EMDASH_*_PAT`** env values may return `INVALID_TOKEN`; **`~/.config/emdash/auth.json`** access tokens from `emdash login` often work for the same host. **AI agents:** use Cursor MCP only — if auth fails, **STOP** per **Primary guardrails** above; do not switch to shell. **Do not** paste a long article’s `data.content` array into Cursor `content_update` — **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
 
 **Release context:** EmDash **0.8.x–0.9.x** expanded MCP surface (`settings_*`, richer `content_update`, structured errors, etc.); see [emdash@0.8.0](https://github.com/emdash-cms/emdash/releases/tag/emdash%400.8.0) and [emdash@0.9.0](https://github.com/emdash-cms/emdash/releases/tag/emdash%400.9.0). None of those notes promise that **`content get --json`** returns raw PT arrays for rich-text fields.
 
@@ -72,7 +72,7 @@ When Cursor **EmDash MCP** is unavailable, errored, auth invalid, or `call_mcp_t
 - **`web/src/lib/content/entryBody.ts`** — `resolveEntryBody`: non-empty array → PT; non-empty string → legacy markdown; empty otherwise.
 - **`web/src/lib/content/contentEntry.ts`** — `buildContentEntryViewModel` uses `resolveEntryBody` for `data.content`.
 - **`web/src/lib/content/contentBlocks.ts`** — `parseLegacyTextContent`, `buildPortableRenderNodes` (translate `<details class="translate">` pattern in PT). **Authoring contract:** **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md` § PT pattern: French `blockquote` + English translation expander (canonical)**.
-- **`web/src/components/EmDashContentView.astro`** — Wires EmDash `PortableText` (`emdash/ui`) + `Audio.astro` override; youtube/embed via plugin-embeds / core Embed.
+- **`web/src/components/EmDashContentView.astro`** — Wires EmDash `PortableText` (`emdash/ui`) + `Audio.astro` / `EmbedWithCaptions.astro` overrides; youtube via plugin-embeds. Self-hosted video (`provider: "video"`): **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
 - **`web/docs/PR_CHECKLIST_EMDASH_CONTENT.md`** — Dependency bump checks + **canary** to classify `data.content` as PT vs string.
 - **`web/CONTENT_PROMOTION_RUNBOOK.md`** — Staging → production promotion, schema parity, UTF-8 notes.
 - Sibling **`freedomtimes-agents/docs/DISASTER_RECOVERY.md`** — Canonical production EmDash disaster recovery (retarget Worker; do not overwrite named production).
@@ -127,13 +127,14 @@ When Cursor **EmDash MCP** is unavailable, errored, auth invalid, or `call_mcp_t
 | Legacy + PT processing | `web/src/lib/content/contentBlocks.ts` |
 | Article layout | `web/src/components/EmDashContentView.astro`, `web/src/components/content/EntryBody.astro` |
 | PT embed: youtube / social | `@emdash-cms/plugin-embeds` |
-| PT embed: self-hosted video | EmDash `Embed` (`_type: "embed"`, `provider: "video"`) |
+| PT embed: self-hosted video | `web/src/components/EmbedWithCaptions.astro` — **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`** |
 | PT embed: audio / podcasts | `web/src/components/Audio.astro` (`_type: "audio"`) |
 | Seed / intended schema | `web/.emdash/seed.json` |
 | PR / canary | `web/docs/PR_CHECKLIST_EMDASH_CONTENT.md` |
 | Promotion | `web/CONTENT_PROMOTION_RUNBOOK.md` |
 | Production EmDash DR (canonical) | sibling `freedomtimes-agents/docs/DISASTER_RECOVERY.md` |
 | English glosses / global audience | `web/docs/EDITORIAL_ENGLISH_GLOSSES.md` |
+| Self-hosted video / large PT update | `web/docs/SELF_HOSTED_VIDEO_EMBEDS.md` |
 | Staging PT patch + publish | `web/scripts/merge-staging-post-from-patch.mjs`, `web/.emdash/article-patches/*.json` |
 | MCP token helper | `scripts/set-emdash-mcp-tokens.ps1` |
 | HTTP MCP `content_get` | `web/scripts/emdash-mcp-client.mjs` (used by promote + canary `--mcp`) |

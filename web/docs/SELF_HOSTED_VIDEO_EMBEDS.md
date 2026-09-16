@@ -101,7 +101,11 @@ Signed-in published HTML must contain `<video>`, the mp4 `src`, and caption `<tr
 
 ## Related
 
-- `web/docs/EDITORIAL_ENGLISH_GLOSSES.md` — PT embed types
-- `web/docs/EMDASH_EMBEDS_PRODUCTION_CUTOVER.md` — legacy `_type: "video"` → youtube/embed
-- `docs/CURSOR_EMDASH_MCP.md` — large media **and** large PT payloads
-- `web/CONTENT_PROMOTION_RUNBOOK.md` — backups
+- [AGENTS.md](../../AGENTS.md) — MCP-only content writes; large PT is an operator migrate, not an agent `content_update` paste
+- [EDITORIAL_ENGLISH_GLOSSES.md](./EDITORIAL_ENGLISH_GLOSSES.md) — PT embed types (`embed` / `youtube` / `audio`)
+- [EMDASH_EMBEDS_PRODUCTION_CUTOVER.md](./EMDASH_EMBEDS_PRODUCTION_CUTOVER.md) — legacy `_type: "video"` → youtube/embed
+- [CURSOR_EMDASH_MCP.md](../../docs/CURSOR_EMDASH_MCP.md) — large media **and** large PT payloads
+- [PR_CHECKLIST_EMDASH_CONTENT.md](./PR_CHECKLIST_EMDASH_CONTENT.md) — smoke the published player after EmDash / content PRs
+- [PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md](./PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md) — CLI vs MCP for stored `content`
+- [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md) — backups before mutate
+- [DEPLOY.md](./DEPLOY.md) — symptom index: editor shows embed, published page has no `<video>`

@@ -1,6 +1,6 @@
 # PR checklist: EmDash upgrades & entry body (`content`)
 
-Use this list when a PR bumps **`emdash`** / **`@emdash-cms/cloudflare`**, or changes **`web/src/lib/content/`** (`contentEntry.ts`, `entryBody.ts`, `contentBlocks.ts`), **`EmDashContentView`**, or publish scripts that write `posts.data.content`.
+Use this list when a PR bumps **`emdash`** / **`@emdash-cms/cloudflare`**, or changes **`web/src/lib/content/`** (`contentEntry.ts`, `entryBody.ts`, `contentBlocks.ts`, `videoCaptionTracks.ts`), **`EmDashContentView`**, **`EmbedWithCaptions`**, or publish scripts that write `posts.data.content`. Self-hosted video player missing on the published URL: **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
 
 ---
 
@@ -113,6 +113,7 @@ Remove-Item Env:EMDASH_STAGING_PAT -ErrorAction SilentlyContinue
 - [ ] **Homepage** loads and lists posts.
 - [ ] **`/posts/<slug>`** for the canary slug: headings, paragraphs, **source links** if markdown legacy.
 - [ ] **Translate folds**: follow **`web/docs/EDITORIAL_ENGLISH_GLOSSES.md` § PT pattern: French `blockquote` + English translation expander (canonical)** — block order, closing `</details>` block, then confirm summary + body render on staging.
+- [ ] **Self-hosted video**: if the post has `_type: "embed"` + `provider: "video"`, the **published** page (not only the editor) has `<video>` — **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**.
 - [ ] **`/archives/...`** if the PR touched archives or shared content code.
 
 ---
