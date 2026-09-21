@@ -552,7 +552,22 @@ const showReaderDataProvenance = entrySlug === "privacy-policy";
 		width: 100%;
 		aspect-ratio: var(--video-aspect-ratio, 16 / 9);
 		border: 1px solid #eeeeee;
-		background: #000000;
+		background-color: #000000;
+	}
+
+	/*
+	 * lite-youtube paints the YouTube poster as an inline background-image on
+	 * the host. Do not use the `background` shorthand here — it resets
+	 * background-size / repeat / position to initial (auto / repeat / 0 0),
+	 * so hqdefault (480×360) tiles across the 16:9 player instead of covering
+	 * it. Restore cover + no-repeat + center; keep background-color for any
+	 * remaining letterbox. Play-button hit area is the full-size child
+	 * `.lyt-playbtn` and is not affected by these host poster properties.
+	 */
+	.content-card :global(lite-youtube) {
+		background-size: cover;
+		background-repeat: no-repeat;
+		background-position: center;
 	}
 
 	@media (max-width: 768px) {

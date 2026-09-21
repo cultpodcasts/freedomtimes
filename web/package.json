@@ -1,14 +1,14 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "engines": {
     "node": ">=22.22.2"
   },
   "scripts": {
     "dev": "astro dev",
     "check": "astro check",
-    "build": "node scripts/patch-emdash-windows-createrequire.mjs && tsx scripts/build-service-worker.ts && tsx scripts/build-native-shell-bridge.ts && astro build && tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-video-caption-tracks.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts && tsx scripts/patch-cloudflare-bundle.ts",
+    "build": "node scripts/patch-emdash-windows-createrequire.mjs && tsx scripts/build-service-worker.ts && tsx scripts/build-native-shell-bridge.ts && astro build && tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-video-caption-tracks.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts scripts/test-lite-youtube-poster-styles.mts && tsx scripts/patch-cloudflare-bundle.ts",
     "test:oauth-discovery": "tsx --test scripts/test-emdash-oauth-metadata.mts",
     "test:oauth-discovery:routes": "tsx --test scripts/test-emdash-oauth-routes.mts",
     "test:auth-session": "tsx --test scripts/test-auth-session-lifetime.mts",
@@ -18,6 +18,7 @@
     "test:outer-middleware": "tsx --test scripts/test-emdash-outer-middleware.mts",
     "test:service-worker": "tsx --test scripts/test-service-worker-navigation.mts",
     "test:robots-txt": "tsx --test scripts/test-robots-txt.mts",
+    "test:lite-youtube-poster": "tsx --test scripts/test-lite-youtube-poster-styles.mts",
     "scheduler:db:migrate": "tsx scripts/apply-turso-sql.ts scheduler migrate",
     "scheduler:db:seed": "tsx scripts/apply-turso-sql.ts scheduler seed",
     "scheduler:db:deploy": "tsx scripts/apply-turso-sql.ts scheduler migrate && tsx scripts/apply-turso-sql.ts scheduler seed",
