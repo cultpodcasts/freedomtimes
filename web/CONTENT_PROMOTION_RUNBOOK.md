@@ -287,6 +287,19 @@ Notes:
 
 ### Featured media and bylines (posts)
 
+
+## HARD RULE — never break production images (21 September 2026)
+
+Staging EmDash media IDs and `storageKey`s **do not exist** on production. Pasting staging Portable Text / `featured_image` into production without remapping **404s every still** (shipped fail: `weekly-summary-20-september-2026` Eternal Values patch).
+
+### Required on every production content write (promote or in-place patch)
+
+1. **Freedom Times–hosted stills only** for unit images and the hero. Upload to production EmDash; reference `/_emdash/api/media/file/<production-storageKey>` only. **Do not** hotlink outlet CDNs (gazettelive, ytimg maxres for unit stills, etc.).
+2. **Remap every media reference** from staging → production: `featured_image.id` + `meta.storageKey`, every inline PT image, and `seo.image`. Use the official promote script media remap, or download-from-staging + upload-to-production. **Never** string-paste staging keys.
+3. **Pre-publish gate:** for every `/_emdash/api/media/file/<key>` in the production payload, HTTP GET/HEAD on `https://freedomtimes.news` must return **200**. If any key 404s, **do not publish**.
+4. **Post-promote live page QA (mandatory before reporting done):** fetch `https://freedomtimes.news/posts/<slug>`, collect every media file key in the HTML (hero + body), confirm each returns 200, confirm the hero `<img>` is a production key, confirm no off-domain unit still URLs remain. Fix any miss before telling the operator the promote succeeded.
+
+
 Staging media IDs and R2 keys do **not** exist in production. Promoting only the `data` JSON without fixing `featured_image` leaves production pointing at missing media (broken hero images).
 
 Bylines are **not** set by copying `primaryBylineId` in a raw JSON file: the API expects a `bylines` array on create/update (see EmDash `contentUpdateBody`). Use `bylines: [{ "bylineId": "<id>" }]` in a follow-up `PUT` to `/_emdash/api/content/<collection>/<slug>`, or use the scripted promoter below.
