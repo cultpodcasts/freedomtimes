@@ -1,3 +1,5 @@
+import { citationReaderLinksTransform } from './citation-reader-links.mjs';
+import { citationSourceNotesCleanupTransform } from './citation-source-notes-cleanup.mjs';
 import { embedVideoUrlTransform } from './embed-video-url.mjs';
 import { videoTransform } from './video.mjs';
 
@@ -7,6 +9,8 @@ import { videoTransform } from './video.mjs';
 export const TRANSFORMS = {
 	video: videoTransform,
 	'embed-video-url': embedVideoUrlTransform,
+	'citation-reader-links': citationReaderLinksTransform,
+	'citation-source-notes-cleanup': citationSourceNotesCleanupTransform,
 };
 
 export function listTransforms() {

@@ -215,7 +215,12 @@ async function migrateOne(url, token, flags, transforms) {
 
 	if (flags.publish) {
 		console.log(`content_publish ${collection}/${slug} …`);
-		await mcp(url, token, 'content_publish', { collection, id: slug });
+		const after = await mcp(url, token, 'content_get', { collection, id: slug });
+		const publishRev = after?._rev;
+		if (!publishRev) {
+			throw new Error('content_publish requires _rev; content_get after update returned none');
+		}
+		await mcp(url, token, 'content_publish', { collection, id: slug, _rev: publishRev });
 	} else {
 		console.log('Updated draft/revision only (no --publish).');
 	}

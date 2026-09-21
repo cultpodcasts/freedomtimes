@@ -14,6 +14,7 @@ import {
   HOMEPAGE_ROOT_REDIRECT_LOCATION,
   shouldRedirectHomepageToRoot,
 } from './lib/homepage-host';
+import { maybeInlinePdfMediaDisposition } from './lib/inline-pdf-media';
 import { recordPageView } from './lib/page-view-analytics';
 import { buildRobotsTxt } from './lib/robots-txt';
 
@@ -304,7 +305,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // EmDash/OAuth bypass traffic is never recorded as public page views.
   if (isAuthBypassPath(path)) {
     const bypassResponse = await next();
-    return maybeInjectNativeShellBridge(path, bypassResponse);
+    return maybeInjectNativeShellBridge(
+      path,
+      maybeInlinePdfMediaDisposition(path, bypassResponse),
+    );
   }
 
   const response = await next();
@@ -312,5 +316,5 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // Aggregates (path / country / bot flag) for /admin/analytics — not analytics of /admin itself.
   // No IPs, UA, or cookies stored. Analytics Engine writes are non-blocking.
   recordPageView(context.request, response);
-  return response;
+  return maybeInlinePdfMediaDisposition(path, response);
 });
