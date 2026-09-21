@@ -194,6 +194,34 @@ if (-not $IsWindows) {
     }
 }
 
+Write-Host "=== -SkipTursoBackup skips export without a 24h checkpoint ==="
+$skipBackupThrew = $false
+try {
+    Invoke-DeployEmDashTursoBackup -SkipTursoBackup
+}
+catch {
+    $skipBackupThrew = $true
+}
+Assert-True (-not $skipBackupThrew) "SkipTursoBackup returns without requiring a fresh export"
+
+Write-Host "=== WorkerOnly -SkipTursoBackup skips emdash migrate ==="
+Initialize-DeployEnvironment -Environment production
+Set-DeploySkipTursoMutate -SkipTursoBackup -WorkerOnly
+Assert-True ([bool]$script:DeploySkipTursoMutate) "WorkerOnly + SkipTursoBackup sets DeploySkipTursoMutate"
+$migrateThrew = $false
+try {
+    Invoke-DeployEmdashCoreMigrate
+    Invoke-DeployEmdashCoreMigrateCheck
+}
+catch {
+    $migrateThrew = $true
+}
+Assert-True (-not $migrateThrew) "migrate apply/check no-op when DeploySkipTursoMutate is set"
+
+Initialize-DeployEnvironment -Environment production
+Set-DeploySkipTursoMutate
+Assert-True (-not [bool]$script:DeploySkipTursoMutate) "full deploy without SkipTursoBackup still migrates"
+
 Write-Host "=== Test-DeployProductionWorkerSecretOverlayPresent ==="
 $overlayTmp = Join-Path ([IO.Path]::GetTempPath()) ("prod-overlay-" + [guid]::NewGuid().ToString("n"))
 New-Item -ItemType Directory -Force -Path $overlayTmp | Out-Null

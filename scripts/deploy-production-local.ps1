@@ -18,9 +18,10 @@ param(
   .env.dev sync, secret sync, build, emdash migrate, wrangler deploy,
   emdash migrate --check, post-deploy secret verify.
 
-  -WorkerOnly: skip Terraform; still backup + migrate + deploy the web worker.
-  Resolves Turso credentials for core migrate (runtime still uses Cloudflare
-  TURSO_* secrets). Requires -AllowProduction when using -WorkerOnly.
+  -WorkerOnly: skip Terraform; still backup + migrate + deploy the web worker
+  unless -SkipTursoBackup. Resolves Turso credentials for core migrate (runtime
+  still uses Cloudflare TURSO_* secrets). Requires -AllowProduction when using
+  -WorkerOnly.
 
   -DryRun: skip backup, migrate, build, and deploy. Verifies the live Worker
   has the required secret *names* (including TURSO_*) via wrangler secret list.
@@ -28,15 +29,19 @@ param(
   Version bump default: no bump unless -BumpVersion (production ships the version staging already bumped).
 
   Turso rollback checkpoint runs before migrate for full deploy and -WorkerOnly
-  (WSL Turso on Windows; native turso on Linux). -SkipTursoBackup requires a
-  rollback metadata file newer than 24h whose sourceDatabase matches the
-  production EmDash name about to be migrated. Skipped for -DryRun.
+  (WSL Turso on Windows; native turso on Linux) unless -SkipTursoBackup.
+  -SkipTursoBackup skips the export/rollback branch with no 24h-checkpoint
+  requirement. Combined with -WorkerOnly it also skips emdash migrate
+  apply/check (Worker hotfix; no Turso mutate). Skipped for -DryRun.
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
+
+.EXAMPLE
+  pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SkipTursoBackup
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun
@@ -55,6 +60,7 @@ if ($BumpVersion -and $SkipVersionBump) {
 
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 Initialize-DeployEnvironment -Environment production
+Set-DeploySkipTursoMutate -SkipTursoBackup:$SkipTursoBackup -WorkerOnly:$WorkerOnly
 
 $workflowLabel = if ($WorkerOnly) { "worker deploy" } else { "full deploy" }
 Write-DeployStep "Starting local production $workflowLabel"

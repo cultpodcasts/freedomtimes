@@ -17,15 +17,16 @@ param(
   emdash migrate --check, post-deploy secret verify.
 
   -WorkerOnly: skip Terraform and infra steps; still backup + migrate + deploy
-  the web worker. Resolves Turso credentials for core migrate (runtime still uses
-  Cloudflare TURSO_* secrets). Pass -SyncCloudflareWorkerSecrets to re-sync
-  Cloudflare secrets first.
+  the web worker unless -SkipTursoBackup. Resolves Turso credentials for core
+  migrate (runtime still uses Cloudflare TURSO_* secrets). Pass
+  -SyncCloudflareWorkerSecrets to re-sync Cloudflare secrets first.
 
   -WorkersOnly: skip Terraform; same backup -> migrate -> deploy -> check for web,
-  then deploy the scheduler worker.
+  then deploy the scheduler worker (unless -SkipTursoBackup, which skips backup
+  and migrate).
 
-  -SkipTursoBackup: skip the staging export only when a fresh (<24h) export
-  already exists under .release/backups/.
+  -SkipTursoBackup: skip the staging Turso export. With -WorkerOnly / -WorkersOnly
+  also skip emdash migrate apply/check (Worker hotfix; no Turso mutate).
 
   -WorkerOnly and -WorkersOnly are mutually exclusive.
 
@@ -33,7 +34,7 @@ param(
   pwsh ./scripts/deploy-staging-local.ps1
 
 .EXAMPLE
-  pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump
+  pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump -SkipTursoBackup
 
 .EXAMPLE
   pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecrets
@@ -48,6 +49,7 @@ if ($WorkerOnly -and $WorkersOnly) {
 
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 Initialize-DeployEnvironment -Environment staging
+Set-DeploySkipTursoMutate -SkipTursoBackup:$SkipTursoBackup -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly
 
 $skipTerraform = $WorkerOnly -or $WorkersOnly
 $workflowLabel = if ($WorkersOnly) { "workers deploy" } elseif ($WorkerOnly) { "worker deploy" } else { "full deploy" }
