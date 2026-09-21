@@ -44,7 +44,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 
 1. **Production deploy** — Do not run `deploy-production-local.ps1` or `production-release.ps1` unless the operator explicitly asked in this chat. Production infra deploy is operator-controlled; **EmDash `content_publish`** is a separate hard rule (push notifications).
 2. **Turso CLI** — **Linux Cloud VM:** native `turso` (`PATH` or `$HOME/.turso/turso`). Do not use `wsl`. Deploy runs `turso config set token` from `TURSO_PLATFORM_API_TOKEN` (else `TURSO_API_TOKEN` / `TF_VAR_turso_api_token` / non-JWT `TURSO_TOKEN`), then `turso auth whoami`. Never use `TURSO_AUTH_TOKEN` (database JWT). **Windows:** `wsl bash -lic "turso auth whoami"`. If no platform token and whoami fails: **STOP**; Linux `turso auth login`, Windows `wsl bash -lic "turso auth login"`.
-3. **Turso rollback checkpoint** — every web-Worker deploy (full or `-WorkerOnly`) backs up EmDash Turso **before** `emdash migrate`. Production: rollback branch. Staging: `turso db export` (database name = `TF_VAR_TURSO_DATABASE_NAME_STAGING` if set, otherwise the Terraform staging `turso_database_name` default; that env key is optional). Do not abort because process `TURSO_DATABASE_URL` equals production. `Select-StagingEmdashTursoUrl` skips that process URL (hint match or `*-emdash-production-*`) and still flags `IgnoredProcessProductionShadow` when Terraform URL wins so process JWT is not used. **Never** copy the process production pair into `.env.dev`. Resolve **throws** if the selected Terraform or `.env.dev` URL is production. Cloud Agents: **`AGENTS.md`**. Do not pass `-SkipTursoBackup` unless a checkpoint/export newer than 24h already exists.
+3. **Turso rollback checkpoint** — every web-Worker deploy (full or `-WorkerOnly`) backs up EmDash Turso **before** `emdash migrate`. Production: rollback branch. Staging: `turso db export` (database name = `TF_VAR_TURSO_DATABASE_NAME_STAGING` if set, otherwise the Terraform staging `turso_database_name` default; that env key is optional). Do not abort because process `TURSO_DATABASE_URL` equals production. `Select-StagingEmdashTursoUrl` skips that process URL (hint match or `*-emdash-production-*`) and still flags `IgnoredProcessProductionShadow` when Terraform URL wins so process JWT is not used. **Never** copy the process production pair into `.env.dev`. Resolve **throws** if the selected Terraform or `.env.dev` URL is production. Cloud Agents: **`AGENTS.md`**. Pass `-SkipTursoBackup` only when the operator **explicitly** orders skip (no 24h-file requirement; `-WorkerOnly`/`-WorkersOnly` also skip emdash migrate).
 4. **EmDash content/schema** — Deploy scripts do not promote CMS content. Use EmDash MCP for stored PT JSON; see `AGENTS.md` § EmDash MCP.
 5. **CLI auth** — On wrangler, gh, terraform, or turso auth failure: **STOP**, name the CLI and auth command, wait for operator.
 
@@ -122,7 +122,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 11. `npx emdash migrate --check`
 12. Post-deploy secret verify (required Auth0 + EmDash secrets on worker)
 
-**`-WorkerOnly`:** skips Terraform and infra steps unless `-SyncCloudflareWorkerSecrets`. Still runs Turso export (or refuses `-SkipTursoBackup` without a fresh export newer than 24h), resolves Turso creds for core migrate, then build → migrate → wrangler → `--check`. Runtime still uses Cloudflare `TURSO_*` secrets. Does **not** deploy the scheduler worker or Azure Function App.
+**`-WorkerOnly`:** skips Terraform and infra steps unless `-SyncCloudflareWorkerSecrets`. Default still runs Turso export, then build → migrate → wrangler → `--check`. `-SkipTursoBackup` skips the export with no 24h-file requirement and also skips emdash migrate apply/check (Worker hotfix). Runtime still uses Cloudflare `TURSO_*` secrets. Does **not** deploy the scheduler worker or Azure Function App.
 
 **`-WorkersOnly`:** skips Terraform unless `-SyncCloudflareWorkerSecrets`. Same backup → build → migrate → web deploy → `--check`, then scheduler deploy. No post-deploy secret verify.
 
@@ -131,6 +131,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 ```powershell
 pwsh ./scripts/deploy-staging-local.ps1
 pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump
+pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump -SkipTursoBackup
 pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SyncCloudflareWorkerSecrets
 pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly
 pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecrets
@@ -143,7 +144,7 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 **Full deploy (default) — step order:**
 
 1. Push secrets preflight (`Assert-ProductionPushSecretsReady`)
-2. Turso production rollback checkpoint (`backup-production-emdash.ps1` — Worker-resolved; WSL Turso on Windows / native `turso` on Linux; `-SkipTursoBackup` only if verified metadata newer than 24h exists)
+2. Turso production rollback checkpoint (`backup-production-emdash.ps1` — Worker-resolved; WSL Turso on Windows / native `turso` on Linux; skipped entirely when `-SkipTursoBackup`)
 3. Terraform apply
 4. Write Auth0 production credentials from Terraform output into `.env.dev`, then verify
 5. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction`)
@@ -153,12 +154,13 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 9. `npx emdash migrate --check`
 10. Post-deploy secret verify
 
-**`-WorkerOnly`:** requires `-AllowProduction`. Still runs the Turso rollback checkpoint (or refuses `-SkipTursoBackup` without fresh metadata). Resolves Turso creds for core migrate; the worker keeps existing Cloudflare `TURSO_*` secrets at runtime. `-DryRun` skips backup, migrate, build, and deploy after listing live Worker secret **names**.
+**`-WorkerOnly`:** requires `-AllowProduction`. Default still runs the Turso rollback checkpoint. `-SkipTursoBackup` skips the checkpoint with no 24h-file requirement and also skips emdash migrate apply/check (Worker hotfix). Resolves Turso creds for build; the worker keeps existing Cloudflare `TURSO_*` secrets at runtime. `-DryRun` skips backup, migrate, build, and deploy after listing live Worker secret **names**.
 
 ```powershell
 pwsh ./scripts/deploy-production-local.ps1
 pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction
+pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SkipTursoBackup
 pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun
 pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SyncCloudflareWorkerSecrets
 ```
@@ -550,7 +552,7 @@ If sync still warns about missing outputs, run `terraform output` in `infra/terr
 |------|----------------|
 | Full production deploy (default) | **Yes** — rollback branch before migrate |
 | Production `-WorkerOnly` | **Yes** — same checkpoint |
-| `-SkipTursoBackup` | Allowed only if rollback metadata (prod) or `emdash-staging-*.db` (staging) is newer than 24h |
+| `-SkipTursoBackup` | Skips export/rollback (no 24h-file requirement). With `-WorkerOnly` / `-WorkersOnly` also skips emdash migrate |
 | `-DryRun` | Skipped |
 | Staging (`deploy-staging-local.ps1`, including `-WorkerOnly` / `-WorkersOnly`) | **Yes** — `turso db export` |
 
@@ -594,7 +596,7 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 | `Auth0 env sync skipped` / missing `AUTH0_LOGIN_APP_CLIENT_*` after terraform-run apply | State-pull JSON parse failed under StrictMode | Fixed in terraform-run (terraform output); `deploy-production-local.ps1` has redundant output sync; see [Auth0 env sync skipped](#auth0-env-sync-skipped) |
 | `Failed to read terraform output 'turso_database_url'` | Turso URL missing from Terraform and `.env.dev` | Populate `.env.dev` or apply Terraform so outputs exist (needed for core migrate, including `-WorkerOnly`) |
 | `No migration manifest` / EmDash core migrate failed | `npm run build` did not write `web/.emdash/migrations.json`, or Turso creds are the build placeholder | Rebuild in `web/` with real `TURSO_*`; do not apply migrate without backup |
-| `Refusing -SkipTursoBackup` | No rollback metadata / staging export newer than 24h, or production `sourceDatabase` did not match `TF_VAR_TURSO_DATABASE_NAME_PRODUCTION` / production EmDash URL | Omit `-SkipTursoBackup` or create a fresh checkpoint/export first. Cloud Agents: that TF_VAR is often unset — scripts now also match the production URL host. |
+| `Refusing -SkipTursoBackup` | Legacy: scripts required a <24h checkpoint. Current scripts skip export/rollback when the flag is set | Pass `-SkipTursoBackup` only when the operator explicitly orders skip. Default deploy still creates a checkpoint |
 | `Missing required production push secret values` (FCM labels mention production **or** staging) | No FCM keys at all in `.env.dev` | Run `populate-android-fcm-env.ps1` or set `PUSH_STAGING_ANDROID_FCM_*` / `PUSH_PRODUCTION_ANDROID_FCM_*` |
 | `Unresolved placeholder production push secret values` | `.env.dev` still has `<firebase-project-id>` etc. | Replace with real values; see [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) |
 | `Refusing to sync placeholder value for Worker secret` | Secret sync hit a template value | Same as above |

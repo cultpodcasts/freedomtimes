@@ -55,6 +55,19 @@ function Initialize-DeployEnvironment {
     Initialize-WindowsCliPath
     Initialize-LinuxNvmNodePath
     $script:DeployTerraformLockfileWasClean = $null
+    $script:DeploySkipTursoMutate = $false
+}
+
+function Set-DeploySkipTursoMutate {
+    param(
+        [switch]$SkipTursoBackup,
+        [switch]$WorkerOnly,
+        [switch]$WorkersOnly
+    )
+
+    # Operator -SkipTursoBackup on a Worker-only hotfix: do not export, branch,
+    # or run emdash migrate. Full deploy still migrates after skipping backup.
+    $script:DeploySkipTursoMutate = [bool]($SkipTursoBackup -and ($WorkerOnly -or $WorkersOnly))
 }
 
 function Initialize-LinuxNvmNodePath {
@@ -918,8 +931,7 @@ function Invoke-DeployEmDashTursoBackup {
     )
 
     if ($SkipTursoBackup) {
-        Write-DeployStep "Skipping Turso EmDash backup (-SkipTursoBackup); requiring a fresh checkpoint"
-        Assert-DeployFreshEmDashTursoBackup
+        Write-DeployStep "Skipping Turso EmDash backup (-SkipTursoBackup); not creating an export or rollback branch"
         return
     }
 
@@ -967,6 +979,11 @@ function Ensure-DeployEmdashTargetFingerprintFromStatus {
 }
 
 function Invoke-DeployEmdashCoreMigrate {
+    if ($script:DeploySkipTursoMutate) {
+        Write-DeployStep "Skipping EmDash core migrate (-WorkerOnly -SkipTursoBackup); Worker hotfix does not touch Turso"
+        return
+    }
+
     Write-DeployStep "Applying EmDash core migrations (npx emdash migrate)"
 
     $url = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
@@ -998,6 +1015,11 @@ function Invoke-DeployEmdashCoreMigrate {
 }
 
 function Invoke-DeployEmdashCoreMigrateCheck {
+    if ($script:DeploySkipTursoMutate) {
+        Write-DeployStep "Skipping EmDash core migrate --check (-WorkerOnly -SkipTursoBackup)"
+        return
+    }
+
     Write-DeployStep "Checking EmDash core migrations (npx emdash migrate --check)"
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")

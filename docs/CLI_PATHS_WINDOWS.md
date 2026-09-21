@@ -105,7 +105,7 @@ turso db list
 | Script / doc | Role |
 |--------------|------|
 | **`scripts/turso-create-rollback-branch.ps1`** | WSL by default (`$HOME/.turso/turso` via `wsl bash -lc`); pass `-UseNativeTurso` only if `turso` is on Windows PATH |
-| **`scripts/deploy-production-local.ps1`** | Full deploy and `-WorkerOnly` invoke rollback checkpoint before migrate (unless `-SkipTursoBackup` with a file newer than 24h, or `-DryRun`). Linux passes `-UseNativeTurso`. |
+| **`scripts/deploy-production-local.ps1`** | Full deploy and `-WorkerOnly` invoke rollback checkpoint before migrate (unless `-SkipTursoBackup` or `-DryRun`). `-WorkerOnly -SkipTursoBackup` also skips emdash migrate. Linux passes `-UseNativeTurso`. |
 | **`scripts/turso-create-rollback-branch-wsl.sh`** | Run from WSL; prepends `~/.turso` to `PATH` |
 | **`scripts/backup-production-emdash.ps1`** | Worker-resolved production EmDash backup (branch + file + verify + agents log) |
 | **`scripts/disaster-recover-production-emdash.ps1`** | Non-destructive-first DR: retarget Worker to a verified branch |
