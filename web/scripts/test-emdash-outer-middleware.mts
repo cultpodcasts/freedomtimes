@@ -38,7 +38,7 @@ describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 			fileURLToPath(new URL('../docs/EMDASH_MIDDLEWARE_AND_ROUTING.md', import.meta.url)),
 			'utf8',
 		);
-		assert.match(routingDoc, /emdash\/middleware\/redirect/);
+		assert.match(routingDoc, /emdash\/internal\/middleware\/redirect/);
 		assert.match(routingDoc, /supportsRequestScope/);
 		assert.match(routingDoc, /createRequestScopedDb/);
 		assert.match(routingDoc, /secureAccessWallResponse/);
@@ -51,13 +51,14 @@ describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 	it('EmDash still registers runtime then redirect; outer is the only reorder', () => {
 		assert.match(
 			integrationSource,
-			/entrypoint:\s*"emdash\/middleware".*entrypoint:\s*"emdash\/middleware\/redirect"/s,
+			/entrypoint:\s*"emdash\/middleware".*entrypoint:\s*"emdash\/internal\/middleware\/redirect"/s,
 		);
 		assert.match(integrationSource, /config\.middleware\?\.outer/);
 	});
 
 	it('outer does not call getDb or emdash/middleware/redirect before runtime', () => {
-		assert.doesNotMatch(outerSource, /from 'emdash\/middleware\/redirect'/);
+		assert.doesNotMatch(outerSource, /from ['"]emdash\/middleware\/redirect['"]/);
+		assert.doesNotMatch(outerSource, /from ['"]emdash\/internal\/middleware\/redirect['"]/);
 		assert.doesNotMatch(outerSource, /emdashRedirect\(/);
 		assert.doesNotMatch(outerSource, /await getDb\(/);
 		assert.doesNotMatch(outerSource, /getDb\(\)/);

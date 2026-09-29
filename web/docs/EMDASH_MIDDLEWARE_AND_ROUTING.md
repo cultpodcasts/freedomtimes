@@ -12,11 +12,11 @@ EmDash registers middleware in `buildMiddlewareEntries`
 
 1. Optional `middleware.outer` (`web/src/emdash-outer-middleware.ts`)
 2. `emdash/middleware` — `getRuntime`, then `createRequestScopedDb` into ALS
-3. `emdash/middleware/redirect` — `_emdash_redirects` via `getDb()`
+3. `emdash/internal/middleware/redirect` — `_emdash_redirects` via `getDb()`
 4. setup / auth / request-context
 5. the page
 
-`emdash/middleware/redirect` is written to run **after** runtime init. Its
+`emdash/internal/middleware/redirect` is written to run **after** runtime init. EmDash 1.0 moved this entry point under `emdash/internal/`. Its
 fallback `getDb()` “transparently returns the per-request scoped db (set in
 ALS by the runtime middleware) or the singleton” (`redirect.ts`).
 
@@ -26,7 +26,7 @@ trips workerd’s cross-request I/O guard: the document hangs at 0 bytes while
 `/_emdash/*` (scoped after runtime) still answers.
 
 **`middleware.outer` is for host/logging work that does not need the CMS
-database.** It must not import `emdash/middleware/redirect` or call `getDb()`.
+database.** It must not import `emdash/internal/middleware/redirect` or call `getDb()`.
 
 ## Request-scoped database (adapter hook, not a one-off)
 
@@ -66,7 +66,7 @@ Response, not rewrite.
 
 `/login-wall` remains a fallback that returns the same wall Response.
 
-CMS slug redirects stay in EmDash (`emdash/middleware/redirect` after
+CMS slug redirects stay in EmDash (`emdash/internal/middleware/redirect` after
 runtime). The app does not reimplement `_emdash_redirects`.
 
 ## What to do instead of the rejected hacks
@@ -74,6 +74,6 @@ runtime). The app does not reimplement `_emdash_redirects`.
 | Symptom | Official lever |
 |---------|----------------|
 | HTML hangs after ~30s / second request | `supportsRequestScope` + `createRequestScopedDb`; never `getDb()` in `middleware.outer` |
-| Weekly slug 302 | Let `emdash/middleware/redirect` run after runtime |
+| Weekly slug 302 | Let `emdash/internal/middleware/redirect` run after runtime |
 | Locked `/` vs newsroom CSS | Wall is a Response; `/homepage` never renders the wall |
 | Service worker eating navigations | SW must not intercept `navigate` / document requests |

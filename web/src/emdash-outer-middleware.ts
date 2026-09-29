@@ -2,14 +2,14 @@
  * EmDash `middleware.outer` — runs BEFORE `emdash/middleware` getRuntime.
  *
  * Do not reimplement `_emdash_redirects`. Do not call
- * `emdash/middleware/redirect` here. That handler's fallback is isolate-wide
+ * `emdash/internal/middleware/redirect` here. That handler's fallback is isolate-wide
  * getDb (libsql web client). On Cloudflare Workers, reusing that client
  * on a later request trips workerd's cross-request I/O guard: document
  * routes hang at 0 bytes while `/_emdash/*` (scoped db after getRuntime)
  * still answers.
  *
  * Official order stays: getRuntime (request-scoped db) →
- * `emdash/middleware/redirect` → the page. This file only logs [ft-mw].
+ * `emdash/internal/middleware/redirect` → the page. This file only logs [ft-mw].
  */
 import { defineMiddleware } from 'astro:middleware';
 

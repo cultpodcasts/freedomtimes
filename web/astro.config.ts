@@ -160,7 +160,7 @@ export default defineConfig({
     },
     emdash({
       mcp: true,
-      // [ft-mw] logs only. Do not run `emdash/middleware/redirect` here:
+      // [ft-mw] logs only. Do not run `emdash/internal/middleware/redirect` here:
       // its getDb() singleton hangs later HTML requests on workerd.
       // Official redirect stays after getRuntime (scoped db).
       middleware: {
