@@ -39,8 +39,9 @@ const emdashDatabase = {
   supportsRequestScope: true,
   // Keep the Worker shim for runtime secrets; official libSQL executor writes
   // .emdash/migrations.json so `npx emdash migrate` can apply against Turso.
+  // EmDash 1.0 moved this executor under emdash/internal/ (not a public import).
   migrations: {
-    entrypoint: 'emdash/db/libsql-migrations',
+    entrypoint: 'emdash/internal/db/libsql-migrations',
     manifestConfig: {
       url: tursoDatabaseUrl,
       authTokenEnv: 'TURSO_AUTH_TOKEN',
