@@ -1,7 +1,7 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.29",
+  "version": "0.0.30",
   "engines": {
     "node": ">=22.22.2"
   },
@@ -62,24 +62,24 @@
     "test:prod-backup-inventory": "node --test scripts/lib/production-emdash-inventory.test.mjs"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^14.2.3",
+    "@astrojs/cloudflare": "^14.3.3",
     "@astrojs/react": "^5.0.7",
-    "@capacitor/android": "^8.4.1",
+    "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.1",
     "@capacitor/browser": "^8.0.4",
-    "@capacitor/core": "^8.4.1",
-    "@capacitor/ios": "^8.4.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "@capacitor/push-notifications": "^8.1.2",
     "@emdash-cms/cloudflare": "^1.0.1",
     "@emdash-cms/plugin-embeds": "^0.1.53",
     "@libsql/client": "^0.17.4",
     "@libsql/kysely-libsql": "^0.4.1",
-    "astro": "^7.2.4",
-    "drizzle-orm": "^0.45.2",
+    "astro": "^7.3.5",
+    "drizzle-orm": "^0.45.3",
     "emdash": "^1.0.1",
-    "jose": "^6.2.10",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "jose": "^6.2.12",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "sharp": "^0.34.5"
   },
   "overrides": {
@@ -88,15 +88,15 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@capacitor/cli": "^8.4.1",
+    "@capacitor/cli": "^8.5.2",
     "@napi-rs/canvas": "^0.1.80",
     "@resvg/resvg-js": "^2.6.2",
     "esbuild": "^0.25.3",
-    "mcp-remote": "^0.1.0",
+    "mcp-remote": "^0.1.49",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.4.296",
     "satori": "^0.26.0",
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "webpush-webcrypto": "^1.0.5"
   },
@@ -106,6 +106,6 @@
     "esbuild@0.27.7": true,
     "esbuild@0.28.1": true,
     "esbuild@0.25.12": true,
-    "workerd@1.20260701.1": true
+    "workerd@1.20260926.1": true
   }
 }
