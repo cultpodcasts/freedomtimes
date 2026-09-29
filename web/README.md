@@ -10,6 +10,7 @@ Astro SSR app on Cloudflare Workers with EmDash CMS, Auth0 editorial auth, and o
 
 | Topic | Doc |
 |---|---|
+| EmDash 0.38.0 → 1.0.1 upgrade | [docs/EMDASH_1_0_UPGRADE.md](docs/EMDASH_1_0_UPGRADE.md) |
 | Post-build Worker bundle patches (`patch-cloudflare-bundle.ts`) | [docs/PATCH_CLOUDFLARE_BUNDLE.md](docs/PATCH_CLOUDFLARE_BUNDLE.md) |
 | Content promotion (staging → production) | [CONTENT_PROMOTION_RUNBOOK.md](CONTENT_PROMOTION_RUNBOOK.md) |
 | Self-hosted video embed missing on published page | [docs/SELF_HOSTED_VIDEO_EMBEDS.md](docs/SELF_HOSTED_VIDEO_EMBEDS.md) |
