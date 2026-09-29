@@ -4,7 +4,7 @@ Operator note for the Freedom Times upgrade. The pull request changes packages a
 
 Deploys stay on the existing local scripts in [DEPLOY.md](DEPLOY.md) (`deploy-staging-local.ps1`, then `deploy-production-local.ps1` only when production is explicitly requested). Do not connect Cloudflare Workers Builds to GitHub for `freedomtimes` or `freedomtimes-staging`.
 
-Staging (`freedomtimes-staging`, Turso `freedomtimes-emdash-staging`) is the pre-production database. Apply core migrations there, verify, then repeat on production with a Worker-resolved backup.
+Staging (`freedomtimes-staging`, Turso `freedomtimes-emdash-staging`) is the pre-production database. Back up that database, apply core migrations, verify, then deploy production through the existing production backup stage.
 
 ## Packages
 
@@ -40,11 +40,19 @@ It was `emdash/db/libsql-migrations`. Sites that only call `emdash()` and never 
 
 The Windows `createRequire` patch (`web/scripts/patch-emdash-windows-createrequire.mjs`) stays. It no-ops when the 0.37 needle is absent.
 
+## Backups before `emdash migrate`
+
+Core migrations have no undo. Rollback is the pre-upgrade database plus the previous Worker artifact together.
+
+**Staging — required before this upgrade's migrations.** `deploy-staging-local.ps1` exports `freedomtimes-emdash-staging` to `.release/backups/emdash-staging-<stamp>.db` in `Invoke-DeployEmDashTursoBackup`, and that step runs before build and before `emdash migrate`. Do not pass `-SkipTursoBackup`. On a full staging deploy that flag skips the export and still applies migrations. Confirm the new `.db` file exists and is a non-trivial size before migrate is allowed to proceed; the script already throws if the export is missing. CI does the same when a staging apply mutates: `.github/workflows/terraform-staging.yml` step "Backup EmDash Turso before core migrate" (`scripts/ci-turso-emdash-backup.sh`) runs before "Apply EmDash core migrations".
+
+**Production — already gated.** Do not add a separate backup command in front of the production deploy. `deploy-production-local.ps1` already calls `backup-production-emdash.ps1 -AllowProduction` (Worker-resolved Turso branch `prod-backup-<stamp>`, export, inventory verify) before `emdash migrate`. CI does the same in `.github/workflows/terraform-production.yml` ("Backup EmDash Turso before core migrate") before apply. Do not pass `-SkipTursoBackup` for this upgrade: a full production deploy with that flag skips the checkpoint and still migrates. After a production deploy, commit `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` as the existing backup script already writes it.
+
 ## What this site must do
 
-1. Merge this PR (or deploy the branch) only through the local staging script. That script exports the staging Turso database before `emdash migrate`, builds `web/` (new manifest), applies `npx emdash migrate`, deploys `freedomtimes-staging`, then runs `emdash migrate --check`.
+1. Deploy this branch to staging with `pwsh ./scripts/deploy-staging-local.ps1` (or `-WorkerOnly` / `-WorkersOnly`) and **without** `-SkipTursoBackup`. Order inside the script: staging Turso export, build (new `.emdash/migrations.json`), `emdash migrate`, deploy `freedomtimes-staging`, `emdash migrate --check`.
 2. After staging is up: open `/_emdash/admin`, load one public post, save a disposable draft, and upload and fetch a disposable media file.
-3. Production uses the same order only after that check, and only when production is requested: `pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction`, then the production deploy script. Commit `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. Core migrations have no undo. Rollback is the pre-upgrade database plus the previous Worker artifact together.
+3. Production only after that check, and only when production is requested: `pwsh ./scripts/deploy-production-local.ps1` (or `-WorkerOnly -AllowProduction`) **without** `-SkipTursoBackup`. The script's existing backup stage runs before migrate.
 
 `EMDASH_AUTH_SECRET`, if already set on a Worker, stays. EmDash still reads it so commenter IP hashes stay stable. `emdash auth secret` and `emdash dev` are removed in 1.0. This repo does not call them. New plugin-secret encryption uses `emdash secrets generate` for `EMDASH_ENCRYPTION_KEY`. We do not store plugin secrets that need that key today.
 
@@ -80,5 +88,5 @@ These ship inside 0.39–1.0.1. They do not need a schema edit before deploy. Th
 
 - `web/package-lock.json` resolves `emdash@1.0.1` and `@emdash-cms/cloudflare@1.0.1`.
 - Staging admin loads, a published post renders, a disposable draft saves, a disposable media file uploads and downloads.
-- `emdash migrate --check` exits 0 against the staging database after the staging Worker deploy.
-- Production gets the same check only after its own backup and deploy.
+- Staging export `.release/backups/emdash-staging-<stamp>.db` exists before `emdash migrate` runs, and `--check` exits 0 after the staging Worker deploy.
+- Production deploy uses the existing backup stage (no extra backup command, no `-SkipTursoBackup`), then `--check` exits 0.
