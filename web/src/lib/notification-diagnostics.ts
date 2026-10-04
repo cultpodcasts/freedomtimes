@@ -79,20 +79,16 @@ function readServiceWorkerState(
     return 'none';
   }
 
-  const worker = registration.active ?? registration.waiting ?? registration.installing;
-  if (!worker) {
-    return 'unknown';
+  if (registration.active) {
+    return registration.active.state === 'redundant' ? 'redundant' : 'active';
   }
-
-  switch (worker.state) {
-    case 'installing':
-    case 'waiting':
-    case 'active':
-    case 'redundant':
-      return worker.state;
-    default:
-      return 'unknown';
+  if (registration.waiting) {
+    return registration.waiting.state === 'redundant' ? 'redundant' : 'waiting';
   }
+  if (registration.installing) {
+    return registration.installing.state === 'redundant' ? 'redundant' : 'installing';
+  }
+  return 'unknown';
 }
 
 function readPushEndpointHost(subscription: PushSubscription | null): string | null {

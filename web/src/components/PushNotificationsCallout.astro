@@ -166,7 +166,25 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 	const diagnosticFieldLabelsJson = calloutRoot instanceof HTMLElement
 		? (calloutRoot.dataset.diagnosticFieldLabels ?? '{}')
 		: '{}';
-	const NOTIFICATION_DIAGNOSTIC_FIELD_LABELS = JSON.parse(diagnosticFieldLabelsJson);
+	const NOTIFICATION_DIAGNOSTIC_FIELD_LABELS = JSON.parse(diagnosticFieldLabelsJson) as Record<string, string>;
+
+	type TurnstileApi = {
+		render: (
+			mount: HTMLElement,
+			options: {
+				sitekey: string;
+				callback: (token: string) => void;
+				'expired-callback': () => void;
+				'error-callback': () => void;
+			},
+		) => string;
+		remove: (widgetId: string) => void;
+	};
+
+	function readTurnstile(): TurnstileApi | undefined {
+		const candidate = (window as Window & { turnstile?: TurnstileApi }).turnstile;
+		return candidate;
+	}
 
 	function isLikelyNativeShellClient() {
 		return document.documentElement.dataset.nativeShell === '1';
@@ -176,6 +194,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		collectNotificationDiagnostics,
 		formatLastTestNotificationSummary,
 	} from '../lib/notification-diagnostics';
+	import type { NotificationDiagnosticSnapshot } from '../lib/notification-diagnostics';
 	import {
 		browserNotificationPermissionError,
 		enableNotificationsForCurrentDevice,
@@ -189,6 +208,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		requestBrowserNotificationPermission,
 		sendReaderTestPushNotification,
 	} from '../lib/device-notifications';
+	import type { NotificationSupportState } from '../lib/device-notifications';
 
 	ensureTestNotificationReceiptListener();
 
@@ -211,12 +231,12 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 	const diagnosticsStatus = document.querySelector('#diagnostics-status');
 	const isNativeShell = isLikelyNativeShellClient();
 
-	let lastErrorMessage = null;
+	let lastErrorMessage: string | null = null;
 	let currentSupportMessage = '';
 	let testNotificationAvailable = false;
 	let turnstileToken = '';
-	let turnstileWidgetId = null;
-	let pendingSnapshot = null;
+	let turnstileWidgetId: string | null = null;
+	let pendingSnapshot: NotificationDiagnosticSnapshot | null = null;
 	let currentUiMode = 'default';
 	let troubleshootExpanded = false;
 
@@ -236,7 +256,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		}
 	}
 
-	function setTroubleshootExpanded(expanded) {
+	function setTroubleshootExpanded(expanded: boolean): void {
 		troubleshootExpanded = expanded;
 		if (troubleshootPanel instanceof HTMLElement) {
 			troubleshootPanel.hidden = !expanded;
@@ -288,7 +308,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		});
 	}
 
-	function deriveUiMode(state, hasError) {
+	function deriveUiMode(state: NotificationSupportState, hasError: boolean): UiMode {
 		if (!state.supported) {
 			return 'unsupported';
 		}
@@ -304,7 +324,10 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		return 'default';
 	}
 
-	function syncUiFromState(state, options = {}) {
+	function syncUiFromState(
+		state: NotificationSupportState,
+		options: { hasError?: boolean; expandTroubleshooting?: boolean } = {},
+	): void {
 		const { hasError = false, expandTroubleshooting = false } = options;
 		currentUiMode = deriveUiMode(state, hasError);
 		testNotificationAvailable = state.testNotificationAvailable;
@@ -399,7 +422,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		}
 	}
 
-	async function initializeNotificationsUi(button, status) {
+	async function initializeNotificationsUi(button: HTMLButtonElement, status: HTMLParagraphElement): Promise<void> {
 		await initializeNativePushBridge();
 		await prepareBrowserPushInfrastructure();
 		const publicKey = button.dataset.publicKey || '';
@@ -407,7 +430,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		await applyInitialState(button, status);
 	}
 
-	async function applyInitialState(button, status) {
+	async function applyInitialState(button: HTMLButtonElement, _status: HTMLParagraphElement): Promise<void> {
 		const state = await getNotificationSupportState(button.dataset.publicKey || '');
 		syncUiFromState(state, { hasError: Boolean(lastErrorMessage) });
 	}
@@ -422,7 +445,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		testButton.disabled = false;
 	}
 
-	async function subscribeToNotifications(button, status) {
+	async function subscribeToNotifications(button: HTMLButtonElement, status: HTMLParagraphElement): Promise<void> {
 		const permissionPromise = requestBrowserNotificationPermission();
 
 		button.disabled = true;
@@ -455,7 +478,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		}
 	}
 
-	async function sendTestNotification(testButton, testStatus) {
+	async function sendTestNotification(testButton: HTMLButtonElement, testStatus: HTMLParagraphElement): Promise<void> {
 		testButton.disabled = true;
 		testStatus.textContent = 'Sending test notification…';
 
@@ -470,7 +493,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		}
 	}
 
-	function syncDiagnosticsPanelChrome(isOpen) {
+	function syncDiagnosticsPanelChrome(isOpen: boolean): void {
 		if (panel instanceof HTMLElement) {
 			panel.hidden = !isOpen;
 			panel.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
@@ -482,8 +505,9 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 
 	function resetTurnstileWidget() {
 		const mount = document.querySelector('#diagnostics-turnstile');
-		if (turnstileWidgetId !== null && window.turnstile instanceof Object) {
-			window.turnstile.remove(turnstileWidgetId);
+		const turnstile = readTurnstile();
+		if (turnstileWidgetId !== null && turnstile) {
+			turnstile.remove(turnstileWidgetId);
 		}
 		turnstileWidgetId = null;
 		turnstileToken = '';
@@ -496,7 +520,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		}
 	}
 
-	async function openDiagnosticsPanel(button, status) {
+	async function openDiagnosticsPanel(button: Element | null, status: Element | null): Promise<void> {
 		if (!(panel instanceof HTMLElement) || !(preview instanceof HTMLElement)) {
 			return;
 		}
@@ -549,15 +573,18 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 		}
 	}
 
-	function renderDiagnosticsPreview(container, snapshot) {
+	function renderDiagnosticsPreview(container: HTMLElement, snapshot: NotificationDiagnosticSnapshot): void {
 		container.replaceChildren();
-		for (const [key, label] of Object.entries(NOTIFICATION_DIAGNOSTIC_FIELD_LABELS)) {
-			const value = snapshot[key];
+		for (const key of Object.keys(NOTIFICATION_DIAGNOSTIC_FIELD_LABELS)) {
+			const label = NOTIFICATION_DIAGNOSTIC_FIELD_LABELS[key] ?? key;
+			const value = snapshot[key as keyof NotificationDiagnosticSnapshot];
 			const dt = document.createElement('dt');
 			dt.textContent = label;
 			const dd = document.createElement('dd');
 			if (key === 'lastTestNotification') {
-				dd.textContent = formatLastTestNotificationSummary(value);
+				dd.textContent = formatLastTestNotificationSummary(
+					value && typeof value === 'object' ? value : null,
+				);
 			} else {
 				dd.textContent = value === null || value === undefined ? '—' : String(value);
 			}
@@ -567,7 +594,8 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 	}
 
 	function renderTurnstileIfNeeded() {
-		if (!turnstileSiteKey || !(window.turnstile instanceof Object)) {
+		const turnstile = readTurnstile();
+		if (!turnstileSiteKey || !turnstile) {
 			return;
 		}
 
@@ -576,7 +604,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 			return;
 		}
 
-		turnstileWidgetId = window.turnstile.render(mount, {
+		turnstileWidgetId = turnstile.render(mount, {
 			sitekey: turnstileSiteKey,
 			callback(token) {
 				turnstileToken = token;
@@ -601,7 +629,7 @@ const diagnosticFieldLabelsJson = JSON.stringify(NOTIFICATION_DIAGNOSTIC_FIELD_L
 	}
 
 	const turnstilePoll = window.setInterval(() => {
-		if (window.turnstile) {
+		if (readTurnstile()) {
 			window.clearInterval(turnstilePoll);
 			if (panel instanceof HTMLElement && !panel.hidden) {
 				renderTurnstileIfNeeded();

@@ -48,7 +48,47 @@ if (auth instanceof Response) {
 </Layout>
 
 <script>
-	function readCookie(name) {
+	type ReportStatus = 'new' | 'reviewed' | 'archived';
+	type DiagTest = {
+		sendStatus?: string;
+		sendMessage?: string | null;
+		delivery?: string | null;
+		httpStatus?: number | null;
+		attemptedAt?: string | null;
+		receivedAt?: string | null;
+		receivedOnDevice?: boolean | null;
+	};
+	type DiagSnapshot = {
+		browserFamily?: string;
+		browserVersionMajor?: string | number | null;
+		osFamily?: string;
+		platformType?: string;
+		pagePath?: string;
+		notificationPermission?: string;
+		serviceWorkerSupported?: boolean;
+		serviceWorkerRegistered?: boolean;
+		serviceWorkerState?: string;
+		pushManagerSupported?: boolean;
+		hasPushSubscription?: boolean;
+		pushEndpointHost?: string | null;
+		isStandalonePwa?: boolean;
+		vapidConfigured?: boolean;
+		buttonDisabled?: boolean;
+		buttonLabel?: string;
+		buttonDisabledReason?: string | null;
+		supportMessage?: string | null;
+		lastErrorMessage?: string | null;
+		lastTestNotification?: DiagTest | null;
+	};
+	type DiagReport = {
+		id?: string;
+		createdAt?: string;
+		status?: string;
+		userNote?: string | null;
+		snapshot?: DiagSnapshot | null;
+	};
+
+	function readCookie(name: string): string {
 		const prefix = `${name}=`;
 		const parts = document.cookie.split(';');
 		for (const part of parts) {
@@ -60,7 +100,7 @@ if (auth instanceof Response) {
 		return '';
 	}
 
-	function escapeHtml(value) {
+	function escapeHtml(value: unknown): string {
 		return String(value)
 			.replaceAll('&', '&amp;')
 			.replaceAll('<', '&lt;')
@@ -68,24 +108,25 @@ if (auth instanceof Response) {
 			.replaceAll('"', '&quot;');
 	}
 
-	function formatWhen(value) {
+	function formatWhen(value: string | undefined): string {
+		if (!value) return '';
 		const date = new Date(value);
 		return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 	}
 
-	function formatLabel(value) {
+	function formatLabel(value: unknown): string {
 		if (!value) return '—';
 		return String(value)
 			.replaceAll('_', ' ')
 			.replace(/\b\w/g, (char) => char.toUpperCase());
 	}
 
-	function statusLabel(status) {
-		const labels = { new: 'New', reviewed: 'Reviewed', archived: 'Archived' };
+	function statusLabel(status: string): string {
+		const labels: Record<string, string> = { new: 'New', reviewed: 'Reviewed', archived: 'Archived' };
 		return labels[status] || status;
 	}
 
-	function renderActionButton(action, label, currentStatus) {
+	function renderActionButton(action: string, label: string, currentStatus: string): string {
 		const disabled =
 			(action === 'reviewed' && currentStatus === 'reviewed') ||
 			(action === 'archived' && currentStatus === 'archived') ||
@@ -102,7 +143,7 @@ if (auth instanceof Response) {
 		return `<button type="button" class="btn ${variant}" data-action="${action}"${disabledAttr}>${label}</button>`;
 	}
 
-	function permissionBadgeClass(permission) {
+	function permissionBadgeClass(permission: string): string {
 		switch (permission) {
 			case 'granted':
 				return 'badge--ok';
@@ -115,11 +156,11 @@ if (auth instanceof Response) {
 		}
 	}
 
-	function boolLabel(value) {
+	function boolLabel(value: unknown): string {
 		return value ? 'Yes' : 'No';
 	}
 
-	function buttonStateSummary(snapshot) {
+	function buttonStateSummary(snapshot: DiagSnapshot | null | undefined): string | null {
 		if (!snapshot) {
 			return null;
 		}
@@ -137,7 +178,7 @@ if (auth instanceof Response) {
 		return `Button: enabled — ${label}`;
 	}
 
-	function buttonBadgeClass(snapshot) {
+	function buttonBadgeClass(snapshot: DiagSnapshot | null | undefined): string {
 		if (!snapshot) {
 			return 'badge--muted';
 		}
@@ -149,7 +190,7 @@ if (auth instanceof Response) {
 		return 'badge--ok';
 	}
 
-	function testSendStatusLabel(test) {
+	function testSendStatusLabel(test: DiagTest | null | undefined): string {
 		if (!test) {
 			return 'Not attempted';
 		}
@@ -165,7 +206,7 @@ if (auth instanceof Response) {
 		}
 	}
 
-	function testSendBadgeClass(test) {
+	function testSendBadgeClass(test: DiagTest | null | undefined): string {
 		if (!test) {
 			return 'badge--muted';
 		}
@@ -181,7 +222,7 @@ if (auth instanceof Response) {
 		}
 	}
 
-	function receivedOnDeviceLabel(value) {
+	function receivedOnDeviceLabel(value: boolean | null | undefined): string {
 		if (value === true) {
 			return 'Yes';
 		}
@@ -191,7 +232,7 @@ if (auth instanceof Response) {
 		return 'Unknown (browser does not confirm display)';
 	}
 
-	function receivedOnDeviceBadgeClass(value) {
+	function receivedOnDeviceBadgeClass(value: boolean | null | undefined): string {
 		if (value === true) {
 			return 'badge--ok';
 		}
@@ -201,7 +242,7 @@ if (auth instanceof Response) {
 		return 'badge--muted';
 	}
 
-	function renderTestNotificationSection(snapshot) {
+	function renderTestNotificationSection(snapshot: DiagSnapshot | null | undefined): string {
 		const test = snapshot?.lastTestNotification ?? null;
 		const statusLabel = testSendStatusLabel(test);
 
@@ -250,7 +291,7 @@ if (auth instanceof Response) {
 		`;
 	}
 
-	function renderSnapshotDetails(snapshot) {
+	function renderSnapshotDetails(snapshot: DiagSnapshot | null | undefined): string {
 		if (!snapshot) {
 			return `
 				<details class="diag-card__details">
@@ -344,7 +385,7 @@ if (auth instanceof Response) {
 		`;
 	}
 
-	function browserBadgeLabel(snapshot) {
+	function browserBadgeLabel(snapshot: DiagSnapshot | null | undefined): string {
 		if (!snapshot) {
 			return 'Unknown';
 		}
@@ -352,7 +393,7 @@ if (auth instanceof Response) {
 		return snapshot.browserVersionMajor ? `${family} ${snapshot.browserVersionMajor}` : family;
 	}
 
-	function renderReport(report) {
+	function renderReport(report: DiagReport): string {
 		const snapshot = report.snapshot;
 		const permission = snapshot?.notificationPermission || 'unknown';
 		const browser = browserBadgeLabel(snapshot);
@@ -462,7 +503,7 @@ if (auth instanceof Response) {
 		}
 	}
 
-	async function patchReport(id, payload) {
+	async function patchReport(id: string, payload: { status?: ReportStatus }) {
 		const csrfToken = readCookie('ft_csrf');
 		const response = await fetch(`/api/admin/notification-diagnostics/${encodeURIComponent(id)}`, {
 			method: 'PATCH',

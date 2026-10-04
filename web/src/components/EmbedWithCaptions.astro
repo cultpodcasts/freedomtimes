@@ -64,7 +64,16 @@ const captionTracks =
 			</div>
 			{caption && <figcaption>{caption}</figcaption>}
 		</figure>
-	) : (
-		<CoreEmbed node={node} />
-	)
+	) : typeof node.url === 'string' ? (
+		<CoreEmbed
+			node={{
+				_type: 'embed',
+				_key: typeof node._key === 'string' ? node._key : 'embed',
+				url: node.url,
+				provider: typeof node.provider === 'string' ? node.provider : undefined,
+				html: typeof node.html === 'string' ? node.html : undefined,
+				caption: caption ?? undefined,
+			}}
+		/>
+	) : null
 }

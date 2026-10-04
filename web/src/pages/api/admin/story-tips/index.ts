@@ -21,7 +21,7 @@ export const GET: APIRoute = async ({ cookies, request, url }) => {
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
 
   try {
-    const tips = await listStoryTips({ status, limit });
+    const tips = await listStoryTips({ status: status ?? undefined, limit });
     return json({ tips }, 200);
   } catch (error) {
     console.error('[admin/story-tips] list failed', { error, requestId: session.requestId });

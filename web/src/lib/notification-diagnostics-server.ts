@@ -104,14 +104,14 @@ function readDiagnosticSnapshot(value: unknown): NotificationDiagnosticSnapshot 
   const record = value as Record<string, unknown>;
   const browserFamily = readEnumString(record.browserFamily, ['chrome', 'edge', 'firefox', 'safari', 'other']);
   const osFamily = readEnumString(record.osFamily, ['windows', 'macos', 'ios', 'android', 'linux', 'other']);
-  const platformType = readEnumString(record.platformType, ['desktop', 'mobile', 'tablet', 'unknown']);
+  const platformType = readEnumString(record.platformType, ['desktop', 'mobile', 'tablet', 'unknown'] as const);
   const notificationPermission = readEnumString(
     record.notificationPermission,
-    ['default', 'granted', 'denied', 'unsupported'],
+    ['default', 'granted', 'denied', 'unsupported'] as const,
   );
   const serviceWorkerState = readEnumString(
     record.serviceWorkerState,
-    ['none', 'installing', 'waiting', 'active', 'redundant', 'unknown'],
+    ['none', 'installing', 'waiting', 'active', 'redundant', 'unknown'] as const,
   );
   const supportMessage = readOptionalTrimmedString(record.supportMessage, MAX_SUPPORT_MESSAGE_LENGTH);
   const lastErrorMessage = readOptionalTrimmedString(record.lastErrorMessage, MAX_ERROR_MESSAGE_LENGTH);
@@ -259,13 +259,13 @@ function readOptionalBooleanOrNull(value: unknown): boolean | null | undefined {
   return undefined;
 }
 
-function readEnumString(value: unknown, allowed: readonly string[]): string | null {
+function readEnumString<T extends string>(value: unknown, allowed: readonly T[]): T | null {
   if (typeof value !== 'string') {
     return null;
   }
 
   const trimmed = value.trim().toLowerCase();
-  return allowed.includes(trimmed) ? trimmed : null;
+  return (allowed as readonly string[]).includes(trimmed) ? (trimmed as T) : null;
 }
 
 function readOptionalVersionMajor(value: unknown): number | null {
