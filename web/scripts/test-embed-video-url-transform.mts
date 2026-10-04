@@ -24,10 +24,15 @@ describe('embed-video-url transform', () => {
 			transforms,
 		);
 		assert.equal(changes.length, 1);
-		assert.equal(content[0].url, mp4);
-		assert.equal(content[0].id, mp4);
-		assert.equal(content[0].captionsUrl, vtt);
-		assert.equal(content[0].captionsDefaultOn, true);
+		const block = content[0];
+		if (!block || typeof block !== 'object') {
+			throw new Error('expected an embed block');
+		}
+		const record = block as Record<string, unknown>;
+		assert.equal(record.url, mp4);
+		assert.equal(record.id, mp4);
+		assert.equal(record.captionsUrl, vtt);
+		assert.equal(record.captionsDefaultOn, true);
 	});
 
 	it('does not rewrite when url is already a media path', () => {

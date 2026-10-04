@@ -48,7 +48,19 @@ if (auth instanceof Response) {
 </Layout>
 
 <script>
-	function readCookie(name) {
+	type TipStatus = 'new' | 'reviewed' | 'archived';
+	type StoryTip = {
+		id?: string;
+		status?: string;
+		createdAt?: string;
+		body?: string;
+		anonymous?: boolean;
+		contactName?: string | null;
+		contactEmail?: string | null;
+		internalNotes?: string | null;
+	};
+
+	function readCookie(name: string): string {
 		const prefix = `${name}=`;
 		const parts = document.cookie.split(';');
 		for (const part of parts) {
@@ -60,7 +72,7 @@ if (auth instanceof Response) {
 		return '';
 	}
 
-	function escapeHtml(value) {
+	function escapeHtml(value: unknown): string {
 		return String(value)
 			.replaceAll('&', '&amp;')
 			.replaceAll('<', '&lt;')
@@ -68,17 +80,18 @@ if (auth instanceof Response) {
 			.replaceAll('"', '&quot;');
 	}
 
-	function formatWhen(value) {
+	function formatWhen(value: string | undefined): string {
+		if (!value) return '';
 		const date = new Date(value);
 		return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 	}
 
-	function statusLabel(status) {
-		const labels = { new: 'New', reviewed: 'Reviewed', archived: 'Archived' };
+	function statusLabel(status: string): string {
+		const labels: Record<string, string> = { new: 'New', reviewed: 'Reviewed', archived: 'Archived' };
 		return labels[status] || status;
 	}
 
-	function renderActionButton(action, label, currentStatus) {
+	function renderActionButton(action: string, label: string, currentStatus: string): string {
 		const disabled =
 			(action === 'reviewed' && currentStatus === 'reviewed') ||
 			(action === 'archived' && currentStatus === 'archived') ||
@@ -95,7 +108,7 @@ if (auth instanceof Response) {
 		return `<button type="button" class="btn ${variant}" data-action="${action}"${disabledAttr}>${label}</button>`;
 	}
 
-	function renderContact(tip) {
+	function renderContact(tip: StoryTip): string {
 		if (tip.anonymous || (!tip.contactName && !tip.contactEmail)) {
 			return `<p class="tip-card__contact tip-card__contact--anonymous">Anonymous submission</p>`;
 		}
@@ -143,7 +156,7 @@ if (auth instanceof Response) {
 			statusEl.classList.toggle('toolbar__count--empty', tips.length === 0);
 
 			listEl.innerHTML = tips
-				.map((tip) => {
+				.map((tip: StoryTip) => {
 					const status = tip.status || 'new';
 					const safeStatus = ['new', 'reviewed', 'archived'].includes(status) ? status : 'new';
 
@@ -182,7 +195,7 @@ if (auth instanceof Response) {
 		}
 	}
 
-	async function patchTip(id, payload) {
+	async function patchTip(id: string, payload: { internalNotes?: string; status?: TipStatus }) {
 		const csrfToken = readCookie('ft_csrf');
 		const response = await fetch(`/api/admin/story-tips/${encodeURIComponent(id)}`, {
 			method: 'PATCH',

@@ -2,7 +2,7 @@
 
 import { SITE_DISPLAY_NAME } from './lib/site-brand';
 
-const workerScope = self as ServiceWorkerGlobalScope;
+const workerScope = globalThis as unknown as ServiceWorkerGlobalScope;
 
 const CACHE_NAME = 'freedomtimes-shell-v2'; // pragma: allowlist secret
 const SHELL_ASSETS = ['/favicon.ico', '/favicon.svg', '/manifest.webmanifest'];
@@ -98,7 +98,7 @@ const TEST_NOTIFICATION_DISPLAYED_MESSAGE = 'freedomtimes-test-notification-disp
 workerScope.addEventListener('push', (event) => {
   const payload = readPushPayload(event.data);
 
-  const options: NotificationOptions = {
+  const options: NotificationOptions & { image?: string } = {
     body: payload.body,
     icon: payload.icon,
     badge: payload.badge,

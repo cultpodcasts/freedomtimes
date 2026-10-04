@@ -1,14 +1,14 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "engines": {
     "node": ">=22.22.2"
   },
   "scripts": {
     "dev": "astro dev",
     "check": "astro check",
-    "build": "node scripts/patch-emdash-windows-createrequire.mjs && tsx scripts/build-service-worker.ts && tsx scripts/build-native-shell-bridge.ts && astro build && tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-video-caption-tracks.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts scripts/test-lite-youtube-poster-styles.mts && tsx scripts/patch-cloudflare-bundle.ts",
+    "build": "astro check && node scripts/patch-emdash-windows-createrequire.mjs && tsx scripts/build-service-worker.ts && tsx scripts/build-native-shell-bridge.ts && astro build && tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-video-caption-tracks.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts scripts/test-lite-youtube-poster-styles.mts && tsx scripts/patch-cloudflare-bundle.ts",
     "test:oauth-discovery": "tsx --test scripts/test-emdash-oauth-metadata.mts",
     "test:oauth-discovery:routes": "tsx --test scripts/test-emdash-oauth-routes.mts",
     "test:auth-session": "tsx --test scripts/test-auth-session-lifetime.mts",
@@ -70,13 +70,13 @@
     "@capacitor/core": "^8.5.2",
     "@capacitor/ios": "^8.5.2",
     "@capacitor/push-notifications": "^8.1.2",
-    "@emdash-cms/cloudflare": "^1.0.1",
-    "@emdash-cms/plugin-embeds": "^0.1.53",
+    "@emdash-cms/cloudflare": "^1.1.0",
+    "@emdash-cms/plugin-embeds": "^0.1.54",
     "@libsql/client": "^0.17.4",
     "@libsql/kysely-libsql": "^0.4.1",
     "astro": "^7.3.5",
     "drizzle-orm": "^0.45.3",
-    "emdash": "^1.0.1",
+    "emdash": "^1.1.0",
     "jose": "^6.2.12",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

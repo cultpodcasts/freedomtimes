@@ -160,9 +160,11 @@ export async function authorizeEditorialApiRequest(params: {
 	});
 }
 
+type ReaderPageAccessHandler = () => Response | Promise<Response>;
+
 type ReaderPageAccessHandlers = {
-	noSession?: () => Response;
-	denied?: () => Response;
+	noSession?: ReaderPageAccessHandler;
+	denied?: ReaderPageAccessHandler;
 };
 
 /**
@@ -184,12 +186,12 @@ export async function requireReaderPageSession(
 	const hasSessionToken = Boolean(context.cookies.get(SESSION_COOKIE)?.value);
 	const hasRefreshToken = Boolean(context.cookies.get(REFRESH_TOKEN_COOKIE)?.value);
 	if (!hasSessionToken && !hasRefreshToken) {
-		return handlers?.noSession?.() ?? context.redirect('/');
+		return (await handlers?.noSession?.()) ?? context.redirect('/');
 	}
 
 	const session = await requireEditorialSession(context);
 	if (session instanceof Response) {
-		return handlers?.denied?.() ?? session;
+		return (await handlers?.denied?.()) ?? session;
 	}
 
 	return session;
