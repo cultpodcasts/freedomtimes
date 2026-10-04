@@ -1226,6 +1226,100 @@ function Invoke-DeploySecretSync {
     }
 }
 
+function Get-DeployWebInstallMismatches {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WebDir
+    )
+
+    $packagePath = Join-Path $WebDir "package.json"
+    $lockPath = Join-Path $WebDir "package-lock.json"
+    if (-not (Test-Path -LiteralPath $packagePath) -or -not (Test-Path -LiteralPath $lockPath)) {
+        throw "Refusing to build. Missing package.json or package-lock.json under $WebDir."
+    }
+
+    $packageJson = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
+    # package-lock.json packages[""] is the root entry. ConvertFrom-Json rejects that key unless -AsHashtable.
+    $lockJson = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json -AsHashtable
+    $names = New-Object System.Collections.Generic.List[string]
+    foreach ($section in @("dependencies", "devDependencies")) {
+        $block = $packageJson.PSObject.Properties[$section]
+        if ($null -eq $block -or $null -eq $block.Value) {
+            continue
+        }
+        foreach ($prop in @($block.Value.PSObject.Properties)) {
+            if (-not $names.Contains($prop.Name)) {
+                [void]$names.Add($prop.Name)
+            }
+        }
+    }
+
+    $mismatches = New-Object System.Collections.Generic.List[object]
+    foreach ($name in $names) {
+        $lockedVersion = ""
+        $packages = $lockJson["packages"]
+        $lockKey = "node_modules/$name"
+        if ($null -ne $packages -and $packages.Contains($lockKey)) {
+            $lockedNode = $packages[$lockKey]
+            if ($null -ne $lockedNode -and $lockedNode.Contains("version")) {
+                $lockedVersion = [string]$lockedNode["version"]
+            }
+        }
+
+        $installedPath = Join-Path $WebDir "node_modules/$name/package.json"
+        $installedVersion = ""
+        $installed = Test-Path -LiteralPath $installedPath
+        if ($installed) {
+            $installedJson = Get-Content -LiteralPath $installedPath -Raw | ConvertFrom-Json
+            $installedVersion = [string]$installedJson.version
+        }
+
+        if (-not $installed -or [string]::IsNullOrWhiteSpace($lockedVersion) -or $installedVersion -ne $lockedVersion) {
+            $mismatches.Add([pscustomobject]@{
+                Name      = $name
+                Installed = $(if ($installed) { $installedVersion } else { "(not installed)" })
+                Lockfile  = $(if (-not [string]::IsNullOrWhiteSpace($lockedVersion)) { $lockedVersion } else { "(not in lockfile)" })
+            }) | Out-Null
+        }
+    }
+
+    return @($mismatches.ToArray())
+}
+
+function Assert-DeployInstalledPackagesMatchLockfile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$WebDir
+    )
+
+    foreach ($name in @("emdash", "@emdash-cms/cloudflare", "@emdash-cms/plugin-embeds")) {
+        $installedPath = Join-Path $WebDir "node_modules/$name/package.json"
+        if (Test-Path -LiteralPath $installedPath) {
+            $installedVersion = [string](Get-Content -LiteralPath $installedPath -Raw | ConvertFrom-Json).version
+            Write-Host "Installed $name $installedVersion"
+        }
+        else {
+            Write-Host "Installed $name MISSING"
+        }
+    }
+
+    $mismatches = @(Get-DeployWebInstallMismatches -WebDir $WebDir)
+    if ($mismatches.Count -eq 0) {
+        Write-Host "web/node_modules matches web/package-lock.json"
+        return
+    }
+
+    $lines = foreach ($mismatch in $mismatches) {
+        "  $($mismatch.Name): installed $($mismatch.Installed), lockfile $($mismatch.Lockfile)"
+    }
+    throw (@(
+        "Refusing to build. web/node_modules does not match web/package-lock.json.",
+        ($lines -join [Environment]::NewLine),
+        "Run 'npm ci' in web/ and deploy again.",
+        "A stale install still produces a Worker deploy that exits 0. Production 2026-10-04 shipped EmDash 1.0.1 while the lockfile required 1.1.0."
+    ) -join [Environment]::NewLine)
+}
+
 function Invoke-DeployWorkerBuild {
     param(
         [switch]$WorkerOnly,
@@ -1254,6 +1348,9 @@ function Invoke-DeployWorkerBuild {
         }
     }
 
+    Write-DeployStep "Checking web/node_modules against package-lock.json before build"
+    Assert-DeployInstalledPackagesMatchLockfile -WebDir (Join-Path $script:DeployRepoRoot "web")
+
     Write-DeployStep "Building $($script:DeployEnvironment) Worker"
 
     # Core migrate needs a real Turso URL in .emdash/migrations.json. Always
@@ -1269,9 +1366,23 @@ function Invoke-DeployWorkerBuild {
 
     Push-Location (Join-Path $script:DeployRepoRoot "web")
     try {
-        & npm run build
-        if ($LASTEXITCODE -ne 0) {
-            throw "Worker build failed."
+        $previousNativeErrorAction = $null
+        $nativeErrorActionSet = Get-Variable -Name PSNativeCommandUseErrorActionPreference -Scope Global -ErrorAction SilentlyContinue
+        if ($null -ne $nativeErrorActionSet) {
+            $previousNativeErrorAction = $PSNativeCommandUseErrorActionPreference
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        try {
+            & npm run build
+            $npmExit = $LASTEXITCODE
+        }
+        finally {
+            if ($null -ne $nativeErrorActionSet) {
+                $PSNativeCommandUseErrorActionPreference = $previousNativeErrorAction
+            }
+        }
+        if ($npmExit -ne 0) {
+            throw "WORKER BUILD FAILED (npm exit $npmExit). The Worker was not deployed. The npm error is above this line."
         }
     }
     finally {
