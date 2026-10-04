@@ -234,6 +234,41 @@ finally {
     Remove-Item -LiteralPath $overlayTmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+Write-Host "=== Get-DeployWebInstallMismatches ==="
+$installTmp = Join-Path ([IO.Path]::GetTempPath()) ("web-install-" + [guid]::NewGuid().ToString("n"))
+New-Item -ItemType Directory -Force -Path (Join-Path $installTmp "node_modules/emdash") | Out-Null
+try {
+    @{
+        dependencies = @{ emdash = "^1.1.0" }
+    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installTmp "package.json")
+    @{
+        packages = @{
+            "node_modules/emdash" = @{ version = "1.1.0" }
+        }
+    } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $installTmp "package-lock.json")
+    @{ version = "1.0.1" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installTmp "node_modules/emdash/package.json")
+
+    $stale = @(Get-DeployWebInstallMismatches -WebDir $installTmp)
+    Assert-True ($stale.Count -eq 1 -and $stale[0].Name -eq "emdash" -and $stale[0].Installed -eq "1.0.1" -and $stale[0].Lockfile -eq "1.1.0") "stale emdash install is a mismatch"
+
+    @{ version = "1.1.0" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installTmp "node_modules/emdash/package.json")
+    $fresh = @(Get-DeployWebInstallMismatches -WebDir $installTmp)
+    Assert-True ($fresh.Count -eq 0) "matching emdash install is not a mismatch"
+
+    $assertThrew = $false
+    @{ version = "1.0.1" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $installTmp "node_modules/emdash/package.json")
+    try {
+        Assert-DeployInstalledPackagesMatchLockfile -WebDir $installTmp
+    }
+    catch {
+        $assertThrew = $_.Exception.Message -match "does not match"
+    }
+    Assert-True $assertThrew "build refuses a stale node_modules"
+}
+finally {
+    Remove-Item -LiteralPath $installTmp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {
