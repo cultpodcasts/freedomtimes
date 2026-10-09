@@ -8,21 +8,24 @@
  *   captionsUrl?: string                    // legacy single English track
  *   captions?: { url, srclang, label, default? }[]
  *   captionsDefaultOn?: boolean             // false = tracks listed, no `default` attr
- *   poster?: string | media-library ref     // optional holding image; see videoCaptionTracks.ts
+ *   poster?: string | media-library ref     // optional holding image; see videoPoster.ts
  *
  * MCP / authors: set those keys on the embed node (schema has no captions/poster field;
  * extras persist via content_update). Other embeds fall through to EmDash core Embed.
- * Video `url` is passed through EmDash `sanitizeHref`, matching core Embed.
- * A resolved poster sets `preload="none"` and the `poster` attribute. No poster
- * keeps `preload="metadata"` and omits `poster`.
+ * Video `url` is an EmDash `.mp4` path or an `https` URL after `sanitizeHref`.
+ * A resolved poster sets `preload="none"`, `poster`, and a reserved aspect ratio
+ * (width and height from the poster object, otherwise 16 / 9). No poster keeps
+ * `preload="metadata"` and omits `poster`.
  */
 import { Embed as CoreEmbed } from 'emdash/ui';
 import {
 	resolveSelfHostedVideoUrl,
 	resolveVideoCaptionTracks,
+} from '../lib/content/videoCaptionTracks';
+import {
 	resolveVideoPoster,
 	selfHostedVideoPreload,
-} from '../lib/content/videoCaptionTracks';
+} from '../lib/content/videoPoster';
 
 const props = Astro.props as Record<string, unknown>;
 const node =
@@ -48,7 +51,14 @@ const preload = selfHostedVideoPreload(poster);
 	isSelfHostedVideo && url ? (
 		<figure class="emdash-embed">
 			<div class="emdash-embed-video">
-				<video controls preload={preload} poster={poster ?? undefined}>
+				<video
+					controls
+					preload={preload}
+					poster={poster?.src}
+					width={poster?.width}
+					height={poster?.height}
+					style={poster ? { aspectRatio: poster.aspectRatio } : undefined}
+				>
 					<source src={url} type="video/mp4" />
 					{captionTracks.map((track) =>
 						track.isDefault ? (

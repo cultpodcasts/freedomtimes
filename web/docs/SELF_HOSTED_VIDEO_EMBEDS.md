@@ -2,7 +2,7 @@
 
 Incident (2026-09-16): [Sham Aberdeen Ambush](https://staging.freedomtimes.news/posts/sham-aberdeen-ambush-james-taylor-jr-1970) still showed the hall clip in the **EmDash editor**, but the **published article** had no `<video>`. Stored PT was `_type: "embed"`, `provider: "video"`, MP4 on **`id`**, no **`url`**. Older reader code only read `url`. Cursor `content_update` could not carry the ~60KB Portable Text array as a tool argument (and a markdown string would have destroyed the embed).
 
-Canonical code: `EmbedWithCaptions.astro` + `resolveSelfHostedVideoUrl` in `web/src/lib/content/videoCaptionTracks.ts`.
+Canonical code: `EmbedWithCaptions.astro`, `resolveSelfHostedVideoUrl` in `web/src/lib/content/videoCaptionTracks.ts`, and `resolveVideoPoster` in `web/src/lib/content/videoPoster.ts`.
 
 ## 1. Mitigate videos disappearing
 
@@ -10,15 +10,24 @@ Do these so the published player does not vanish after an admin save.
 
 **Reader (must be deployed)**
 
-- Self-hosted video src is `url`, **or** `id` when `id` is `/_emdash/api/media/file/…`.
-- Tests: `web/scripts/test-video-caption-tracks.mts` (`resolveSelfHostedVideoUrl`). `npm run build` runs them.
+- Self-hosted video src is `url`, **or** `id` when `id` is `/_emdash/api/media/file/<key>.mp4`. After EmDash `sanitizeHref`, only that `.mp4` path or an `https` URL is rendered. `http`, `mailto`, `tel`, the `#` sentinel, caption `.vtt` paths, and other site paths are not used as `<source src>`.
+- Tests: `web/scripts/test-video-caption-tracks.mts` (`resolveSelfHostedVideoUrl`) and `web/scripts/test-video-poster.mts` (poster URL, dimensions, and video-src allow-list). `npm run build` runs them.
 
 **Stored JSON**
 
 - Prefer **both** `url` and `id` set to the same media-file path.
 - Keep caption extras on the same node (`captionsUrl` / `captions[]` / `captionsDefaultOn`). Schema has no captions field; extras persist only if `content_update` sends a **Portable Text array**, never markdown.
-- Optional holding image: `poster` on the same embed node. A string `/_emdash/api/media/file/<storageKey>.(jpg|jpeg|png|webp)`, an `https` URL, or a media-library reference (`{ url }`, `{ _ref: "<storageKey>.jpg" }`, `{ storageKey }`, `{ asset: { url } }`, or a library row with `meta.storageKey`). The reader runs EmDash `sanitizeHref` and ignores anything else. With a poster the player uses `preload="none"` and the `poster` attribute; without one, `preload` stays `metadata` and captions are unchanged.
+- Optional holding image: `poster` on the same embed node. Accepted shapes are a string `/_emdash/api/media/file/<storageKey>.(jpg|jpeg|png|webp)`, an `https` URL, or a media-library object (`{ url }`, `{ id: "<storageKey>.jpg" }`, `{ _ref: "<storageKey>.jpg" }`, `{ storageKey }`, `{ asset: { url } }`, or a library row with `meta.storageKey`). The reader resolves that object with the shared media-file helper, then runs EmDash `sanitizeHref` and keeps only an image media path or an `https` URL. `http`, unsafe schemes, and non-image files are ignored.
+- When a poster resolves, the player reserves a box before file metadata arrives. Numeric `width` and `height` on the poster object (`displayWidth` / `displayHeight` when those are set) are copied onto `<video>`, and `aspect-ratio` is set from those numbers. The article CSS (`width: 100%`, `height: auto`) then uses that ratio instead of the browser's 300×150 default. A poster with no dimensions uses **16 / 9**. `preload="none"` is set only together with that reserved ratio. Without a poster, `preload` stays `metadata`, `poster` is omitted, and the box comes from the file.
 - MCP / agent drafts: write `_type: "embed"`, `provider: "video"`, `url: "/_emdash/api/media/file/<key>.mp4"`. Copy that path onto `id` if the editor widget uses `id`.
+
+```mermaid
+flowchart LR
+  value[poster value] --> reader[shared media-file reader]
+  reader --> allow[image path or https]
+  allow --> box["width and height, or 16:9"]
+  box --> player["preload none and reserved ratio"]
+```
 
 **Do not**
 

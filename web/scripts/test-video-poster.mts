@@ -1,9 +1,12 @@
 import {
 	resolveSelfHostedVideoUrl,
 	resolveVideoCaptionTracks,
+} from '../src/lib/content/videoCaptionTracks.ts';
+import {
 	resolveVideoPoster,
 	selfHostedVideoPreload,
-} from '../src/lib/content/videoCaptionTracks.ts';
+	type ResolvedVideoPoster,
+} from '../src/lib/content/videoPoster.ts';
 import {
 	legacyVideoToPortableNode,
 	parseLegacyTextContent,
@@ -16,45 +19,84 @@ const posterPath = '/_emdash/api/media/file/01M2DW4H4PB5X0AEC83M40GN7R.jpg';
 const vtt = '/_emdash/api/media/file/01M1PA7F09101YKXAH9P3RYWKG.vtt';
 const httpsPoster = 'https://archive.org/download/example/poster.jpg';
 
+function posterResult(src: string, width = 16, height = 9): ResolvedVideoPoster {
+	return { src, width, height, aspectRatio: `${width} / ${height}` };
+}
+
 describe('resolveVideoPoster', () => {
 	it('accepts an EmDash media-file image path', () => {
-		assert.equal(resolveVideoPoster({ poster: posterPath }), posterPath);
+		assert.deepEqual(resolveVideoPoster({ poster: posterPath }), posterResult(posterPath));
 	});
 
 	it('accepts a media-file image URL and keeps the site path', () => {
-		assert.equal(
+		assert.deepEqual(
 			resolveVideoPoster({
 				poster: `https://staging.example/_emdash/api/media/file/01M2DW4H4PB5X0AEC83M40GN7R.jpg?x=1`,
 			}),
-			posterPath,
+			posterResult(posterPath),
 		);
 	});
 
 	it('accepts a storage key and image asset references', () => {
-		assert.equal(
+		assert.deepEqual(
 			resolveVideoPoster({ poster: '01M2DW4H4PB5X0AEC83M40GN7R.jpg' }),
-			posterPath,
+			posterResult(posterPath),
 		);
-		assert.equal(
+		assert.deepEqual(
 			resolveVideoPoster({ poster: { _ref: '01M2DW4H4PB5X0AEC83M40GN7R.webp' } }),
-			'/_emdash/api/media/file/01M2DW4H4PB5X0AEC83M40GN7R.webp',
+			posterResult('/_emdash/api/media/file/01M2DW4H4PB5X0AEC83M40GN7R.webp'),
 		);
-		assert.equal(
+		assert.deepEqual(
 			resolveVideoPoster({
 				poster: { asset: { url: posterPath } },
 			}),
-			posterPath,
+			posterResult(posterPath),
 		);
-		assert.equal(
+		assert.deepEqual(
 			resolveVideoPoster({
 				poster: { meta: { storageKey: '01M2DW4H4PB5X0AEC83M40GN7R.png' } },
 			}),
-			'/_emdash/api/media/file/01M2DW4H4PB5X0AEC83M40GN7R.png',
+			posterResult('/_emdash/api/media/file/01M2DW4H4PB5X0AEC83M40GN7R.png'),
 		);
 	});
 
-	it('accepts an https URL', () => {
-		assert.equal(resolveVideoPoster({ poster: httpsPoster }), httpsPoster);
+	it('accepts a poster id that already has an image extension', () => {
+		assert.deepEqual(
+			resolveVideoPoster({ poster: { id: '01M2DW4H4PB5X0AEC83M40GN7R.jpg' } }),
+			posterResult(posterPath),
+		);
+	});
+
+	it('passes width and height from the poster media object', () => {
+		assert.deepEqual(
+			resolveVideoPoster({
+				poster: { url: posterPath, width: 1920, height: 1080 },
+			}),
+			posterResult(posterPath, 1920, 1080),
+		);
+		assert.deepEqual(
+			resolveVideoPoster({
+				poster: { url: httpsPoster, displayWidth: 1280, displayHeight: 720 },
+			}),
+			posterResult(httpsPoster, 1280, 720),
+		);
+		assert.deepEqual(
+			resolveVideoPoster({ poster: { url: posterPath, width: 1920 } }),
+			posterResult(posterPath),
+		);
+		assert.deepEqual(
+			resolveVideoPoster({
+				poster: { asset: { url: posterPath, width: 640, height: 360 } },
+			}),
+			posterResult(posterPath, 640, 360),
+		);
+	});
+
+	it('accepts an https URL and reserves 16:9 when it has no dimensions', () => {
+		assert.deepEqual(
+			resolveVideoPoster({ poster: httpsPoster }),
+			posterResult(httpsPoster),
+		);
 	});
 
 	it('ignores http, unsafe schemes, non-image media, and empty values', () => {
@@ -93,7 +135,7 @@ describe('resolveVideoPoster', () => {
 			captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
 		};
 		const poster = resolveVideoPoster(node);
-		assert.equal(poster, posterPath);
+		assert.deepEqual(poster, posterResult(posterPath));
 		assert.equal(selfHostedVideoPreload(poster), 'none');
 		const tracks = resolveVideoCaptionTracks(node, videoUrl);
 		assert.equal(tracks.length, 1);
@@ -113,11 +155,20 @@ describe('resolveSelfHostedVideoUrl sanitise', () => {
 		);
 	});
 
-	it('replaces an unsafe video URL the way EmDash sanitizeHref does', () => {
+	it('drops the sanitizeHref sentinel, mailto, http, and non-media paths', () => {
+		assert.equal(resolveSelfHostedVideoUrl({ url: 'javascript:alert(1)' }), null);
+		assert.equal(resolveSelfHostedVideoUrl({ url: 'mailto:editor@example.com' }), null);
+		assert.equal(resolveSelfHostedVideoUrl({ url: '/homepage' }), null);
 		assert.equal(
-			resolveSelfHostedVideoUrl({ url: 'javascript:alert(1)' }),
-			'#',
+			resolveSelfHostedVideoUrl({
+				url: 'http://archive.org/download/example/film.mp4',
+			}),
+			null,
 		);
+		assert.equal(resolveSelfHostedVideoUrl({ url: vtt }), null);
+		assert.equal(resolveSelfHostedVideoUrl({ id: 'javascript:alert(1)' }), null);
+		assert.equal(resolveSelfHostedVideoUrl({ id: vtt }), null);
+		assert.equal(resolveSelfHostedVideoUrl({ id: '/homepage' }), null);
 	});
 });
 

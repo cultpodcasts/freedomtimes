@@ -21,31 +21,41 @@
  * captionsDefaultOn?: boolean
  * // true / omitted → emit `default` on exactly one <track> (browser shows CC on)
  * // false → emit all <track>s but no `default` (CC menu available; starts off)
- *
- * // Optional holding image. Schema has no poster field; the extra persists via content_update.
- * poster?: string | {
- *   url?: string
- *   src?: string
- *   _ref?: string          // storage key with an image extension, e.g. 01ABC.jpg
- *   storageKey?: string
- *   asset?: { url?: string; _ref?: string }
- * }
- * // Rendered only when it resolves to an EmDash media image
- * //   /_emdash/api/media/file/<storageKey>.(jpg|jpeg|png|webp)
- * // or an https URL. Both go through EmDash sanitizeHref. Anything else is ignored.
- * // With a poster: <video preload="none" poster="…">. Without: preload="metadata".
  * ```
+ *
+ * Poster holding images are resolved in `videoPoster.ts` (`resolveVideoPoster`).
  *
  * Authors (MCP): set these on the embed node alongside `url` (or `id`) + `provider: "video"`.
  * The EmDash editor stores the MP4 path on `id`; the reader accepts either field.
  * Relative `/_emdash/api/media/file/<id>.vtt` paths are kept as-is after sanitize.
+ * A video src is kept only when it is that media-file `.mp4` path or an `https` URL.
  */
 
 import { sanitizeHref } from 'emdash';
 
 const EMDASH_MEDIA_FILE = /^\/_emdash\/api\/media\/file\/[A-Za-z0-9]+\.(vtt|mp4)$/i;
-const POSTER_MEDIA_PATH = /^\/_emdash\/api\/media\/file\/[A-Za-z0-9]+\.(jpe?g|png|webp)$/i;
-const POSTER_STORAGE_KEY = /^[A-Za-z0-9]+\.(jpe?g|png|webp)$/i;
+
+function isEmDashMp4Path(path: string): boolean {
+	return EMDASH_MEDIA_FILE.test(path) && path.toLowerCase().endsWith('.mp4');
+}
+
+/**
+ * After `sanitizeHref`, a playable src is the mp4 arm of `EMDASH_MEDIA_FILE`
+ * or an `https` URL. The `#` sentinel, `http:`, `mailto:`, `tel:`, `.vtt`,
+ * and other site paths are not video sources.
+ */
+function acceptSanitizedVideoSrc(safe: string): string | null {
+	const path = normalizeMediaPath(safe);
+	if (isEmDashMp4Path(path)) return path;
+	if (!/^https:\/\//i.test(safe)) return null;
+	try {
+		const parsed = new URL(safe);
+		if (parsed.protocol !== 'https:') return null;
+		return safe;
+	} catch {
+		return null;
+	}
+}
 
 export type VideoCaptionTrackInput = {
 	url: string;
@@ -93,104 +103,16 @@ export function sanitizeCaptionsUrl(url: string): string | null {
 /**
  * Self-hosted video src for `_type: "embed"` + `provider: "video"`.
  * Prefer `url`; fall back to `id` when the editor stored the media-file path there.
+ * Both branches refuse anything that is not an EmDash `.mp4` path or an `https` URL.
  */
 export function resolveSelfHostedVideoUrl(node: Record<string, unknown>): string | null {
 	const url = readString(node.url);
-	if (url) return sanitizeHref(url);
+	if (url) return acceptSanitizedVideoSrc(sanitizeHref(url));
 	const id = readString(node.id);
 	if (!id) return null;
 	const path = normalizeMediaPath(id);
-	if (!path.startsWith('/_emdash/api/media/file/')) return null;
-	return sanitizeHref(path);
-}
-
-/**
- * Expand a poster string to the value `sanitizeHref` should see.
- * Bare image storage keys and absolute media-file URLs become a site path.
- * Other strings are left for the allow-list after sanitising.
- */
-function expandPosterString(value: string): string {
-	const trimmed = value.trim();
-	if (POSTER_STORAGE_KEY.test(trimmed)) {
-		return `/_emdash/api/media/file/${trimmed}`;
-	}
-	if (trimmed.startsWith('/_emdash/api/media/file/')) {
-		return trimmed.split('?')[0]?.split('#')[0] ?? trimmed;
-	}
-	try {
-		const parsed = new URL(trimmed);
-		if (POSTER_MEDIA_PATH.test(parsed.pathname)) return parsed.pathname;
-	} catch {
-		/* not an absolute URL */
-	}
-	return trimmed;
-}
-
-function posterStringFromRecord(record: Record<string, unknown>, depth: number): string | null {
-	if (depth > 3) return null;
-	const direct =
-		readString(record.url)
-		?? readString(record.src)
-		?? readString(record.href)
-		?? readString(record.path);
-	if (direct) return expandPosterString(direct);
-
-	const meta =
-		record.meta && typeof record.meta === 'object'
-			? (record.meta as Record<string, unknown>)
-			: null;
-	const storageKey =
-		readString(meta?.storageKey)
-		?? readString(meta?.storage_key)
-		?? readString(record.storageKey)
-		?? readString(record.storage_key)
-		?? readString(record._ref);
-	if (storageKey) return expandPosterString(storageKey);
-
-	const asset = record.asset;
-	if (asset && typeof asset === 'object' && !Array.isArray(asset)) {
-		return posterStringFromRecord(asset as Record<string, unknown>, depth + 1);
-	}
-	return null;
-}
-
-function acceptSanitizedPoster(safe: string): string | null {
-	if (POSTER_MEDIA_PATH.test(safe)) return safe;
-	if (!/^https:\/\//i.test(safe)) return null;
-	try {
-		const parsed = new URL(safe);
-		if (parsed.protocol !== 'https:') return null;
-		if (POSTER_MEDIA_PATH.test(parsed.pathname)) return parsed.pathname;
-		return safe;
-	} catch {
-		return null;
-	}
-}
-
-/**
- * Optional `<video poster>` for a self-hosted embed.
- * Accepts an EmDash media-library image (public file path, storage key, or
- * `{ url | _ref | storageKey | asset }`) or an https URL. Runs EmDash
- * `sanitizeHref` and drops anything else, including http and unsafe schemes.
- */
-export function resolveVideoPoster(node: Record<string, unknown>): string | null {
-	const raw = node.poster;
-	let candidate: string | null = null;
-	if (typeof raw === 'string') {
-		const trimmed = raw.trim();
-		candidate = trimmed ? expandPosterString(trimmed) : null;
-	} else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-		candidate = posterStringFromRecord(raw as Record<string, unknown>, 0);
-	}
-	if (!candidate) return null;
-	const safe = sanitizeHref(candidate);
-	if (safe !== candidate) return null;
-	return acceptSanitizedPoster(safe);
-}
-
-/** `none` only when a poster will be rendered; otherwise the historical `metadata`. */
-export function selfHostedVideoPreload(poster: string | null): 'none' | 'metadata' {
-	return poster ? 'none' : 'metadata';
+	if (!isEmDashMp4Path(path)) return null;
+	return acceptSanitizedVideoSrc(sanitizeHref(path));
 }
 
 /**
