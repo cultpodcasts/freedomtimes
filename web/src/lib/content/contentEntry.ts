@@ -7,6 +7,10 @@ import {
 	readEmDashPublishedOrCreatedAt,
 	readEmDashUpdatedAt,
 } from './emdashTimestamps';
+import {
+	normalizeToPublicMediaFilePath,
+	readMediaLibraryFileUrl as readMediaFileUrl,
+} from './mediaFileUrl';
 
 export type SlideImage = { src: string; pageNumber: number | null };
 
@@ -68,37 +72,6 @@ function tryParseJsonString(value: string): unknown {
 	}
 }
 
-/**
- * Public file URLs are only `/_emdash/api/media/file/<storageKey>` where `storageKey` is the
- * R2 object name (EmDash uses e.g. `<ulid>.png`). Media row `id` is different and returns 404 if
- * used as `key` (see emdash `addUrlToMedia` / `storage.download(key)`).
- */
-function normalizeToPublicMediaFilePath(value: string): string | null {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return null;
-	}
-	if (trimmed.startsWith('/_emdash/api/media/file/')) {
-		return trimmed;
-	}
-	if (trimmed.startsWith('/')) {
-		return null;
-	}
-	if (trimmed.includes('://')) {
-		try {
-			const pathname = new URL(trimmed).pathname;
-			return pathname.startsWith('/_emdash/api/media/file/') ? pathname : null;
-		} catch {
-			return null;
-		}
-	}
-	// Storage keys in this project include a file extension; bare ULIDs are media ids, not keys.
-	if (/\.[a-z0-9]{2,5}$/i.test(trimmed) && !trimmed.includes('/')) {
-		return `/_emdash/api/media/file/${trimmed}`;
-	}
-	return null;
-}
-
 function readFeaturedImageSrc(value: unknown): string | null {
 	if (typeof value === 'string') {
 		const trimmed = value.trim();
@@ -133,68 +106,6 @@ function readFeaturedImageSrc(value: unknown): string | null {
 		}
 
 		return null;
-	}
-
-	return null;
-}
-
-function readMediaFileUrl(value: unknown): string | null {
-	if (typeof value === 'string') {
-		const trimmed = value.trim();
-		if (trimmed.length === 0) {
-			return null;
-		}
-
-		const parsed = tryParseJsonString(trimmed);
-		if (parsed && parsed !== value) {
-			return readMediaFileUrl(parsed);
-		}
-
-		return trimmed;
-	}
-
-	if (value && typeof value === 'object') {
-		const candidate = value as Record<string, unknown>;
-		const url =
-			readString(candidate.url) ??
-			readString(candidate.src) ??
-			readString(candidate.file) ??
-			readString(candidate.path) ??
-			readString(candidate.href);
-		if (url) {
-			return url;
-		}
-
-		const nestedValue =
-			readString(candidate.value) ??
-			readString(candidate.filename) ??
-			readString(candidate.key);
-		if (nestedValue) {
-			return nestedValue;
-		}
-
-		const meta =
-			candidate.meta && typeof candidate.meta === 'object'
-				? (candidate.meta as Record<string, unknown>)
-				: null;
-		const storageKey =
-			readString(meta?.storageKey)
-			?? readString(meta?.storage_key)
-			?? readString(candidate.storageKey)
-			?? readString(candidate.storage_key);
-		if (storageKey) {
-			return `/_emdash/api/media/file/${storageKey}`;
-		}
-
-		const mediaId = readString(candidate.id);
-		if (mediaId && /\.[a-z0-9]{2,5}$/i.test(mediaId)) {
-			return `/_emdash/api/media/file/${mediaId}`;
-		}
-
-		const mediaRef = readString(candidate._ref);
-		if (mediaRef && /\.[a-z0-9]{2,5}$/i.test(mediaRef)) {
-			return `/_emdash/api/media/file/${mediaRef}`;
-		}
 	}
 
 	return null;

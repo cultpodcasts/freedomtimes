@@ -1,7 +1,5 @@
-import {
-	resolveSelfHostedVideoUrl,
-	resolveVideoCaptionTracks,
-} from '../src/lib/content/videoCaptionTracks.ts';
+import { resolveVideoCaptionTracks } from '../src/lib/content/videoCaptionTracks.ts';
+import { resolveSelfHostedVideoUrl } from '../src/lib/content/videoPlayback.ts';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 

@@ -1,11 +1,17 @@
 /**
- * Resolve WebVTT sidecar track(s) for a self-hosted `_type: "embed"` + `provider: "video"` node.
+ * Resolve WebVTT sidecar track(s) for a self-hosted video node.
+ *
+ * Playback (which player, which src) lives in `videoPlayback.ts`. This module
+ * only turns caption extras into `<track>` values.
  *
  * EmDash posts schema has no captions field. Extra Portable Text keys below are stored if
  * sent via MCP / content_update. Prefer node fields over a hardcoded map so a burned-in MP4
  * is never paired with VTT (double captions).
  *
- * ## Portable Text embed extras (Freedom Times)
+ * ## Portable Text extras (Freedom Times)
+ *
+ * The same keys sit on an EmDash 1.2.0 video block and on an older
+ * `_type: "embed"` + `provider: "video"` node.
  *
  * ```ts
  * // Legacy (still supported):
@@ -23,12 +29,12 @@
  * // false → emit all <track>s but no `default` (CC menu available; starts off)
  * ```
  *
- * Authors (MCP): set these on the embed node alongside `url` (or `id`) + `provider: "video"`.
- * The EmDash editor stores the MP4 path on `id`; the reader accepts either field.
- * Relative `/_emdash/api/media/file/<id>.vtt` paths are kept as-is after sanitize.
+ * Poster holding images are resolved in `videoPoster.ts` (`resolveVideoPoster`).
+ * Relative `/_emdash/api/media/file/<id>.vtt` paths are kept as-is.
  */
 
-const EMDASH_MEDIA_FILE = /^\/_emdash\/api\/media\/file\/[A-Za-z0-9]+\.(vtt|mp4)$/i;
+/** EmDash media-file path: caption `.vtt` or self-hosted `.mp4`. */
+export const EMDASH_MEDIA_FILE = /^\/_emdash\/api\/media\/file\/[A-Za-z0-9]+\.(vtt|mp4)$/i;
 
 export type VideoCaptionTrackInput = {
 	url: string;
@@ -74,20 +80,6 @@ export function sanitizeCaptionsUrl(url: string): string | null {
 }
 
 /**
- * Self-hosted video src for `_type: "embed"` + `provider: "video"`.
- * Prefer `url`; fall back to `id` when the editor stored the media-file path there.
- */
-export function resolveSelfHostedVideoUrl(node: Record<string, unknown>): string | null {
-	const url = readString(node.url);
-	if (url) return url;
-	const id = readString(node.id);
-	if (!id) return null;
-	const path = normalizeMediaPath(id);
-	if (path.startsWith('/_emdash/api/media/file/')) return path;
-	return null;
-}
-
-/**
  * Known video → VTT pairs. Leave empty unless the mp4 on that URL is unburned.
  * Example (after Admin / CLI upload of the unburned file):
  *   '/_emdash/api/media/file/<mp4-key>.mp4': '/_emdash/api/media/file/<vtt-key>.vtt'
@@ -114,7 +106,7 @@ function tracksWantDefault(rawTracks: unknown[]): boolean {
 }
 
 /**
- * Parse legacy + multi-track caption fields from a PT embed node.
+ * Parse legacy + multi-track caption fields on a self-hosted video node.
  * Returns tracks with at most one `isDefault: true` when captions should start on.
  */
 export function resolveVideoCaptionTracks(

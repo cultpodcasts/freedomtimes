@@ -116,20 +116,23 @@ At render time the server emits a real **`<blockquote>`** for step 1, then **`<d
 
 ## Portable Text: media embeds (official EmDash alignment)
 
-Reader bodies use EmDash’s `PortableText` (`emdash/ui`): core defaults + `@emdash-cms/plugin-embeds`, with Freedom Times overrides for **`image`**, **`embed`** (self-hosted video + WebVTT), and **`audio`** (Apple/Spotify iframe podcasts).
+Reader bodies use EmDash’s `PortableText` (`emdash/ui`): core defaults + `@emdash-cms/plugin-embeds`, with Freedom Times overrides for **`image`**, **`video`** (one self-hosted player for the 1.2.0 video block and for older `embed` + `provider: "video"`, plus poster and WebVTT), and **`audio`** (Apple/Spotify iframe podcasts). **`embed`** uses that same player when `provider` is `video`, and core Embed otherwise.
 
 | Stored `_type` | Renderer | Use for |
 |----------------|----------|---------|
 | `image` | FT `ImageWithLink.astro` (overrides EmDash `Image`) | Media library images (`asset.url` / `_ref`, `alt`, `caption`). Renders `<figcaption>` from `caption` and wraps the `<img>` in `<a href={fullUrl} target="_blank" rel="noopener noreferrer">` for phone zoom. Markdown `![alt](url)` does **not** carry caption — set `caption` on the PT node (or patch via JSON). |
 | `youtube` / `vimeo` / … | `@emdash-cms/plugin-embeds` | Social/video slash inserts and YouTube URLs |
-| `embed` | FT `EmbedWithCaptions.astro` (falls through to EmDash `Embed` for non-video) | Self-hosted video (`provider: "video"`, `url` **or** media-file `id`) with optional `captionsUrl` / `captions[]` / `captionsDefaultOn` WebVTT tracks; other embed providers use core Embed. If the published player vanishes after an editor save, see **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**. |
+| `video` | FT `VideoWithCaptions.astro` (the one self-hosted player; also overrides EmDash 1.2.0 `Video`) | Local editor video block (`asset.url`, integer `width` / `height`, `caption`) plus optional `poster` and WebVTT. The same player renders a stored `embed` + `provider: "video"`. A provider other than `local` uses core `Video` with built-in fields only. See **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**. |
+| `embed` | FT `EmbedWithCaptions.astro` | `provider: "video"` (`url` **or** media-file `id`, with or without `poster` and WebVTT) renders `VideoWithCaptions`. Other embed providers use core Embed. If the published player vanishes after an editor save, see **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**. |
 | `audio` | FT `Audio.astro` | Podcast web players (Apple Podcasts, Spotify embed URLs) |
 
-Agent drafts convert markdown video `<!--ec:block …-->` markers to `youtube` or `embed`+`provider:"video"` (see sibling freedomtimes-agents `markdown-to-portable-text.mts`). Keep `_type: "audio"` for podcast iframes.
+Agent drafts convert markdown video `<!--ec:block …-->` markers to `youtube` or an EmDash 1.2.0 `video` block (`asset.url`, `asset._ref` when there is a media id, integer `width` / `height`, `caption`, plus `poster` and WebVTT extras). Published `embed` + `provider: "video"` documents stay as stored and play through that same player. Keep `_type: "audio"` for podcast iframes.
 
 ### Migrating PT blocks (operator script)
 
 Use **`web/scripts/migrate-pt-content.mjs`** — dry-run by default, writes a change report under `web/data/pt-migrate/`, then optionally `--apply --publish`. Add new transforms under `web/scripts/lib/pt-migrate/transforms/` as we expand.
+
+`--transforms video` converts a legacy `_type: "video"` block that still has top-level `url`, `id`, or `file` into `youtube` or `embed` + `provider: "video"`. An editor video block (`asset` with `_ref` or `url`, and none of those legacy fields) is left unchanged, including `poster` and caption tracks.
 
 ```powershell
 cd web
@@ -140,7 +143,7 @@ npm run pt:migrate:scan
 npm run pt:migrate:scan:embed-url
 node scripts/migrate-pt-content.mjs posts <slug> --transforms embed-video-url --apply --publish
 
-# Apply one slug (example):
+# Apply one slug (example). Editor video blocks in that post are not rewritten:
 node scripts/migrate-pt-content.mjs posts <slug> --transforms video --apply --publish
 ```
 

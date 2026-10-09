@@ -1,22 +1,14 @@
 ---
 /**
  * Portable Text `_type: "embed"` override.
- * Self-hosted video (`provider: "video"`) gets a native <video> plus optional
- * WebVTT <track kind="captions"> list from PT extras (see videoCaptionTracks.ts).
- * Video src is `url`, or `id` when the CMS editor stored the media-file path there:
  *
- *   captionsUrl?: string                    // legacy single English track
- *   captions?: { url, srclang, label, default? }[]
- *   captionsDefaultOn?: boolean             // false = tracks listed, no `default` attr
- *
- * MCP / authors: set those keys on the embed node (schema has no captions field;
- * extras persist via content_update). Other embeds fall through to EmDash core Embed.
+ * `provider: "video"` plays through `VideoWithCaptions`, the same player as an
+ * EmDash 1.2.0 video block (poster, WebVTT, reserved box). Every other embed
+ * falls through to core `Embed`.
  */
 import { Embed as CoreEmbed } from 'emdash/ui';
-import {
-	resolveSelfHostedVideoUrl,
-	resolveVideoCaptionTracks,
-} from '../lib/content/videoCaptionTracks';
+import { resolveStoredVideoPlayback } from '../lib/content/videoPlayback';
+import VideoWithCaptions from './VideoWithCaptions.astro';
 
 const props = Astro.props as Record<string, unknown>;
 const node =
@@ -28,42 +20,15 @@ function readString(input: unknown): string | null {
 	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
 }
 
-const url = resolveSelfHostedVideoUrl(node);
 const provider = readString(node.provider);
 const caption = readString(node.caption);
-const isSelfHostedVideo = provider === 'video' && !!url;
-const captionTracks =
-	isSelfHostedVideo && url ? resolveVideoCaptionTracks(node, url) : [];
+const selfHosted =
+	provider === 'video' && resolveStoredVideoPlayback(node).kind === 'player';
 ---
 
 {
-	isSelfHostedVideo && url ? (
-		<figure class="emdash-embed">
-			<div class="emdash-embed-video">
-				<video controls preload="metadata">
-					<source src={url} type="video/mp4" />
-					{captionTracks.map((track) =>
-						track.isDefault ? (
-							<track
-								kind="captions"
-								src={track.src}
-								srclang={track.srclang}
-								label={track.label}
-								default
-							/>
-						) : (
-							<track
-								kind="captions"
-								src={track.src}
-								srclang={track.srclang}
-								label={track.label}
-							/>
-						),
-					)}
-				</video>
-			</div>
-			{caption && <figcaption>{caption}</figcaption>}
-		</figure>
+	selfHosted ? (
+		<VideoWithCaptions node={node} />
 	) : typeof node.url === 'string' ? (
 		<CoreEmbed
 			node={{

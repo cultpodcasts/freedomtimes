@@ -1,0 +1,70 @@
+---
+/**
+ * The one self-hosted player, and the Portable Text `_type: "video"` override.
+ *
+ * `resolveStoredVideoPlayback` turns both stored shapes into one value:
+ * a local 1.2.0 block (`asset.url`, provider absent or `"local"`) and an
+ * older embed (`provider: "video"`, `url` or a media-file `id`).
+ * `EmbedWithCaptions` mounts this component for that embed.
+ *
+ * A provider other than `"local"` goes to core `Video` with built-in fields
+ * only, so `getEmbed` runs. Poster and WebVTT extras are omitted from that
+ * node. A refused URL or an empty block renders nothing.
+ *
+ * Markup uses `emdash-embed` / `emdash-embed-video` so the article stylesheet
+ * (intrinsic ratio, WebVTT cue colours) applies to both stored shapes.
+ * Integer block width and height win the reserved box.
+ */
+import { Video as CoreVideo } from 'emdash/ui';
+import { resolveStoredVideoPlayback } from '../lib/content/videoPlayback';
+
+const props = Astro.props as Record<string, unknown>;
+const node =
+	(props.node as Record<string, unknown> | undefined)
+	?? (props.value as Record<string, unknown> | undefined)
+	?? props;
+
+const playback = resolveStoredVideoPlayback(node);
+const player = playback.kind === 'player' ? playback : null;
+const coreNode = playback.kind === 'core' ? playback.node : null;
+---
+
+{
+	player ? (
+		<figure class="emdash-embed">
+			<div class="emdash-embed-video">
+				<video
+					controls
+					preload={player.preload}
+					poster={player.poster?.src}
+					width={player.frame?.width}
+					height={player.frame?.height}
+					style={player.frame ? { aspectRatio: player.frame.aspectRatio } : undefined}
+				>
+					<source src={player.src} type="video/mp4" />
+					{player.tracks.map((track) =>
+						track.isDefault ? (
+							<track
+								kind="captions"
+								src={track.src}
+								srclang={track.srclang}
+								label={track.label}
+								default
+							/>
+						) : (
+							<track
+								kind="captions"
+								src={track.src}
+								srclang={track.srclang}
+								label={track.label}
+							/>
+						),
+					)}
+				</video>
+			</div>
+			{player.caption && <figcaption>{player.caption}</figcaption>}
+		</figure>
+	) : coreNode ? (
+		<CoreVideo node={coreNode} />
+	) : null
+}
