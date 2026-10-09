@@ -17,6 +17,7 @@ Do these so the published player does not vanish after an admin save.
 
 - Prefer **both** `url` and `id` set to the same media-file path.
 - Keep caption extras on the same node (`captionsUrl` / `captions[]` / `captionsDefaultOn`). Schema has no captions field; extras persist only if `content_update` sends a **Portable Text array**, never markdown.
+- Optional holding image: `poster` on the same embed node. A string `/_emdash/api/media/file/<storageKey>.(jpg|jpeg|png|webp)`, an `https` URL, or a media-library reference (`{ url }`, `{ _ref: "<storageKey>.jpg" }`, `{ storageKey }`, `{ asset: { url } }`, or a library row with `meta.storageKey`). The reader runs EmDash `sanitizeHref` and ignores anything else. With a poster the player uses `preload="none"` and the `poster` attribute; without one, `preload` stays `metadata` and captions are unchanged.
 - MCP / agent drafts: write `_type: "embed"`, `provider: "video"`, `url: "/_emdash/api/media/file/<key>.mp4"`. Copy that path onto `id` if the editor widget uses `id`.
 
 **Do not**

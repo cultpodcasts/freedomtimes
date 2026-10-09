@@ -88,7 +88,18 @@ export function legacyVideoToPortableNode(
 		provider: 'video',
 	};
 	if (alt) node.caption = alt;
+	const poster = readPosterExtra(block.poster);
+	if (poster !== null) node.poster = poster;
 	return node;
+}
+
+/** Keep a draft `poster` on the embed node. The reader sanitises it at render time. */
+function readPosterExtra(value: unknown): string | Record<string, unknown> | null {
+	if (typeof value === 'string' && value.trim()) return value.trim();
+	if (value && typeof value === 'object' && !Array.isArray(value)) {
+		return value as Record<string, unknown>;
+	}
+	return null;
 }
 
 function normalizeEmdashMediaFileUrl(value: string): string | null {

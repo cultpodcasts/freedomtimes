@@ -122,7 +122,7 @@ Reader bodies use EmDash’s `PortableText` (`emdash/ui`): core defaults + `@emd
 |----------------|----------|---------|
 | `image` | FT `ImageWithLink.astro` (overrides EmDash `Image`) | Media library images (`asset.url` / `_ref`, `alt`, `caption`). Renders `<figcaption>` from `caption` and wraps the `<img>` in `<a href={fullUrl} target="_blank" rel="noopener noreferrer">` for phone zoom. Markdown `![alt](url)` does **not** carry caption — set `caption` on the PT node (or patch via JSON). |
 | `youtube` / `vimeo` / … | `@emdash-cms/plugin-embeds` | Social/video slash inserts and YouTube URLs |
-| `embed` | FT `EmbedWithCaptions.astro` (falls through to EmDash `Embed` for non-video) | Self-hosted video (`provider: "video"`, `url` **or** media-file `id`) with optional `captionsUrl` / `captions[]` / `captionsDefaultOn` WebVTT tracks; other embed providers use core Embed. If the published player vanishes after an editor save, see **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**. |
+| `embed` | FT `EmbedWithCaptions.astro` (falls through to EmDash `Embed` for non-video) | Self-hosted video (`provider: "video"`, `url` **or** media-file `id`) with optional `captionsUrl` / `captions[]` / `captionsDefaultOn` WebVTT tracks and optional `poster` (media-library image path/reference or `https` URL). Other embed providers use core Embed. If the published player vanishes after an editor save, see **`web/docs/SELF_HOSTED_VIDEO_EMBEDS.md`**. |
 | `audio` | FT `Audio.astro` | Podcast web players (Apple Podcasts, Spotify embed URLs) |
 
 Agent drafts convert markdown video `<!--ec:block …-->` markers to `youtube` or `embed`+`provider:"video"` (see sibling freedomtimes-agents `markdown-to-portable-text.mts`). Keep `_type: "audio"` for podcast iframes.

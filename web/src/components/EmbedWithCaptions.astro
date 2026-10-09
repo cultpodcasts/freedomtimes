@@ -8,14 +8,20 @@
  *   captionsUrl?: string                    // legacy single English track
  *   captions?: { url, srclang, label, default? }[]
  *   captionsDefaultOn?: boolean             // false = tracks listed, no `default` attr
+ *   poster?: string | media-library ref     // optional holding image; see videoCaptionTracks.ts
  *
- * MCP / authors: set those keys on the embed node (schema has no captions field;
+ * MCP / authors: set those keys on the embed node (schema has no captions/poster field;
  * extras persist via content_update). Other embeds fall through to EmDash core Embed.
+ * Video `url` is passed through EmDash `sanitizeHref`, matching core Embed.
+ * A resolved poster sets `preload="none"` and the `poster` attribute. No poster
+ * keeps `preload="metadata"` and omits `poster`.
  */
 import { Embed as CoreEmbed } from 'emdash/ui';
 import {
 	resolveSelfHostedVideoUrl,
 	resolveVideoCaptionTracks,
+	resolveVideoPoster,
+	selfHostedVideoPreload,
 } from '../lib/content/videoCaptionTracks';
 
 const props = Astro.props as Record<string, unknown>;
@@ -34,13 +40,15 @@ const caption = readString(node.caption);
 const isSelfHostedVideo = provider === 'video' && !!url;
 const captionTracks =
 	isSelfHostedVideo && url ? resolveVideoCaptionTracks(node, url) : [];
+const poster = isSelfHostedVideo ? resolveVideoPoster(node) : null;
+const preload = selfHostedVideoPreload(poster);
 ---
 
 {
 	isSelfHostedVideo && url ? (
 		<figure class="emdash-embed">
 			<div class="emdash-embed-video">
-				<video controls preload="metadata">
+				<video controls preload={preload} poster={poster ?? undefined}>
 					<source src={url} type="video/mp4" />
 					{captionTracks.map((track) =>
 						track.isDefault ? (
