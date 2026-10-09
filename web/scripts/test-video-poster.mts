@@ -1,5 +1,6 @@
 import {
 	resolveSelfHostedVideoUrl,
+	resolveVideoBlockPlayback,
 	resolveVideoBlockSrc,
 	resolveVideoCaptionTracks,
 } from '../src/lib/content/videoCaptionTracks.ts';
@@ -190,12 +191,32 @@ describe('EmDash 1.2.0 video block', () => {
 
 	it('plays asset.url and ignores the media id', () => {
 		assert.equal(resolveVideoBlockSrc(block), videoUrl);
+		assert.deepEqual(resolveVideoBlockPlayback(block), { kind: 'local', src: videoUrl });
+		assert.deepEqual(
+			resolveVideoBlockPlayback({
+				_type: 'video',
+				_key: 'remote',
+				asset: {
+					_ref: 'remote',
+					url: 'https://archive.org/download/example/film.mp4',
+					provider: 'local',
+				},
+			}),
+			{ kind: 'local', src: 'https://archive.org/download/example/film.mp4' },
+		);
 		assert.equal(
 			resolveVideoBlockSrc({
 				_type: 'video',
 				asset: { _ref: '01M1MX4CVV7DK7CFFA64RKGWV5' },
 			}),
 			null,
+		);
+		assert.deepEqual(
+			resolveVideoBlockPlayback({
+				_type: 'video',
+				asset: { _ref: '01M1MX4CVV7DK7CFFA64RKGWV5' },
+			}),
+			{ kind: 'none' },
 		);
 		assert.equal(
 			resolveVideoBlockSrc({
@@ -204,6 +225,65 @@ describe('EmDash 1.2.0 video block', () => {
 			}),
 			null,
 		);
+	});
+
+	it('does not treat a cloudflare-stream https URL as a local mp4', () => {
+		const streamUrl = 'https://customer.example/stream.m3u8';
+		const node = {
+			_type: 'video',
+			_key: 'stream',
+			asset: {
+				_ref: 'stream-id',
+				url: streamUrl,
+				provider: 'cloudflare-stream',
+			},
+			caption: 'Hall',
+			width: 1920,
+			height: 1080,
+			poster: posterPath,
+			captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
+		};
+		assert.equal(resolveVideoBlockSrc(node), null);
+		assert.deepEqual(resolveVideoBlockPlayback(node), {
+			kind: 'core',
+			node: {
+				_type: 'video',
+				_key: 'stream',
+				asset: {
+					_ref: 'stream-id',
+					url: streamUrl,
+					provider: 'cloudflare-stream',
+				},
+				caption: 'Hall',
+				width: 1920,
+				height: 1080,
+			},
+		});
+		const fractional = resolveVideoBlockPlayback({
+			...node,
+			width: 1.5,
+			height: 0,
+		});
+		assert.equal(fractional.kind, 'core');
+		if (fractional.kind !== 'core') return;
+		assert.equal(fractional.node.width, undefined);
+		assert.equal(fractional.node.height, undefined);
+		assert.equal('poster' in fractional.node, false);
+		assert.equal('captions' in fractional.node, false);
+	});
+
+	it('does not delegate http or javascript video-block URLs', () => {
+		for (const url of ['http://archive.org/download/example/film.mp4', 'javascript:alert(1)']) {
+			const node = {
+				_type: 'video',
+				_key: 'bad',
+				asset: { _ref: 'clip', url },
+				poster: posterPath,
+				captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
+			};
+			assert.equal(resolveVideoBlockSrc(node), null);
+			assert.deepEqual(resolveVideoBlockPlayback(node), { kind: 'none' });
+		}
 	});
 
 	it('reserves the block width and height when a poster is also set', () => {
@@ -229,6 +309,38 @@ describe('EmDash 1.2.0 video block', () => {
 			height: 9,
 			aspectRatio: '16 / 9',
 		});
+	});
+
+	it('keeps caption tracks and the block frame when poster is absent', () => {
+		const { poster: _poster, ...node } = block;
+		const poster = resolveVideoPoster(node);
+		assert.equal(poster, null);
+		assert.equal(selfHostedVideoPreload(poster), 'metadata');
+		assert.deepEqual(resolveVideoBlockPlayback(node), { kind: 'local', src: videoUrl });
+		assert.deepEqual(resolveSelfHostedVideoFrame(node, poster), {
+			width: 1920,
+			height: 1080,
+			aspectRatio: '1920 / 1080',
+		});
+		const tracks = resolveVideoCaptionTracks(node, videoUrl);
+		assert.equal(tracks.length, 1);
+		assert.equal(tracks[0].src, vtt);
+		assert.equal(tracks[0].srclang, 'en');
+		assert.equal(tracks[0].label, 'English');
+		assert.equal(tracks[0].isDefault, true);
+	});
+
+	it('leaves the frame to file metadata when poster and dimensions are absent', () => {
+		const node = {
+			_type: 'video',
+			_key: 'clip',
+			asset: block.asset,
+			captions: block.captions,
+		};
+		const poster = resolveVideoPoster(node);
+		assert.equal(poster, null);
+		assert.equal(resolveSelfHostedVideoFrame(node, poster), null);
+		assert.equal(selfHostedVideoPreload(poster), 'metadata');
 	});
 });
 

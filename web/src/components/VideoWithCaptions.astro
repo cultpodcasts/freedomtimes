@@ -2,18 +2,19 @@
 /**
  * Portable Text `_type: "video"` override for EmDash 1.2.0.
  *
- * Core `Video` renders only a block whose fields are `_type`, `_key`, `asset`,
- * `caption`, `width`, and `height`. A `poster` or WebVTT extra makes that check
- * fail, and the core component renders nothing. Local `getEmbed` also never
- * sets `poster`. This override plays `asset.url`, keeps caption tracks, and
- * reserves the block's width and height when a poster is shown.
+ * `resolveVideoBlockPlayback` chooses the player. A provider other than
+ * `local` goes to core `Video` with built-in fields only, so `getEmbed` runs.
+ * An allow-listed local file stays here, including caption tracks and no poster.
+ * A refused URL or an empty block renders nothing.
  *
- * A provider video with no local file URL is passed to core `Video` with the
- * built-in fields only, so the provider embed still renders.
+ * Core `Video` renders only `_type`, `_key`, `asset`, `caption`, `width`, and
+ * `height`. A `poster` or WebVTT extra makes that check fail. Local `getEmbed`
+ * also never sets `poster`, so this player reserves width and height when a
+ * poster is shown.
  */
 import { Video as CoreVideo } from 'emdash/ui';
 import {
-	resolveVideoBlockSrc,
+	resolveVideoBlockPlayback,
 	resolveVideoCaptionTracks,
 } from '../lib/content/videoCaptionTracks';
 import {
@@ -32,24 +33,14 @@ function readString(input: unknown): string | null {
 	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
 }
 
-const src = node._type === 'video' ? resolveVideoBlockSrc(node) : null;
+const playback = node._type === 'video' ? resolveVideoBlockPlayback(node) : null;
+const src = playback?.kind === 'local' ? playback.src : null;
+const coreNode = playback?.kind === 'core' ? playback.node : null;
 const caption = readString(node.caption);
 const poster = src ? resolveVideoPoster(node) : null;
 const frame = src ? resolveSelfHostedVideoFrame(node, poster) : null;
 const preload = selfHostedVideoPreload(poster);
 const captionTracks = src ? resolveVideoCaptionTracks(node, src) : [];
-
-const coreNode = {
-	_type: 'video' as const,
-	_key: typeof node._key === 'string' ? node._key : 'video',
-	asset:
-		node.asset && typeof node.asset === 'object' && !Array.isArray(node.asset)
-			? (node.asset as { _ref: string; url?: string; provider?: string })
-			: undefined,
-	caption: caption ?? undefined,
-	width: typeof node.width === 'number' ? node.width : undefined,
-	height: typeof node.height === 'number' ? node.height : undefined,
-};
 ---
 
 {
@@ -87,7 +78,7 @@ const coreNode = {
 			</div>
 			{caption && <figcaption>{caption}</figcaption>}
 		</figure>
-	) : node._type === 'video' ? (
+	) : coreNode ? (
 		<CoreVideo node={coreNode} />
 	) : null
 }

@@ -115,17 +115,97 @@ export function resolveSelfHostedVideoUrl(node: Record<string, unknown>): string
 	return acceptSanitizedVideoSrc(sanitizeHref(path));
 }
 
-/**
- * Playable file for an EmDash 1.2.0 `_type: "video"` block.
- * The editor stores the file on `asset.url`. `_ref` is the media id and is not a file URL.
- * The same allow-list as `resolveSelfHostedVideoUrl` applies.
- */
-export function resolveVideoBlockSrc(node: Record<string, unknown>): string | null {
+function readAssetRecord(node: Record<string, unknown>): Record<string, unknown> | null {
 	const asset = node.asset;
 	if (!asset || typeof asset !== 'object' || Array.isArray(asset)) return null;
-	const url = readString((asset as Record<string, unknown>).url);
+	return asset as Record<string, unknown>;
+}
+
+/** Provider id that core `Video` plays through `getEmbed`. `"local"` is a file. */
+function readEmbedProvider(asset: Record<string, unknown> | null): string | null {
+	if (!asset) return null;
+	const provider = readString(asset.provider);
+	if (!provider || provider === 'local') return null;
+	return provider;
+}
+
+/** Integers core `Video` accepts on `width` / `height` (`isPortableTextVideoBlock`). */
+function isCoreDimension(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 1;
+}
+
+/**
+ * Playable local file for an EmDash 1.2.0 `_type: "video"` block.
+ * The editor stores the file on `asset.url`. `_ref` is the media id and is not a file URL.
+ * An `https` URL is local only when `asset.provider` is absent or `"local"`.
+ * A provider other than `"local"` is not a local mp4, even when `asset.url` is `https`.
+ * The same allow-list as `resolveSelfHostedVideoUrl` applies to a local file.
+ */
+export function resolveVideoBlockSrc(node: Record<string, unknown>): string | null {
+	const asset = readAssetRecord(node);
+	if (!asset) return null;
+	if (readEmbedProvider(asset)) return null;
+	const url = readString(asset.url);
 	if (!url) return null;
 	return acceptSanitizedVideoSrc(sanitizeHref(url));
+}
+
+/** Built-in fields core `Video` accepts. Extras such as `poster` and WebVTT are omitted. */
+export type VideoBlockCoreNode = {
+	_type: 'video';
+	_key: string;
+	asset?: {
+		_ref: string;
+		url?: string;
+		provider?: string;
+	};
+	caption?: string;
+	width?: number;
+	height?: number;
+};
+
+export type VideoBlockPlayback =
+	| { kind: 'local'; src: string }
+	| { kind: 'core'; node: VideoBlockCoreNode }
+	| { kind: 'none' };
+
+function coreNodeForProvider(
+	node: Record<string, unknown>,
+	asset: Record<string, unknown>,
+	provider: string,
+): VideoBlockCoreNode {
+	const core: VideoBlockCoreNode = {
+		_type: 'video',
+		_key: readString(node._key) ?? 'video',
+	};
+	const ref = readString(asset._ref);
+	if (ref) {
+		const url = readString(asset.url);
+		core.asset = url ? { _ref: ref, url, provider } : { _ref: ref, provider };
+	}
+	const caption = readString(node.caption);
+	if (caption) core.caption = caption;
+	if (isCoreDimension(node.width)) core.width = node.width;
+	if (isCoreDimension(node.height)) core.height = node.height;
+	return core;
+}
+
+/**
+ * Which player renders an EmDash 1.2.0 `_type: "video"` block.
+ * A provider other than `"local"` goes to core `Video`.
+ * An allow-listed local file stays on the Freedom Times player.
+ * A refused URL or an empty block renders nothing.
+ */
+export function resolveVideoBlockPlayback(node: Record<string, unknown>): VideoBlockPlayback {
+	if (node._type !== 'video') return { kind: 'none' };
+	const asset = readAssetRecord(node);
+	const provider = readEmbedProvider(asset);
+	if (provider && asset) {
+		return { kind: 'core', node: coreNodeForProvider(node, asset, provider) };
+	}
+	const src = resolveVideoBlockSrc(node);
+	if (src) return { kind: 'local', src };
+	return { kind: 'none' };
 }
 
 /**
