@@ -1,5 +1,7 @@
 /**
- * Optional `<video poster>` for a self-hosted `_type: "embed"` + `provider: "video"` node.
+ * Optional `<video poster>` for the one self-hosted player.
+ * The same `poster` extra is read on an EmDash 1.2.0 video block and on an older
+ * `_type: "embed"` + `provider: "video"` node.
  *
  * Schema has no poster field. The extra persists via content_update.
  *
@@ -50,6 +52,11 @@ export type ResolvedVideoPoster = {
 
 function readPositiveNumber(value: unknown): number | null {
 	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** File dimensions on a video block: integers of at least 1, matching core `Video`. */
+function readBlockDimension(value: unknown): number | null {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null;
 }
 
 function readPosterDimensions(
@@ -115,7 +122,7 @@ function posterBox(raw: unknown): { width: number; height: number } {
 }
 
 /**
- * Optional holding image for a self-hosted embed.
+ * Optional holding image for the self-hosted player.
  * Returns null when the value is missing, `http`, or not an image media path or `https` URL.
  */
 export function resolveVideoPoster(node: Record<string, unknown>): ResolvedVideoPoster | null {
@@ -153,8 +160,8 @@ export function resolveSelfHostedVideoFrame(
 	node: Record<string, unknown>,
 	poster: ResolvedVideoPoster | null,
 ): { width: number; height: number; aspectRatio: string } | null {
-	const width = readPositiveNumber(node.width);
-	const height = readPositiveNumber(node.height);
+	const width = readBlockDimension(node.width);
+	const height = readBlockDimension(node.height);
 	if (width != null && height != null) {
 		return { width, height, aspectRatio: `${width} / ${height}` };
 	}

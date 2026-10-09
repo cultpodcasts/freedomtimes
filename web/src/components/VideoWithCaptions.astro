@@ -1,27 +1,22 @@
 ---
 /**
- * Portable Text `_type: "video"` override for EmDash 1.2.0.
+ * The one self-hosted player, and the Portable Text `_type: "video"` override.
  *
- * `resolveVideoBlockPlayback` chooses the player. A provider other than
- * `local` goes to core `Video` with built-in fields only, so `getEmbed` runs.
- * An allow-listed local file stays here, including caption tracks and no poster.
- * A refused URL or an empty block renders nothing.
+ * `resolveStoredVideoPlayback` turns both stored shapes into one value:
+ * a local 1.2.0 block (`asset.url`, provider absent or `"local"`) and an
+ * older embed (`provider: "video"`, `url` or a media-file `id`).
+ * `EmbedWithCaptions` mounts this component for that embed.
  *
- * Core `Video` renders only `_type`, `_key`, `asset`, `caption`, `width`, and
- * `height`. A `poster` or WebVTT extra makes that check fail. Local `getEmbed`
- * also never sets `poster`, so this player reserves width and height when a
- * poster is shown.
+ * A provider other than `"local"` goes to core `Video` with built-in fields
+ * only, so `getEmbed` runs. Poster and WebVTT extras are omitted from that
+ * node. A refused URL or an empty block renders nothing.
+ *
+ * Markup uses `emdash-embed` / `emdash-embed-video` so the article stylesheet
+ * (intrinsic ratio, WebVTT cue colours) applies to both stored shapes.
+ * Integer block width and height win the reserved box.
  */
 import { Video as CoreVideo } from 'emdash/ui';
-import {
-	resolveVideoBlockPlayback,
-	resolveVideoCaptionTracks,
-} from '../lib/content/videoCaptionTracks';
-import {
-	resolveSelfHostedVideoFrame,
-	resolveVideoPoster,
-	selfHostedVideoPreload,
-} from '../lib/content/videoPoster';
+import { resolveStoredVideoPlayback } from '../lib/content/videoPlayback';
 
 const props = Astro.props as Record<string, unknown>;
 const node =
@@ -29,34 +24,25 @@ const node =
 	?? (props.value as Record<string, unknown> | undefined)
 	?? props;
 
-function readString(input: unknown): string | null {
-	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
-}
-
-const playback = node._type === 'video' ? resolveVideoBlockPlayback(node) : null;
-const src = playback?.kind === 'local' ? playback.src : null;
-const coreNode = playback?.kind === 'core' ? playback.node : null;
-const caption = readString(node.caption);
-const poster = src ? resolveVideoPoster(node) : null;
-const frame = src ? resolveSelfHostedVideoFrame(node, poster) : null;
-const preload = selfHostedVideoPreload(poster);
-const captionTracks = src ? resolveVideoCaptionTracks(node, src) : [];
+const playback = resolveStoredVideoPlayback(node);
+const player = playback.kind === 'player' ? playback : null;
+const coreNode = playback.kind === 'core' ? playback.node : null;
 ---
 
 {
-	src ? (
+	player ? (
 		<figure class="emdash-embed">
 			<div class="emdash-embed-video">
 				<video
 					controls
-					preload={preload}
-					poster={poster?.src}
-					width={frame?.width}
-					height={frame?.height}
-					style={frame ? { aspectRatio: frame.aspectRatio } : undefined}
+					preload={player.preload}
+					poster={player.poster?.src}
+					width={player.frame?.width}
+					height={player.frame?.height}
+					style={player.frame ? { aspectRatio: player.frame.aspectRatio } : undefined}
 				>
-					<source src={src} type="video/mp4" />
-					{captionTracks.map((track) =>
+					<source src={player.src} type="video/mp4" />
+					{player.tracks.map((track) =>
 						track.isDefault ? (
 							<track
 								kind="captions"
@@ -76,7 +62,7 @@ const captionTracks = src ? resolveVideoCaptionTracks(node, src) : [];
 					)}
 				</video>
 			</div>
-			{caption && <figcaption>{caption}</figcaption>}
+			{player.caption && <figcaption>{player.caption}</figcaption>}
 		</figure>
 	) : coreNode ? (
 		<CoreVideo node={coreNode} />

@@ -14,7 +14,7 @@ export type LegacyContentBlock =
 	| { type: 'paragraph'; text: string }
 	| { type: 'details'; summary: string; text: string }
 	| { type: 'image'; alt: string; src: string }
-	/** Migrated legacy video ec:block → youtube/embed PT node for EmDash PortableText. */
+	/** Migrated legacy video ec:block → youtube or 1.2.0 video PT node. */
 	| { type: 'portable'; value: unknown[] }
 	| { type: 'audio'; value: Record<string, unknown> };
 
@@ -62,7 +62,7 @@ function resolveLegacyVideoSrc(block: Record<string, unknown>): string | null {
 	return null;
 }
 
-/** Legacy FT `_type: "video"` → plugin `youtube` or core `embed`. */
+/** Legacy FT `_type: "video"` → plugin `youtube` or an EmDash 1.2.0 video block. */
 export function legacyVideoToPortableNode(
 	block: Record<string, unknown>,
 ): Record<string, unknown> | null {
@@ -82,15 +82,55 @@ export function legacyVideoToPortableNode(
 		return node;
 	}
 	const url = normalizeEmdashMediaFileUrl(src) ?? src;
+	const asset: Record<string, unknown> = { url };
+	const mediaId = readMediaId(block);
+	if (mediaId) asset._ref = mediaId;
 	const node: Record<string, unknown> = {
-		_type: 'embed',
-		url,
-		provider: 'video',
+		_type: 'video',
+		asset,
 	};
 	if (alt) node.caption = alt;
+	const width = readIntegerDimension(block.width);
+	const height = readIntegerDimension(block.height);
+	if (width != null) node.width = width;
+	if (height != null) node.height = height;
 	const poster = readPosterExtra(block.poster);
 	if (poster !== null) node.poster = poster;
+	copyCaptionExtras(block, node);
 	return node;
+}
+
+const CAPTION_EXTRA_KEYS = ['captions', 'captionsUrl', 'captionsDefaultOn', 'tracks'] as const;
+
+function copyCaptionExtras(
+	block: Record<string, unknown>,
+	node: Record<string, unknown>,
+): void {
+	for (const key of CAPTION_EXTRA_KEYS) {
+		if (block[key] !== undefined && block[key] !== null) {
+			node[key] = block[key];
+		}
+	}
+}
+
+/** Bare media id: not a URL, path, or filename. A file path stays on `asset.url`. */
+function isBareMediaId(value: string): boolean {
+	return !value.includes('/') && !value.includes('\\') && !value.includes('.') && !value.includes(':');
+}
+
+function readMediaId(block: Record<string, unknown>): string | null {
+	const asset = block.asset;
+	if (asset && typeof asset === 'object' && !Array.isArray(asset)) {
+		const ref = readString((asset as Record<string, unknown>)._ref);
+		if (ref && isBareMediaId(ref)) return ref;
+	}
+	const id = readString(block.id);
+	if (id && isBareMediaId(id)) return id;
+	return null;
+}
+
+function readIntegerDimension(value: unknown): number | null {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null;
 }
 
 /** Keep a draft `poster` on the embed node. The reader sanitises it at render time. */

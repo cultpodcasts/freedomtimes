@@ -81,8 +81,8 @@ const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
 // - image: FT ImageWithLink (figcaption + open full media in new tab)
 // - link: EmDash defaults
 // - youtube: plugin-embeds
-// - video: FT override (EmDash 1.2.0 video block + optional poster and WebVTT)
-// - embed: FT override (older self-hosted video embeds + optional WebVTT; else core Embed)
+// - video: one self-hosted player (1.2.0 block and older embed+provider video) plus core Video for other providers
+// - embed: provider video uses that same player; other embeds use core Embed
 // - audio: FT override (Apple/Spotify iframe podcasts — no official type yet)
 const portableComponents = {
 	type: {

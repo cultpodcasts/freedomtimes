@@ -2,7 +2,7 @@
 
 Incident (2026-09-16): [Sham Aberdeen Ambush](https://staging.freedomtimes.news/posts/sham-aberdeen-ambush-james-taylor-jr-1970) still showed the hall clip in the **EmDash editor**, but the **published article** had no `<video>`. Stored PT was `_type: "embed"`, `provider: "video"`, MP4 on **`id`**, no **`url`**. Older reader code only read `url`. Cursor `content_update` could not carry the ~60KB Portable Text array as a tool argument (and a markdown string would have destroyed the embed).
 
-Canonical code: `VideoWithCaptions.astro` (EmDash 1.2.0 `_type: "video"`), `EmbedWithCaptions.astro` (older `_type: "embed"` + `provider: "video"`), `resolveVideoBlockPlayback` / `resolveVideoBlockSrc` / `resolveSelfHostedVideoUrl` in `web/src/lib/content/videoCaptionTracks.ts`, and `resolveVideoPoster` / `resolveSelfHostedVideoFrame` in `web/src/lib/content/videoPoster.ts`.
+Canonical code: `VideoWithCaptions.astro` is the one self-hosted player. `EmbedWithCaptions.astro` mounts that player for `provider: "video"` and uses core `Embed` for every other embed. `resolveStoredVideoPlayback` in `web/src/lib/content/videoPlayback.ts` turns both stored shapes into one playback value (src, caption, tracks, poster, frame, preload). WebVTT parsing stays in `videoCaptionTracks.ts`. Poster and frame helpers stay in `videoPoster.ts`.
 
 ## 1. Mitigate videos disappearing
 
@@ -11,7 +11,7 @@ Do these so the published player does not vanish after an admin save.
 **Reader (must be deployed)**
 
 - Self-hosted video src is `url`, **or** `id` when `id` is `/_emdash/api/media/file/<key>.mp4`. After EmDash `sanitizeHref`, only that `.mp4` path or an `https` URL is rendered. `http`, `mailto`, `tel`, the `#` sentinel, caption `.vtt` paths, and other site paths are not used as `<source src>`.
-- Tests: `web/scripts/test-video-caption-tracks.mts` (`resolveSelfHostedVideoUrl`) and `web/scripts/test-video-poster.mts` (poster URL, dimensions, and video-src allow-list). `npm run build` runs them.
+- Tests: `web/scripts/test-video-caption-tracks.mts` (WebVTT and the embed src allow-list) and `web/scripts/test-video-poster.mts` (one playback value for both stored shapes, poster box, and the video-block write path). `npm run build` runs them.
 
 **Stored JSON**
 
@@ -19,14 +19,25 @@ Do these so the published player does not vanish after an admin save.
 - Keep caption extras on the same node (`captionsUrl` / `captions[]` / `captionsDefaultOn`). Schema has no captions field; extras persist only if `content_update` sends a **Portable Text array**, never markdown.
 - Optional holding image: `poster` on the same embed node. Accepted shapes are a string `/_emdash/api/media/file/<storageKey>.(jpg|jpeg|png|webp)`, an `https` URL, or a media-library object (`{ url }`, `{ id: "<storageKey>.jpg" }`, `{ _ref: "<storageKey>.jpg" }`, `{ storageKey }`, `{ asset: { url } }`, or a library row with `meta.storageKey`). The reader resolves that object with the shared media-file helper, then runs EmDash `sanitizeHref` and keeps only an image media path or an `https` URL. `http`, unsafe schemes, and non-image files are ignored.
 - When a poster resolves, the player reserves a box before file metadata arrives. Numeric `width` and `height` on the poster object (`displayWidth` / `displayHeight` when those are set) are copied onto `<video>`, and `aspect-ratio` is set from those numbers. The article CSS (`width: 100%`, `height: auto`) then uses that ratio instead of the browser's 300×150 default. A poster with no dimensions uses **16 / 9**. `preload="none"` is set only together with that reserved ratio. Without a poster, `preload` stays `metadata`, `poster` is omitted, and the box comes from the file.
-- EmDash 1.2.0's editor video block is `_type: "video"` with `asset.url`, `asset._ref`, optional `caption`, and integer `width` / `height`. Core `Video` renders that block only when those are its only fields, and its local player does not set `poster`. A `poster` or WebVTT extra on that block makes core `Video` render nothing. `VideoWithCaptions` is the Portable Text `video` override: it plays `asset.url`, keeps caption tracks, and reserves `width` / `height` from the block when a poster is shown. Poster dimensions, or 16 / 9, are used only when the block has no dimensions. `resolveVideoBlockPlayback` sends a block whose `asset.provider` is set and is not `local` to core `Video`, with `_type`, `_key`, `asset` limited to `_ref`, `url`, and `provider`, `caption`, and `width` / `height` only when they are integers of at least 1. An allow-listed local file (an EmDash `.mp4` path, or an `https` URL when the provider is absent or `local`) stays on this player, including caption tracks when there is no poster (`preload="metadata"`, no `poster` attribute). A refused URL (`http`, `javascript:`, `mailto:`, the `#` sentinel) or an empty block renders nothing.
-- Older posts stay `_type: "embed"`, `provider: "video"`. MCP / agent drafts that are not the 1.2.0 video block still write that embed, with `url: "/_emdash/api/media/file/<key>.mp4"`. Copy that path onto `id` if the editor widget uses `id`. New editor videos should be the 1.2.0 block, with `poster` and caption tracks on the same node.
+- One player serves both stored shapes. `resolveStoredVideoPlayback` returns the same playback value for a local 1.2.0 block (`asset.url`, provider absent or `local`) and for a stored `_type: "embed"` + `provider: "video"` node (`url`, or `id` when it is a media-file `.mp4`), with or without a poster. `VideoWithCaptions` renders that value. Integer `width` and `height` on the node are the file dimensions and win the reserved box. A poster with no block dimensions uses the poster box, or 16 / 9. No poster and no block dimensions leaves the box to file metadata (`preload="metadata"`, no `poster` attribute). A poster sets `preload="none"` only together with that reserved ratio.
+- A provider other than `local` stays on core `Video` from `emdash/ui`, with `_type`, `_key`, `asset` limited to `_ref`, `url`, and `provider`, `caption`, and `width` / `height` only when they are integers of at least 1. Poster and WebVTT extras are omitted: they make `isPortableTextVideoBlock` fail, and local `getEmbed` never sets `poster`. A refused URL (`http`, `javascript:`, `mailto:`, the `#` sentinel) or an empty block renders nothing.
+- New self-hosted video is a 1.2.0 video block: `asset.url`, `asset._ref` when there is a media id, integer `width` / `height` when the source has them, `caption`, and the same `poster` and WebVTT extras. `legacyVideoToPortableNode` writes that block. YouTube stays `youtube`. Published embed documents stay as stored; the reader plays them. `--transforms video` still converts a legacy block that has top-level `url`, `id`, or `file`. It leaves an editor video block unchanged (`asset` with `_ref` or `url`, and none of those legacy fields).
+
+```mermaid
+flowchart TD
+  block["1.2.0 video block"] --> resolve["resolveStoredVideoPlayback"]
+  embed["embed provider video"] --> resolve
+  resolve --> player["VideoWithCaptions"]
+  resolve --> core["core Video"]
+  embedView["EmbedWithCaptions"] --> player
+  embedView --> other["core Embed"]
+```
 
 ```mermaid
 flowchart LR
   value[poster value] --> reader[shared media-file reader]
   reader --> allow[image path or https]
-  allow --> box["width and height, or 16:9"]
+  allow --> box["block width and height, or poster box, or 16:9"]
   box --> player["preload none and reserved ratio"]
 ```
 
@@ -47,7 +58,7 @@ npm run pt:migrate:scan:embed-url
 
 Zero hits = no published/draft posts with video-on-`id` and empty `url`. Non-zero = restore `url` (section 2) even if the Worker already has the `id` fallback — the next editor save is safer with both fields.
 
-**After Worker deploys that touch `EmbedWithCaptions`**
+**After Worker deploys that touch `VideoWithCaptions` or `EmbedWithCaptions`**
 
 Spot-check a known self-hosted post (Aberdeen hall clip) signed-in on staging. Editor visible + published missing is this bug, not a missing media file.
 

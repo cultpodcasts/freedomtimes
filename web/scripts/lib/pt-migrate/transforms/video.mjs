@@ -61,12 +61,32 @@ function toMediaFileUrl(src) {
 	return src;
 }
 
+function hasText(value) {
+	return typeof value === 'string' && value.trim().length > 0;
+}
+
 /**
- * Legacy FT `_type: "video"` → plugin `youtube` or core `embed`+provider video.
+ * An EmDash 1.2.0 editor video: `asset` carries `_ref` or `url`, and the node
+ * has no legacy top-level `url` / `id` / `file`. Those blocks stay video blocks.
+ */
+function isEditorVideoBlock(block) {
+	const asset = block.asset;
+	if (!asset || typeof asset !== 'object' || Array.isArray(asset)) return false;
+	if (!hasText(asset._ref) && !hasText(asset.url)) return false;
+	if (hasText(block.url) || hasText(block.id) || hasText(block.file)) return false;
+	return true;
+}
+
+/**
+ * Legacy FT `_type: "video"` with top-level `url` / `id` / `file` → plugin `youtube`
+ * or core `embed`+provider video. An editor video block is returned unchanged.
  * @returns {{ block: object, change: object | null }}
  */
 export function transformVideoBlock(block, index) {
 	if (!block || block._type !== 'video') {
+		return { block, change: null };
+	}
+	if (isEditorVideoBlock(block)) {
 		return { block, change: null };
 	}
 	const src = resolveVideoSrc(block);
@@ -128,7 +148,7 @@ export function transformVideoBlock(block, index) {
 export const videoTransform = {
 	id: 'video',
 	description:
-		'Legacy FT video → youtube (plugin-embeds) or embed+provider:video (self-hosted)',
+		'Legacy FT video with url/id/file → youtube or embed+provider:video. Editor video blocks (asset._ref or asset.url, no top-level url/id/file) are left unchanged.',
 	/** @param {unknown} block */
 	matches(block) {
 		return Boolean(block && typeof block === 'object' && block._type === 'video');

@@ -1,9 +1,9 @@
+import { resolveVideoCaptionTracks } from '../src/lib/content/videoCaptionTracks.ts';
 import {
 	resolveSelfHostedVideoUrl,
-	resolveVideoBlockPlayback,
+	resolveStoredVideoPlayback,
 	resolveVideoBlockSrc,
-	resolveVideoCaptionTracks,
-} from '../src/lib/content/videoCaptionTracks.ts';
+} from '../src/lib/content/videoPlayback.ts';
 import {
 	resolveSelfHostedVideoFrame,
 	resolveVideoPoster,
@@ -14,6 +14,7 @@ import {
 	legacyVideoToPortableNode,
 	parseLegacyTextContent,
 } from '../src/lib/content/contentBlocks.ts';
+import { applyTransforms, resolveTransforms } from './lib/pt-migrate/transforms/index.mjs';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -191,19 +192,22 @@ describe('EmDash 1.2.0 video block', () => {
 
 	it('plays asset.url and ignores the media id', () => {
 		assert.equal(resolveVideoBlockSrc(block), videoUrl);
-		assert.deepEqual(resolveVideoBlockPlayback(block), { kind: 'local', src: videoUrl });
-		assert.deepEqual(
-			resolveVideoBlockPlayback({
-				_type: 'video',
-				_key: 'remote',
-				asset: {
-					_ref: 'remote',
-					url: 'https://archive.org/download/example/film.mp4',
-					provider: 'local',
-				},
-			}),
-			{ kind: 'local', src: 'https://archive.org/download/example/film.mp4' },
-		);
+		const playback = resolveStoredVideoPlayback(block);
+		assert.equal(playback.kind, 'player');
+		if (playback.kind !== 'player') return;
+		assert.equal(playback.src, videoUrl);
+		const remote = resolveStoredVideoPlayback({
+			_type: 'video',
+			_key: 'remote',
+			asset: {
+				_ref: 'remote',
+				url: 'https://archive.org/download/example/film.mp4',
+				provider: 'local',
+			},
+		});
+		assert.equal(remote.kind, 'player');
+		if (remote.kind !== 'player') return;
+		assert.equal(remote.src, 'https://archive.org/download/example/film.mp4');
 		assert.equal(
 			resolveVideoBlockSrc({
 				_type: 'video',
@@ -212,7 +216,7 @@ describe('EmDash 1.2.0 video block', () => {
 			null,
 		);
 		assert.deepEqual(
-			resolveVideoBlockPlayback({
+			resolveStoredVideoPlayback({
 				_type: 'video',
 				asset: { _ref: '01M1MX4CVV7DK7CFFA64RKGWV5' },
 			}),
@@ -244,7 +248,7 @@ describe('EmDash 1.2.0 video block', () => {
 			captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
 		};
 		assert.equal(resolveVideoBlockSrc(node), null);
-		assert.deepEqual(resolveVideoBlockPlayback(node), {
+		assert.deepEqual(resolveStoredVideoPlayback(node), {
 			kind: 'core',
 			node: {
 				_type: 'video',
@@ -259,7 +263,7 @@ describe('EmDash 1.2.0 video block', () => {
 				height: 1080,
 			},
 		});
-		const fractional = resolveVideoBlockPlayback({
+		const fractional = resolveStoredVideoPlayback({
 			...node,
 			width: 1.5,
 			height: 0,
@@ -282,7 +286,7 @@ describe('EmDash 1.2.0 video block', () => {
 				captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
 			};
 			assert.equal(resolveVideoBlockSrc(node), null);
-			assert.deepEqual(resolveVideoBlockPlayback(node), { kind: 'none' });
+			assert.deepEqual(resolveStoredVideoPlayback(node), { kind: 'none' });
 		}
 	});
 
@@ -316,8 +320,16 @@ describe('EmDash 1.2.0 video block', () => {
 		const poster = resolveVideoPoster(node);
 		assert.equal(poster, null);
 		assert.equal(selfHostedVideoPreload(poster), 'metadata');
-		assert.deepEqual(resolveVideoBlockPlayback(node), { kind: 'local', src: videoUrl });
-		assert.deepEqual(resolveSelfHostedVideoFrame(node, poster), {
+		const playback = resolveStoredVideoPlayback(node);
+		assert.equal(playback.kind, 'player');
+		if (playback.kind !== 'player') return;
+		assert.equal(playback.src, videoUrl);
+		assert.equal(playback.poster, null);
+		assert.equal(playback.preload, 'metadata');
+		assert.equal(playback.tracks.length, 1);
+		assert.equal(playback.tracks[0].src, vtt);
+		assert.equal(playback.tracks[0].isDefault, true);
+		assert.deepEqual(playback.frame, {
 			width: 1920,
 			height: 1080,
 			aspectRatio: '1920 / 1080',
@@ -337,10 +349,112 @@ describe('EmDash 1.2.0 video block', () => {
 			asset: block.asset,
 			captions: block.captions,
 		};
+		const playback = resolveStoredVideoPlayback(node);
+		assert.equal(playback.kind, 'player');
+		if (playback.kind !== 'player') return;
+		assert.equal(playback.poster, null);
+		assert.equal(playback.frame, null);
+		assert.equal(playback.preload, 'metadata');
+		assert.equal(playback.src, videoUrl);
+	});
+
+	it('does not let a fractional block dimension replace the poster box', () => {
+		const node = {
+			_type: 'video',
+			asset: { url: videoUrl },
+			width: 1920.5,
+			height: 1080,
+			poster: posterPath,
+		};
 		const poster = resolveVideoPoster(node);
-		assert.equal(poster, null);
-		assert.equal(resolveSelfHostedVideoFrame(node, poster), null);
-		assert.equal(selfHostedVideoPreload(poster), 'metadata');
+		assert.deepEqual(resolveSelfHostedVideoFrame(node, poster), {
+			width: 16,
+			height: 9,
+			aspectRatio: '16 / 9',
+		});
+	});
+});
+
+describe('one player for both stored shapes', () => {
+	const shared = {
+		caption: 'Hall',
+		width: 1920,
+		height: 1080,
+		poster: posterPath,
+		captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
+	};
+
+	it('plays a stored embed and a local video block through the same playback value', () => {
+		const fromBlock = resolveStoredVideoPlayback({
+			_type: 'video',
+			_key: 'clip',
+			asset: { _ref: '01M1MX4CVV7DK7CFFA64RKGWV5', url: videoUrl },
+			...shared,
+		});
+		const fromEmbed = resolveStoredVideoPlayback({
+			_type: 'embed',
+			provider: 'video',
+			url: videoUrl,
+			...shared,
+		});
+		assert.deepEqual(fromBlock, fromEmbed);
+		assert.equal(fromBlock.kind, 'player');
+		if (fromBlock.kind !== 'player') return;
+		assert.equal(fromBlock.src, videoUrl);
+		assert.equal(fromBlock.caption, 'Hall');
+		assert.equal(fromBlock.poster?.src, posterPath);
+		assert.deepEqual(fromBlock.frame, {
+			width: 1920,
+			height: 1080,
+			aspectRatio: '1920 / 1080',
+		});
+		assert.equal(fromBlock.preload, 'none');
+		assert.equal(fromBlock.tracks.length, 1);
+		assert.equal(fromBlock.tracks[0].src, vtt);
+		assert.equal(fromBlock.tracks[0].isDefault, true);
+	});
+
+	it('plays a stored embed that has no poster', () => {
+		const playback = resolveStoredVideoPlayback({
+			_type: 'embed',
+			provider: 'video',
+			url: videoUrl,
+			captionsUrl: vtt,
+			captionsDefaultOn: true,
+		});
+		assert.equal(playback.kind, 'player');
+		if (playback.kind !== 'player') return;
+		assert.equal(playback.src, videoUrl);
+		assert.equal(playback.poster, null);
+		assert.equal(playback.frame, null);
+		assert.equal(playback.preload, 'metadata');
+		assert.equal(playback.tracks.length, 1);
+		assert.equal(playback.tracks[0].src, vtt);
+		assert.equal(playback.tracks[0].isDefault, true);
+	});
+
+	it('plays a stored embed whose mp4 is only on id', () => {
+		const playback = resolveStoredVideoPlayback({
+			_type: 'embed',
+			provider: 'video',
+			id: videoUrl,
+		});
+		assert.equal(playback.kind, 'player');
+		if (playback.kind !== 'player') return;
+		assert.equal(playback.src, videoUrl);
+		assert.equal(playback.poster, null);
+		assert.equal(playback.preload, 'metadata');
+	});
+
+	it('does not play a refused embed url', () => {
+		assert.deepEqual(
+			resolveStoredVideoPlayback({
+				_type: 'embed',
+				provider: 'video',
+				url: 'javascript:alert(1)',
+			}),
+			{ kind: 'none' },
+		);
 	});
 });
 
@@ -364,17 +478,136 @@ describe('markdown video blocks keep poster', () => {
 		assert.equal(node.url, videoUrl);
 	});
 
-	it('copies poster from a legacy video ec:block onto the embed node', () => {
+	it('writes a self-hosted legacy video as a 1.2.0 video block', () => {
 		const node = legacyVideoToPortableNode({
 			_type: 'video',
 			url: 'https://archive.org/download/example/film.mp4',
 			poster: { url: httpsPoster },
 			alt: 'Hall',
+			width: 1920,
+			height: 1080,
+			captionsUrl: vtt,
+			captionsDefaultOn: true,
 		});
-		assert.ok(node);
-		assert.equal(node._type, 'embed');
-		assert.equal(node.provider, 'video');
-		assert.deepEqual(node.poster, { url: httpsPoster });
-		assert.equal(node.caption, 'Hall');
+		assert.deepEqual(node, {
+			_type: 'video',
+			asset: { url: 'https://archive.org/download/example/film.mp4' },
+			caption: 'Hall',
+			width: 1920,
+			height: 1080,
+			poster: { url: httpsPoster },
+			captionsUrl: vtt,
+			captionsDefaultOn: true,
+		});
+	});
+
+	it('puts a bare media id on asset._ref and ignores a path id', () => {
+		const withId = legacyVideoToPortableNode({
+			_type: 'video',
+			url: videoUrl,
+			id: '01M1MX4CVV7DK7CFFA64RKGWV5',
+		});
+		assert.deepEqual(withId?.asset, {
+			_ref: '01M1MX4CVV7DK7CFFA64RKGWV5',
+			url: videoUrl,
+		});
+		const pathId = legacyVideoToPortableNode({
+			_type: 'video',
+			url: videoUrl,
+			id: videoUrl,
+		});
+		assert.deepEqual(pathId?.asset, { url: videoUrl });
+	});
+
+	it('drops a non-integer dimension', () => {
+		const node = legacyVideoToPortableNode({
+			_type: 'video',
+			url: videoUrl,
+			width: 1.5,
+			height: 1080,
+		});
+		assert.equal(node?.width, undefined);
+		assert.equal(node?.height, 1080);
+	});
+
+	it('leaves youtube as a youtube node', () => {
+		const node = legacyVideoToPortableNode({
+			_type: 'video',
+			url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+			alt: 'Clip',
+			poster: posterPath,
+		});
+		assert.equal(node?._type, 'youtube');
+		assert.equal(node?.title, 'Clip');
+		assert.equal(node?.poster, undefined);
+	});
+});
+
+describe('video transform leaves editor blocks', () => {
+	const transforms = resolveTransforms(['video']);
+
+	it('leaves an editor video block unchanged', () => {
+		const editor = {
+			_type: 'video',
+			_key: 'clip',
+			asset: { _ref: '01M1MX4CVV7DK7CFFA64RKGWV5', url: videoUrl },
+			width: 1920,
+			height: 1080,
+			caption: 'Hall',
+			poster: posterPath,
+			captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
+		};
+		const { content, changes } = applyTransforms([editor], transforms);
+		assert.equal(changes.length, 0);
+		assert.deepEqual(content[0], editor);
+	});
+
+	it('leaves an editor block whose asset url is a youtube watch url', () => {
+		const editor = {
+			_type: 'video',
+			asset: {
+				_ref: 'yt',
+				url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+				provider: 'youtube',
+			},
+			width: 1920,
+			height: 1080,
+		};
+		const { content, changes } = applyTransforms([editor], transforms);
+		assert.equal(changes.length, 0);
+		assert.deepEqual(content[0], editor);
+	});
+
+	it('still converts a legacy video that has a top-level url', () => {
+		const { content, changes } = applyTransforms(
+			[{ _type: 'video', url: videoUrl, alt: 'Hall' }],
+			transforms,
+		);
+		assert.equal(changes.length, 1);
+		const block = content[0] as Record<string, unknown>;
+		assert.equal(block._type, 'embed');
+		assert.equal(block.provider, 'video');
+		assert.equal(block.url, videoUrl);
+		assert.equal(block.caption, 'Hall');
+	});
+
+	it('still converts a legacy youtube video block', () => {
+		const { content, changes } = applyTransforms(
+			[{ _type: 'video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', alt: 'Clip' }],
+			transforms,
+		);
+		assert.equal(changes.length, 1);
+		const block = content[0] as Record<string, unknown>;
+		assert.equal(block._type, 'youtube');
+		assert.equal(block.id, 'dQw4w9WgXcQ');
+	});
+
+	it('still rewrites a video block that has both asset.url and a legacy url', () => {
+		const { content, changes } = applyTransforms(
+			[{ _type: 'video', url: videoUrl, asset: { _ref: 'clip', url: videoUrl } }],
+			transforms,
+		);
+		assert.equal(changes.length, 1);
+		assert.equal((content[0] as Record<string, unknown>)._type, 'embed');
 	});
 });
