@@ -1,0 +1,93 @@
+---
+/**
+ * Portable Text `_type: "video"` override for EmDash 1.2.0.
+ *
+ * Core `Video` renders only a block whose fields are `_type`, `_key`, `asset`,
+ * `caption`, `width`, and `height`. A `poster` or WebVTT extra makes that check
+ * fail, and the core component renders nothing. Local `getEmbed` also never
+ * sets `poster`. This override plays `asset.url`, keeps caption tracks, and
+ * reserves the block's width and height when a poster is shown.
+ *
+ * A provider video with no local file URL is passed to core `Video` with the
+ * built-in fields only, so the provider embed still renders.
+ */
+import { Video as CoreVideo } from 'emdash/ui';
+import {
+	resolveVideoBlockSrc,
+	resolveVideoCaptionTracks,
+} from '../lib/content/videoCaptionTracks';
+import {
+	resolveSelfHostedVideoFrame,
+	resolveVideoPoster,
+	selfHostedVideoPreload,
+} from '../lib/content/videoPoster';
+
+const props = Astro.props as Record<string, unknown>;
+const node =
+	(props.node as Record<string, unknown> | undefined)
+	?? (props.value as Record<string, unknown> | undefined)
+	?? props;
+
+function readString(input: unknown): string | null {
+	return typeof input === 'string' && input.trim().length > 0 ? input.trim() : null;
+}
+
+const src = node._type === 'video' ? resolveVideoBlockSrc(node) : null;
+const caption = readString(node.caption);
+const poster = src ? resolveVideoPoster(node) : null;
+const frame = src ? resolveSelfHostedVideoFrame(node, poster) : null;
+const preload = selfHostedVideoPreload(poster);
+const captionTracks = src ? resolveVideoCaptionTracks(node, src) : [];
+
+const coreNode = {
+	_type: 'video' as const,
+	_key: typeof node._key === 'string' ? node._key : 'video',
+	asset:
+		node.asset && typeof node.asset === 'object' && !Array.isArray(node.asset)
+			? (node.asset as { _ref: string; url?: string; provider?: string })
+			: undefined,
+	caption: caption ?? undefined,
+	width: typeof node.width === 'number' ? node.width : undefined,
+	height: typeof node.height === 'number' ? node.height : undefined,
+};
+---
+
+{
+	src ? (
+		<figure class="emdash-embed">
+			<div class="emdash-embed-video">
+				<video
+					controls
+					preload={preload}
+					poster={poster?.src}
+					width={frame?.width}
+					height={frame?.height}
+					style={frame ? { aspectRatio: frame.aspectRatio } : undefined}
+				>
+					<source src={src} type="video/mp4" />
+					{captionTracks.map((track) =>
+						track.isDefault ? (
+							<track
+								kind="captions"
+								src={track.src}
+								srclang={track.srclang}
+								label={track.label}
+								default
+							/>
+						) : (
+							<track
+								kind="captions"
+								src={track.src}
+								srclang={track.srclang}
+								label={track.label}
+							/>
+						),
+					)}
+				</video>
+			</div>
+			{caption && <figcaption>{caption}</figcaption>}
+		</figure>
+	) : node._type === 'video' ? (
+		<CoreVideo node={coreNode} />
+	) : null
+}

@@ -2,7 +2,7 @@
 
 Incident (2026-09-16): [Sham Aberdeen Ambush](https://staging.freedomtimes.news/posts/sham-aberdeen-ambush-james-taylor-jr-1970) still showed the hall clip in the **EmDash editor**, but the **published article** had no `<video>`. Stored PT was `_type: "embed"`, `provider: "video"`, MP4 on **`id`**, no **`url`**. Older reader code only read `url`. Cursor `content_update` could not carry the ~60KB Portable Text array as a tool argument (and a markdown string would have destroyed the embed).
 
-Canonical code: `EmbedWithCaptions.astro`, `resolveSelfHostedVideoUrl` in `web/src/lib/content/videoCaptionTracks.ts`, and `resolveVideoPoster` in `web/src/lib/content/videoPoster.ts`.
+Canonical code: `VideoWithCaptions.astro` (EmDash 1.2.0 `_type: "video"`), `EmbedWithCaptions.astro` (older `_type: "embed"` + `provider: "video"`), `resolveVideoBlockSrc` / `resolveSelfHostedVideoUrl` in `web/src/lib/content/videoCaptionTracks.ts`, and `resolveVideoPoster` / `resolveSelfHostedVideoFrame` in `web/src/lib/content/videoPoster.ts`.
 
 ## 1. Mitigate videos disappearing
 
@@ -19,7 +19,8 @@ Do these so the published player does not vanish after an admin save.
 - Keep caption extras on the same node (`captionsUrl` / `captions[]` / `captionsDefaultOn`). Schema has no captions field; extras persist only if `content_update` sends a **Portable Text array**, never markdown.
 - Optional holding image: `poster` on the same embed node. Accepted shapes are a string `/_emdash/api/media/file/<storageKey>.(jpg|jpeg|png|webp)`, an `https` URL, or a media-library object (`{ url }`, `{ id: "<storageKey>.jpg" }`, `{ _ref: "<storageKey>.jpg" }`, `{ storageKey }`, `{ asset: { url } }`, or a library row with `meta.storageKey`). The reader resolves that object with the shared media-file helper, then runs EmDash `sanitizeHref` and keeps only an image media path or an `https` URL. `http`, unsafe schemes, and non-image files are ignored.
 - When a poster resolves, the player reserves a box before file metadata arrives. Numeric `width` and `height` on the poster object (`displayWidth` / `displayHeight` when those are set) are copied onto `<video>`, and `aspect-ratio` is set from those numbers. The article CSS (`width: 100%`, `height: auto`) then uses that ratio instead of the browser's 300×150 default. A poster with no dimensions uses **16 / 9**. `preload="none"` is set only together with that reserved ratio. Without a poster, `preload` stays `metadata`, `poster` is omitted, and the box comes from the file.
-- MCP / agent drafts: write `_type: "embed"`, `provider: "video"`, `url: "/_emdash/api/media/file/<key>.mp4"`. Copy that path onto `id` if the editor widget uses `id`.
+- EmDash 1.2.0's editor video block is `_type: "video"` with `asset.url`, `asset._ref`, optional `caption`, and integer `width` / `height`. Core `Video` renders that block only when those are its only fields, and its local player does not set `poster`. A `poster` or WebVTT extra on that block makes core `Video` render nothing. `VideoWithCaptions` is the Portable Text `video` override: it plays `asset.url`, keeps caption tracks, and reserves `width` / `height` from the block when a poster is shown. Poster dimensions, or 16 / 9, are used only when the block has no dimensions. A provider video with no local file URL is passed to core `Video` using the built-in fields only.
+- Older posts stay `_type: "embed"`, `provider: "video"`. MCP / agent drafts that are not the 1.2.0 video block still write that embed, with `url: "/_emdash/api/media/file/<key>.mp4"`. Copy that path onto `id` if the editor widget uses `id`. New editor videos should be the 1.2.0 block, with `poster` and caption tracks on the same node.
 
 ```mermaid
 flowchart LR

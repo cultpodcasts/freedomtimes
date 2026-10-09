@@ -141,3 +141,23 @@ export function selfHostedVideoPreload(
 ): 'none' | 'metadata' {
 	return poster ? 'none' : 'metadata';
 }
+
+/**
+ * Box reserved for a self-hosted player.
+ * EmDash 1.2.0 stores integer `width` and `height` on the video block itself.
+ * Those win over the poster image, because they are the file's dimensions.
+ * A poster with no block dimensions uses the poster box (or 16 / 9).
+ * No poster and no block dimensions leaves the box to file metadata.
+ */
+export function resolveSelfHostedVideoFrame(
+	node: Record<string, unknown>,
+	poster: ResolvedVideoPoster | null,
+): { width: number; height: number; aspectRatio: string } | null {
+	const width = readPositiveNumber(node.width);
+	const height = readPositiveNumber(node.height);
+	if (width != null && height != null) {
+		return { width, height, aspectRatio: `${width} / ${height}` };
+	}
+	if (!poster) return null;
+	return { width: poster.width, height: poster.height, aspectRatio: poster.aspectRatio };
+}

@@ -5,6 +5,7 @@ import PushNotificationsCallout from "../components/PushNotificationsCallout.ast
 import ReaderDataProvenance from "../components/ReaderDataProvenance.astro";
 import Audio from "../components/Audio.astro";
 import EmbedWithCaptions from "./EmbedWithCaptions.astro";
+import VideoWithCaptions from "./VideoWithCaptions.astro";
 import ImageWithLink from "./ImageWithLink.astro";
 import EntryHeader from "./content/EntryHeader.astro";
 import EntryMedia from "./content/EntryMedia.astro";
@@ -80,13 +81,15 @@ const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
 // - image: FT ImageWithLink (figcaption + open full media in new tab)
 // - link: EmDash defaults
 // - youtube: plugin-embeds
-// - embed: FT override (self-hosted video + optional WebVTT track; else core Embed)
+// - video: FT override (EmDash 1.2.0 video block + optional poster and WebVTT)
+// - embed: FT override (older self-hosted video embeds + optional WebVTT; else core Embed)
 // - audio: FT override (Apple/Spotify iframe podcasts — no official type yet)
 const portableComponents = {
 	type: {
 		audio: Audio,
 		embed: EmbedWithCaptions,
 		image: ImageWithLink,
+		video: VideoWithCaptions,
 	},
 };
 

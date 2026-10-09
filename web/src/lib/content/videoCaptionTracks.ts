@@ -116,6 +116,19 @@ export function resolveSelfHostedVideoUrl(node: Record<string, unknown>): string
 }
 
 /**
+ * Playable file for an EmDash 1.2.0 `_type: "video"` block.
+ * The editor stores the file on `asset.url`. `_ref` is the media id and is not a file URL.
+ * The same allow-list as `resolveSelfHostedVideoUrl` applies.
+ */
+export function resolveVideoBlockSrc(node: Record<string, unknown>): string | null {
+	const asset = node.asset;
+	if (!asset || typeof asset !== 'object' || Array.isArray(asset)) return null;
+	const url = readString((asset as Record<string, unknown>).url);
+	if (!url) return null;
+	return acceptSanitizedVideoSrc(sanitizeHref(url));
+}
+
+/**
  * Known video → VTT pairs. Leave empty unless the mp4 on that URL is unburned.
  * Example (after Admin / CLI upload of the unburned file):
  *   '/_emdash/api/media/file/<mp4-key>.mp4': '/_emdash/api/media/file/<vtt-key>.vtt'

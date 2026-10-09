@@ -1,8 +1,10 @@
 import {
 	resolveSelfHostedVideoUrl,
+	resolveVideoBlockSrc,
 	resolveVideoCaptionTracks,
 } from '../src/lib/content/videoCaptionTracks.ts';
 import {
+	resolveSelfHostedVideoFrame,
 	resolveVideoPoster,
 	selfHostedVideoPreload,
 	type ResolvedVideoPoster,
@@ -169,6 +171,64 @@ describe('resolveSelfHostedVideoUrl sanitise', () => {
 		assert.equal(resolveSelfHostedVideoUrl({ id: 'javascript:alert(1)' }), null);
 		assert.equal(resolveSelfHostedVideoUrl({ id: vtt }), null);
 		assert.equal(resolveSelfHostedVideoUrl({ id: '/homepage' }), null);
+	});
+});
+
+describe('EmDash 1.2.0 video block', () => {
+	const block = {
+		_type: 'video',
+		_key: 'clip',
+		asset: {
+			_ref: '01M1MX4CVV7DK7CFFA64RKGWV5',
+			url: videoUrl,
+		},
+		width: 1920,
+		height: 1080,
+		poster: posterPath,
+		captions: [{ url: vtt, srclang: 'en', label: 'English', default: true }],
+	};
+
+	it('plays asset.url and ignores the media id', () => {
+		assert.equal(resolveVideoBlockSrc(block), videoUrl);
+		assert.equal(
+			resolveVideoBlockSrc({
+				_type: 'video',
+				asset: { _ref: '01M1MX4CVV7DK7CFFA64RKGWV5' },
+			}),
+			null,
+		);
+		assert.equal(
+			resolveVideoBlockSrc({
+				_type: 'video',
+				asset: { _ref: 'clip', url: 'javascript:alert(1)' },
+			}),
+			null,
+		);
+	});
+
+	it('reserves the block width and height when a poster is also set', () => {
+		const poster = resolveVideoPoster(block);
+		assert.equal(poster?.src, posterPath);
+		assert.deepEqual(resolveSelfHostedVideoFrame(block, poster), {
+			width: 1920,
+			height: 1080,
+			aspectRatio: '1920 / 1080',
+		});
+		assert.equal(selfHostedVideoPreload(poster), 'none');
+		const tracks = resolveVideoCaptionTracks(block, videoUrl);
+		assert.equal(tracks.length, 1);
+		assert.equal(tracks[0].src, vtt);
+		assert.equal(tracks[0].isDefault, true);
+	});
+
+	it('uses 16:9 for a poster when the block has no dimensions', () => {
+		const node = { _type: 'video', asset: { url: videoUrl }, poster: httpsPoster };
+		const poster = resolveVideoPoster(node);
+		assert.deepEqual(resolveSelfHostedVideoFrame(node, poster), {
+			width: 16,
+			height: 9,
+			aspectRatio: '16 / 9',
+		});
 	});
 });
 
