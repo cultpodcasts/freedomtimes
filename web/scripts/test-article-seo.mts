@@ -145,7 +145,7 @@ describe('buildNewsArticleJsonLd', () => {
 				organisations: [{ name: 'CVLT', type: 'cult' }],
 				places: [{ name: 'Paris' }],
 			}),
-			section: { name: 'Weekly summaries', url: '/weekly-summaries' },
+			section: { name: 'Weekly summaries' },
 		});
 		assert.equal(ld.description, 'Lede sentence.');
 		assert.deepEqual(ld.author, { '@type': 'Person', name: 'Jane Reporter' });
@@ -177,11 +177,11 @@ describe('buildBreadcrumbJsonLd', () => {
 		const ld = buildBreadcrumbJsonLd({
 			origin: ORIGIN,
 			siteName: 'freedom times',
-			trail: [{ name: 'Weekly summaries', url: '/weekly-summaries' }, { name: 'Post', url: `${ORIGIN}/posts/x` }],
+			trail: [{ name: 'Section', url: '/section' }, { name: 'Post', url: `${ORIGIN}/posts/x` }],
 		});
 		assert.deepEqual(ld.itemListElement, [
 			{ '@type': 'ListItem', position: 1, name: 'freedom times', item: `${ORIGIN}/` },
-			{ '@type': 'ListItem', position: 2, name: 'Weekly summaries', item: `${ORIGIN}/weekly-summaries` },
+			{ '@type': 'ListItem', position: 2, name: 'Section', item: `${ORIGIN}/section` },
 			{ '@type': 'ListItem', position: 3, name: 'Post', item: `${ORIGIN}/posts/x` },
 		]);
 	});
@@ -207,12 +207,13 @@ describe('resolveCanonicalRedirect', () => {
 	it('301 targets', () => {
 		assert.equal(resolveCanonicalRedirect('/posts/weekly-summary-11-october-2026/'), '/posts/weekly-summary-11-october-2026');
 		assert.equal(resolveCanonicalRedirect('/posts/abc//', '?x=1'), '/posts/abc?x=1');
-		assert.equal(resolveCanonicalRedirect('/weekly-summaries/'), '/weekly-summaries');
+		assert.equal(resolveCanonicalRedirect('/weekly-summaries'), '/');
+		assert.equal(resolveCanonicalRedirect('/weekly-summaries/'), '/');
 		assert.equal(resolveCanonicalRedirect('/posts/contact-us'), '/contact-us');
 		assert.equal(resolveCanonicalRedirect('/posts/about-us/'), '/about-us');
 	});
 	it('leaves canonical URLs alone', () => {
-		for (const path of ['/', '/posts/abc', '/weekly-summaries', '/contact-us', '/archives/', '/_emdash/admin/', '/posts/abc/edit']) {
+		for (const path of ['/', '/posts/abc', '/weekly-summariesx', '/contact-us', '/archives/', '/_emdash/admin/', '/posts/abc/edit']) {
 			assert.equal(resolveCanonicalRedirect(path), null, path);
 		}
 	});

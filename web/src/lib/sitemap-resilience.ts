@@ -13,7 +13,7 @@
  *   last-known-good copy.
  * - A failed generation (any non-200 or a throw) serves last-known-good,
  *   else 503 + Retry-After. Known sitemap paths never return 404.
- * - `/sitemap-posts.xml` also lists the `/weekly-summaries` hub.
+ * - Optional `hubPath` injects an extra URL into `/sitemap-posts.xml` (unused since the weekly hub was retired).
  *
  * Access control: when the site is locked (staging), the wrapper does NOT
  * read or write the cache and passes the downstream response through

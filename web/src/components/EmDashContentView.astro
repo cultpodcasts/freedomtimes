@@ -23,8 +23,7 @@ import {
 import { SITE_DISPLAY_NAME } from "../lib/site-brand";
 import { getWeeklySummaries } from "../lib/seo/weekly-list";
 import {
-	WEEKLY_SUMMARIES_HUB_PATH,
-	WEEKLY_SUMMARIES_HUB_TITLE,
+	WEEKLY_SUMMARIES_SECTION_TITLE,
 	buildBreadcrumbJsonLd,
 	buildNewsArticleJsonLd,
 	findWeeklyNeighbours,
@@ -168,16 +167,13 @@ const jsonLd: Record<string, unknown>[] = isPost
 				subjects,
 				siteName: SITE_DISPLAY_NAME,
 				section: isWeekly
-					? { name: WEEKLY_SUMMARIES_HUB_TITLE, url: WEEKLY_SUMMARIES_HUB_PATH }
+					? { name: WEEKLY_SUMMARIES_SECTION_TITLE }
 					: null,
 			}),
 			buildBreadcrumbJsonLd({
 				origin: Astro.url.origin,
 				siteName: SITE_DISPLAY_NAME,
 				trail: [
-					...(isWeekly
-						? [{ name: WEEKLY_SUMMARIES_HUB_TITLE, url: WEEKLY_SUMMARIES_HUB_PATH }]
-						: []),
 					{ name: title, url: absoluteCanonicalUrl },
 				],
 			}),
@@ -250,7 +246,6 @@ const jsonLd: Record<string, unknown>[] = isPost
 								<span class="weekly-nav-title">{weeklyPrevious.title}</span>
 							</a>
 						) : <span />}
-						<a class="weekly-nav-hub" href={WEEKLY_SUMMARIES_HUB_PATH}>All weekly summaries</a>
 						{weeklyNext ? (
 							<a class="weekly-nav-next" rel="next" href={`/posts/${weeklyNext.slug}`}>
 								<span class="weekly-nav-label">Next week →</span>
@@ -269,7 +264,7 @@ const jsonLd: Record<string, unknown>[] = isPost
 <style>
 	.weekly-nav {
 		display: grid;
-		grid-template-columns: 1fr auto 1fr;
+		grid-template-columns: 1fr 1fr;
 		gap: 1rem;
 		align-items: start;
 		margin: 2.5rem 0 1.5rem;
@@ -292,11 +287,6 @@ const jsonLd: Record<string, unknown>[] = isPost
 		text-align: right;
 	}
 
-	.weekly-nav-hub {
-		font-size: 0.85rem;
-		font-weight: 600;
-		align-self: center;
-	}
 
 	.weekly-nav-label {
 		display: block;

@@ -1,7 +1,7 @@
 # SEO: meta, structured data, weekly-summary navigation, sitemaps
 
 Code: `web/src/lib/seo/article-seo.ts`, `web/src/lib/sitemap-resilience.ts`,
-`web/src/components/EmDashContentView.astro`, `web/src/pages/weekly-summaries.astro`,
+`web/src/components/EmDashContentView.astro`,
 `web/src/middleware.ts`. Tests: `npm run test:article-seo`, `npm run test:sitemap-resilience`
 (both also run in `npm run build`).
 
@@ -48,12 +48,12 @@ The template tolerates the fields being absent, so code can deploy before or aft
 ## Weekly summaries
 
 Slug prefix `weekly-summary-`. Posts get previous/next links (`rel="prev"`/`rel="next"`) ordered by
-`coverage_start`, else published date. Hub at `/weekly-summaries` (nav link, listed in
-`sitemap-posts.xml`, same access rules as posts — staging stays locked).
+`coverage_start`, else published date. There is no hub page: the homepage links every weekly summary,
+and the retired `/weekly-summaries` URL 301s to `/`.
 
 ## Redirects (301)
 
-`/posts/<slug>/` → `/posts/<slug>`; `/weekly-summaries/` → `/weekly-summaries`;
+`/posts/<slug>/` → `/posts/<slug>`; `/weekly-summaries` and `/weekly-summaries/` → `/`;
 `/posts/{about-us,contact-us,privacy-policy,submit-a-tip}` → `/<slug>`.
 
 ## Sitemaps

@@ -42,7 +42,6 @@ const homePath = getHomePath();
 		<div id="mobile-nav-content" class="mobile-nav-content">
 		<div class="nav-links">
 			<a href={homePath} class={Astro.url.pathname === '/' || Astro.url.pathname === '/homepage' ? 'active' : ''}>Home</a>
-			<a href="/weekly-summaries" class={Astro.url.pathname.startsWith('/weekly-summaries') ? 'active' : ''}>Weekly summaries</a>
 			<a href="/archives" class={Astro.url.pathname.startsWith('/archives') ? 'active' : ''}>Archives</a>
 			{isAdmin && (
 				<a

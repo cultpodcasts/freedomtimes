@@ -14,8 +14,10 @@
 export const PUBLISHER_LOGO_PATH = '/social/avatar-ft-400.png';
 export const PUBLISHER_LOGO_SIZE = 400;
 export const WEEKLY_SUMMARY_SLUG_PREFIX = 'weekly-summary-';
-export const WEEKLY_SUMMARIES_HUB_PATH = '/weekly-summaries';
-export const WEEKLY_SUMMARIES_HUB_TITLE = 'Weekly summaries';
+/** articleSection for weekly summaries (there is no hub page; the homepage links every summary). */
+export const WEEKLY_SUMMARIES_SECTION_TITLE = 'Weekly summaries';
+/** Retired hub path: `/weekly-summaries` and `/weekly-summaries/` 301 to the homepage. */
+export const RETIRED_WEEKLY_HUB_PATH = '/weekly-summaries';
 
 export type ArticlePerson = { name: string; url?: string };
 export type ArticleOrganisation = { name: string; type?: string; url?: string };
@@ -206,7 +208,7 @@ export interface ArticleJsonLdInput {
 	imageUrls: string[];
 	subjects: string[];
 	siteName: string;
-	section?: { name: string; url: string } | null;
+	section?: { name: string; url?: string } | null;
 }
 
 function absolute(origin: string, pathOrUrl: string): string {
@@ -359,7 +361,7 @@ export const MISROUTED_PAGE_SLUGS = ['about-us', 'contact-us', 'privacy-policy',
 /**
  * Canonical redirect for reader URLs (301), or null:
  * - `/posts/<slug>/` → `/posts/<slug>` (trailing slash)
- * - `/weekly-summaries/` → `/weekly-summaries`
+ * - `/weekly-summaries` and `/weekly-summaries/` → `/` (hub retired; homepage lists every summary)
  * - `/posts/about-us` etc. → `/about-us`
  * Query string is preserved.
  */
@@ -367,7 +369,7 @@ export function resolveCanonicalRedirect(pathname: string, search = ''): string 
 	let target: string | null = null;
 	const postMatch = /^\/posts\/([^/]+)\/+$/.exec(pathname);
 	if (postMatch) target = `/posts/${postMatch[1]}`;
-	if (/^\/weekly-summaries\/+$/.test(pathname)) target = WEEKLY_SUMMARIES_HUB_PATH;
+	if (/^\/weekly-summaries\/*$/.test(pathname)) target = '/';
 	const slug = /^\/posts\/([^/]+)$/.exec(target ?? pathname)?.[1];
 	if (slug && (MISROUTED_PAGE_SLUGS as readonly string[]).includes(slug)) target = `/${slug}`;
 	return target ? `${target}${search}` : null;

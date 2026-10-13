@@ -1,6 +1,6 @@
 /**
- * Shared, cached list of published weekly summaries (prev/next on articles and
- * the /weekly-summaries hub).
+ * Shared, cached list of published weekly summaries (prev/next links on
+ * weekly summary articles).
  *
  * - The query is filtered in SQL to the `weekly-summary-` slug prefix
  *   (`slug >= 'weekly-summary-' AND slug < 'weekly-summary.'`), so it never

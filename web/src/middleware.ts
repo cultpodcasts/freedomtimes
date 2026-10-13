@@ -17,7 +17,7 @@ import {
 import { maybeInlinePdfMediaDisposition } from './lib/inline-pdf-media';
 import { recordPageView } from './lib/page-view-analytics';
 import { buildRobotsTxt } from './lib/robots-txt';
-import { resolveCanonicalRedirect, WEEKLY_SUMMARIES_HUB_PATH } from './lib/seo/article-seo';
+import { resolveCanonicalRedirect } from './lib/seo/article-seo';
 import {
   defaultSitemapCache,
   isKnownSitemapPath,
@@ -205,7 +205,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     });
   }
 
-  // Reader canonical URLs: `/posts/<slug>/` → `/posts/<slug>`, `/weekly-summaries/` → no slash,
+  // Reader canonical URLs: `/posts/<slug>/` → `/posts/<slug>`, `/weekly-summaries(/)` → `/` (hub retired),
   // and pages historically linked as `/posts/about-us` etc. → `/about-us`. 301, query kept.
   // Runs before page auth, but only redirects to another URL that is itself gated on staging.
   if (context.request.method === 'GET' || context.request.method === 'HEAD') {
@@ -225,7 +225,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
       pathname: path,
       generate: () => next(),
       cache: defaultSitemapCache(),
-      hubPath: WEEKLY_SUMMARIES_HUB_PATH,
       waitUntil: (p) => {
         try {
           waitUntil(p);
