@@ -1,0 +1,205 @@
+---
+import { getEmDashCollection } from 'emdash';
+
+import Header from '../components/Header.astro';
+import Layout from '../layouts/Layout.astro';
+import { readOptionalEnv } from '../lib/auth';
+import { readEmDashPublishedAt } from '../lib/content/emdashTimestamps';
+import {
+	getOptionalEditorialSession,
+	requireEditorialSession,
+} from '../lib/editorial-session';
+import {
+	WEEKLY_SUMMARIES_HUB_PATH,
+	WEEKLY_SUMMARIES_HUB_TITLE,
+	buildBreadcrumbJsonLd,
+	isWeeklySummarySlug,
+	readIsoDate,
+	sortWeeklies,
+} from '../lib/seo/article-seo';
+import { SITE_DISPLAY_NAME } from '../lib/site-brand';
+
+// Same access rules as /posts/[slug]: locked staging requires a session.
+const isLocked = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase() !== 'public';
+const sessionContext = {
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+};
+let isAdmin = false;
+let isSignedIn = false;
+if (isLocked) {
+	const session = await requireEditorialSession(sessionContext);
+	if (session instanceof Response) {
+		return session;
+	}
+	isAdmin = session.isAdmin;
+	isSignedIn = true;
+} else {
+	const session = await getOptionalEditorialSession(sessionContext);
+	if (session) {
+		isAdmin = session.isAdmin;
+		isSignedIn = true;
+	}
+}
+
+const { entries, error } = await getEmDashCollection('posts', {
+	status: 'published',
+	limit: 500,
+	orderBy: { published_at: 'desc' },
+});
+if (error) {
+	throw error;
+}
+
+type HubItem = { slug: string; title: string; sortDate: string; dek: string | null; publishedAt: string | null; coverage: string | null };
+
+function formatDay(iso: string): string {
+	const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
+	return Number.isFinite(d.getTime())
+		? d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+		: iso;
+}
+
+const items: HubItem[] = [];
+for (const entry of entries) {
+	const data = entry.data as Record<string, unknown>;
+	const slug = typeof data.slug === 'string' && data.slug.length > 0 ? data.slug : entry.id;
+	if (!isWeeklySummarySlug(slug)) continue;
+	const coverageStart = readIsoDate(data.coverage_start);
+	const coverageEnd = readIsoDate(data.coverage_end);
+	const publishedAt = readEmDashPublishedAt(entry);
+	const excerpt = typeof data.excerpt === 'string' ? data.excerpt.split(/\n\s*\n+/)[0]?.trim() ?? '' : '';
+	items.push({
+		slug,
+		title: typeof data.title === 'string' && data.title.length > 0 ? data.title : slug,
+		sortDate: coverageStart ?? publishedAt ?? '',
+		dek: excerpt.length > 0 ? (excerpt.length > 240 ? `${excerpt.slice(0, 239).trimEnd()}…` : excerpt) : null,
+		publishedAt,
+		coverage: coverageStart
+			? (coverageEnd ? `${formatDay(coverageStart)} – ${formatDay(coverageEnd)}` : formatDay(coverageStart))
+			: null,
+	});
+}
+const ordered = (sortWeeklies(items) as HubItem[]).reverse();
+
+const description = `Every ${SITE_DISPLAY_NAME} weekly summary of cult and high-control group news from the UK and Europe, newest first.`;
+const canonicalUrl = new URL(WEEKLY_SUMMARIES_HUB_PATH, Astro.url).toString();
+const jsonLd = [
+	{
+		'@context': 'https://schema.org',
+		'@type': 'CollectionPage',
+		name: WEEKLY_SUMMARIES_HUB_TITLE,
+		url: canonicalUrl,
+		description,
+		mainEntity: {
+			'@type': 'ItemList',
+			itemListOrder: 'https://schema.org/ItemListOrderDescending',
+			numberOfItems: ordered.length,
+			itemListElement: ordered.map((item, index) => ({
+				'@type': 'ListItem',
+				position: index + 1,
+				url: new URL(`/posts/${item.slug}`, Astro.url).toString(),
+				name: item.title,
+			})),
+		},
+	},
+	buildBreadcrumbJsonLd({
+		origin: Astro.url.origin,
+		siteName: SITE_DISPLAY_NAME,
+		trail: [{ name: WEEKLY_SUMMARIES_HUB_TITLE, url: WEEKLY_SUMMARIES_HUB_PATH }],
+	}),
+];
+---
+
+<Layout title={WEEKLY_SUMMARIES_HUB_TITLE} description={description} canonicalUrl={WEEKLY_SUMMARIES_HUB_PATH} jsonLd={jsonLd}>
+	<div class="page-wrap">
+		<Header section={WEEKLY_SUMMARIES_HUB_TITLE} sectionUrl={WEEKLY_SUMMARIES_HUB_PATH} isAdmin={isAdmin} isSignedIn={isSignedIn} />
+		<section class="hub">
+			<h1>{WEEKLY_SUMMARIES_HUB_TITLE}</h1>
+			<p class="intro">{description}</p>
+			{ordered.length === 0 ? (
+				<p>No weekly summaries yet.</p>
+			) : (
+				<ol class="hub-list">
+					{ordered.map((item) => (
+						<li>
+							<a href={`/posts/${item.slug}`}>{item.title}</a>
+							{(item.coverage || item.publishedAt) && (
+								<p class="hub-date">
+									{item.coverage ? `Covers ${item.coverage}` : `Published ${formatDay(item.publishedAt!)}`}
+								</p>
+							)}
+							{item.dek && <p class="hub-dek">{item.dek}</p>}
+						</li>
+					))}
+				</ol>
+			)}
+		</section>
+	</div>
+</Layout>
+
+<style>
+	.page-wrap {
+		max-width: var(--max-width-main);
+		margin: 0 auto;
+		padding: 0 0 5rem;
+	}
+
+	.hub {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: 0 var(--page-padding-side);
+	}
+
+	h1 {
+		margin: 0 0 0.75rem;
+		font-family: 'Playfair Display', serif;
+		font-size: clamp(2rem, 5vw, 3.25rem);
+		line-height: 1.05;
+	}
+
+	.intro {
+		margin: 0 0 2rem;
+		font-family: 'Source Serif 4', serif;
+		font-size: 1.08rem;
+		color: #333333;
+	}
+
+	.hub-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.hub-list li {
+		padding: 1.1rem 0;
+		border-top: 1px solid #eeeeee;
+	}
+
+	.hub-list a {
+		font-family: 'Playfair Display', serif;
+		font-size: 1.3rem;
+		font-weight: 700;
+		color: #111111;
+		text-decoration: none;
+	}
+
+	.hub-list a:hover {
+		color: #0044bb;
+	}
+
+	.hub-date {
+		margin: 0.35rem 0 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.8rem;
+		color: #555555;
+	}
+
+	.hub-dek {
+		margin: 0.45rem 0 0;
+		font-family: 'Source Serif 4', serif;
+		line-height: 1.5;
+	}
+</style>

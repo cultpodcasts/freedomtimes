@@ -59,6 +59,86 @@
           "slug": "subjects",
           "label": "Subjects",
           "type": "json"
+        },
+        {
+          "slug": "lede",
+          "label": "Lede",
+          "type": "text"
+        },
+        {
+          "slug": "coverage_start",
+          "label": "Coverage start",
+          "type": "datetime"
+        },
+        {
+          "slug": "coverage_end",
+          "label": "Coverage end",
+          "type": "datetime"
+        },
+        {
+          "slug": "people",
+          "label": "People",
+          "type": "repeater",
+          "validation": {
+            "subFields": [
+              {
+                "slug": "name",
+                "type": "string",
+                "label": "Name",
+                "required": true
+              },
+              {
+                "slug": "url",
+                "type": "url",
+                "label": "Profile URL"
+              }
+            ]
+          }
+        },
+        {
+          "slug": "organisations",
+          "label": "Organisations",
+          "type": "repeater",
+          "validation": {
+            "subFields": [
+              {
+                "slug": "name",
+                "type": "string",
+                "label": "Name",
+                "required": true
+              },
+              {
+                "slug": "type",
+                "type": "string",
+                "label": "Type (e.g. cult, church, court)"
+              },
+              {
+                "slug": "url",
+                "type": "url",
+                "label": "URL"
+              }
+            ]
+          }
+        },
+        {
+          "slug": "places",
+          "label": "Places",
+          "type": "repeater",
+          "validation": {
+            "subFields": [
+              {
+                "slug": "name",
+                "type": "string",
+                "label": "Name",
+                "required": true
+              }
+            ]
+          }
+        },
+        {
+          "slug": "social_title",
+          "label": "Social title",
+          "type": "string"
         }
       ]
     },

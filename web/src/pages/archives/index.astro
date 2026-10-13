@@ -179,7 +179,7 @@ const cards: ArchiveCard[] = entries.map((entry) => {
 
 <Layout>
 	<div class="archive-index">
-		<Header section="Archives" sectionUrl="/archives" isAdmin={isAdmin} isSignedIn={isSignedIn} />
+		<Header section="Archives" sectionUrl="/archives" isAdmin={isAdmin} isSignedIn={isSignedIn} brandAsHeading />
 
 		{cards.length === 0 ? (
 			<p class="empty">No archive issues are available yet.</p>

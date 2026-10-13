@@ -1,0 +1,88 @@
+{
+  "id": "2026-10-13-posts-structured-data-fields",
+  "collection": "posts",
+  "description": "Optional discrete per-article fields used for NewsArticle JSON-LD and og:title. All optional; empty = previous behaviour. Apply via EmDash MCP schema_create_field (AGENTS.md \u00a73), staging first, after a Turso backup (\u00a72).",
+  "target": "staging",
+  "fields": [
+    {
+      "slug": "lede",
+      "label": "Lede",
+      "type": "text"
+    },
+    {
+      "slug": "coverage_start",
+      "label": "Coverage start",
+      "type": "datetime"
+    },
+    {
+      "slug": "coverage_end",
+      "label": "Coverage end",
+      "type": "datetime"
+    },
+    {
+      "slug": "people",
+      "label": "People",
+      "type": "repeater",
+      "validation": {
+        "subFields": [
+          {
+            "slug": "name",
+            "type": "string",
+            "label": "Name",
+            "required": true
+          },
+          {
+            "slug": "url",
+            "type": "url",
+            "label": "Profile URL"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "organisations",
+      "label": "Organisations",
+      "type": "repeater",
+      "validation": {
+        "subFields": [
+          {
+            "slug": "name",
+            "type": "string",
+            "label": "Name",
+            "required": true
+          },
+          {
+            "slug": "type",
+            "type": "string",
+            "label": "Type (e.g. cult, church, court)"
+          },
+          {
+            "slug": "url",
+            "type": "url",
+            "label": "URL"
+          }
+        ]
+      }
+    },
+    {
+      "slug": "places",
+      "label": "Places",
+      "type": "repeater",
+      "validation": {
+        "subFields": [
+          {
+            "slug": "name",
+            "type": "string",
+            "label": "Name",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "slug": "social_title",
+      "label": "Social title",
+      "type": "string"
+    }
+  ]
+}
