@@ -6,7 +6,10 @@ import {
 	buildBreadcrumbJsonLd,
 	buildNewsArticleJsonLd,
 	findWeeklyNeighbours,
+	organisationSchemaType,
 	readArticleStructuredFields,
+	readIsoDate,
+	safeCanonical,
 	resolveArticleMeta,
 	resolveCanonicalRedirect,
 	serializeJsonLd,
@@ -21,6 +24,7 @@ describe('resolveArticleMeta fallbacks', () => {
 		summaryParagraphs: ['First para.', 'Second para.'],
 		canonicalPath: '/posts/weekly-summary-11-october-2026',
 		fallbackDescription: 'fallback',
+		siteOrigin: ORIGIN,
 	};
 
 	it('falls back to title, first excerpt paragraph, own URL, indexable when SEO record is empty', () => {
@@ -145,7 +149,7 @@ describe('buildNewsArticleJsonLd', () => {
 		});
 		assert.equal(ld.description, 'Lede sentence.');
 		assert.deepEqual(ld.author, { '@type': 'Person', name: 'Jane Reporter' });
-		assert.deepEqual(ld.about, [{ '@type': 'Organization', name: 'CVLT', description: 'cult' }]);
+		assert.deepEqual(ld.about, [{ '@type': 'ReligiousOrganization', name: 'CVLT' }]);
 		assert.deepEqual(ld.mentions, [{ '@type': 'Person', name: 'Rohan Rane' }]);
 		assert.deepEqual(ld.spatialCoverage, [{ '@type': 'Place', name: 'Paris' }]);
 		assert.equal(ld.temporalCoverage, '2026-10-04/2026-10-10');
@@ -211,5 +215,50 @@ describe('resolveCanonicalRedirect', () => {
 		for (const path of ['/', '/posts/abc', '/weekly-summaries', '/contact-us', '/archives/', '/_emdash/admin/', '/posts/abc/edit']) {
 			assert.equal(resolveCanonicalRedirect(path), null, path);
 		}
+	});
+});
+
+describe('review fixes (PR 109)', () => {
+	it('canonical override rejects off-site, protocol-relative and https→http downgrades', () => {
+		assert.equal(safeCanonical('https://evil.com/posts/x', ORIGIN), undefined);
+		assert.equal(safeCanonical('//evil.com/posts/x', ORIGIN), undefined);
+		assert.equal(safeCanonical('/\\evil.com/x', ORIGIN), undefined);
+		assert.equal(safeCanonical('http://freedomtimes.news/posts/x', ORIGIN), undefined);
+		assert.equal(safeCanonical('https://user@freedomtimes.news/posts/x', ORIGIN), undefined);
+		assert.equal(safeCanonical('https://freedomtimes.news/posts/x', ORIGIN), 'https://freedomtimes.news/posts/x');
+		assert.equal(safeCanonical('/posts/x', ORIGIN), '/posts/x');
+		const meta = resolveArticleMeta({
+			title: 't', summaryParagraphs: [], canonicalPath: '/posts/own', fallbackDescription: 'f', siteOrigin: ORIGIN,
+			seo: { canonical: 'https://evil.com/posts/own' }, fields: EMPTY,
+		});
+		assert.equal(meta.canonical, '/posts/own');
+	});
+
+	it('coverage datetimes resolve to the Europe/London date across the BST boundary', () => {
+		assert.equal(readIsoDate('2026-10-03T23:00:00Z'), '2026-10-04');
+		assert.equal(readIsoDate('2026-10-03T23:00:00.000Z'), '2026-10-04');
+		assert.equal(readIsoDate('2026-12-03T23:00:00Z'), '2026-12-03');
+		assert.equal(readIsoDate('2026-10-04'), '2026-10-04');
+		assert.equal(readArticleStructuredFields({ coverage_start: '2026-10-03T23:00:00Z' }).coverageStart, '2026-10-04');
+	});
+
+	it('maps organisation types to schema.org subtypes, unknown → Organization', () => {
+		assert.equal(organisationSchemaType('court'), 'GovernmentOrganization');
+		assert.equal(organisationSchemaType('Cult'), 'ReligiousOrganization');
+		assert.equal(organisationSchemaType('church'), 'ReligiousOrganization');
+		assert.equal(organisationSchemaType('charity'), 'NGO');
+		assert.equal(organisationSchemaType('whatever'), 'Organization');
+		assert.equal(organisationSchemaType(undefined), 'Organization');
+	});
+
+	it('author.url comes from the byline record when present', () => {
+		const base = {
+			origin: ORIGIN, canonicalUrl: `${ORIGIN}/posts/x`, headline: 'h', description: null, fields: EMPTY,
+			publishedAt: null, updatedAt: null, imageUrls: [], subjects: [], siteName: 'Freedom Times',
+		};
+		const withUrl = buildNewsArticleJsonLd({ ...base, bylineName: 'Jane Doe', bylineUrl: 'https://example.org/jane' });
+		assert.deepEqual(withUrl.author, { '@type': 'Person', name: 'Jane Doe', url: 'https://example.org/jane' });
+		const without = buildNewsArticleJsonLd({ ...base, bylineName: 'Jane Doe', bylineUrl: null });
+		assert.deepEqual(without.author, { '@type': 'Person', name: 'Jane Doe' });
 	});
 });

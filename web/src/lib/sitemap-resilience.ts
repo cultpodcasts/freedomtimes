@@ -15,7 +15,16 @@
  *   else 503 + Retry-After. Known sitemap paths never return 404.
  * - `/sitemap-posts.xml` also lists the `/weekly-summaries` hub.
  *
- * This does not change who can fetch sitemaps (staging access is unchanged).
+ * Access control: when the site is locked (staging), the wrapper does NOT
+ * read or write the cache and passes the downstream response through
+ * untouched (`Cache-Control: private, no-store`), so EmDash / reader auth
+ * decides exactly as before. A cached body can never bypass that.
+ *
+ * noindex: EmDash's sitemap query already excludes `seo_no_index = 1` rows
+ * (guarded by a test against the installed emdash), so noindexed posts are
+ * never listed.
+ *
+ * HEAD is handled like GET with the body dropped.
  */
 
 export const SITEMAP_FRESH_SECONDS = 900;
@@ -66,12 +75,25 @@ function xmlResponse(body: string, extra: Record<string, string>): Response {
 	});
 }
 
-export async function serveSitemapResiliently(options: {
+function headOnly(res: Response): Response {
+	return new Response(null, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
+export async function serveSitemapResiliently(options: Parameters<typeof serveSitemapInner>[0]): Promise<Response> {
+	const res = await serveSitemapInner(options);
+	return options.head ? headOnly(res) : res;
+}
+
+async function serveSitemapInner(options: {
 	origin: string;
 	pathname: string;
 	generate: () => Promise<Response>;
 	cache: SitemapCache | null;
 	hubPath?: string;
+	/** Locked site (staging): bypass cache entirely; downstream access control decides. */
+	locked?: boolean;
+	/** HEAD request: same status/headers, no body. */
+	head?: boolean;
 	waitUntil?: (p: Promise<unknown>) => void;
 	log?: (event: string, extra: Record<string, unknown>) => void;
 }): Promise<Response> {
@@ -81,6 +103,13 @@ export async function serveSitemapResiliently(options: {
 		const safe = p.catch((err) => log('sitemap-cache-put-failed', { pathname, error: String(err) }));
 		if (options.waitUntil) options.waitUntil(safe);
 	};
+
+	if (options.locked) {
+		const downstream = await options.generate();
+		const headers = new Headers(downstream.headers);
+		headers.set('Cache-Control', 'private, no-store');
+		return new Response(downstream.body, { status: downstream.status, statusText: downstream.statusText, headers });
+	}
 
 	if (cache) {
 		try {

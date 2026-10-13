@@ -21,8 +21,7 @@ import {
 	resolveSocialImageSrc,
 } from "../lib/content/contentEntry";
 import { SITE_DISPLAY_NAME } from "../lib/site-brand";
-import { getEmDashCollection } from "emdash";
-import { readEmDashPublishedAt } from "../lib/content/emdashTimestamps";
+import { getWeeklySummaries } from "../lib/seo/weekly-list";
 import {
 	WEEKLY_SUMMARIES_HUB_PATH,
 	WEEKLY_SUMMARIES_HUB_TITLE,
@@ -31,7 +30,6 @@ import {
 	findWeeklyNeighbours,
 	isWeeklySummarySlug,
 	readArticleStructuredFields,
-	readIsoDate,
 	resolveArticleMeta,
 	type WeeklyListItem,
 } from "../lib/seo/article-seo";
@@ -76,6 +74,7 @@ const {
 	publishedAt,
 	updatedAt,
 	primaryByline,
+	primaryBylineUrl,
 } = buildContentEntryViewModel(
 	entry as { slug?: string; data: Record<string, unknown> } & Record<
 		string,
@@ -122,6 +121,7 @@ const meta = resolveArticleMeta({
 	seo: seoRecord,
 	summaryParagraphs,
 	canonicalPath,
+	siteOrigin: Astro.url.origin,
 	fields: structuredFields,
 	fallbackDescription: `Read "${title}" on ${SITE_DISPLAY_NAME}.`,
 });
@@ -135,21 +135,7 @@ let weeklyPrevious: WeeklyListItem | null = null;
 let weeklyNext: WeeklyListItem | null = null;
 if (isWeekly) {
 	try {
-		const { entries: weeklyEntries, error: weeklyError } = await getEmDashCollection("posts", {
-			status: "published",
-			limit: 500,
-			orderBy: { published_at: "desc" },
-		});
-		if (weeklyError) throw weeklyError;
-		const items: WeeklyListItem[] = [];
-		for (const candidate of weeklyEntries) {
-			const data = candidate.data as Record<string, unknown>;
-			const slug = typeof data.slug === "string" && data.slug.length > 0 ? data.slug : candidate.id;
-			if (!isWeeklySummarySlug(slug)) continue;
-			const sortDate =
-				readIsoDate(data.coverage_start) ?? readEmDashPublishedAt(candidate) ?? "";
-			items.push({ slug, title: typeof data.title === "string" ? data.title : slug, sortDate });
-		}
+		const items: WeeklyListItem[] = (await getWeeklySummaries()).map(({ slug, title, sortDate }) => ({ slug, title, sortDate }));
 		if (!items.some((item) => item.slug === entrySlug)) {
 			items.push({
 				slug: entrySlug,
@@ -175,6 +161,7 @@ const jsonLd: Record<string, unknown>[] = isPost
 				publishedAt,
 				updatedAt,
 				bylineName: primaryByline,
+				bylineUrl: primaryBylineUrl,
 				imageUrls: [socialImageSrc, featuredImageSrc].filter(
 					(value): value is string => typeof value === "string" && value.length > 0,
 				),

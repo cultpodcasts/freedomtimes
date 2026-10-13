@@ -95,4 +95,59 @@ describe('sitemap resilience', () => {
 		const noCache = await serveSitemapResiliently({ origin: ORIGIN, pathname: '/sitemap.xml', generate: async () => new Response('', { status: 404 }), cache: null });
 		assert.equal(noCache.status, 503);
 	});
+
+	it('locked site: anonymous request never gets a cached body; downstream auth response passes through', async () => {
+		const cache = memoryCache();
+		cache.store.set(`${ORIGIN}/__ft-sitemap-cache/fresh/sitemap-posts.xml`, XML);
+		cache.store.set(`${ORIGIN}/__ft-sitemap-cache/stale/sitemap-posts.xml`, XML);
+		const res = await serveSitemapResiliently({
+			origin: ORIGIN,
+			pathname: '/sitemap-posts.xml',
+			locked: true,
+			generate: async () => new Response(null, { status: 302, headers: { Location: '/login-wall', 'Cache-Control': 'public, max-age=900' } }),
+			cache,
+		});
+		assert.equal(res.status, 302);
+		assert.equal(res.headers.get('Location'), '/login-wall');
+		assert.equal(res.headers.get('Cache-Control'), 'private, no-store');
+		assert.equal(await res.text(), '');
+	});
+
+	it('locked site: never writes the cache', async () => {
+		const cache = memoryCache();
+		const res = await serveSitemapResiliently({
+			origin: ORIGIN,
+			pathname: '/sitemap.xml',
+			locked: true,
+			generate: async () => new Response(XML, { status: 200 }),
+			cache,
+		});
+		assert.equal(res.status, 200);
+		assert.equal(res.headers.get('Cache-Control'), 'private, no-store');
+		assert.equal(cache.store.size, 0);
+	});
+
+	it('HEAD returns status and headers without a body', async () => {
+		const res = await serveSitemapResiliently({
+			origin: ORIGIN,
+			pathname: '/sitemap-posts.xml',
+			head: true,
+			generate: async () => new Response(XML, { status: 200 }),
+			cache: null,
+		});
+		assert.equal(res.status, 200);
+		assert.match(res.headers.get('Content-Type') ?? '', /xml/);
+		assert.equal(await res.text(), '');
+	});
+
+	it('installed EmDash sitemap query still excludes noindexed rows', async () => {
+		const { readFileSync, readdirSync } = await import('node:fs');
+		const dir = new URL('../node_modules/emdash/dist/', import.meta.url);
+		const hits = readdirSync(dir)
+			.filter((f) => f.startsWith('seo-') && f.endsWith('.mjs'))
+			.map((f) => readFileSync(new URL(f, dir), 'utf8'))
+			.filter((src) => src.includes('seo_no_index'));
+		assert.ok(hits.length > 0, 'emdash sitemap source not found');
+		assert.ok(hits.some((src) => /s\.seo_no_index IS NULL OR s\.seo_no_index = 0/.test(src)), 'noindex filter missing from EmDash sitemap query; strip noindexed URLs in sitemap-resilience');
+	});
 });

@@ -216,9 +216,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   // Sitemaps: edge-cached, never 404 on a generation failure (last-known-good, else 503 + Retry-After).
-  // Access to sitemaps is unchanged (same as before this wrapper).
-  if (context.request.method === 'GET' && isKnownSitemapPath(path)) {
+  // Locked staging: cache bypassed, downstream access control unchanged. HEAD → headers only.
+  if ((context.request.method === 'GET' || context.request.method === 'HEAD') && isKnownSitemapPath(path)) {
     return serveSitemapResiliently({
+      locked: isLockedSiteAccess(),
+      head: context.request.method === 'HEAD',
       origin: context.url.origin,
       pathname: path,
       generate: () => next(),

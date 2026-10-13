@@ -1,10 +1,8 @@
 ---
-import { getEmDashCollection } from 'emdash';
-
 import Header from '../components/Header.astro';
 import Layout from '../layouts/Layout.astro';
 import { readOptionalEnv } from '../lib/auth';
-import { readEmDashPublishedAt } from '../lib/content/emdashTimestamps';
+import { getWeeklySummaries } from '../lib/seo/weekly-list';
 import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
@@ -13,9 +11,6 @@ import {
 	WEEKLY_SUMMARIES_HUB_PATH,
 	WEEKLY_SUMMARIES_HUB_TITLE,
 	buildBreadcrumbJsonLd,
-	isWeeklySummarySlug,
-	readIsoDate,
-	sortWeeklies,
 } from '../lib/seo/article-seo';
 import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 
@@ -44,14 +39,7 @@ if (isLocked) {
 	}
 }
 
-const { entries, error } = await getEmDashCollection('posts', {
-	status: 'published',
-	limit: 500,
-	orderBy: { published_at: 'desc' },
-});
-if (error) {
-	throw error;
-}
+const weeklies = await getWeeklySummaries();
 
 type HubItem = { slug: string; title: string; sortDate: string; dek: string | null; publishedAt: string | null; coverage: string | null };
 
@@ -62,27 +50,20 @@ function formatDay(iso: string): string {
 		: iso;
 }
 
-const items: HubItem[] = [];
-for (const entry of entries) {
-	const data = entry.data as Record<string, unknown>;
-	const slug = typeof data.slug === 'string' && data.slug.length > 0 ? data.slug : entry.id;
-	if (!isWeeklySummarySlug(slug)) continue;
-	const coverageStart = readIsoDate(data.coverage_start);
-	const coverageEnd = readIsoDate(data.coverage_end);
-	const publishedAt = readEmDashPublishedAt(entry);
-	const excerpt = typeof data.excerpt === 'string' ? data.excerpt.split(/\n\s*\n+/)[0]?.trim() ?? '' : '';
-	items.push({
-		slug,
-		title: typeof data.title === 'string' && data.title.length > 0 ? data.title : slug,
-		sortDate: coverageStart ?? publishedAt ?? '',
+const items: HubItem[] = weeklies.map((w) => {
+	const excerpt = w.excerpt ? w.excerpt.split(/\n\s*\n+/)[0]?.trim() ?? '' : '';
+	return {
+		slug: w.slug,
+		title: w.title,
+		sortDate: w.sortDate,
 		dek: excerpt.length > 0 ? (excerpt.length > 240 ? `${excerpt.slice(0, 239).trimEnd()}…` : excerpt) : null,
-		publishedAt,
-		coverage: coverageStart
-			? (coverageEnd ? `${formatDay(coverageStart)} – ${formatDay(coverageEnd)}` : formatDay(coverageStart))
+		publishedAt: w.publishedAt,
+		coverage: w.coverageStart
+			? (w.coverageEnd ? `${formatDay(w.coverageStart)} – ${formatDay(w.coverageEnd)}` : formatDay(w.coverageStart))
 			: null,
-	});
-}
-const ordered = (sortWeeklies(items) as HubItem[]).reverse();
+	};
+});
+const ordered = [...items].reverse();
 
 const description = `Every ${SITE_DISPLAY_NAME} weekly summary of cult and high-control group news from the UK and Europe, newest first.`;
 const canonicalUrl = new URL(WEEKLY_SUMMARIES_HUB_PATH, Astro.url).toString();

@@ -40,6 +40,8 @@ export type ContentEntryViewModel = {
 	publishedAt: string | null;
 	updatedAt: string | null;
 	primaryByline: string | null;
+	/** Primary byline record's website/profile URL, when set. */
+	primaryBylineUrl: string | null;
 };
 
 function readString(value: unknown): string | null {
@@ -252,6 +254,33 @@ function subjectColorTokens(subject: string): { bg: string; border: string; text
 		border: `hsl(${hue} ${Math.max(45, saturation - 12)}% ${borderLightness}%)`,
 		text: `hsl(${hue} ${Math.max(40, saturation - 18)}% ${textLightness}%)`,
 	};
+}
+
+function readPrimaryBylineRecord(entryMeta: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown> | null {
+	const direct = (
+		(entryMeta.byline && typeof entryMeta.byline === 'object' ? entryMeta.byline : null)
+		?? (data.byline && typeof data.byline === 'object' ? data.byline : null)
+	) as Record<string, unknown> | null;
+	if (direct) return direct;
+	const bylinesArray = (
+		(Array.isArray(entryMeta.bylines) ? entryMeta.bylines : null)
+		?? (Array.isArray(data.bylines) ? data.bylines : null)
+	) as unknown[] | null;
+	const first = bylinesArray && bylinesArray.length > 0 ? (bylinesArray[0] as Record<string, unknown>) : null;
+	if (first && first.byline && typeof first.byline === 'object') return first.byline as Record<string, unknown>;
+	return first;
+}
+
+export function readPrimaryBylineUrl(entryMeta: Record<string, unknown>, data: Record<string, unknown>): string | null {
+	const rec = readPrimaryBylineRecord(entryMeta, data);
+	const raw = rec ? (readString(rec.websiteUrl) ?? readString(rec.website_url)) : null;
+	if (!raw) return null;
+	try {
+		const u = new URL(raw);
+		return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+	} catch {
+		return null;
+	}
 }
 
 function readPrimaryByline(entryMeta: Record<string, unknown>, data: Record<string, unknown>): string | null {
@@ -606,6 +635,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const publishedAt = readEmDashPublishedOrCreatedAt(entry);
 	const updatedAt = readEmDashUpdatedAt(entry);
 	const primaryByline = readPrimaryByline(entryMeta, data);
+	const primaryBylineUrl = readPrimaryBylineUrl(entryMeta, data);
 	const subjectChips = subjects.map((subject) => {
 		const colors = subjectColorTokens(subject);
 		return {
@@ -635,5 +665,6 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 		publishedAt,
 		updatedAt,
 		primaryByline,
+		primaryBylineUrl,
 	};
 }
