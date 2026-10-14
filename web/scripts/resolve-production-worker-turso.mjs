@@ -22,8 +22,9 @@ import { fileURLToPath } from "node:url";
 import { getPlatformProxy } from "wrangler";
 import {
 	NAMED_PRODUCTION_DB_DEFAULT,
-	databaseNameFromUrl,
 	libsqlHostname,
+	parseTursoHostname,
+	resolveTursoOrganization,
 	countPostInventory,
 	listProtectedPosts,
 	openLibsql,
@@ -41,7 +42,7 @@ function parseArgs(argv) {
 		inventory: false,
 		outPath: "",
 		databaseName: "",
-		organization: process.env.TURSO_ORGANIZATION || process.env.TURSO_ORG || "cultpodcasts",
+		organization: resolveTursoOrganization(),
 		allowEnvFallback: true,
 	};
 	for (let i = 0; i < argv.length; i++) {
@@ -150,8 +151,24 @@ async function main() {
 	}
 
 	const host = libsqlHostname(resolved.url);
-	const databaseName =
-		args.databaseName.trim() || databaseNameFromUrl(resolved.url, args.organization);
+	// Explicit name wins (--database-name, else TURSO_PRODUCTION_EMDASH_DB_NAME); otherwise
+	// derive from the host and strip `-<org>`. Refuse a derived name whose org suffix
+	// could not be stripped (it would not exist in Turso).
+	const explicitName = args.databaseName.trim() || String(process.env.TURSO_PRODUCTION_EMDASH_DB_NAME || "").trim();
+	const parsed = parseTursoHostname(host, { organization: args.organization });
+	if (!explicitName && !parsed.orgStripped) {
+		console.log(
+			JSON.stringify({
+				ok: false,
+				error: "org_suffix_unresolved",
+				message: `Could not strip the Turso org suffix from '${host}' (organization '${args.organization || "unset"}' does not match).`,
+				hint: "Set TF_VAR_TURSO_ORGANIZATION / TURSO_ORGANIZATION to the real Turso org, or pass --database-name / TURSO_PRODUCTION_EMDASH_DB_NAME.",
+			}),
+		);
+		process.exit(2);
+	}
+	const databaseName = explicitName || parsed.databaseName;
+	if (!args.organization && parsed.organization) args.organization = parsed.organization;
 
 	if (databaseName === NAMED_PRODUCTION_DB_DEFAULT) {
 		warnings.push(

@@ -22,6 +22,7 @@ import { homedir } from "node:os";
 import {
 	compareInventories,
 	databaseNameFromUrl,
+	resolveTursoOrganization,
 	libsqlHostname,
 	listProtectedPosts,
 	listPublishedPostSlugsViaApi,
@@ -68,7 +69,7 @@ function parseArgs(argv) {
 		metadataOut: "",
 		checkMetadata: "",
 		maxAgeHours: 24,
-		organization: process.env.TURSO_ORGANIZATION || process.env.TURSO_ORG || "cultpodcasts",
+		organization: resolveTursoOrganization(),
 	};
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
