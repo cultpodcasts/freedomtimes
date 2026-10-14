@@ -31,26 +31,56 @@ export function libsqlHostname(url) {
 }
 
 /**
- * Derive Turso database name from libsql hostname.
- * Host shape: `{dbname}-{org}.{region}.turso.io` or `{dbname}-{org}.turso.io`.
- * @param {string} hostname
- * @param {string} [organization]
+ * Turso organization slug, from (in order): explicit arg, TURSO_ORGANIZATION,
+ * TURSO_ORG, TF_VAR_TURSO_ORGANIZATION / TF_VAR_turso_organization (.env.dev).
+ * No hard-coded default: the old "cultpodcasts" default never matched the real
+ * org, so the `-<org>` suffix was left on the derived DB name.
+ * @param {string} [explicit]
+ * @param {NodeJS.ProcessEnv} [env]
  */
-export function databaseNameFromHostname(hostname, organization) {
+export function resolveTursoOrganization(explicit, env = process.env) {
+	for (const v of [explicit, env.TURSO_ORGANIZATION, env.TURSO_ORG, env.TF_VAR_TURSO_ORGANIZATION, env.TF_VAR_turso_organization]) {
+		if (typeof v === "string" && v.trim()) return v.trim().toLowerCase();
+	}
+	return "";
+}
+
+/**
+ * Parse a Turso libsql hostname `{dbname}-{org}[.{region}].turso.io`.
+ * The org suffix is stripped when the org is known (arg/env), or when the
+ * host is `{knownDbName}-{org}` for one of `knownDatabaseNames`.
+ * `orgStripped: false` means the name may still carry `-{org}`; callers must
+ * not use it for backups without an explicit database name.
+ * @param {string} hostname
+ * @param {{ organization?: string, env?: NodeJS.ProcessEnv, knownDatabaseNames?: string[] }} [opts]
+ * @returns {{ databaseName: string, organization: string, orgStripped: boolean }}
+ */
+export function parseTursoHostname(hostname, opts = {}) {
 	const host = String(hostname || "")
 		.trim()
 		.toLowerCase()
 		.replace(/\.turso\.io$/i, "");
 	const nameAndOrg = host.split(".")[0] || "";
-	const org =
-		(organization || process.env.TURSO_ORGANIZATION || process.env.TURSO_ORG || "cultpodcasts")
-			.trim()
-			.toLowerCase();
-	const suffix = `-${org}`;
-	if (org && nameAndOrg.endsWith(suffix)) {
-		return nameAndOrg.slice(0, -suffix.length);
+	const org = resolveTursoOrganization(opts.organization, opts.env ?? process.env);
+	if (org && nameAndOrg.endsWith(`-${org}`) && nameAndOrg.length > org.length + 1) {
+		return { databaseName: nameAndOrg.slice(0, -(org.length + 1)), organization: org, orgStripped: true };
 	}
-	return nameAndOrg;
+	for (const known of opts.knownDatabaseNames ?? [NAMED_PRODUCTION_DB_DEFAULT]) {
+		const k = known.trim().toLowerCase();
+		if (k && nameAndOrg.startsWith(`${k}-`) && /^[a-z0-9-]+$/.test(nameAndOrg.slice(k.length + 1))) {
+			return { databaseName: k, organization: nameAndOrg.slice(k.length + 1), orgStripped: true };
+		}
+	}
+	return { databaseName: nameAndOrg, organization: org, orgStripped: false };
+}
+
+/**
+ * Derive Turso database name from libsql hostname (see parseTursoHostname).
+ * @param {string} hostname
+ * @param {string} [organization]
+ */
+export function databaseNameFromHostname(hostname, organization) {
+	return parseTursoHostname(hostname, { organization }).databaseName;
 }
 
 /** @param {string} url @param {string} [organization] */

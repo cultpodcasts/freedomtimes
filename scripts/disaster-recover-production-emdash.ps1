@@ -35,7 +35,8 @@ param(
     [string]$FromBranch,
     [string]$CloneToNewName,
     [string]$TursoGroup = "freedomtimes-production",
-    [string]$Organization = "cultpodcasts",
+    # Turso org slug. Defaults to TF_VAR_TURSO_ORGANIZATION / TURSO_ORGANIZATION (no hard-coded org).
+    [string]$Organization = $(if ($env:TF_VAR_TURSO_ORGANIZATION) { $env:TF_VAR_TURSO_ORGANIZATION } elseif ($env:TURSO_ORGANIZATION) { $env:TURSO_ORGANIZATION } else { "" }),
     [string]$HostSuffix,
     [switch]$OverwriteNamedProduction,
     [string]$NamedProductionDatabase = "freedomtimes-emdash-production",
@@ -201,6 +202,9 @@ try {
         }
         if ([string]::IsNullOrWhiteSpace($dbUrl)) {
             if ([string]::IsNullOrWhiteSpace($HostSuffix)) {
+                if ([string]::IsNullOrWhiteSpace($Organization)) {
+                    throw "turso db show --url failed and no Turso org is set (-Organization / TF_VAR_TURSO_ORGANIZATION); cannot derive the DB URL."
+                }
                 $HostSuffix = "$Organization.aws-eu-west-1.turso.io"
             }
             $dbUrl = "libsql://${targetDb}-${HostSuffix}"

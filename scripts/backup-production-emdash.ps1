@@ -117,9 +117,13 @@ try {
     Write-Host "Resolving production Worker Turso database…" -ForegroundColor Cyan
     $resolveScript = Join-Path $repoRoot "web/scripts/resolve-production-worker-turso.mjs"
     $resolveOut = Join-Path $backupDir "_tmp-resolve-$timestampUtc.json"
-    $resolveResult = Invoke-External -FilePath "node" -Arguments @(
-        $resolveScript, "--inventory", "--emit-env-file", "--out", $resolveOut
-    ) -CaptureOutput
+    $resolveArgs = @($resolveScript, "--inventory", "--emit-env-file", "--out", $resolveOut)
+    # Explicit DB name skips hostname parsing (the resolver strips "-<org>" from
+    # libsql://<db>-<org>.<region>.turso.io and refuses if it cannot).
+    if (-not [string]::IsNullOrWhiteSpace($DatabaseNameOverride)) {
+        $resolveArgs += @("--database-name", $DatabaseNameOverride.Trim())
+    }
+    $resolveResult = Invoke-External -FilePath "node" -Arguments $resolveArgs -CaptureOutput
     $resolved = Get-Content -LiteralPath $resolveOut -Raw | ConvertFrom-Json
     if (-not $resolved.ok) {
         throw "Worker Turso resolve failed. See $resolveOut"

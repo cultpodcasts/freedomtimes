@@ -5,6 +5,8 @@ import {
 	databaseNameFromHostname,
 	databaseNameFromUrl,
 	isKnownProductionBackupBranch,
+	parseTursoHostname,
+	resolveTursoOrganization,
 	weeklySlugsSample,
 } from "./production-emdash-inventory.mjs";
 
@@ -94,5 +96,42 @@ describe("compareInventories", () => {
 			"weekly-summary-1-september-2026",
 			"weekly-summary-6-september-2026",
 		]);
+	});
+});
+
+describe("Turso org suffix (prod backup DB-name bug)", () => {
+	const HOST = "freedomtimes-emdash-production-freedomtimes.aws-eu-west-1.turso.io";
+
+	it("strips the real org from TF_VAR_TURSO_ORGANIZATION", () => {
+		const env = { TF_VAR_TURSO_ORGANIZATION: "freedomtimes" };
+		assert.deepEqual(parseTursoHostname(HOST, { env }), {
+			databaseName: "freedomtimes-emdash-production", organization: "freedomtimes", orgStripped: true,
+		});
+		assert.equal(
+			parseTursoHostname("prod-backup-20261014-100000-freedomtimes.aws-eu-west-1.turso.io", { env }).databaseName,
+			"prod-backup-20261014-100000",
+		);
+	});
+
+	it("strips the org via the known production DB name when no org is configured", () => {
+		assert.deepEqual(parseTursoHostname(`libsql://${HOST}`.replace("libsql://", ""), { env: {} }), {
+			databaseName: "freedomtimes-emdash-production", organization: "freedomtimes", orgStripped: true,
+		});
+	});
+
+	it("does not return a name with the org still attached as if it were stripped", () => {
+		const r = parseTursoHostname("prod-work-x-freedomtimes.turso.io", { env: {} });
+		assert.equal(r.orgStripped, false);
+	});
+
+	it("mismatched org falls back to the known name instead of leaving the suffix", () => {
+		assert.equal(parseTursoHostname(HOST, { organization: "cultpodcasts", env: {} }).databaseName, "freedomtimes-emdash-production");
+	});
+
+	it("resolveTursoOrganization precedence, no hard-coded default", () => {
+		assert.equal(resolveTursoOrganization(undefined, {}), "");
+		assert.equal(resolveTursoOrganization(undefined, { TF_VAR_TURSO_ORGANIZATION: "FreedomTimes" }), "freedomtimes");
+		assert.equal(resolveTursoOrganization("a", { TURSO_ORGANIZATION: "b" }), "a");
+		assert.equal(resolveTursoOrganization(undefined, { TURSO_ORGANIZATION: "b", TF_VAR_TURSO_ORGANIZATION: "c" }), "b");
 	});
 });
