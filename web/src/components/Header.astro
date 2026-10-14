@@ -8,9 +8,16 @@ interface Props {
 	/** Auth0 `admin` role — shows the Freedom Times `/admin` hub link. */
 	isAdmin?: boolean;
 	isSignedIn?: boolean;
+	/**
+	 * Render the site name as the page's single `<h1>`. Only for pages with no
+	 * headline of their own (homepage, archives index). Article / hub pages keep
+	 * the headline as the only H1 and the brand as a styled `<p>`.
+	 */
+	brandAsHeading?: boolean;
 }
 
-const { section, sectionUrl, isAdmin, isSignedIn } = Astro.props;
+const { section, sectionUrl, isAdmin, isSignedIn, brandAsHeading = false } = Astro.props;
+const BrandTag = brandAsHeading ? 'h1' : 'p';
 const homePath = getHomePath();
 ---
 
@@ -27,7 +34,7 @@ const homePath = getHomePath();
 	</button>
 	<p class="edition">UK & Europe | Investigations & Public Interest</p>
 	<div class="brand-wrap">
-		<a href={homePath}><h1>{SITE_DISPLAY_NAME}</h1></a>
+		<a href={homePath}><BrandTag class="site-brand">{SITE_DISPLAY_NAME}</BrandTag></a>
 	</div>
 	<p class="tagline">Telling survivor truths. Protecting sources. Holding cults to account.</p>
 	
@@ -92,7 +99,7 @@ const homePath = getHomePath();
 		color: inherit;
 	}
 
-	h1 {
+	.site-brand {
 		margin: 0 0 1rem;
 		font-family: 'Playfair Display', serif;
 		font-size: clamp(2.5rem, 7vw, 4.5rem);
@@ -199,7 +206,7 @@ const homePath = getHomePath();
 			font-size: 0.72rem;
 			padding-right: 2.3rem;
 		}
-		h1 {
+		.site-brand {
 			margin: 0 0 0.35rem;
 			font-size: clamp(2.1rem, 12vw, 2.7rem);
 		}

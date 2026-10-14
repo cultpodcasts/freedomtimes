@@ -1,5 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
-import { env as cfEnv } from 'cloudflare:workers';
+import { env as cfEnv, waitUntil } from 'cloudflare:workers';
 
 import {
   isLockedSiteAccess,
@@ -17,6 +17,12 @@ import {
 import { maybeInlinePdfMediaDisposition } from './lib/inline-pdf-media';
 import { recordPageView } from './lib/page-view-analytics';
 import { buildRobotsTxt } from './lib/robots-txt';
+import { resolveCanonicalRedirect } from './lib/seo/article-seo';
+import {
+  defaultSitemapCache,
+  isKnownSitemapPath,
+  serveSitemapResiliently,
+} from './lib/sitemap-resilience';
 
 enum PathMode {
   Exact = 'exact',
@@ -196,6 +202,37 @@ export const onRequest = defineMiddleware(async (context, next) => {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'public, max-age=86400',
       },
+    });
+  }
+
+  // Reader canonical URLs: `/posts/<slug>/` → `/posts/<slug>`, `/weekly-summaries(/)` → `/` (hub retired),
+  // and pages historically linked as `/posts/about-us` etc. → `/about-us`. 301, query kept.
+  // Runs before page auth, but only redirects to another URL that is itself gated on staging.
+  if (context.request.method === 'GET' || context.request.method === 'HEAD') {
+    const canonicalTarget = resolveCanonicalRedirect(path, context.url.search);
+    if (canonicalTarget) {
+      return context.redirect(canonicalTarget, 301);
+    }
+  }
+
+  // Sitemaps: edge-cached, never 404 on a generation failure (last-known-good, else 503 + Retry-After).
+  // Locked staging: cache bypassed, downstream access control unchanged. HEAD → headers only.
+  if ((context.request.method === 'GET' || context.request.method === 'HEAD') && isKnownSitemapPath(path)) {
+    return serveSitemapResiliently({
+      locked: isLockedSiteAccess(),
+      head: context.request.method === 'HEAD',
+      origin: context.url.origin,
+      pathname: path,
+      generate: () => next(),
+      cache: defaultSitemapCache(),
+      waitUntil: (p) => {
+        try {
+          waitUntil(p);
+        } catch {
+          // Not on Workers (dev): let the promise run detached.
+        }
+      },
+      log: (event, extra) => console.warn('[sitemap]', JSON.stringify({ event, cfRay: context.request.headers.get('cf-ray') ?? '', ...extra })),
     });
   }
 

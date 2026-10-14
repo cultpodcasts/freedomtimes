@@ -1,5 +1,6 @@
 ---
 import Footer from '../components/Footer.astro';
+import { serializeJsonLd } from '../lib/seo/article-seo';
 import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 import '../styles/global.css';
 
@@ -20,6 +21,8 @@ interface Props {
 	modifiedTime?: string | null;
 	author?: string | null;
 	noindex?: boolean;
+	/** schema.org objects, each emitted as its own `application/ld+json` script. */
+	jsonLd?: Record<string, unknown>[];
 }
 
 const siteName = SITE_DISPLAY_NAME;
@@ -41,6 +44,7 @@ const {
 	modifiedTime,
 	author,
 	noindex = false,
+	jsonLd = [],
 } = Astro.props as Props;
 
 const resolvedTitle = title?.trim().length ? `${title.trim()} | ${siteName}` : siteName;
@@ -99,6 +103,7 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 		<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,800;0,900;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;0,8..60,700;1,8..60,400;1,8..60,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 		<title>{resolvedTitle}</title>
+		{jsonLd.map((item) => <script type="application/ld+json" is:inline set:html={serializeJsonLd(item)} />)}
 	</head>
 	<body>
 		<main class="shell">
