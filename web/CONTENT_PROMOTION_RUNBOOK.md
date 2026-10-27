@@ -60,13 +60,17 @@ pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
 
 That script:
 
-1. Resolves the live Worker Turso host (`web/scripts/resolve-production-worker-turso.mjs`) — **whatever** DB the Worker uses.
-2. Creates Turso branch `prod-backup-YYYYMMDD-HHMMSS` **from that resolved name** (never named after the source).
-3. Exports `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`.
-4. **Verify** that export file exists and is a non-trivial size (see [Verify after `turso db export`](#verify-after-turso-db-export)). Export alone is not enough.
-5. Verifies backup published slugs match live Worker inventory (FAIL if thin / missing weeklies).
-6. Writes metadata under `.release/rollback-branches/`.
-7. Writes the committed log under `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. <!-- pragma: allowlist secret -->
+1. Fills a fixed allowlist of keys from `.env.dev`, only where the process value is empty (exported values always win): `TURSO_PRODUCTION_EMDASH_DB_URL`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN`, `TURSO_PRODUCTION_EMDASH_DB_NAME`, `TF_VAR_TURSO_ORGANIZATION`, `TURSO_ORGANIZATION`, `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION`. It never loads the generic `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` pair (that would let a failed Worker resolve fall back to a static, possibly stale DB) or any other key. A missing `.env.dev` is not an error; the resolver reports missing values. Only key names are printed.
+2. Resolves the live Worker Turso host (`web/scripts/resolve-production-worker-turso.mjs`) — **whatever** DB the Worker uses.
+3. Confirms the resolved source DB with read-only `turso db show <name>` before any branch or export, and also under `-DryRun` (`[dry-run] source DB confirmed: <name>`). On failure it stops with "Could not confirm Turso database '<name>' exists (exit N)", the possible causes (CLI not logged in — WSL has its own `~/.turso` login — network, CLI org differs from the resolver org, org slug left on the name), the resolver's org, and the CLI output with token-like lines redacted.
+4. Creates Turso branch `prod-backup-YYYYMMDD-HHMMSS` **from that resolved name** (never named after the source).
+5. Exports `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`.
+6. **Verify** that export file exists and is a non-trivial size (see [Verify after `turso db export`](#verify-after-turso-db-export)). Export alone is not enough.
+7. Verifies backup published slugs match live Worker inventory (FAIL if thin / missing weeklies).
+8. Writes metadata under `.release/rollback-branches/`.
+9. Writes the committed log under `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. <!-- pragma: allowlist secret -->
+
+Local tests for steps 1 and 3 (no network, fake values, no CI): `pwsh -NoProfile -File ./scripts/test-backup-production-env-and-preflight.ps1`. The `.env` parser is shared with the deploy scripts in `scripts/lib/EnvFile.ps1`.
 
 Then **commit the agents log** (operator/agent required step — do not skip):
 
