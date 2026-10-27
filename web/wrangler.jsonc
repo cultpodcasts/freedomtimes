@@ -39,7 +39,8 @@
 			// Run the Worker next to the Turso primary (aws-eu-west-1, Dublin). Each page makes
 			// several sequential libsql HTTP round trips; placement turns ~90 ms/trip from the US
 			// into ~1-3 ms. Placement is NOT inherited from the top level — keep it per env.
-			// Verify after deploy: response header `cf-placement: remote-XXX` (or local-XXX near Dublin).
+			// Verify after deploy: `node scripts/verify-worker-placement.mjs --env <env>` (Cloudflare API:
+			// placement mode "targeted" + region). The `cf-placement` response header is no longer emitted.
 			"placement": {
 				"region": "aws:eu-west-1"
 			},
@@ -94,7 +95,8 @@
 			// Run the Worker next to the Turso primary (aws-eu-west-1, Dublin). Each page makes
 			// several sequential libsql HTTP round trips; placement turns ~90 ms/trip from the US
 			// into ~1-3 ms. Placement is NOT inherited from the top level — keep it per env.
-			// Verify after deploy: response header `cf-placement: remote-XXX` (or local-XXX near Dublin).
+			// Verify after deploy: `node scripts/verify-worker-placement.mjs --env <env>` (Cloudflare API:
+			// placement mode "targeted" + region). The `cf-placement` response header is no longer emitted.
 			"placement": {
 				"region": "aws:eu-west-1"
 			},

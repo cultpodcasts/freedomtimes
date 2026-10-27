@@ -19,7 +19,15 @@ param(
     [string[]]$Replace,
     [string]$ImportAddress,
     [string]$ImportId,
-    [string]$OutputName
+    [string]$OutputName,
+    # Skip the post-apply Worker settings check (placement / PAGE_CACHE / assets). Only for
+    # break-glass use; deploy-*-local.ps1 instead sets FT_WRANGLER_DEPLOY_FOLLOWS=1 and runs the
+    # same check after its wrangler deploy.
+    [switch]$SkipWorkerSettingsVerification,
+    # Break-glass: let a staging/production apply re-upload the web Worker script
+    # (cloudflare_workers_script.holding_page) outside the deploy pipeline. Redeploy with Wrangler
+    # afterwards. See scripts/terraform-plan-guard-worker-script-upload.ps1.
+    [switch]$AllowWorkerScriptUpload
 )
 
 Set-StrictMode -Version Latest
@@ -32,6 +40,7 @@ Initialize-WindowsCliPath
 . "$PSScriptRoot/terraform-turso-env.ps1"
 . "$PSScriptRoot/join-split-certificate-env.ps1"
 . "$PSScriptRoot/terraform-env-lock.ps1"
+. "$PSScriptRoot/lib/WorkerSettingsVerification.ps1"
 $preflightScript = Join-Path $PSScriptRoot "terraform-preflight.ps1"
 
 $requiresEnvironmentLock = @("init", "validate", "plan", "apply", "destroy", "import") -contains $Operation
@@ -173,6 +182,18 @@ function Invoke-EnvRemapping {
             [System.Environment]::SetEnvironmentVariable("TF_VAR_editorial_roles_claim", $rolesClaim, "Process")
         }
     }
+}
+
+# Pre-apply: refuse a plan that re-uploads the web Worker script outside the deploy pipeline.
+# Returns the guard's [int] exit code (0 allowed, 1 blocked). Worker environments only.
+function Invoke-WorkerScriptUploadGuard {
+    param([string]$Env, [string]$Plan)
+    if ($Env -ne "staging" -and $Env -ne "production") { return [int]0 }
+    $guard = Join-Path $repoRoot "scripts/terraform-plan-guard-worker-script-upload.ps1"
+    $guardArgs = @{ Environment = $Env; PlanFile = $Plan }
+    if ($AllowWorkerScriptUpload) { $guardArgs["AllowWorkerScriptUpload"] = $true }
+    & $guard @guardArgs | ForEach-Object { Write-Host $_ }
+    return [int]$LASTEXITCODE
 }
 
 function Get-FirstEnvValue {
@@ -490,8 +511,11 @@ try {
                 & $guardWorkerSecretsScript -Environment $Environment -PlanFile $PlanFile
                 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             }
+            $guardExit = Invoke-WorkerScriptUploadGuard -Env $Environment -Plan $PlanFile
+            if ($guardExit -ne 0) { exit $guardExit }
             Write-Host "DEBUG: Applying from saved plan" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", $PlanFile)
+            if ($exitCode -eq 0) { $exitCode = Invoke-PostApplyWorkerSettingsCheck -RepoRoot $repoRoot -Environment $Environment -Skip:$SkipWorkerSettingsVerification }
             exit $exitCode
         }
 
@@ -515,12 +539,32 @@ try {
                     }
                 }
             }
-            $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $replaceArgs + $varArgs
-            Write-Host "DEBUG: applyArgs count: $($applyArgs.Count)" -ForegroundColor DarkGray
-            $exitCode = Invoke-TerraformCommand -CommandArgs $applyArgs
+            if ($Environment -eq "staging" -or $Environment -eq "production") {
+                # Plan to a private saved plan, guard it, then apply exactly that plan, so the
+                # Worker script upload guard also covers -AutoApprove (incl. the deploy pipeline).
+                $autoPlanFile = "tfplan-autoapprove-$PID"
+                try {
+                    $planArgs = @("plan", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-out=$autoPlanFile") + $targetArgs + $replaceArgs + $varArgs
+                    $exitCode = Invoke-TerraformCommand -CommandArgs $planArgs
+                    if ($exitCode -eq 0) { $exitCode = Invoke-WorkerScriptUploadGuard -Env $Environment -Plan $autoPlanFile }
+                    if ($exitCode -eq 0) {
+                        Write-Host "DEBUG: Applying guarded auto-approve plan" -ForegroundColor DarkGray
+                        $exitCode = Invoke-TerraformCommand -CommandArgs @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", $autoPlanFile)
+                    }
+                }
+                finally {
+                    Remove-Item -LiteralPath $autoPlanFile -Force -ErrorAction SilentlyContinue
+                }
+            }
+            else {
+                $applyArgs = @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", "-auto-approve") + $targetArgs + $replaceArgs + $varArgs
+                Write-Host "DEBUG: applyArgs count: $($applyArgs.Count)" -ForegroundColor DarkGray
+                $exitCode = Invoke-TerraformCommand -CommandArgs $applyArgs
+            }
             if ($exitCode -eq 0 -and ($Environment -eq "staging" -or $Environment -eq "production")) {
                 Sync-Auth0LoginAppEnvFromState -Env $Environment -RepoRoot $repoRoot
             }
+            if ($exitCode -eq 0) { $exitCode = Invoke-PostApplyWorkerSettingsCheck -RepoRoot $repoRoot -Environment $Environment -Skip:$SkipWorkerSettingsVerification }
             Write-Host "DEBUG: terraform apply exited with code: $exitCode" -ForegroundColor DarkGray
             exit $exitCode
         }

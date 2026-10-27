@@ -65,12 +65,9 @@ if ($WorkersOnly) {
     Ensure-DeployCloudflareAccountIdFromEnv
 }
 
-if (-not $skipTerraform) {
-    Invoke-DeployTerraformApplyWithRecovery
-}
-
 try {
     if (-not $skipTerraform) {
+        Invoke-DeployTerraformApplyWithRecovery
         Assert-DeployAuth0SyncToEnv
         Invoke-DeployEnforceStagingPublishOnlyCollections
         Invoke-DeploySecretSync
@@ -110,6 +107,8 @@ try {
     }
 }
 finally {
+    # Terraform applied but wrangler deploy did not finish: loud redeploy warning + live check.
+    Write-DeployIncompleteAfterTerraformWarning
     Complete-DeployTerraformLockfileRestore
 }
 

@@ -414,16 +414,16 @@ That conflicted with the real Astro bundle deployed by Wrangler (`nodejs_compat`
 
 ### Current model
 
-Terraform (`infra/terraform/modules/cloudflare_holding_page/main.tf`) **owns**:
+Ownership of the Worker script (bundle, vars, KV / R2, assets, placement → Wrangler; `PAGE_VIEWS`, `EMAIL`,
+`secret_text` such as Turnstile → Terraform; Turso secrets → deploy scripts, **not** Terraform) is listed once in
+[NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings](../../NON_TERRAFORM_RESOURCES.md#wrangler-owned-worker-settings)
+and [infra/terraform/README.md](../../infra/terraform/README.md#worker-turso-secrets-emdash--not-terraform-managed).
 
-- Worker **name**, custom domain / route bindings
-- EmDash Turso secrets (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`)
-
-Wrangler **owns**:
-
-- Deployed bundle (`content`, `module`, `compatibility_date`, bindings metadata, …) — ignored by Terraform via `lifecycle.ignore_changes`
-
-**Operator rule:** deploy the app with Wrangler after Terraform apply. Do not expect Terraform to upload the Astro worker bundle. If Terraform plan wants to change `content` or `module` on the live script, ensure `ignore_changes` is present before apply.
+**Operator rule:** `ignore_changes` stops Terraform from planning its own `content`, but any apply that updates
+`cloudflare_workers_script.holding_page` still re-uploads the refreshed first module as `worker.js`, and
+Cloudflare has accepted that upload. Only apply it through the full `deploy-*-local.ps1`, which runs
+`wrangler deploy` later in the same run; a standalone `terraform-run.ps1` apply blocks it. Details, break-glass
+and recovery: [NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift).
 
 ---
 
@@ -618,7 +618,7 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 | `EBADENGINE` / `npm ci` on Node 22.14 during Cloud VM deploy | `/exec-daemon/node` stays first on `PATH` after `nvm use` | Deploy prepends nvm **v22.22.2** and throws if that binary is missing while `/exec-daemon` is on PATH. `nvm install 22.22.2` and re-run `deploy-*-local.ps1` — do not rely on `nvm use` |
 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Actions billing lock: `The job was not started because your account is locked due to a billing issue`. Empty `steps` is not empty YAML and is not this VM deploy | Ignore unless the operator asked about CI. Do not patch those workflows. Operator unlocks Actions billing if those checks are needed (CA-09) |
 | Staging `/` takes 1–3s with `Server-Timing` | Cold isolate / first HTML after deploy | Success, not a hang. A hang is **0-byte pending** with no timing headers |
-| `punycode` deprecation / `patch-cloudflare-bundle` patched 0 | Node / wrangler noise | Ignore |
+| `punycode` deprecation | Node / wrangler noise | Ignore. A `[patch-cloudflare-bundle] ERROR` (build exit 1) is not noise: see [PATCH_CLOUDFLARE_BUNDLE.md](./PATCH_CLOUDFLARE_BUNDLE.md) |
 | Staging login works but reader routes 403 / expected `staging-reader` | Deploy does not assign Auth0 users; Terraform may only create the role | Operator assigns `staging-reader` in Auth0. Do not invite those users as EmDash CMS users. Locked `/homepage` without cookies stays 302 `/` |
 | Published post has no `<video>` but the EmDash editor still shows the embed | PT `embed` has the MP4 on `id` and no `url`; or Cursor `content_update` truncated the body to markdown | [SELF_HOSTED_VIDEO_EMBEDS.md](./SELF_HOSTED_VIDEO_EMBEDS.md) — do not paste the full PT array into MCP |
 | Terraform `Authentication error (10000)` on Turnstile or Workers | Cloudflare API token missing permission | Add permission per [infra/terraform/CLOUDFLARE_API_TOKEN.md](../../infra/terraform/CLOUDFLARE_API_TOKEN.md); update `.env.dev` and TFC `TF_VAR_cloudflare_api_token`; re-apply |

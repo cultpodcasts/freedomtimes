@@ -269,6 +269,93 @@ finally {
     Remove-Item -LiteralPath $installTmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+Write-Host "=== Worker settings verification (placement / PAGE_CACHE) after wrangler deploy ==="
+# terraform-run.ps1's post-apply check and pre-apply guard are tested end to end in
+# scripts/test-terraform-worker-script-guards.ps1. Here: the deploy pipeline's use of the same lib.
+# `node` is shadowed by a function that WRITES TO STDOUT (so an output leak would show) and no
+# network call is made.
+function node { Write-Output "[verify-worker-placement] fake stdout line"; $global:LASTEXITCODE = $script:FakeNodeExit }
+try {
+    $script:FakeNodeExit = 0
+    $okThrew = $false
+    try { Invoke-DeployWorkerSettingsVerification 6>$null } catch { $okThrew = $true }
+    Assert-True (-not $okThrew) "verifier exit 0 passes"
+
+    $script:FakeNodeExit = 1
+    $mismatchThrew = $false
+    try { Invoke-DeployWorkerSettingsVerification 6>$null } catch { $mismatchThrew = $_.Exception.Message -match "do not match web/wrangler.jsonc" }
+    Assert-True $mismatchThrew "verifier exit 1 (placement/PAGE_CACHE mismatch) fails the deploy"
+
+    $script:FakeNodeExit = 2
+    $authThrew = $false
+    try { Invoke-DeployWorkerSettingsVerification 3>$null 6>$null } catch { $authThrew = $true }
+    Assert-True (-not $authThrew) "verifier exit 2 (no token / API error) only warns after wrangler deploy"
+}
+finally {
+    Remove-Item function:node -ErrorAction SilentlyContinue
+}
+
+Write-Host "=== Invoke-DeployWorkerSettingsVerification with PSNativeCommandUseErrorActionPreference = `$true (real node) ==="
+$nativeTmp = Join-Path ([IO.Path]::GetTempPath()) ("ft-deploy-verify-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path (Join-Path $nativeTmp "web/scripts") | Out-Null
+Set-Content -LiteralPath (Join-Path $nativeTmp "web/scripts/verify-worker-placement.mjs") -Value @'
+console.log('[verify-worker-placement] fake');
+console.error('[verify-worker-placement] could not verify (fake)');
+process.exitCode = Number(process.env.FAKE_VERIFIER_EXIT ?? '0');
+'@
+$previousRepoRoot = $script:DeployRepoRoot
+$script:DeployRepoRoot = $nativeTmp
+$PSNativeCommandUseErrorActionPreference = $true
+try {
+    $env:FAKE_VERIFIER_EXIT = "2"
+    $nativeThrew = $false
+    try { Invoke-DeployWorkerSettingsVerification 3>$null 6>$null } catch { $nativeThrew = $true }
+    Assert-True (-not $nativeThrew) "verifier exit 2 only warns even with PSNativeCommandUseErrorActionPreference = `$true"
+
+    $env:FAKE_VERIFIER_EXIT = "1"
+    $nativeMismatch = $false
+    try { Invoke-DeployWorkerSettingsVerification 6>$null } catch { $nativeMismatch = $_.Exception.Message -match "do not match web/wrangler.jsonc" }
+    Assert-True $nativeMismatch "verifier exit 1 throws the mismatch message (not a NativeCommandExitException)"
+
+    Write-Host "=== Write-DeployIncompleteAfterTerraformWarning ==="
+    $env:FAKE_VERIFIER_EXIT = "2"
+    $script:DeployTerraformApplyStarted = $true
+    $script:DeployWorkerDeployCompleted = $false
+    $warnOut = Invoke-Command { Write-DeployIncompleteAfterTerraformWarning } 6>&1 | Out-String
+    Assert-True ($warnOut -match "wrangler deploy did not complete" -and $warnOut -match "deploy-production-local\.ps1 -WorkerOnly") "apply ran, wrangler did not: loud warning with the -WorkerOnly redeploy command"
+    Assert-True ($warnOut -match "Live Worker check exit 2") "...and the live Worker check runs (non-fatal)"
+
+    $script:DeployWorkerDeployCompleted = $true
+    $quietOut = Invoke-Command { Write-DeployIncompleteAfterTerraformWarning } 6>&1 | Out-String
+    Assert-True ([string]::IsNullOrWhiteSpace($quietOut)) "no warning once wrangler deploy completed"
+
+    $script:DeployTerraformApplyStarted = $false
+    $script:DeployWorkerDeployCompleted = $false
+    $quietOut = Invoke-Command { Write-DeployIncompleteAfterTerraformWarning } 6>&1 | Out-String
+    Assert-True ([string]::IsNullOrWhiteSpace($quietOut)) "no warning when Terraform never ran (-WorkerOnly)"
+
+    $script:DeployTerraformApplyStarted = $true
+    $script:DeployRepoRoot = Join-Path $nativeTmp "missing"
+    $neverThrew = $true
+    try { Write-DeployIncompleteAfterTerraformWarning 6>$null } catch { $neverThrew = $false }
+    Assert-True $neverThrew "warning helper never throws (it runs in finally blocks)"
+}
+finally {
+    $PSNativeCommandUseErrorActionPreference = $false
+    $script:DeployRepoRoot = $previousRepoRoot
+    $script:DeployTerraformApplyStarted = $false
+    $script:DeployWorkerDeployCompleted = $false
+    Remove-Item Env:FAKE_VERIFIER_EXIT -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $nativeTmp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$deployCommonText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "Deploy-EnvironmentCommon.ps1")
+Assert-True ($deployCommonText -match '\$env:FT_WRANGLER_DEPLOY_FOLLOWS = "1"') "deploy pipeline marks its Terraform apply as followed by wrangler deploy"
+foreach ($deployScript in "deploy-staging-local.ps1", "deploy-production-local.ps1") {
+    $text = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $deployScript)
+    Assert-True ($text -match '(?s)try \{.*Invoke-DeployTerraformApplyWithRecovery.*finally \{\s*#[^\n]*\n\s*Write-DeployIncompleteAfterTerraformWarning') "$deployScript runs the Terraform apply inside try and warns in finally"
+}
+
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {

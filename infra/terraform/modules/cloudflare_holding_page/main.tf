@@ -28,9 +28,9 @@ locals {
 
   send_email_bindings = var.enable_send_email ? [
     {
-      name                      = var.send_email_binding_name
-      type                      = "send_email"
-      allowed_sender_addresses  = var.send_email_allowed_sender_addresses
+      name                     = var.send_email_binding_name
+      type                     = "send_email"
+      allowed_sender_addresses = var.send_email_allowed_sender_addresses
     }
   ] : []
 
@@ -54,9 +54,9 @@ resource "cloudflare_workers_script" "holding_page" {
   script_name = var.worker_name
   content     = local.worker_script
   # Module syntax Worker (matches previous module = true).
-  main_module = "worker.js"
+  main_module        = "worker.js"
   compatibility_date = var.worker_compatibility_date
-  logpush    = true
+  logpush            = true
 
   bindings = local.worker_bindings
 
@@ -76,9 +76,19 @@ resource "cloudflare_workers_script" "holding_page" {
   # Do not ignore main_module: empty main_module in state (post-Wrangler refresh) makes
   # bindings-only PUTs upload ESM as a service worker (Cloudflare 10021).
   # placement: wrangler.jsonc env.<env>.placement (region aws:eu-west-1, next to the Turso
-  # primary) is the single owner. Ignoring it keeps the refreshed value in TF uploads, so a
-  # secret rotation / bindings apply does not silently revert to eyeball placement.
-  # See NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
+  # primary) is the single owner. Provider 5.22 cannot declare it (placement.target[].region is
+  # computed-only), so it is ignored here and Terraform never plans a placement value of its own.
+  #
+  # Expected plan drift, NOT safe to apply on its own: after any Wrangler deploy the provider merges
+  # Wrangler's bindings (KV, R2, plain_text vars such as PAGE_CACHE, ASSETS) into state on refresh, so
+  # the plan shows `~ bindings` + "known after apply" computed attributes ("1 to change"). Applying it
+  # re-uploads `content` from state, which is only the FIRST module of the live multi-module Worker,
+  # as "worker.js". Cloudflare accepts that upload, so the Worker runs it until the next wrangler
+  # deploy (issue #116). scripts/terraform-run.ps1 therefore blocks any holding_page change before
+  # apply unless wrangler deploy follows later in the same run (deploy-*-local.ps1) or
+  # -AllowWorkerScriptUpload is passed, and verifies placement / PAGE_CACHE / ASSETS after apply. Do not "fix" the drift by mirroring
+  # wrangler.jsonc here (two owners) or ignoring `bindings` (TF owns secret_text).
+  # Canonical statement: NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift
   lifecycle {
     ignore_changes = [
       content,
