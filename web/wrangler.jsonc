@@ -10,7 +10,13 @@
 		"head_sampling_rate": 1
 	},
 	"assets": {
-		"directory": "dist/client"
+		"directory": "dist/client",
+		// Required: the @astrojs/cloudflare entry calls env.ASSETS.fetch() for routes no page matches
+		// (fallbackToAssets) and for prerendered error pages. The adapter adds this binding to its generated
+		// dist/server/wrangler.json, but deploys use this file (--config web/wrangler.jsonc), so it must be
+		// named here. Without it every unmatched URL (e.g. /2026/10/11/) was a 500 "Cannot read properties
+		// of undefined (reading 'fetch')". Checked by scripts/verify-worker-placement.mjs after each deploy.
+		"binding": "ASSETS"
 	},
 	"vars": {
 		// Vars shared by all environments (override in env block if needed)

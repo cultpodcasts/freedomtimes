@@ -4,8 +4,9 @@ import type { APIRoute } from 'astro';
  * Android Digital Asset Links for package `news.freedomtimes.app`.
  *
  * Served at `/.well-known/assetlinks.json` (AUTH_BYPASS under `/.well-known/`).
- * Without this route, unknown `/.well-known/*` paths miss Astro routeData and
- * the Cloudflare worker entry's unmatched-route fallback 1101s.
+ * Without this route, `/.well-known/assetlinks.json` misses Astro routeData and
+ * falls through to the unmatched-route fallback (a 404 with `assets.binding` set in
+ * wrangler.jsonc; it threw, Cloudflare 1101, while `env.ASSETS` was unbound).
  * OAuth well-known aliases are `src/endpoints/oauth-well-known-aliases.ts`;
  * do not fold them into this file.
  *

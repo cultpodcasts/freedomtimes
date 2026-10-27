@@ -5,6 +5,22 @@
 // is not emitted for our Worker. The authoritative check is the Workers API
 // (GET /accounts/{account}/workers/services/{worker} — "Check placement status" in the same doc), plus the
 // script settings (GET /accounts/{account}/workers/scripts/{worker}/settings) for bindings.
+//
+// Static assets: an `assets` binding is OPTIONAL. Cloudflare only lists one in the script settings bindings
+// when wrangler.jsonc sets `assets.binding` ("Configuring the optional binding gives you access to the
+// collection of assets from within your Worker script",
+// https://developers.cloudflare.com/workers/static-assets/binding/#binding; the Direct Upload API adds
+// `{ name, type: "assets" }` to `bindings` only "if you wish to fetch and serve assets from within your
+// Worker code", https://developers.cloudflare.com/workers/static-assets/direct-upload/). Our wrangler.jsonc
+// names the binding ASSETS (required by the @astrojs/cloudflare entry, see the comment there); a config
+// without a binding name would expect none. Whether a Worker has
+// assets at all is the documented `has_assets` boolean on the script object ("Whether a Worker contains
+// assets", GET /accounts/{account}/workers/scripts,
+// https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/list/). The settings
+// endpoint has no assets config field. The end-to-end proof is a logged-out GET of a static file that is in
+// the build output (probeStaticAsset): assets are served before the Worker runs, so it bypasses the staging
+// login wall; a missing asset falls through to the Worker (302 to the login wall / HTML 404). A second probe
+// (probeUnmatchedRoute) catches an unbound env.ASSETS at runtime: unmatched routes then 500.
 
 /** Strip // and /* *\/ comments and trailing commas from JSONC, respecting strings. */
 export function parseJsonc(text) {
@@ -49,7 +65,7 @@ export function parseJsonc(text) {
 
 /**
  * Expected Worker settings for one environment, from wrangler.jsonc.
- * @returns {{ workerName: string, accountId: string|undefined, placementRegion: string|undefined, plainText: Record<string,string>, hasAssets: boolean }}
+ * @returns {{ workerName: string, accountId: string|undefined, placementRegion: string|undefined, plainText: Record<string,string>, hasAssets: boolean, assetsBinding: string|undefined }}
  */
 export function expectedFromWrangler(wrangler, env) {
 	const e = wrangler.env?.[env];
@@ -64,15 +80,22 @@ export function expectedFromWrangler(wrangler, env) {
 		accountId: wrangler.account_id,
 		placementRegion: (e.placement ?? wrangler.placement)?.region,
 		plainText,
-		hasAssets: Boolean(wrangler.assets ?? e.assets),
+		hasAssets: Boolean(e.assets ?? wrangler.assets),
+		// Only set when wrangler.jsonc names a binding; then Cloudflare lists it with type "assets".
+		assetsBinding: typeof (e.assets ?? wrangler.assets)?.binding === 'string' ? (e.assets ?? wrangler.assets).binding : undefined,
 	};
 }
 
 const FAILED_PLACEMENT_STATUSES = new Set(['UNSUPPORTED_APPLICATION', 'INSUFFICIENT_INVOCATIONS', 'NO_VALID_HOSTS', 'NO_VALID_HOSTNAMES', 'UNSUPPORTED_HOST']);
 
+/** The script object of a GET /workers/services/{name} result (shape varies by API version). */
+export function scriptFromService(serviceResult) {
+	return serviceResult?.default_environment?.script ?? serviceResult?.script ?? serviceResult ?? {};
+}
+
 /** Extract placement from GET /workers/services/{name} result (shape varies by API version). */
 export function placementFromService(serviceResult) {
-	const script = serviceResult?.default_environment?.script ?? serviceResult?.script ?? serviceResult ?? {};
+	const script = scriptFromService(serviceResult);
 	const placement = script.placement ?? {};
 	const targets = Array.isArray(placement.target) ? placement.target : [];
 	const regions = targets
@@ -88,12 +111,25 @@ export function placementFromService(serviceResult) {
 }
 
 /**
+ * `has_assets` for the Worker from the API: the services result's script object first, then the
+ * GET /workers/scripts list entry whose `id` is the Worker name. undefined = not reported.
+ * @returns {boolean|undefined}
+ */
+export function hasAssetsFromApi(serviceResult, scriptList, workerName) {
+	const script = scriptFromService(serviceResult);
+	if (typeof script.has_assets === 'boolean') return script.has_assets;
+	const entry = Array.isArray(scriptList) ? scriptList.find((s) => s && (s.id === workerName || s.script_name === workerName)) : undefined;
+	return typeof entry?.has_assets === 'boolean' ? entry.has_assets : undefined;
+}
+
+/**
  * Compare live Worker state to wrangler.jsonc.
  * @param {ReturnType<typeof expectedFromWrangler>} expected
  * @param {ReturnType<typeof placementFromService>} placement
  * @param {Array<{name: string, type: string, text?: string}>} bindings from script settings
+ * @param {{ apiHasAssets?: boolean }} [assets] `has_assets` from hasAssetsFromApi (undefined = not reported)
  */
-export function evaluateWorker(expected, placement, bindings) {
+export function evaluateWorker(expected, placement, bindings, { apiHasAssets } = {}) {
 	const failures = [];
 	const notes = [];
 
@@ -118,8 +154,16 @@ export function evaluateWorker(expected, placement, bindings) {
 		else if (b.type !== 'plain_text') failures.push(`binding ${name} has type ${b.type}, expected plain_text`);
 		else if (b.text !== value) failures.push(`binding ${name}="${b.text}", wrangler.jsonc sets "${value}"`);
 	}
-	if (expected.hasAssets && ![...byName.values()].some((b) => b.type === 'assets')) {
-		failures.push('no assets binding (static assets would 404)');
+	if (expected.assetsBinding) {
+		const b = byName.get(expected.assetsBinding);
+		if (!b) failures.push(`assets binding ${expected.assetsBinding} is missing (wrangler.jsonc assets.binding)`);
+		else if (b.type !== 'assets') failures.push(`binding ${expected.assetsBinding} has type ${b.type}, expected assets`);
+	} else if (expected.hasAssets) {
+		notes.push('assets configured without a binding name in wrangler.jsonc: no assets binding expected');
+	}
+	if (expected.hasAssets) {
+		if (apiHasAssets === false) failures.push('Cloudflare reports has_assets=false: the Worker has no static assets (they would fall through to the Worker)');
+		else notes.push(`has_assets ${apiHasAssets === true ? 'true' : '(not reported by the API)'}`);
 	}
 	if (placement.lastDeployedFrom && placement.lastDeployedFrom !== 'wrangler') {
 		failures.push(
@@ -127,6 +171,158 @@ export function evaluateWorker(expected, placement, bindings) {
 		);
 	}
 	return { ok: failures.length === 0, failures, notes };
+}
+
+// --- Static asset probe ---------------------------------------------------------------------------
+
+/** Each environment's own public origin (= infra/terraform/environments/<env> variable workspace_url). */
+export const SITE_ORIGINS = Object.freeze({
+	staging: 'https://staging.freedomtimes.news',
+	production: 'https://freedomtimes.news',
+});
+
+/** Default probe path: web/public/favicon.svg, copied to dist/client by astro build (asserted by a unit test). */
+export const DEFAULT_ASSET_PROBE_PATH = '/favicon.svg';
+
+/** Query parameter that makes each static-asset probe URL unique, so an edge-cached copy cannot answer it. */
+export const ASSET_PROBE_CACHE_BUST_PARAM = 'ft-verify';
+
+/** `<url>?ft-verify=<now>` (or `&ft-verify=` when the URL already has a query). redactUrl drops it from logs. */
+export function withCacheBust(url, now = Date.now()) {
+	const u = new URL(url);
+	u.searchParams.set(ASSET_PROBE_CACHE_BUST_PARAM, String(now));
+	return u.href;
+}
+
+/**
+ * Logged-out GET of one static asset (no cookies, redirects not followed). Static assets are served before
+ * the Worker runs, so this bypasses the staging login wall. Pass: HTTP 200 and a non-HTML content-type.
+ * A missing asset falls through to the Worker: 302 to the login wall (staging) or an HTML 404 (production).
+ * Callers pass a cache-busted URL (withCacheBust) so a cached copy from before the deploy cannot pass it;
+ * `cf-cache-status` is returned for the log. Network / DNS errors return `{ error }` (exit 2 "could not
+ * verify"), never a mismatch.
+ * @param {{ url: string, fetchImpl?: typeof fetch }} opts
+ * @returns {Promise<{ ok: boolean, status: number, contentType: string, cfCacheStatus?: string, failure?: string } | { error: string }>}
+ */
+export async function probeStaticAsset({ url, fetchImpl = fetch }) {
+	let res;
+	try {
+		res = await fetchImpl(url, { redirect: 'manual' });
+		await res.arrayBuffer();
+	} catch (err) {
+		return { error: `static asset probe of ${redactUrl(url)} failed: ${describeNetworkError(err)}` };
+	}
+	const contentType = res.headers.get('content-type') ?? '';
+	const cfCacheStatus = res.headers.get('cf-cache-status') ?? undefined;
+	let failure;
+	if (res.status !== 200) {
+		const location = res.headers.get('location');
+		failure = `static asset ${redactUrl(url)} returned HTTP ${res.status}${location ? ` (location ${redactUrl(new URL(location, url).href)})` : ''}, expected 200 from the assets layer`;
+	} else if (/^\s*text\/html\b/i.test(contentType) || contentType.trim() === '') {
+		failure = `static asset ${redactUrl(url)} returned content-type ${JSON.stringify(contentType)}, expected a non-HTML asset type (the Worker answered, not the assets layer)`;
+	}
+	return failure
+		? { ok: false, status: res.status, contentType, cfCacheStatus, failure }
+		: { ok: true, status: res.status, contentType, cfCacheStatus };
+}
+
+/**
+ * Map a probeStaticAsset result to the verifier outcome: ok, mismatch (exit 1) or unverified (exit 2).
+ * @returns {{ outcome: 'ok'|'mismatch'|'unverified', message: string }}
+ */
+export function classifyAssetProbe(probe) {
+	if ('error' in probe) return { outcome: 'unverified', message: probe.error };
+	if (!probe.ok) return { outcome: 'mismatch', message: probe.failure ?? `probe failed (HTTP ${probe.status})` };
+	const cache = probe.cfCacheStatus ? `, cf-cache-status ${probe.cfCacheStatus}` : '';
+	return { outcome: 'ok', message: `HTTP ${probe.status} ${probe.contentType || '(no content-type)'} (logged out${cache})` };
+}
+
+/** Live probes retry this many times, this far apart, before a 5xx / non-200 / network error counts. */
+export const DEFAULT_PROBE_ATTEMPTS = 4;
+export const DEFAULT_PROBE_DELAY_MS = 5000;
+
+/**
+ * Run a live probe (probeStaticAsset / probeUnmatchedRoute) up to `attempts` times, `delayMs` apart, so a
+ * single transient edge 5xx or a just-deployed version that is still propagating does not fail a deploy.
+ * Stops at the first ok attempt. Returns the result to classify (classifyAssetProbe):
+ * - any attempt ok → that ok result;
+ * - otherwise, if any attempt got an HTTP response → the last HTTP failure (mismatch, exit 1);
+ * - every attempt was a network error → the last `{ error }` (could not verify, exit 2).
+ * `makeUrl(attempt)` builds each attempt's URL (fresh cache-buster per attempt). `log` gets one line per
+ * attempt with the status only (no headers, no cookies, query stripped by redactUrl).
+ * @param {{ probe: (o: { url: string, fetchImpl?: typeof fetch }) => Promise<any>, makeUrl: (attempt: number) => string,
+ *   attempts?: number, delayMs?: number, sleep?: (ms: number) => Promise<void>, fetchImpl?: typeof fetch,
+ *   log?: (line: string) => void, label?: string }} opts
+ */
+export async function probeWithRetry({
+	probe,
+	makeUrl,
+	attempts = DEFAULT_PROBE_ATTEMPTS,
+	delayMs = DEFAULT_PROBE_DELAY_MS,
+	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+	fetchImpl,
+	log = () => {},
+	label = 'probe',
+}) {
+	const total = Math.max(1, Math.floor(attempts));
+	let lastHttpFailure;
+	let lastError;
+	for (let attempt = 1; attempt <= total; attempt++) {
+		const url = makeUrl(attempt);
+		const result = await probe(fetchImpl ? { url, fetchImpl } : { url });
+		if ('error' in result) {
+			lastError = result;
+			log(`${label} attempt ${attempt}/${total}: network error`);
+		} else {
+			log(`${label} attempt ${attempt}/${total}: HTTP ${result.status}${result.ok ? '' : ' (not ok)'}`);
+			if (result.ok) return { ...result, attempts: attempt };
+			lastHttpFailure = result;
+		}
+		if (attempt < total) await sleep(delayMs);
+	}
+	if (lastHttpFailure) {
+		return { ...lastHttpFailure, failure: `${lastHttpFailure.failure} (after ${total} attempts)`, attempts: total };
+	}
+	return { error: `${lastError.error} (after ${total} attempts)` };
+}
+
+/** Verifier exit code: 1 if any real mismatch, else 2 if anything could not be checked, else 0. */
+export function verifierExitCode({ mismatch, unverified }) {
+	if (mismatch) return 1;
+	return unverified.length > 0 ? 2 : 0;
+}
+
+/** A path no page or asset matches; the Worker must answer it with a 4xx/3xx, never a 5xx. */
+export const DEFAULT_UNMATCHED_PROBE_PATH = '/__ft-verify/no-such-route/a/b';
+
+/**
+ * Logged-out GET of a URL no route matches (redirects not followed). The @astrojs/cloudflare entry sends
+ * unmatched routes to env.ASSETS.fetch() (fallbackToAssets) before rendering the 404, so a missing assets
+ * binding shows up here as HTTP 500 ("Cannot read properties of undefined (reading 'fetch')"). Pass: any
+ * status below 500 (404 on production; the staging login wall may answer 302). This checks "no 5xx", NOT
+ * "is a 404": which 4xx a deep unmatched URL gets depends on the route Astro matches (a proper 404 page
+ * for every unmatched URL is issue #119), so a 400 also passes.
+ * @param {{ url: string, fetchImpl?: typeof fetch }} opts
+ * @returns {Promise<{ ok: boolean, status: number, contentType: string, failure?: string } | { error: string }>}
+ */
+export async function probeUnmatchedRoute({ url, fetchImpl = fetch }) {
+	let res;
+	try {
+		res = await fetchImpl(url, { redirect: 'manual' });
+		await res.arrayBuffer();
+	} catch (err) {
+		return { error: `unmatched-route probe of ${redactUrl(url)} failed: ${describeNetworkError(err)}` };
+	}
+	const contentType = res.headers.get('content-type') ?? '';
+	if (res.status >= 500) {
+		return {
+			ok: false,
+			status: res.status,
+			contentType,
+			failure: `unmatched route ${redactUrl(url)} returned HTTP ${res.status}, expected a 4xx/3xx (a 500 here usually means env.ASSETS is unbound)`,
+		};
+	}
+	return { ok: true, status: res.status, contentType };
 }
 
 /** Parse a Server-Timing header into { name: durMs }. */
