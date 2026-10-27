@@ -149,6 +149,12 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${co
 			assert.equal(r.status, 200);
 			assert.doesNotMatch(r.body, /data-ft-not-found/);
 		});
+		it('direct GET /404 → 404 page, /500 → 500 page (static error routes outrank [slug], #120)', async () => {
+			assertNotFoundPage(await get(w!, '/404'), '/404');
+			const r = await get(w!, '/500');
+			assert.equal(r.status, 500);
+			assert.match(r.body, /data-ft-server-error/);
+		});
 		it('/no-such-page-xyz → 404 page', async () => assertNotFoundPage(await get(w!, '/no-such-page-xyz'), '/no-such-page-xyz'));
 		it('/posts/does-not-exist-xyz → 404 page', async () => assertNotFoundPage(await get(w!, '/posts/does-not-exist-xyz'), '/posts/does-not-exist-xyz'));
 		for (const path of UNKNOWN) {

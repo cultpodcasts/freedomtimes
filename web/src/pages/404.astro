@@ -2,7 +2,8 @@
 /**
  * Astro's 404 error route: rendered for any URL that no route in the app matches (multi-segment
  * paths such as `/2026/10/11/`, `/category/x`, `/posts/a/b`), after the adapter's ASSETS fallback
- * misses. A direct `GET /404` is NOT this file: it matches `[slug].astro` with `slug='404'`.
+ * misses. A direct `GET /404` is this file too (a static route outranks `[slug]`; checked in
+ * `npm run test:worker-routes`: `/404` → 404 page, `/500` → 500 page).
  * Server-rendered so it can apply the staging lock like every other reader route.
  *
  * Must stay a real 404: never a redirect to the homepage (Google treats that as a soft 404).

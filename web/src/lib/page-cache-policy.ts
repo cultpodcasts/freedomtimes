@@ -52,8 +52,8 @@ export const DENY_TOP_LEVEL: ReadonlySet<string> = new Set([
   // /pages/<slug> (EmDash pages collection) is not cached in this change.
   'pages',
   // Error-route paths: src/pages/404.astro / 500.astro are what Astro renders for unmatched URLs
-  // and server errors. A direct GET /404 or /500 is served by [slug].astro instead; either way
-  // these paths are never cacheable reader pages.
+  // and server errors (also for a direct GET /404 or /500: static routes outrank [slug]). They are
+  // never cacheable reader pages.
   '404',
   '500',
 ]);
