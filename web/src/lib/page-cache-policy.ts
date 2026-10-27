@@ -24,19 +24,14 @@ const NON_SESSION_COOKIE_PATTERNS: readonly RegExp[] = [
   /^_gid$/,
 ];
 
-/** Query params that do not change the page: stripped from the cache key. */
-const TRACKING_PARAM_PATTERNS: readonly RegExp[] = [
-  /^utm_[a-z_]+$/i,
-  /^fbclid$/i,
-  /^gclid$/i,
-  /^msclkid$/i,
-  /^mc_cid$/i,
-  /^mc_eid$/i,
-  /^ref$/i,
-];
-
-/** Top-level single-segment paths that are NOT cacheable reader pages. */
-const DENY_TOP_LEVEL = new Set([
+/**
+ * Top-level path segments that are NOT cacheable reader pages. The `/(slug)`
+ * pattern below is a catch-all for EmDash pages, so this list must name every
+ * other top-level route: `scripts/test-page-cache-policy.mts` enumerates
+ * `src/pages/*` and fails unless each entry is here or in
+ * CACHEABLE_STATIC_ROUTES (fail closed for new routes).
+ */
+export const DENY_TOP_LEVEL: ReadonlySet<string> = new Set([
   'admin',
   'api',
   'auth',
@@ -53,7 +48,16 @@ const DENY_TOP_LEVEL = new Set([
   'logout',
   'login',
   'account',
+  'cdn-cgi',
+  // /pages/<slug> (EmDash pages collection) is not cached in this change.
+  'pages',
 ]);
+
+/**
+ * Top-level `src/pages/*` routes that are deliberately cacheable reader
+ * routes (index = `/`). Everything else must be in DENY_TOP_LEVEL.
+ */
+export const CACHEABLE_STATIC_ROUTES: ReadonlySet<string> = new Set(['index', 'posts', 'archives']);
 
 const SLUG = '[a-z0-9][a-z0-9-]*';
 const CACHEABLE_PATH_PATTERNS: readonly RegExp[] = [
@@ -86,8 +90,7 @@ export function isCacheablePath(pathname: string): boolean {
   if (pathname.includes('//') || pathname.includes('%')) return false;
   if (pathname.startsWith('/_') || pathname.startsWith('/.')) return false;
   const first = pathname.split('/')[1] ?? '';
-  if (DENY_TOP_LEVEL.has(first) && pathname !== '/') return false;
-  if (first === 'api' || first === 'admin' || first === 'auth' || first === 'cdn-cgi') return false;
+  if (DENY_TOP_LEVEL.has(first)) return false;
   if (/^\/sitemap[^/]*\.xml$/.test(pathname)) return false; // own resilient cache
   return CACHEABLE_PATH_PATTERNS.some((re) => re.test(pathname));
 }
@@ -108,20 +111,6 @@ export function hasOnlyNonSessionCookies(cookieHeader: string | null | undefined
   );
 }
 
-/**
- * Normalised query for the cache key, or `null` when a non-tracking param is
- * present (preview tokens, edit mode, pagination…) — such requests bypass.
- */
-export function cacheKeySearch(search: string): string | null {
-  const params = new URLSearchParams(search);
-  const kept: [string, string][] = [];
-  for (const [key, value] of params) {
-    if (TRACKING_PARAM_PATTERNS.some((re) => re.test(key))) continue;
-    kept.push([key, value]);
-  }
-  return kept.length === 0 ? '' : null;
-}
-
 export type PageCacheRequestInfo = {
   method: string;
   pathname: string;
@@ -130,9 +119,19 @@ export type PageCacheRequestInfo = {
   authorization: string | null;
 };
 
+export type PageCacheBypassReason = 'disabled' | 'method' | 'authorization' | 'cookie' | 'path' | 'query';
+
 export type PageCacheDecision =
   | { cacheable: true; keyPath: string }
-  | { cacheable: false; reason: string };
+  | { cacheable: false; reason: PageCacheBypassReason };
+
+/**
+ * Bypasses that are not reader-page candidates (admin, API, auth, assets,
+ * non-GET): passed through untouched, no `x-ft-cache` header.
+ */
+export function isSilentBypass(reason: PageCacheBypassReason): boolean {
+  return reason === 'disabled' || reason === 'method' || reason === 'path';
+}
 
 export function decidePageCacheRequest(env: PageCacheEnv, req: PageCacheRequestInfo): PageCacheDecision {
   if (!isPageCacheEnabled(env)) return { cacheable: false, reason: 'disabled' };
@@ -140,8 +139,10 @@ export function decidePageCacheRequest(env: PageCacheEnv, req: PageCacheRequestI
   if (req.authorization) return { cacheable: false, reason: 'authorization' };
   if (!hasOnlyNonSessionCookies(req.cookie)) return { cacheable: false, reason: 'cookie' };
   if (!isCacheablePath(req.pathname)) return { cacheable: false, reason: 'path' };
-  const search = cacheKeySearch(req.search);
-  if (search === null) return { cacheable: false, reason: 'query' };
+  // Fail closed on ANY query string (including utm_*): Layout.astro (canonical /
+  // og:url fallback) and Header.astro (`next=`) render the query into the HTML,
+  // so a query-bearing response must never be shared under the bare path.
+  if (req.search !== '' && req.search !== '?') return { cacheable: false, reason: 'query' };
   return { cacheable: true, keyPath: req.pathname };
 }
 

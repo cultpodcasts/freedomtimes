@@ -13,40 +13,26 @@ import { definePlugin } from 'emdash';
 
 import { bumpPageCacheEpoch } from '../lib/page-cache';
 import { isPageCacheEnabled, type PageCacheEnv } from '../lib/page-cache-policy';
+import { createPurgeHooks } from './page-cache-purge-hooks';
 
 export const PAGE_CACHE_PURGE_PLUGIN_ID = 'ft-page-cache-purge';
 
-async function purge(reason: string): Promise<void> {
-  if (!isPageCacheEnabled(cfEnv as unknown as PageCacheEnv)) return;
-  await bumpPageCacheEpoch(reason);
-}
-
 export function createPlugin(): ResolvedPlugin {
+  const hooks = createPurgeHooks({
+    isEnabled: () => isPageCacheEnabled(cfEnv as unknown as PageCacheEnv),
+    bump: bumpPageCacheEpoch,
+  });
   return definePlugin({
     id: PAGE_CACHE_PURGE_PLUGIN_ID,
     version: '1.0.0',
     // EmDash skips content:after* hooks without content:read.
     capabilities: ['content:read'],
     hooks: {
-      'content:afterSave': {
-        handler: async (event) => {
-          // Draft saves of an unpublished entry change nothing public.
-          if (event.content?.status !== 'published') return;
-          await purge(`afterSave:${event.collection}`);
-        },
-      },
-      'content:afterPublish': {
-        handler: async (event) => purge(`afterPublish:${event.collection}`),
-      },
-      'content:afterUnpublish': {
-        handler: async (event) => purge(`afterUnpublish:${event.collection}`),
-      },
-      'content:afterDelete': {
-        handler: async (event) => purge(`afterDelete:${event.collection}`),
-      },
-      'content:afterRestore': {
-        handler: async (event) => purge(`afterRestore:${event.collection}`),
-      },
+      'content:afterSave': { handler: async (event) => hooks.afterSave(event) },
+      'content:afterPublish': { handler: async (event) => hooks.afterPublish(event) },
+      'content:afterUnpublish': { handler: async (event) => hooks.afterUnpublish(event) },
+      'content:afterDelete': { handler: async (event) => hooks.afterDelete(event) },
+      'content:afterRestore': { handler: async (event) => hooks.afterRestore(event) },
     },
   });
 }

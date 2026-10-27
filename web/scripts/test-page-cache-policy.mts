@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+	CACHEABLE_STATIC_ROUTES,
+	DENY_TOP_LEVEL,
 	PAGE_CACHE_DEFAULT_TTL_SECONDS,
-	cacheKeySearch,
 	decidePageCacheRequest,
 	hasOnlyNonSessionCookies,
 	isCacheablePath,
@@ -114,19 +115,47 @@ describe('page cache: request bypass rules', () => {
 		});
 	});
 
-	it('bypasses Authorization, non-GET/HEAD, and non-tracking query strings', () => {
+	it('bypasses Authorization and non-GET/HEAD', () => {
 		assert.equal(decidePageCacheRequest(PROD, req({ authorization: 'Bearer x' })).cacheable, false);
 		assert.equal(decidePageCacheRequest(PROD, req({ method: 'POST' })).cacheable, false);
 		assert.equal(decidePageCacheRequest(PROD, req({ method: 'HEAD' })).cacheable, true);
-		for (const s of ['?preview=1', '?_preview=tok', '?edit=1', '?page=2', '?token=x']) {
-			assert.equal(cacheKeySearch(s), null, s);
-			assert.equal(decidePageCacheRequest(PROD, req({ search: s })).cacheable, false, s);
+	});
+
+	it('fails closed on ANY query string, including tracking params (no poisoning via utm_*)', () => {
+		// Layout.astro canonical/og:url fallback and Header.astro `next=` render the query.
+		for (const s of ['?preview=1', '?_preview=tok', '?edit=1', '?page=2', '?token=x', '?utm_source=x', '?fbclid=y', '?gclid=z&utm_medium=a', '?ref=x']) {
+			assert.deepEqual(decidePageCacheRequest(PROD, req({ pathname: '/archives', search: s })), { cacheable: false, reason: 'query' }, s);
 		}
-		assert.equal(cacheKeySearch('?utm_source=x&fbclid=y&gclid=z'), '');
-		assert.deepEqual(decidePageCacheRequest(PROD, req({ search: '?utm_source=x' })), {
-			cacheable: true,
-			keyPath: '/',
-		});
+		assert.deepEqual(decidePageCacheRequest(PROD, req({ pathname: '/archives', search: '' })), { cacheable: true, keyPath: '/archives' });
+	});
+});
+
+describe('page cache: route classification (catch-all fails closed)', () => {
+	it('every top-level src/pages entry is explicitly denied or allow-listed', () => {
+		const pagesDir = fileURLToPath(new URL('../src/pages/', import.meta.url));
+		const names = readdirSync(pagesDir)
+			.filter((n) => n !== '[slug].astro')
+			.map((n) => n.replace(/\.(astro|ts|js|mts|md|mdx)$/, ''));
+		assert.ok(names.length > 5, 'expected to enumerate src/pages');
+		for (const name of names) {
+			if (name.startsWith('.') || name.startsWith('_')) {
+				// Rejected by isCacheablePath's `/.` and `/_` prefix check.
+				assert.equal(isCacheablePath(`/${name}/x`), false, name);
+				continue;
+			}
+			assert.ok(
+				DENY_TOP_LEVEL.has(name) || CACHEABLE_STATIC_ROUTES.has(name),
+				`New top-level route src/pages/${name}: add it to DENY_TOP_LEVEL (not a cacheable reader page) or CACHEABLE_STATIC_ROUTES in src/lib/page-cache-policy.ts`,
+			);
+			assert.ok(!(DENY_TOP_LEVEL.has(name) && CACHEABLE_STATIC_ROUTES.has(name)), `${name} is in both lists`);
+		}
+	});
+
+	it('denied top-level segments are never cacheable, even as a single-segment slug', () => {
+		for (const name of DENY_TOP_LEVEL) {
+			assert.equal(isCacheablePath(`/${name}`), false, name);
+		}
+		assert.equal(isCacheablePath('/pages/about'), false);
 	});
 });
 
@@ -163,15 +192,17 @@ describe('page cache: wiring', () => {
 	const outer = read('../src/emdash-outer-middleware.ts');
 	const astroConfig = read('../astro.config.ts');
 	const plugin = read('../src/plugins/page-cache-purge.ts');
+	const handler = read('../src/lib/page-cache-handler.ts');
 
-	it('outer middleware serves the cache before EmDash runtime, no db access', () => {
-		assert.match(outer, /decidePageCacheRequest/);
-		assert.match(outer, /isStorableResponse/);
-		assert.match(outer, /hasPendingCookies\(\)/);
-		assert.match(outer, /recordPageView\(request, response\)/);
-		assert.match(outer, /x-ft-cache/);
-		assert.doesNotMatch(outer, /getDb\(/);
-		assert.doesNotMatch(outer, /from 'emdash\/runtime'/);
+	it('outer middleware wires the cache handler before EmDash runtime, no db access', () => {
+		assert.match(outer, /handlePageCache\(pageCacheDeps\(\)/);
+		assert.match(outer, /hasPendingCookies: \(\) => !context\.cookies\.headers\(\)\.next\(\)\.done/);
+		assert.match(outer, /recordPageView,/);
+		for (const src of [outer, handler]) {
+			assert.doesNotMatch(src, /getDb\(/);
+			assert.doesNotMatch(src, /from 'emdash\/runtime'/);
+		}
+		assert.doesNotMatch(handler, /from 'cloudflare:workers'/);
 	});
 
 	it('purge plugin is registered and hooks content changes', () => {
@@ -181,6 +212,7 @@ describe('page cache: wiring', () => {
 			assert.match(plugin, new RegExp(`'content:${hook}'`), hook);
 		}
 		assert.match(plugin, /capabilities: \['content:read'\]/);
+		assert.match(plugin, /createPurgeHooks\(/);
 		assert.match(plugin, /isPageCacheEnabled/);
 	});
 

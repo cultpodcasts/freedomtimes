@@ -9,9 +9,13 @@
  * KV (SESSION binding, key PAGE_CACHE_EPOCH_KV_KEY). The epoch is part of the
  * cache key, so a bump orphans every cached page in every colo at once.
  * Isolates re-read the epoch at most every EPOCH_MEMO_MS; KV edge caching
- * adds up to KV_CACHE_TTL_SECONDS. Worst-case staleness after a publish is
- * therefore ~EPOCH_MEMO_MS + KV_CACHE_TTL_SECONDS (+KV propagation), and never
- * more than the page TTL.
+ * adds up to KV_CACHE_TTL_SECONDS. Staleness after a publish is therefore
+ * typically under ~40 s (EPOCH_MEMO_MS + KV_CACHE_TTL_SECONDS), but KV
+ * propagation is eventually consistent, so the hard bound is the page TTL.
+ *
+ * The epoch lives in the SESSION namespace (one namespaced key; session keys
+ * are random IDs) to avoid a new Terraform-managed KV binding. See the
+ * decision record in docs/EMDASH_MIDDLEWARE_AND_ROUTING.md.
  */
 import { env as cfEnv } from 'cloudflare:workers';
 
