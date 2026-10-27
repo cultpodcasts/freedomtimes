@@ -92,7 +92,7 @@ link here instead of restating it.
 provider 5.22 adds every live non-secret binding that is not already in state to `bindings`
 (`internal/services/workers_script/custom.go`: "Add any new elements from API that weren't in state
 (except unmanaged secret_text bindings)"). Wrangler owns KV, R2, `plain_text` vars (`PAGE_CACHE`,
-`SITE_ACCESS_MODE`, …) and `ASSETS`; the Terraform config lists only `PAGE_VIEWS`, `EMAIL` and `secret_text`.
+`SITE_ACCESS_MODE`, …) and the `ASSETS` binding (`assets.binding` in `wrangler.jsonc`); the Terraform config lists only `PAGE_VIEWS`, `EMAIL` and `secret_text`.
 The drift is expected. It is **not** safe to apply on its own.
 
 **Why applying it is not safe (confirmed facts).**
@@ -132,7 +132,7 @@ bundle, so the tooling blocks it:
   Cloud backend (plan only) before the next full deploy is [#117](https://github.com/cultpodcasts/freedomtimes/issues/117).
   If it does not work there, the guard fails closed and the deploy stops before applying.
 - **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
-  `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`; exit **5** = could not verify (no token, API or
+  `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`, or a static-asset / unmatched-route probe failed; exit **5** = could not verify (no token, API or
   network error); both print the redeploy command. The deploy scripts defer this check until after their
   `wrangler deploy`, and warn loudly if Terraform applied but `wrangler deploy` did not complete.
 - **Recovery:** `pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly -SkipVersionBump` (Wrangler redeploy), or roll
@@ -155,7 +155,13 @@ cd web && node scripts/verify-worker-placement.mjs --env staging   # or --env pr
 ```
 
 It checks placement `mode = targeted` + region `aws:eu-west-1`, `PAGE_CACHE` / `PAGE_CACHE_TTL_SECONDS` /
-`SITE_ACCESS_MODE` equal to `wrangler.jsonc`, the `ASSETS` binding, and `last_deployed_from = wrangler`.
+`SITE_ACCESS_MODE` equal to `wrangler.jsonc`, the assets binding named by `wrangler.jsonc` `assets.binding`
+(`ASSETS`; a config without a binding name expects none), `has_assets` from the Cloudflare API, and
+`last_deployed_from = wrangler`. It then makes two logged-out GETs on the environment's own origin
+(`https://staging.freedomtimes.news` / `https://freedomtimes.news`): `/favicon.svg` must be HTTP 200 with a
+non-HTML content-type (static assets are served before the Worker, so the staging login wall does not apply),
+and `/__ft-verify/no-such-route/a/b` must not be 5xx (an unbound `env.ASSETS` makes every unmatched route 500).
+`--no-asset-probe` skips both; `--asset-path` / `--asset-origin` override them.
 The `cf-placement` response header is **not** a valid check any more: Cloudflare documents it "may be
 removed" and it is not emitted for this Worker
 ([Workers placement docs](https://developers.cloudflare.com/workers/configuration/placement/#cf-placement-header);

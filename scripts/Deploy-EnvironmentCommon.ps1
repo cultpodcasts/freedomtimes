@@ -1419,7 +1419,8 @@ function Invoke-DeployWorkerDeploy {
 }
 
 # Read-only: live Worker placement region, PAGE_CACHE / SITE_ACCESS_MODE vars, ASSETS binding and
-# last_deployed_from must match web/wrangler.jsonc (the cf-placement header is no longer emitted).
+# last_deployed_from must match web/wrangler.jsonc, and the env's own origin must serve /favicon.svg
+# logged out and not 5xx an unmatched route (the cf-placement header is no longer emitted).
 # After a wrangler deploy a mismatch fails the deploy; "could not verify" (exit 2) only warns,
 # because Wrangler itself just uploaded the settings from wrangler.jsonc.
 function Invoke-DeployWorkerSettingsVerification {

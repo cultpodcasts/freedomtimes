@@ -1,10 +1,11 @@
 # Live Worker settings verification (placement region, PAGE_CACHE & other wrangler.jsonc plain_text
-# vars, ASSETS binding, last deployed by Wrangler). Dot-source only; defines functions, no side effects.
+# vars, ASSETS binding, last deployed by Wrangler, plus logged-out static-asset and unmatched-route probes
+# on the environment's own origin). Dot-source only; defines functions, no side effects.
 #
 # Shared by scripts/terraform-run.ps1 (after a real apply) and scripts/Deploy-EnvironmentCommon.ps1
 # (after wrangler deploy, and when a deploy stops between Terraform apply and wrangler deploy).
-# The check itself is web/scripts/verify-worker-placement.mjs (read-only Cloudflare API GETs; it never
-# prints the API token). See NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
+# The check itself is web/scripts/verify-worker-placement.mjs (read-only Cloudflare API GETs and two
+# logged-out site GETs; it never prints the API token). See NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
 #
 # Verifier exit codes: 0 OK, 1 mismatch, 2 usage / auth / API / network error.
 
