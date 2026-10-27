@@ -59,3 +59,27 @@ Once the Terraform provider M2M app is created and credentials are set:
 ## Why These Cannot Be in Terraform
 
 The Auth0 Terraform provider uses client credentials from `TF_VAR_auth0_management_client_id` / `TF_VAR_auth0_management_client_secret` to authenticate against the Management API. Those credentials must already exist and be authorized before Terraform can run — so they cannot be resources that Terraform itself creates.
+
+---
+
+## Wrangler-owned Worker settings
+
+Terraform's `cloudflare_workers_script.holding_page` (module `cloudflare_holding_page`) and
+`wrangler deploy` both write the **same** Worker script. Ownership is split explicitly via
+`lifecycle.ignore_changes` in that resource; Terraform never manages these attributes:
+
+| Attribute | Owner | Where it is set |
+|---|---|---|
+| `content` (bundle), static assets, `plain_text` vars, KV / R2 bindings | Wrangler | `web/wrangler.jsonc` + `npm run build` |
+| `compatibility_date`, `compatibility_flags` | Wrangler | `web/wrangler.jsonc` |
+| `logpush`, `observability` | Wrangler | `web/wrangler.jsonc` |
+| `placement` (`region: aws:eu-west-1`, next to the Turso primary) | Wrangler | `web/wrangler.jsonc` → `env.production.placement`, `env.staging.placement` |
+
+`placement` must stay Wrangler-owned: in provider `cloudflare ~> 5.22` `placement.region` is a
+computed-only attribute (only `mode` is settable), so Terraform cannot express region placement.
+Without the ignore, a Terraform upload (for example a secret rotation) could send script
+settings without placement and silently revert to eyeball placement.
+
+**Check after a staging deploy (plan only, never apply from an agent):** `terraform plan` in
+`infra/terraform/environments/staging` must show no change to `cloudflare_workers_script.holding_page`
+attributes related to placement. After deploy, `curl -sI https://<host>/` must return a `cf-placement` header.

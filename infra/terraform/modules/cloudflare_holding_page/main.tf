@@ -75,6 +75,10 @@ resource "cloudflare_workers_script" "holding_page" {
   # Terraform owns: PAGE_VIEWS analytics_engine, EMAIL send_email, and secret_text worker secrets.
   # Do not ignore main_module: empty main_module in state (post-Wrangler refresh) makes
   # bindings-only PUTs upload ESM as a service worker (Cloudflare 10021).
+  # placement: wrangler.jsonc env.<env>.placement (region aws:eu-west-1, next to the Turso
+  # primary) is the single owner. Ignoring it keeps the refreshed value in TF uploads, so a
+  # secret rotation / bindings apply does not silently revert to eyeball placement.
+  # See NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
   lifecycle {
     ignore_changes = [
       content,
@@ -82,6 +86,7 @@ resource "cloudflare_workers_script" "holding_page" {
       compatibility_flags,
       logpush,
       observability,
+      placement,
     ]
   }
 }
