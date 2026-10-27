@@ -31,6 +31,7 @@ $script:DeployBaseEnvPath = $null
 $script:DeployCommonScriptRoot = $PSScriptRoot
 
 . "$PSScriptRoot/assert-push-secrets-ready.ps1"
+. "$PSScriptRoot/lib/EnvFile.ps1"
 # Must be script-scoped: dotsourcing inside Initialize-DeployEnvironment would define
 # Resolve-TerraformExecutable only in that function's local scope, then drop it on return
 # (production -WorkerOnly then failed on the post-deploy Get-DeployWorkerName print).
@@ -239,30 +240,18 @@ function Import-DeployEnvFile {
         throw "Missing $Path. Add TURSO_DATABASE_URL and TURSO_AUTH_TOKEN for Astro build."
     }
 
-    Get-Content $Path | ForEach-Object {
-        $line = $_.Trim()
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) { return }
-        if ($line -match '^[A-Za-z_][A-Za-z0-9_]*=') {
-            $parts = $line -split '=', 2
-            $key = $parts[0].Trim().Trim([char]0xFEFF)
-            $value = $parts[1].Trim().Trim([char]0xFEFF)
-            [Environment]::SetEnvironmentVariable($key, $value, "Process")
-        }
+    # Overwrite semantics (every key, last occurrence wins). Parser: scripts/lib/EnvFile.ps1.
+    foreach ($entry in (Read-EnvFileEntries -Path $Path)) {
+        [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, "Process")
     }
 }
 
 function Set-DeployTursoBuildEnvFromEnvDev {
-    foreach ($key in @("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN")) {
-        $fromProcess = [Environment]::GetEnvironmentVariable($key, "Process")
-        if (-not [string]::IsNullOrWhiteSpace($fromProcess)) {
-            continue
-        }
-
-        $fromFile = Get-DeployEnvFileValue -Path $script:DeployBaseEnvPath -Key $key
-        if (-not [string]::IsNullOrWhiteSpace($fromFile)) {
-            [Environment]::SetEnvironmentVariable($key, $fromFile, "Process")
-        }
+    if ([string]::IsNullOrWhiteSpace($script:DeployBaseEnvPath)) {
+        return
     }
+    # Fill-missing only: process values win; a missing .env.dev is a no-op.
+    $null = Import-EnvFileFillMissing -Path $script:DeployBaseEnvPath -Keys @("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN")
 }
 
 function Assert-DeployRequiredBuildEnv {

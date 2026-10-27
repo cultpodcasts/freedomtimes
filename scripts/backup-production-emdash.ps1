@@ -45,6 +45,25 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot/lib/EnvFile.ps1"
+. "$PSScriptRoot/lib/TursoSourcePreflight.ps1"
+
+# Keys this script may fill from .env.dev (only when the process value is empty).
+# Deliberately NOT TURSO_DATABASE_URL / TURSO_AUTH_TOKEN: the resolver's env fallback
+# (resolveFromEnv in web/scripts/resolve-production-worker-turso.mjs) accepts that generic
+# pair as its second candidate, so loading it from the file would let a failed Worker
+# resolve silently back up whatever static DB .env.dev names (2026-09-07 stale-DB
+# incident, CONTENT_PROMOTION_RUNBOOK.md). Operators who want it must export it on
+# purpose. CLOUDFLARE_* and other file keys are not passed to the node/wrangler children.
+$script:ProductionBackupEnvDevKeys = @(
+    "TURSO_PRODUCTION_EMDASH_DB_URL",
+    "TURSO_PRODUCTION_EMDASH_DB_TOKEN",
+    "TURSO_PRODUCTION_EMDASH_DB_NAME",
+    "TF_VAR_TURSO_ORGANIZATION",
+    "TURSO_ORGANIZATION",
+    "TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION"
+)
+
 if (-not $AllowProduction) {
     throw "Refusing production EmDash backup without -AllowProduction."
 }
@@ -105,24 +124,18 @@ try {
         throw "node is required to resolve/verify Worker Turso."
     }
 
-    # Node only reads process env. A deploy child does not load .env.dev unless
-    # this script does. Fill keys that are still empty so Turso URL, token, and
-    # TF_VAR_TURSO_ORGANIZATION are present before resolve.
+    # Node only reads process env, and a deploy child does not load .env.dev unless this
+    # script does. Fill allowlisted keys that are still empty; never overwrite. A missing
+    # file is not an error: explicit exports (Linux / -UseNativeTurso) work without it, and
+    # the resolver reports missing values precisely (resolve_failed / org_suffix_unresolved).
     $envDev = Join-Path $repoRoot ".env.dev"
-    if (-not (Test-Path -LiteralPath $envDev)) {
-        throw "Missing $envDev. Production backup needs TURSO_PRODUCTION_EMDASH_DB_URL, TURSO_PRODUCTION_EMDASH_DB_TOKEN, and TF_VAR_TURSO_ORGANIZATION."
+    if (Test-Path -LiteralPath $envDev -PathType Leaf) {
+        $filledKeys = Import-EnvFileFillMissing -Path $envDev -Keys $script:ProductionBackupEnvDevKeys
+        $filledText = if ($filledKeys.Count -gt 0) { $filledKeys -join ", " } else { "none (all preset or absent)" }
+        Write-Host "Filled from .env.dev (names only): $filledText" -ForegroundColor DarkGray
     }
-    foreach ($raw in Get-Content -LiteralPath $envDev) {
-        $line = $raw.Trim()
-        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) { continue }
-        if ($line -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { continue }
-        $parts = $line -split '=', 2
-        $key = $parts[0].Trim().Trim([char]0xFEFF)
-        $existing = [Environment]::GetEnvironmentVariable($key, "Process")
-        if (-not [string]::IsNullOrWhiteSpace($existing)) { continue }
-        $value = $parts[1].Trim().Trim([char]0xFEFF)
-        if ([string]::IsNullOrWhiteSpace($value)) { continue }
-        [Environment]::SetEnvironmentVariable($key, $value, "Process")
+    else {
+        Write-Host "No $envDev; using process env only." -ForegroundColor DarkGray
     }
 
     $timestampUtc = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
@@ -181,30 +194,29 @@ try {
         }
     }
 
+    # Read-only preflight before any branch or export, and before the -DryRun return so a
+    # dry run is the cheapest place to catch a wrong source name.
+    if (-not $SkipBranch -or -not $SkipFileExport) {
+        Write-Host "Confirming Turso database '$sourceDatabase' exists…" -ForegroundColor Cyan
+        $shown = Test-TursoSourceDatabase -DatabaseName $sourceDatabase -UseWsl:$UseWslTurso
+        if (-not $shown.Ok) {
+            $resolverOrg = if ($resolved.PSObject.Properties["organization"]) { [string]$resolved.organization } else { "" }
+            throw (Format-TursoSourcePreflightFailure -DatabaseName $sourceDatabase -ExitCode $shown.ExitCode `
+                    -WorkerHost $workerHost -Organization $resolverOrg -Output $shown.Output -UseWsl:$UseWslTurso)
+        }
+        Write-Host "Source DB confirmed: $sourceDatabase" -ForegroundColor Green
+    }
+
     if ($DryRun) {
+        if (-not $SkipBranch -or -not $SkipFileExport) {
+            Write-Host "[dry-run] source DB confirmed: $sourceDatabase" -ForegroundColor Yellow
+        }
         Write-Host "[dry-run] would create branch $branchName from $sourceDatabase (group $TursoGroup)" -ForegroundColor Yellow
         Write-Host "[dry-run] would export $backupFileRel" -ForegroundColor Yellow
         return
     }
 
     if (-not $SkipBranch) {
-        Write-Host "Confirming Turso database '$sourceDatabase' exists…" -ForegroundColor Cyan
-        if ($UseWslTurso) {
-            $showLine = '$HOME/.turso/turso db show ' + (Escape-BashSingleQuoted $sourceDatabase)
-            $shown = Invoke-External -FilePath "wsl" -Arguments @("bash", "-lc", $showLine) -CaptureOutput -AllowFailure
-        }
-        else {
-            $shown = Invoke-External -FilePath "turso" -Arguments @("db", "show", $sourceDatabase) -CaptureOutput -AllowFailure
-        }
-        if ($shown.ExitCode -ne 0) {
-            throw @(
-                "Turso has no database '$sourceDatabase' (Worker host '$workerHost').",
-                "Refusing to create a backup branch.",
-                "The database name must be the Turso name without the org slug.",
-                "TF_VAR_TURSO_ORGANIZATION in .env.dev must be the Turso org (freedomtimes), not the GitHub org."
-            ) -join " "
-        }
-
         Write-Host "Creating Turso backup branch '$branchName' from '$sourceDatabase'…" -ForegroundColor Cyan
         if ($UseWslTurso) {
             $bashLine = '$HOME/.turso/turso db create ' + (Escape-BashSingleQuoted $branchName) +
