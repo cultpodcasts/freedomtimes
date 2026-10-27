@@ -1,20 +1,34 @@
 ---
 /**
- * The site's standard "not found" page body (HTTP 404). Used by `src/pages/404.astro`
- * (any URL no route matches, e.g. `/2026/10/11/`, `/category/x`) and by `[slug].astro`
- * when no EmDash page or post has that slug. The caller sets the 404 status.
- * noindex: a 404 must never be indexed, and Google drops it on the status anyway.
+ * The site's standard "not found" page body (HTTP 404). Used by every reader 404:
+ * `src/pages/404.astro` (any URL no route matches, e.g. `/2026/10/11/`, `/category/x`),
+ * `[slug].astro` (no EmDash page or post with that slug), `posts/[slug].astro` and
+ * `archives/[slug].astro` (with their own heading). The caller sets the 404 status.
+ * noindex and no canonical / og:url: a 404 must never be indexed or point anywhere.
+ * Public page: no CMS links.
  */
 import Layout from '../layouts/Layout.astro';
 import { getHomePath } from '../lib/auth';
+
+interface Props {
+	eyebrow?: string;
+	heading?: string;
+	summary?: string;
+}
+
+const {
+	eyebrow = '404',
+	heading = 'Page not found',
+	summary = "The page you asked for doesn't exist. It may have been moved or removed, or the address may be mistyped.",
+} = Astro.props as Props;
 ---
 
-<Layout title="Page not found" description="The page you asked for does not exist." noindex>
+<Layout title={heading} description="The page you asked for does not exist." canonicalUrl={null} noindex>
 	<article class="not-found-wrap" data-ft-not-found>
 		<header class="masthead">
-			<p class="eyebrow">404</p>
-			<h1>Page not found</h1>
-			<p class="summary">The page you asked for doesn't exist. It may have been moved or removed, or the address may be mistyped.</p>
+			<p class="eyebrow">{eyebrow}</p>
+			<h1>{heading}</h1>
+			<p class="summary">{summary}</p>
 		</header>
 		<nav>
 			<a href={getHomePath()}>Back to homepage</a>

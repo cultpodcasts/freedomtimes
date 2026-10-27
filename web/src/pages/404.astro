@@ -1,14 +1,31 @@
 ---
 /**
- * Rendered by Astro for any URL that no route in `src/pages` matches (multi-segment
- * paths such as `/2026/10/11/`, `/category/x`, `/posts/a/b`). Server-rendered, not
- * prerendered: the Worker answers these itself after the ASSETS fallback misses.
- * Must stay a real 404 (never a redirect to the homepage: Google treats that as a soft 404).
+ * Astro's 404 error route: rendered for any URL that no route in the app matches (multi-segment
+ * paths such as `/2026/10/11/`, `/category/x`, `/posts/a/b`), after the adapter's ASSETS fallback
+ * misses. A direct `GET /404` is NOT this file: it matches `[slug].astro` with `slug='404'`.
+ * Server-rendered so it can apply the staging lock like every other reader route.
+ *
+ * Must stay a real 404: never a redirect to the homepage (Google treats that as a soft 404).
  * The anonymous page cache only stores 200s, so this response is never cached there.
  */
 import NotFoundView from '../components/NotFoundView.astro';
+import { isLockedSiteAccess } from '../lib/auth';
+import { requireEditorialSession } from '../lib/editorial-session';
 
 export const prerender = false;
+
+// Locked staging: nothing is public, including the 404 page (same gate as `[slug].astro`).
+if (isLockedSiteAccess()) {
+	const session = await requireEditorialSession({
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+	});
+	if (session instanceof Response) {
+		return session;
+	}
+}
 
 Astro.response.status = 404;
 ---

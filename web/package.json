@@ -24,6 +24,7 @@
     "test:weekly-list": "tsx --test scripts/test-weekly-list.mts",
     "test:lite-youtube-poster": "tsx --test scripts/test-lite-youtube-poster-styles.mts",
     "test:homepage-entries": "tsx --test scripts/test-homepage-entries-map.mts",
+    "test:worker-routes": "tsx --test --test-concurrency=1 scripts/test-error-routes-worker.mts",
     "test:page-cache": "tsx --test scripts/test-page-cache-policy.mts scripts/test-page-cache-handler.mts",
     "scheduler:db:migrate": "tsx scripts/apply-turso-sql.ts scheduler migrate",
     "scheduler:db:seed": "tsx scripts/apply-turso-sql.ts scheduler seed",

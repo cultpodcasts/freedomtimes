@@ -2,12 +2,13 @@
 import { getEmDashCollection, getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../../components/EmDashContentView.astro';
-import Layout from '../../layouts/Layout.astro';
-import { getHomePath, readOptionalEnv } from '../../lib/auth';
+import NotFoundView from '../../components/NotFoundView.astro';
+import { readOptionalEnv } from '../../lib/auth';
 import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../../lib/editorial-session';
+import { isExpectedLookupMiss } from '../../lib/not-found';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
@@ -46,18 +47,6 @@ const slug = Astro.params.slug;
 let entry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let isPreview = false;
 let notFound = false;
-
-function isExpectedLookupMiss(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error);
-	const lower = message.toLowerCase();
-
-	return lower.includes('not found')
-		|| lower.includes('no row')
-		|| lower.includes('missing')
-		|| lower.includes('no such table')
-		|| lower.includes('does not exist')
-		|| lower.includes('unknown collection');
-}
 
 function readSlug(data: Record<string, unknown>): string | null {
 	return typeof data.slug === 'string' && data.slug.length > 0 ? data.slug : null;
@@ -113,19 +102,7 @@ if (!slug) {
 ---
 
 {notFound || !entry ? (
-	<Layout>
-		<article class="not-found-wrap">
-			<header class="masthead">
-				<p class="eyebrow">Archive</p>
-				<h1>Archive not found</h1>
-				<p class="summary">The requested archive issue may have been unpublished, moved, or removed.</p>
-			</header>
-			<nav>
-				<a href={getHomePath()}>Back to homepage</a>
-				<a href="/_emdash/admin">Open CMS</a>
-			</nav>
-		</article>
-	</Layout>
+	<NotFoundView eyebrow="Archive" heading="Archive not found" summary="The requested archive issue may have been unpublished, moved, or removed." />
 ) : (
 	<EmDashContentView
 		entry={entry}
@@ -138,53 +115,3 @@ if (!slug) {
 	/>
 )}
 
-<style>
-	.not-found-wrap {
-		max-width: 860px;
-		margin: 0 auto;
-		padding: 2rem 1.25rem 3rem;
-	}
-
-	.masthead {
-		border-bottom: 1px solid #111111;
-		padding-bottom: 1.5rem;
-		margin-bottom: 2rem;
-	}
-
-	.eyebrow {
-		margin: 0;
-		font-size: 0.8rem;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-
-	h1 {
-		margin: 0.2rem 0 0;
-		font-size: clamp(2.2rem, 6vw, 4.25rem);
-		line-height: 0.95;
-		font-family: 'Playfair Display', serif;
-	}
-
-	.summary {
-		margin: 0.8rem 0 0;
-		font-size: 1.08rem;
-		line-height: 1.6;
-	}
-
-	nav {
-		display: flex;
-		gap: 0.9rem;
-		flex-wrap: wrap;
-	}
-
-	nav a {
-		color: #111111;
-		font-weight: 700;
-		text-decoration: none;
-	}
-
-	nav a:hover {
-		color: #0044bb;
-		text-decoration: underline;
-	}
-</style>
