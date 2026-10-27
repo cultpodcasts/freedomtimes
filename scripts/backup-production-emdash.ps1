@@ -105,6 +105,26 @@ try {
         throw "node is required to resolve/verify Worker Turso."
     }
 
+    # Node only reads process env. A deploy child does not load .env.dev unless
+    # this script does. Fill keys that are still empty so Turso URL, token, and
+    # TF_VAR_TURSO_ORGANIZATION are present before resolve.
+    $envDev = Join-Path $repoRoot ".env.dev"
+    if (-not (Test-Path -LiteralPath $envDev)) {
+        throw "Missing $envDev. Production backup needs TURSO_PRODUCTION_EMDASH_DB_URL, TURSO_PRODUCTION_EMDASH_DB_TOKEN, and TF_VAR_TURSO_ORGANIZATION."
+    }
+    foreach ($raw in Get-Content -LiteralPath $envDev) {
+        $line = $raw.Trim()
+        if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith("#")) { continue }
+        if ($line -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') { continue }
+        $parts = $line -split '=', 2
+        $key = $parts[0].Trim().Trim([char]0xFEFF)
+        $existing = [Environment]::GetEnvironmentVariable($key, "Process")
+        if (-not [string]::IsNullOrWhiteSpace($existing)) { continue }
+        $value = $parts[1].Trim().Trim([char]0xFEFF)
+        if ([string]::IsNullOrWhiteSpace($value)) { continue }
+        [Environment]::SetEnvironmentVariable($key, $value, "Process")
+    }
+
     $timestampUtc = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     $branchName = "prod-backup-$timestampUtc"
     $backupFileRel = ".release/backups/emdash-production-$timestampUtc.db"
@@ -168,6 +188,23 @@ try {
     }
 
     if (-not $SkipBranch) {
+        Write-Host "Confirming Turso database '$sourceDatabase' exists…" -ForegroundColor Cyan
+        if ($UseWslTurso) {
+            $showLine = '$HOME/.turso/turso db show ' + (Escape-BashSingleQuoted $sourceDatabase)
+            $shown = Invoke-External -FilePath "wsl" -Arguments @("bash", "-lc", $showLine) -CaptureOutput -AllowFailure
+        }
+        else {
+            $shown = Invoke-External -FilePath "turso" -Arguments @("db", "show", $sourceDatabase) -CaptureOutput -AllowFailure
+        }
+        if ($shown.ExitCode -ne 0) {
+            throw @(
+                "Turso has no database '$sourceDatabase' (Worker host '$workerHost').",
+                "Refusing to create a backup branch.",
+                "The database name must be the Turso name without the org slug.",
+                "TF_VAR_TURSO_ORGANIZATION in .env.dev must be the Turso org (freedomtimes), not the GitHub org."
+            ) -join " "
+        }
+
         Write-Host "Creating Turso backup branch '$branchName' from '$sourceDatabase'…" -ForegroundColor Cyan
         if ($UseWslTurso) {
             $bashLine = '$HOME/.turso/turso db create ' + (Escape-BashSingleQuoted $branchName) +
