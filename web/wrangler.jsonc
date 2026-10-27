@@ -83,7 +83,10 @@
 				"API_UPSTREAM_MODE": "apim",
 				"CLOUDFLARE_ACCOUNT_ID": "bae3f835f19899c6eee1ec48f2d658cf",
 				// Must match terraform output page_views_dataset (TF pushes CLOUDFLARE_ANALYTICS_API_TOKEN as secret only)
-				"PAGE_VIEWS_DATASET": "freedomtimes_page_views"
+				"PAGE_VIEWS_DATASET": "freedomtimes_page_views",
+				// Anonymous reader HTML cache (src/lib/page-cache.ts). "on" enables it; anything else = off.
+				"PAGE_CACHE": "on",
+				"PAGE_CACHE_TTL_SECONDS": "120"
 			}
 		},
 		"staging": {
@@ -134,7 +137,10 @@
 				"API_UPSTREAM_MODE": "apim",
 				"CLOUDFLARE_ACCOUNT_ID": "bae3f835f19899c6eee1ec48f2d658cf",
 				// Must match terraform output page_views_dataset (TF pushes CLOUDFLARE_ANALYTICS_API_TOKEN as secret only)
-				"PAGE_VIEWS_DATASET": "freedomtimes_staging_page_views"
+				"PAGE_VIEWS_DATASET": "freedomtimes_staging_page_views",
+				// Staging is locked (Auth0): every content response is per-session, so the anonymous
+				// page cache must stay off here. Never set "on" for staging.
+				"PAGE_CACHE": "off"
 			}
 		}
 	}
