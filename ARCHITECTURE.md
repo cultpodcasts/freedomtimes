@@ -533,7 +533,7 @@ Pipeline steps:
 - Deploy Astro Worker and `scheduler-worker` via Wrangler
 - Verify runtime access to Turso + R2 bindings and push queue configuration
 
-Content publishing does not depend on a separate cache purge stage. Push delivery is handled asynchronously by `scheduler-worker` after publish.
+Content publishing does not depend on a separate cache purge **pipeline stage**, but production does run an anonymous reader page cache (Workers Cache API, served from `web/src/emdash-outer-middleware.ts` before EmDash runtime init; the Worker is placed in `aws:eu-west-1` next to the Turso primary). Purge is in-band: the site plugin `ft-page-cache-purge` bumps an epoch in KV on publish / unpublish / delete / restore / published save (scheduled publishes included), so readers see a publish typically within ~40 s and at most the page TTL (120 s). Changes made outside EmDash content hooks (SQL migrations, redirects inserted by SQL, menus, settings) are bounded by the TTL only. Design, bypass rules and the decision record: [`web/docs/EMDASH_MIDDLEWARE_AND_ROUTING.md`](web/docs/EMDASH_MIDDLEWARE_AND_ROUTING.md#anonymous-reader-page-cache-production-only); release checks: [PRODUCTION_RELEASE_RUNBOOK.md § Page cache & placement](PRODUCTION_RELEASE_RUNBOOK.md#5b-page-cache--placement-checks). Push delivery is handled asynchronously by `scheduler-worker` after publish.
 
 ---
 

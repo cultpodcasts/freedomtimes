@@ -253,6 +253,22 @@ npx --prefix web emdash media upload .\path\to\asset.png --alt "Archive cover" -
 7. For promoted content, staging and production text-bearing fields match for the released items.
 8. No mojibake signatures appear in production content or rendered pages.
 
+### 5b. Page cache & placement checks
+
+Production serves an anonymous reader page cache and runs the Worker in `aws:eu-west-1` (see [`web/docs/EMDASH_MIDDLEWARE_AND_ROUTING.md`](web/docs/EMDASH_MIDDLEWARE_AND_ROUTING.md#anonymous-reader-page-cache-production-only)). After a deploy that ships or changes either:
+
+1. **Placement active:** `curl -sI https://freedomtimes.news/robots.txt` returns a `cf-placement` header. Same on staging after a staging deploy.
+2. **Terraform does not fight placement:** `terraform plan` in `infra/terraform/environments/staging` (then production) shows **no** placement change on `cloudflare_workers_script.holding_page` (`placement` is in `lifecycle.ignore_changes`; Wrangler owns it — see [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#wrangler-owned-worker-settings)). Plan only from agents; never apply.
+3. **MISS → HIT:** two anonymous requests to `/` (no cookies, no query string) return `x-ft-cache: MISS` then `x-ft-cache: HIT`. A request with any query string returns `BYPASS-query`; a signed-in browser shows `BYPASS-cookie`.
+4. **Purge on the next real publish:** after the next publish, `/` returns `MISS` (new epoch) within ~40 s, at most 120 s, and shows the new post. Worker logs show `[ft-page-cache] epoch bumped`.
+5. **Analytics country:** in Admin → Analytics, page-view country breakdown does not collapse to IE/GB after placement (country is read from the eyeball request, not the placed colo).
+6. **Staleness from non-content changes:** SQL migrations, redirects inserted by SQL, menus and site settings do not purge; anonymous readers may see the old page for up to the TTL (120 s). If that matters, bump the epoch manually (below).
+
+**Kill switch / manual purge**
+
+- Disable the cache: set `PAGE_CACHE` to `off` in `web/wrangler.jsonc` `env.production.vars` and redeploy (cache lookups stop immediately; entries age out within the TTL).
+- Purge everything without a deploy: write a new value to KV key `ft:page-cache:epoch` in the production `SESSION` namespace (for example `wrangler kv key put --env production --binding SESSION ft:page-cache:epoch "$(date +%s)" --remote`). Every colo misses within ~40 s.
+
 ## 6. Rollback Strategy
 
 **Prefer sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md):** identify last verified `prod-backup-*` (or legacy `prod-rollback-*`) / agents log, then **retarget the Worker** to that branch. Do not restore onto named production as the first step.
