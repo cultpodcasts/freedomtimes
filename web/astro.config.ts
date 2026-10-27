@@ -20,6 +20,11 @@ import { SITE_DISPLAY_NAME } from './src/lib/site-brand';
 import { magicLinkAndroidSchemePlugin } from './src/vite/magic-link-android-scheme-plugin';
 
 const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.ts', import.meta.url));
+// Site-local native plugin: purges the anonymous reader page cache on content changes.
+// Forward slashes: EmDash interpolates entrypoints into an import string (Windows deploys).
+const pageCachePurgePluginPath = fileURLToPath(
+  new URL('./src/plugins/page-cache-purge.ts', import.meta.url),
+).replace(/\\/g, '/');
 const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
 // Build-time Turso is required for `.emdash/migrations.json` + `emdash migrate`.
@@ -192,6 +197,16 @@ export default defineConfig({
         // Official embed blocks (youtube, vimeo, tweet, bluesky, mastodon, linkPreview, gist).
         // Reader: EmDash PortableText merges plugin components; FT keeps audio override only.
         embedsPlugin(),
+        // Bumps the page-cache epoch (KV) on publish/unpublish/delete/restore and
+        // on saves of published entries. No-op unless PAGE_CACHE=on (production).
+        {
+          id: 'ft-page-cache-purge',
+          version: '1.0.0',
+          entrypoint: pageCachePurgePluginPath,
+          format: 'native',
+          options: {},
+          capabilities: ['content:read'],
+        },
       ] as PluginDescriptor[],
     }),
   ],

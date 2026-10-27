@@ -1,5 +1,5 @@
 ---
-import { getEmDashCollection } from 'emdash';
+import { loadHomepageEntries } from '../lib/content/homepage-entries';
 
 import Layout from '../layouts/Layout.astro';
 import Header from './Header.astro';
@@ -160,15 +160,8 @@ function prepareDek(value: string): string {
 
 // Show all published posts (newest first). A hard cap of 12 was dropping
 // older features (PBCC, Ahmadi, intro) once weekly roundups filled the slot.
-const { entries: postEntries, error: postsError } = await getEmDashCollection('posts', {
-  status: 'published',
-  limit: 100,
-  orderBy: { published_at: 'desc', updated_at: 'desc' },
-});
-
-if (postsError) {
-  throw postsError;
-}
+// Narrow column query (no Portable Text bodies) — see lib/content/homepage-entries.ts.
+const postEntries = await loadHomepageEntries(100);
 
 const stories: Story[] = postEntries.map((entry) => {
   const data = entry.data as Record<string, unknown>;

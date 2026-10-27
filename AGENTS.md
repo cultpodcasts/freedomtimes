@@ -28,6 +28,8 @@ Numbered items **1–9** apply to **every** Cursor agent session. When one of th
 
    **Prefer the Cursor environment secret `CULTPODCASTS_GH_TOKEN`** (exact name; CultPodcasts PAT with `repo`, `read:org`, `workflow`). **90-day expiry** — the token stored 2026-08-31 lapses ~2026-11-29; rotate the GitHub PAT and update this secret before then. The secret is injected on every cloud agent; **do not assume `gh` is already `cultpodcasts` at boot** (environment `start` is detached and git token-refresh can leave the Cursor App account active). Always: `printf '%s\n' "$CULTPODCASTS_GH_TOKEN" | gh auth login --hostname github.com --with-token --insecure-storage` then `gh auth switch --user cultpodcasts`. **Never** name or export this as `GH_TOKEN` / `GITHUB_TOKEN` (that replaces the App token used for `git push`). If the secret is missing or `gh auth` fails: device-login as **CultPodcasts** (https://github.com/login/device + one-time code), then switch and `gh pr create`. Full steps: **[docs/CLOUD_AGENT_GITHUB_PR.md](docs/CLOUD_AGENT_GITHUB_PR.md)**.
 
+**Dependency bumps (EmDash):** `web/src/lib/content/homepage-entries.ts` mirrors EmDash's collection loader query. When bumping `emdash` past the range in `web/scripts/test-homepage-entries-map.mts` (currently `>=1.3.1 <1.4.0`), re-diff the EmDash loader against that file and widen the range in the same PR; the test fails until you do.
+
 **PR packaging (not a STOP guardrail):** every PR must bump `web/package.json`. If the bump is missing, **add it and continue** — do not halt. Canonical checklist: **[docs/CLOUD_AGENT_GITHUB_PR.md](docs/CLOUD_AGENT_GITHUB_PR.md)** § *What agents must do*.
 
 ## CLI paths (Windows vs WSL)
