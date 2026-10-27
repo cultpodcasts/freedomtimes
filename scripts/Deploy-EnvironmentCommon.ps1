@@ -1052,20 +1052,29 @@ function Invoke-DeployTerraformApplyWithRecovery {
         "-AutoApprove"
     )
 
-    $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
-    $apply1.Output | ForEach-Object { $_ }
+    # terraform-run.ps1 defers its post-apply Worker settings check: this pipeline always runs
+    # wrangler deploy next (restoring placement / vars from wrangler.jsonc) and verifies after it.
+    $previousWranglerFollows = $env:FT_WRANGLER_DEPLOY_FOLLOWS
+    $env:FT_WRANGLER_DEPLOY_FOLLOWS = "1"
+    try {
+        $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
+        $apply1.Output | ForEach-Object { $_ }
 
-    if ($apply1.ExitCode -ne 0) {
-        $providersDir = Join-Path $script:DeployTerraformEnvDir ".terraform/providers"
-        $pluginMismatch = Test-DeployTerraformPluginCacheMismatch -Output @($apply1.Output)
-        $providersMissing = -not (Test-Path -LiteralPath $providersDir)
-        if ($pluginMismatch -or $providersMissing) {
-            Write-Warning "Terraform apply failed: provider plugin cache does not match the lockfile (or providers are missing). Running terraform init, then retrying apply once. Leave the lockfile dirty through this retry."
-            Invoke-DeployTerraformInit
-            Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 2 after init)"
-            $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
-            $apply1.Output | ForEach-Object { $_ }
+        if ($apply1.ExitCode -ne 0) {
+            $providersDir = Join-Path $script:DeployTerraformEnvDir ".terraform/providers"
+            $pluginMismatch = Test-DeployTerraformPluginCacheMismatch -Output @($apply1.Output)
+            $providersMissing = -not (Test-Path -LiteralPath $providersDir)
+            if ($pluginMismatch -or $providersMissing) {
+                Write-Warning "Terraform apply failed: provider plugin cache does not match the lockfile (or providers are missing). Running terraform init, then retrying apply once. Leave the lockfile dirty through this retry."
+                Invoke-DeployTerraformInit
+                Write-DeployStep "Applying $($script:DeployEnvironment) Terraform (attempt 2 after init)"
+                $apply1 = Invoke-DeployChildPwsh -CaptureOutput -Arguments $arguments
+                $apply1.Output | ForEach-Object { $_ }
+            }
         }
+    }
+    finally {
+        $env:FT_WRANGLER_DEPLOY_FOLLOWS = $previousWranglerFollows
     }
 
     if ($apply1.ExitCode -ne 0) {
@@ -1396,6 +1405,22 @@ function Invoke-DeployWorkerDeploy {
     }
     finally {
         Pop-Location
+    }
+    Invoke-DeployWorkerSettingsVerification
+}
+
+# Read-only: live Worker placement region, PAGE_CACHE / SITE_ACCESS_MODE vars, ASSETS binding and
+# last_deployed_from must match web/wrangler.jsonc (the cf-placement header is no longer emitted).
+function Invoke-DeployWorkerSettingsVerification {
+    Write-DeployStep "Verifying $($script:DeployEnvironment) Worker placement and vars (Cloudflare API)"
+    $verifier = Join-Path $script:DeployRepoRoot "web/scripts/verify-worker-placement.mjs"
+    & node $verifier --env $script:DeployEnvironment
+    $code = $LASTEXITCODE
+    if ($code -eq 1) {
+        throw "Live Worker settings do not match web/wrangler.jsonc after wrangler deploy (see FAIL lines above)."
+    }
+    if ($code -ne 0) {
+        Write-Warning "Could not verify Worker placement/vars (exit $code). Run manually: node web/scripts/verify-worker-placement.mjs --env $($script:DeployEnvironment)"
     }
 }
 

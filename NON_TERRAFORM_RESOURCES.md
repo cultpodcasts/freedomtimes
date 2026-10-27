@@ -75,11 +75,42 @@ Terraform's `cloudflare_workers_script.holding_page` (module `cloudflare_holding
 | `logpush`, `observability` | Wrangler | `web/wrangler.jsonc` |
 | `placement` (`region: aws:eu-west-1`, next to the Turso primary) | Wrangler | `web/wrangler.jsonc` → `env.production.placement`, `env.staging.placement` |
 
-`placement` must stay Wrangler-owned: in provider `cloudflare ~> 5.22` `placement.region` is a
+`placement` must stay Wrangler-owned: in provider `cloudflare ~> 5.22` `placement.target[].region` is a
 computed-only attribute (only `mode` is settable), so Terraform cannot express region placement.
 Without the ignore, a Terraform upload (for example a secret rotation) could send script
 settings without placement and silently revert to eyeball placement.
 
+**Known plan drift on `cloudflare_workers_script.holding_page` (expected, "1 to change").** On refresh,
+provider 5.22 adds every live non-secret binding that is not already in state to `bindings`
+(`internal/services/workers_script/custom.go`: "Add any new elements from API that weren't in state
+(except unmanaged secret_text bindings)"). Wrangler owns KV, R2, `plain_text` vars (`PAGE_CACHE`,
+`SITE_ACCESS_MODE`, …) and `ASSETS`; Terraform config lists only `PAGE_VIEWS`, `EMAIL` and `secret_text`.
+So after any Wrangler deploy the plan shows `~ bindings = (sensitive value)` and computed attributes
+(`etag`, `modified_on`, `has_assets`, `placement.*`, `placement_mode`) as "known after apply". This is not
+specific to `PAGE_CACHE` and predates placement. An apply of it is safe for vars (`keep_bindings` includes
+`plain_text`, so `PAGE_CACHE` is kept, not switched off) but it **re-uploads the script** from state, which is
+why every apply must be followed by the verification below. We deliberately do not mirror `wrangler.jsonc`
+bindings into Terraform (two owners that can disagree) or add `bindings` to `ignore_changes` (Terraform owns
+the `secret_text` bindings and secret rotations would silently stop applying).
+
 **Check after a staging deploy (plan only, never apply from an agent):** `terraform plan` in
-`infra/terraform/environments/staging` must show no change to `cloudflare_workers_script.holding_page`
-attributes related to placement. After deploy, `curl -sI https://<host>/` must return a `cf-placement` header.
+`infra/terraform/environments/staging` must show no Terraform-owned change on
+`cloudflare_workers_script.holding_page` beyond the drift above (no `+`/`-` of `PAGE_VIEWS`, `EMAIL` or
+`secret_text` names you did not intend, no replacement). Then confirm the live Worker with the Cloudflare API:
+
+```bash
+cd web && node scripts/verify-worker-placement.mjs --env staging   # or --env production
+```
+
+It checks placement `mode = targeted` + region `aws:eu-west-1`, `PAGE_CACHE` / `PAGE_CACHE_TTL_SECONDS` /
+`SITE_ACCESS_MODE` equal to `wrangler.jsonc`, the `ASSETS` binding, and `last_deployed_from = wrangler`.
+The `cf-placement` response header is **not** a valid check any more: Cloudflare documents it "may be
+removed" and it is not emitted for this Worker
+([Workers placement docs](https://developers.cloudflare.com/workers/configuration/placement/#cf-placement-header);
+status via the API: [Check placement status](https://developers.cloudflare.com/workers/configuration/placement/#check-placement-status)).
+
+**After any `terraform apply` (staging or production): verify `PAGE_CACHE` and placement.**
+`scripts/terraform-run.ps1 -Operation apply` now runs the verifier itself and exits non-zero (4) on a
+mismatch; the deploy scripts defer that check until after their `wrangler deploy`. If it fails, redeploy the
+Worker with Wrangler (`pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly`) or roll back to the last Wrangler
+version.

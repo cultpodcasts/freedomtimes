@@ -269,6 +269,34 @@ finally {
     Remove-Item -LiteralPath $installTmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+Write-Host "=== Worker settings verification (placement / PAGE_CACHE) after wrangler deploy and terraform apply ==="
+# `node` is shadowed by a function so no network call is made.
+function node { $global:LASTEXITCODE = $script:FakeNodeExit }
+try {
+    $script:FakeNodeExit = 0
+    $okThrew = $false
+    try { Invoke-DeployWorkerSettingsVerification } catch { $okThrew = $true }
+    Assert-True (-not $okThrew) "verifier exit 0 passes"
+
+    $script:FakeNodeExit = 1
+    $mismatchThrew = $false
+    try { Invoke-DeployWorkerSettingsVerification } catch { $mismatchThrew = $_.Exception.Message -match "do not match web/wrangler.jsonc" }
+    Assert-True $mismatchThrew "verifier exit 1 (placement/PAGE_CACHE mismatch) fails the deploy"
+
+    $script:FakeNodeExit = 2
+    $authThrew = $false
+    try { Invoke-DeployWorkerSettingsVerification 3>$null } catch { $authThrew = $true }
+    Assert-True (-not $authThrew) "verifier exit 2 (no token / API error) only warns"
+}
+finally {
+    Remove-Item function:node -ErrorAction SilentlyContinue
+}
+$terraformRunText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "terraform-run.ps1")
+Assert-True (([regex]::Matches($terraformRunText, 'Invoke-PostApplyWorkerSettingsCheck -Env \$Environment')).Count -eq 2) "terraform-run.ps1 verifies Worker settings after both apply paths"
+$deployCommonText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "Deploy-EnvironmentCommon.ps1")
+Assert-True ($deployCommonText -match '\$env:FT_WRANGLER_DEPLOY_FOLLOWS = "1"') "deploy pipeline defers the post-apply check to after wrangler deploy"
+Assert-True ($deployCommonText -match '(?s)function Invoke-DeployWorkerDeploy.*?Invoke-DeployWorkerSettingsVerification') "wrangler deploy is followed by the Worker settings check"
+
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {

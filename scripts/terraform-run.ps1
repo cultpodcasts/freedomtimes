@@ -19,7 +19,11 @@ param(
     [string[]]$Replace,
     [string]$ImportAddress,
     [string]$ImportId,
-    [string]$OutputName
+    [string]$OutputName,
+    # Skip the post-apply Worker settings check (placement / PAGE_CACHE / assets). Only for
+    # break-glass use; deploy-*-local.ps1 instead sets FT_WRANGLER_DEPLOY_FOLLOWS=1 and runs the
+    # same check after its wrangler deploy.
+    [switch]$SkipWorkerSettingsVerification
 )
 
 Set-StrictMode -Version Latest
@@ -173,6 +177,37 @@ function Invoke-EnvRemapping {
             [System.Environment]::SetEnvironmentVariable("TF_VAR_editorial_roles_claim", $rolesClaim, "Process")
         }
     }
+}
+
+# After any apply that may have touched cloudflare_workers_script.holding_page, confirm the live
+# Worker still matches web/wrangler.jsonc (placement region, PAGE_CACHE & other plain_text vars,
+# ASSETS binding, last deployed by Wrangler). Provider v5 re-uploads the script (content + metadata
+# from state) on any in-place update of that resource, so a standalone apply must be verified.
+# Read-only; the verifier reads TF_VAR_CLOUDFLARE_API_TOKEN / CLOUDFLARE_API_TOKEN and never prints it.
+function Invoke-PostApplyWorkerSettingsCheck {
+    param([string]$Env)
+    if ($Env -ne "staging" -and $Env -ne "production") { return 0 }
+    $deployHint = if ($Env -eq "production") { "pwsh scripts/deploy-production-local.ps1 -WorkerOnly" } else { "pwsh scripts/deploy-staging-local.ps1 -WorkerOnly" }
+    if ($SkipWorkerSettingsVerification) {
+        Write-Warning "Post-apply Worker settings check SKIPPED. Run: node web/scripts/verify-worker-placement.mjs --env $Env"
+        return 0
+    }
+    if ($env:FT_WRANGLER_DEPLOY_FOLLOWS -eq "1") {
+        Write-Host "Post-apply Worker settings check deferred: the deploy script runs it after wrangler deploy." -ForegroundColor DarkGray
+        return 0
+    }
+    $verifier = Join-Path $repoRoot "web/scripts/verify-worker-placement.mjs"
+    Write-Host "Verifying live Worker settings (placement, PAGE_CACHE, assets) after terraform apply..." -ForegroundColor Cyan
+    & node $verifier --env $Env
+    $code = $LASTEXITCODE
+    if ($code -eq 1) {
+        Write-Host "TERRAFORM APPLY CHANGED WRANGLER-OWNED WORKER SETTINGS for $Env (see FAIL lines above). Restore them now with a Wrangler deploy: $deployHint" -ForegroundColor Red
+        return 4
+    }
+    if ($code -ne 0) {
+        Write-Warning "Could not verify Worker settings after apply (exit $code; missing Cloudflare token or API error). Verify manually before walking away: node web/scripts/verify-worker-placement.mjs --env $Env  (PRODUCTION_RELEASE_RUNBOOK.md 5b)"
+    }
+    return 0
 }
 
 function Get-FirstEnvValue {
@@ -492,6 +527,7 @@ try {
             }
             Write-Host "DEBUG: Applying from saved plan" -ForegroundColor DarkGray
             $exitCode = Invoke-TerraformCommand -CommandArgs @("apply", "-input=false", "-lock-timeout=$LockTimeout", "-no-color", $PlanFile)
+            if ($exitCode -eq 0) { $exitCode = Invoke-PostApplyWorkerSettingsCheck -Env $Environment }
             exit $exitCode
         }
 
@@ -521,6 +557,7 @@ try {
             if ($exitCode -eq 0 -and ($Environment -eq "staging" -or $Environment -eq "production")) {
                 Sync-Auth0LoginAppEnvFromState -Env $Environment -RepoRoot $repoRoot
             }
+            if ($exitCode -eq 0) { $exitCode = Invoke-PostApplyWorkerSettingsCheck -Env $Environment }
             Write-Host "DEBUG: terraform apply exited with code: $exitCode" -ForegroundColor DarkGray
             exit $exitCode
         }

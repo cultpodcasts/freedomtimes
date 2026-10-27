@@ -28,9 +28,9 @@ locals {
 
   send_email_bindings = var.enable_send_email ? [
     {
-      name                      = var.send_email_binding_name
-      type                      = "send_email"
-      allowed_sender_addresses  = var.send_email_allowed_sender_addresses
+      name                     = var.send_email_binding_name
+      type                     = "send_email"
+      allowed_sender_addresses = var.send_email_allowed_sender_addresses
     }
   ] : []
 
@@ -54,9 +54,9 @@ resource "cloudflare_workers_script" "holding_page" {
   script_name = var.worker_name
   content     = local.worker_script
   # Module syntax Worker (matches previous module = true).
-  main_module = "worker.js"
+  main_module        = "worker.js"
   compatibility_date = var.worker_compatibility_date
-  logpush    = true
+  logpush            = true
 
   bindings = local.worker_bindings
 
@@ -76,8 +76,18 @@ resource "cloudflare_workers_script" "holding_page" {
   # Do not ignore main_module: empty main_module in state (post-Wrangler refresh) makes
   # bindings-only PUTs upload ESM as a service worker (Cloudflare 10021).
   # placement: wrangler.jsonc env.<env>.placement (region aws:eu-west-1, next to the Turso
-  # primary) is the single owner. Ignoring it keeps the refreshed value in TF uploads, so a
-  # secret rotation / bindings apply does not silently revert to eyeball placement.
+  # primary) is the single owner. Provider 5.22 cannot declare it (placement.target[].region is
+  # computed-only), so it is ignored here and Terraform never plans a placement value of its own.
+  #
+  # Expected plan drift (provider behaviour, not a config bug): on refresh the provider merges every
+  # live non-secret binding that is not in state (Wrangler's KV, R2, plain_text vars such as
+  # PAGE_CACHE, ASSETS) into `bindings`, while this config lists only the TF-owned ones above. So
+  # after any Wrangler deploy the plan shows `~ bindings = (sensitive value)` plus "known after
+  # apply" computed attributes (etag, modified_on, placement.*), i.e. "1 to change". Do not "fix"
+  # it by mirroring wrangler.jsonc here (two owners) or ignoring `bindings` (TF owns secret_text).
+  # An apply of that change re-uploads the script; keep_bindings keeps PAGE_CACHE & co, and
+  # scripts/terraform-run.ps1 then verifies placement / PAGE_CACHE / ASSETS against wrangler.jsonc
+  # (web/scripts/verify-worker-placement.mjs) and fails loudly with the Wrangler redeploy command.
   # See NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
   lifecycle {
     ignore_changes = [
