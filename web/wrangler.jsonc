@@ -36,6 +36,13 @@
 	"env": {
 		"production": {
 			"name": "freedomtimes",
+			// Run the Worker next to the Turso primary (aws-eu-west-1, Dublin). Each page makes
+			// several sequential libsql HTTP round trips; placement turns ~90 ms/trip from the US
+			// into ~1-3 ms. Placement is NOT inherited from the top level — keep it per env.
+			// Verify after deploy: response header `cf-placement: remote-XXX` (or local-XXX near Dublin).
+			"placement": {
+				"region": "aws:eu-west-1"
+			},
 			// EmDash cloudflareEmail() — keep in sync with Terraform send_email binding EMAIL
 			// (modules/cloudflare_holding_page). Deploy must not strip TF-owned bindings.
 			"send_email": [
@@ -81,6 +88,13 @@
 		},
 		"staging": {
 			"name": "freedomtimes-staging",
+			// Run the Worker next to the Turso primary (aws-eu-west-1, Dublin). Each page makes
+			// several sequential libsql HTTP round trips; placement turns ~90 ms/trip from the US
+			// into ~1-3 ms. Placement is NOT inherited from the top level — keep it per env.
+			// Verify after deploy: response header `cf-placement: remote-XXX` (or local-XXX near Dublin).
+			"placement": {
+				"region": "aws:eu-west-1"
+			},
 			// EmDash cloudflareEmail() — keep in sync with Terraform send_email binding EMAIL.
 			"send_email": [
 				{
