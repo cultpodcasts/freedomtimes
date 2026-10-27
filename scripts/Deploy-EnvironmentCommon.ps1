@@ -32,6 +32,11 @@ $script:DeployCommonScriptRoot = $PSScriptRoot
 
 . "$PSScriptRoot/assert-push-secrets-ready.ps1"
 . "$PSScriptRoot/lib/EnvFile.ps1"
+. "$PSScriptRoot/lib/WorkerSettingsVerification.ps1"
+# Set when a Terraform apply starts / when wrangler deploy succeeds; read by
+# Write-DeployIncompleteAfterTerraformWarning in the deploy scripts' finally blocks.
+$script:DeployTerraformApplyStarted = $false
+$script:DeployWorkerDeployCompleted = $false
 # Must be script-scoped: dotsourcing inside Initialize-DeployEnvironment would define
 # Resolve-TerraformExecutable only in that function's local scope, then drop it on return
 # (production -WorkerOnly then failed on the post-deploy Get-DeployWorkerName print).
@@ -1024,6 +1029,8 @@ function Invoke-DeployEmdashCoreMigrateCheck {
 }
 
 function Invoke-DeployTerraformApplyWithRecovery {
+    # Before the apply: a failed or partial apply may already have re-uploaded the Worker script.
+    $script:DeployTerraformApplyStarted = $true
     $lockRel = "infra/terraform/environments/$($script:DeployEnvironment)/.terraform.lock.hcl"
     $lockfileWasClean = $true
     Push-Location $script:DeployRepoRoot
@@ -1402,6 +1409,7 @@ function Invoke-DeployWorkerDeploy {
         if ($LASTEXITCODE -ne 0) {
             throw "Wrangler worker deploy failed."
         }
+        $script:DeployWorkerDeployCompleted = $true
     }
     finally {
         Pop-Location
@@ -1411,16 +1419,39 @@ function Invoke-DeployWorkerDeploy {
 
 # Read-only: live Worker placement region, PAGE_CACHE / SITE_ACCESS_MODE vars, ASSETS binding and
 # last_deployed_from must match web/wrangler.jsonc (the cf-placement header is no longer emitted).
+# After a wrangler deploy a mismatch fails the deploy; "could not verify" (exit 2) only warns,
+# because Wrangler itself just uploaded the settings from wrangler.jsonc.
 function Invoke-DeployWorkerSettingsVerification {
     Write-DeployStep "Verifying $($script:DeployEnvironment) Worker placement and vars (Cloudflare API)"
-    $verifier = Join-Path $script:DeployRepoRoot "web/scripts/verify-worker-placement.mjs"
-    & node $verifier --env $script:DeployEnvironment
-    $code = $LASTEXITCODE
+    $code = Invoke-WorkerSettingsVerifier -RepoRoot $script:DeployRepoRoot -Environment $script:DeployEnvironment
     if ($code -eq 1) {
         throw "Live Worker settings do not match web/wrangler.jsonc after wrangler deploy (see FAIL lines above)."
     }
     if ($code -ne 0) {
         Write-Warning "Could not verify Worker placement/vars (exit $code). Run manually: node web/scripts/verify-worker-placement.mjs --env $($script:DeployEnvironment)"
+    }
+}
+
+# For the deploy scripts' finally blocks. If Terraform apply started but wrangler deploy did not
+# complete (build, migrate, secret sync or Auth0 assert threw in between, or the apply itself
+# failed), the live Worker may be the Terraform re-upload (NON_TERRAFORM_RESOURCES.md § Wrangler-owned
+# Worker settings). Print a loud warning with the redeploy command and run the verifier. Never throws.
+function Write-DeployIncompleteAfterTerraformWarning {
+    if (-not $script:DeployTerraformApplyStarted -or $script:DeployWorkerDeployCompleted) { return }
+    try {
+        $hint = Get-WorkerSettingsRedeployHint -Environment $script:DeployEnvironment
+        Write-Host ""
+        Write-Host "WARNING: Terraform apply ran for $($script:DeployEnvironment) but wrangler deploy did not complete." -ForegroundColor Red
+        Write-Host "The live Worker may be Terraform's single-module re-upload, not the Wrangler build. Once the error above is fixed, redeploy now:" -ForegroundColor Red
+        Write-Host "  $hint" -ForegroundColor Red
+        Write-Host "Checking the live Worker (non-fatal):" -ForegroundColor Red
+        $code = Invoke-WorkerSettingsVerifier -RepoRoot $script:DeployRepoRoot -Environment $script:DeployEnvironment
+        if ($code -ne 0) {
+            Write-Host "Live Worker check exit $code (1 = settings differ, 2 = could not verify). Redeploy: $hint" -ForegroundColor Red
+        }
+    }
+    catch {
+        Write-Host "WARNING: could not run the live Worker check ($($_.Exception.Message)). Redeploy: $(Get-WorkerSettingsRedeployHint -Environment $script:DeployEnvironment)" -ForegroundColor Red
     }
 }
 

@@ -6,10 +6,16 @@ import { fileURLToPath } from 'node:url';
 import {
 	evaluateWorker,
 	expectedFromWrangler,
+	isPlausibleCloudflareApiToken,
+	parseEnvFileValues,
 	parseJsonc,
 	parseServerTiming,
 	placementFromService,
+	redactUrl,
+	sampleServerTimings,
+	selectCloudflareApiToken,
 	summarizeDbTiming,
+	TOKEN_ENV_FILE_KEYS,
 } from './lib/worker-placement-check.mjs';
 
 const wrangler = parseJsonc(readFileSync(fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)), 'utf8'));
@@ -124,5 +130,102 @@ describe('verify-worker-placement: Server-Timing sanity', () => {
 		const unplaced = summarizeDbTiming([{ 'db.total': 530, 'db.count': 3 }, { 'db.total': 576, 'db.count': 3 }, { 'db.total': 522, 'db.count': 3 }]);
 		assert.equal(unplaced.ok, false);
 		assert.equal(summarizeDbTiming([{ rt: 5 }]).samples, 0);
+	});
+});
+
+describe('verify-worker-placement: token selection', () => {
+	const real = 'r'.repeat(40);
+	const realTf = 't'.repeat(53);
+	const stub = 'F'.repeat(31);
+
+	it('plausibility matches Test-DeployCloudflareApiTokenPlausible (40+ chars, no whitespace)', () => {
+		assert.equal(isPlausibleCloudflareApiToken(''), false);
+		assert.equal(isPlausibleCloudflareApiToken(stub), false);
+		assert.equal(isPlausibleCloudflareApiToken(`${'c'.repeat(20)} ${'d'.repeat(20)}`), false);
+		assert.equal(isPlausibleCloudflareApiToken(undefined), false);
+		assert.equal(isPlausibleCloudflareApiToken(real), true);
+		assert.equal(isPlausibleCloudflareApiToken(`  ${real}  `), true);
+	});
+
+	it('skips the short CLOUDFLARE_API_TOKEN stub and uses TF_VAR_CLOUDFLARE_API_TOKEN', () => {
+		const r = selectCloudflareApiToken({ CLOUDFLARE_API_TOKEN: stub, TF_VAR_CLOUDFLARE_API_TOKEN: realTf });
+		assert.equal(r.token, realTf);
+		assert.equal(r.source, 'env TF_VAR_CLOUDFLARE_API_TOKEN');
+		assert.deepEqual(r.skipped, ['env CLOUDFLARE_API_TOKEN']);
+	});
+
+	it('finds the lowercase TF_VAR_cloudflare_api_token that terraform-run.ps1 sets', () => {
+		const r = selectCloudflareApiToken({ TF_VAR_cloudflare_api_token: realTf });
+		assert.equal(r.token, realTf);
+		assert.equal(r.source, 'env TF_VAR_cloudflare_api_token');
+	});
+
+	it('prefers a plausible CLOUDFLARE_API_TOKEN, then falls back to --env-file values', () => {
+		assert.equal(selectCloudflareApiToken({ CLOUDFLARE_API_TOKEN: real, TF_VAR_CLOUDFLARE_API_TOKEN: realTf }).token, real);
+		const r = selectCloudflareApiToken({ CLOUDFLARE_API_TOKEN: stub }, { TF_VAR_CLOUDFLARE_API_TOKEN: realTf });
+		assert.equal(r.token, realTf);
+		assert.equal(r.source, '--env-file TF_VAR_CLOUDFLARE_API_TOKEN');
+	});
+
+	it('returns no token (exit 2 path) when every candidate is a stub, and never echoes values', () => {
+		const r = selectCloudflareApiToken({ CLOUDFLARE_API_TOKEN: stub }, { CLOUDFLARE_API_TOKEN: 'short' });
+		assert.equal(r.token, undefined);
+		assert.deepEqual(r.skipped, ['env CLOUDFLARE_API_TOKEN', '--env-file CLOUDFLARE_API_TOKEN']);
+		assert.ok(!JSON.stringify(r).includes(stub));
+	});
+});
+
+describe('verify-worker-placement: --env-file parsing', () => {
+	const tok = 'a'.repeat(40);
+
+	it('trims trailing whitespace and strips unquoted inline comments', () => {
+		const v = parseEnvFileValues(`TF_VAR_CLOUDFLARE_API_TOKEN=${tok}   \t\nCLOUDFLARE_API_TOKEN=${tok}  # rotated 2026-10\n`, TOKEN_ENV_FILE_KEYS);
+		assert.equal(v.TF_VAR_CLOUDFLARE_API_TOKEN, tok);
+		assert.equal(v.CLOUDFLARE_API_TOKEN, tok);
+	});
+
+	it('handles quotes, export prefix, CRLF, BOM, comments and blank lines', () => {
+		const text = `\uFEFF# comment\r\n\r\nexport CLOUDFLARE_API_TOKEN="${tok}" # note\r\nTF_VAR_cloudflare_api_token='${tok}'\r\n`;
+		const v = parseEnvFileValues(text, TOKEN_ENV_FILE_KEYS);
+		assert.equal(v.CLOUDFLARE_API_TOKEN, tok);
+		assert.equal(v.TF_VAR_cloudflare_api_token, tok);
+	});
+
+	it('first non-empty occurrence wins; other keys are never read', () => {
+		const v = parseEnvFileValues(`CLOUDFLARE_API_TOKEN=\nCLOUDFLARE_API_TOKEN=${tok}\nCLOUDFLARE_API_TOKEN=${'b'.repeat(40)}\nTURSO_AUTH_TOKEN=secret\n`, TOKEN_ENV_FILE_KEYS);
+		assert.deepEqual(v, { CLOUDFLARE_API_TOKEN: tok });
+	});
+
+	it('keeps a # that is part of an unspaced value', () => {
+		assert.equal(parseEnvFileValues('CLOUDFLARE_API_TOKEN=abc#def', TOKEN_ENV_FILE_KEYS).CLOUDFLARE_API_TOKEN, 'abc#def');
+	});
+});
+
+describe('verify-worker-placement: Server-Timing sampling network errors', () => {
+	it('a DNS / network failure is reported as an error (exit 2 path), without headers or query string', async () => {
+		const failing = (async () => {
+			throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' }) });
+		}) as unknown as typeof fetch;
+		const r = await sampleServerTimings({ url: 'https://nope.invalid/homepage?token=abc', samples: 3, headers: { cookie: 'session=SECRET' }, fetchImpl: failing });
+		assert.ok('error' in r);
+		assert.match(r.error, /nope\.invalid\/homepage failed: fetch failed \(ENOTFOUND\)/);
+		assert.ok(!r.error.includes('SECRET'));
+		assert.ok(!r.error.includes('token=abc'));
+	});
+
+	it('discards the first (cold) sample and parses the rest', async () => {
+		let n = 0;
+		const ok = (async () => {
+			n += 1;
+			return new Response('x', { headers: { 'server-timing': `db.total;dur=${n * 10}, db.count;dur=1` } });
+		}) as unknown as typeof fetch;
+		const r = await sampleServerTimings({ url: 'https://example.test/', samples: 3, fetchImpl: ok });
+		assert.ok('timings' in r);
+		assert.deepEqual(r.timings.map((t) => t['db.total']), [20, 30]);
+	});
+
+	it('redactUrl keeps origin + path only', () => {
+		assert.equal(redactUrl('https://a.test/p/q?x=1#h'), 'https://a.test/p/q');
+		assert.equal(redactUrl('not a url'), '(invalid URL)');
 	});
 });

@@ -1,115 +1,80 @@
 # Post-build Cloudflare bundle patches
 
-`web/scripts/patch-cloudflare-bundle.ts` runs as the **last step** of `npm run build`:
+`web/scripts/patch-cloudflare-bundle.ts` runs as the **last step** of `npm run build`, after `astro build`
+and `npm run test`:
 
 ```text
-tsx scripts/build-service-worker.ts && astro build && tsx scripts/patch-cloudflare-bundle.ts
+astro check && … && astro build && npm run test && tsx scripts/patch-cloudflare-bundle.ts
 ```
 
-After `@astrojs/cloudflare` emits the Worker bundle under `dist/server/`, the script walks every `**/*.mjs` file and applies string replacements to fix EmDash, OAuth, and Astro-on-Workers runtime issues that are not yet fixed upstream.
-
-If `dist/server` does not exist, the script logs a warning and exits `0` (no failure).
+It reads every `**/*.mjs` file under `dist/server/` and applies the registry in
+[`web/scripts/lib/cloudflare-bundle-patches.mjs`](../scripts/lib/cloudflare-bundle-patches.mjs). The
+registry is the source of truth for which patches exist, their status and their reasons; this page explains
+how to read it and what to do when it fails. If `dist/server` is missing, the script exits **1**.
 
 ---
 
-## Operational notes
+## How the registry works
 
-### Brittleness
+Every patch has a `status`:
 
-Every patch is a **literal substring match** on minified or bundled output. A dependency upgrade, EmDash version bump, or Astro adapter change can change whitespace, rename symbols, or reorder code so a needle no longer appears. The script **does not fail** when a needle is missing — it silently skips that replacement.
+| Status | Meaning | Build behaviour |
+|---|---|---|
+| `required` | The upstream bug is still present; the fix must ship. | The target must be found **exactly** `expectMatches` times across `dist/server` (counting already-patched copies via `appliedMarker`, so re-runs are idempotent). Otherwise the build **fails** (exit 1). |
+| `obsolete` | Fixed upstream or the code path is gone; the patch is **not** applied. | Pinned to the package range it was verified against (`verifiedRange`, e.g. emdash `>=1.3.1 <1.4`). The build **fails** if the installed package is outside that range, or if the old buggy code (`regressionNeedle`) reappears in the bundle. |
 
-**Recommendation for future patches:** prefer **fail-fast** behavior (exit non-zero when an expected needle is not found in a file you know should contain it) so CI surfaces drift immediately instead of shipping a broken Worker.
+There is no silent skip any more: a missing target or an unverified upgrade is a build failure, not a
+`patched 0 file(s)` line.
 
-### Build log output
+### Current registry (emdash 1.3.1, `@astrojs/cloudflare` 14.4.2)
 
-At the end of a successful run:
+| ID | Status | Why |
+|---|---|---|
+| `publish-error-diagnostics` | required (`expectMatches: 1`) | EmDash's content publish handler returns a bare `"Failed to publish content"`. The patch appends the caught error message so MCP `content_publish` / admin publish failures are diagnosable. Remove when upstream includes the error detail. |
+| `oauth-csrf-cookie-path` | obsolete | Upstream sets the CSRF cookie with `Path=/_emdash/oauth/authorize`. |
+| `baseline-security-headers-writable-response` | obsolete | `setBaselineSecurityHeaders()` no longer exists; EmDash middleware clones the response before setting headers. (This also covers the old "return value from `setBaselineSecurityHeaders` call sites" patch.) |
+| `publish-syncdatacolumns-drift-guard` | obsolete | Publish no longer calls `syncDataColumns()`; it filters revision data with `keepKnownFields`, so dropped columns cannot cause "no such column". |
+| `worker-entry-assets-guard` | obsolete | `@astrojs/cloudflare` 14 removed the `worker-entry_` chunk; `ASSETS` is always bound (`wrangler.jsonc`, Terraform `keep_assets = true`). |
+| `create-require-import-meta-url` | obsolete | No server chunk calls `createRequire(import.meta.url)`; the build-time occurrence is handled by `scripts/patch-emdash-windows-createrequire.mjs`. |
+
+The exact `reason`, `regressionNeedle` and `verifiedRange` for each entry are in the registry file.
+
+---
+
+## Build log output
 
 | Log line | Meaning |
 |---|---|
-| `[patch-cloudflare-bundle] patched N file(s)` | Count of `.mjs` files whose contents changed |
-| `publish syncDataColumns guard: found=…, applied=…` | EmDash publish column-drift guard (see below) |
-| `publish error diagnostics: found=…, applied=…` | EmDash MCP publish error detail patch (see below) |
-
-Only the **last two** patches report per-needle `found` / `applied` counters. All other patches are silent unless they contribute to the patched-file count.
+| `[patch-cloudflare-bundle] required <id>: matched=N present=M OK` | `matched` = fresh rewrites in this run, `present` = patched copies now in the bundle. `OK` when `present` equals `expectMatches`. |
+| `[patch-cloudflare-bundle] obsolete <id>: still obsolete` | Installed version is inside `verifiedRange` and the regression needle is absent. |
+| `[patch-cloudflare-bundle] obsolete <id>: NEEDS REVIEW` | Followed by an `ERROR` line; the build fails. |
+| `[patch-cloudflare-bundle] patched N file(s) (emdash X, @astrojs/cloudflare Y)` | Files rewritten in this run. A fresh build logs `patched 1 file(s)`. `patched 0 file(s)` is normal **only** on a re-run over an already patched `dist/server` (the required line then shows `matched=0 present=1 OK`). |
+| `[patch-cloudflare-bundle] ERROR …` | Build exits **1**. Never noise: follow the procedure below. |
 
 ---
 
-## Patches (in script order)
+## When the build fails, or after bumping `emdash` / `@astrojs/cloudflare`
 
-### 1. OAuth CSRF cookie path
+Re-verify, do not just widen ranges:
 
-| | |
-|---|---|
-| **What it fixes** | Rewrites the CSRF cookie `Path` from `/_emdash/api/oauth/authorize` to `/_emdash/oauth/authorize`. |
-| **Why needed** | EmDash OAuth authorize lives at `/_emdash/oauth/authorize` (see `web/src/middleware.ts`). Older bundled EmDash code set the CSRF cookie path to the wrong URL segment, so the browser did not send the cookie on the consent POST. |
-| **Symptoms if missing** | EmDash OAuth consent fails with CSRF validation errors; editorial login / admin OAuth flow breaks at consent. |
-| **Remove when** | Upstream EmDash (or the bundled OAuth handler) sets `Path=/_emdash/oauth/authorize` in generated Worker output. |
-| **Build logs** | No `found`/`applied` line; silent `replaceAll` across all `.mjs` files. |
-
-### 2. `createRequire` import URL
-
-| | |
-|---|---|
-| **What it fixes** | Replaces `createRequire(import.meta.url)` with `createRequire('/')`. |
-| **Why needed** | Node compatibility shims in the bundled Worker use `createRequire(import.meta.url)`, which does not resolve correctly in the Cloudflare Workers runtime. A fixed root path works for the bundled layout. |
-| **Symptoms if missing** | Runtime errors when EmDash or a dependency tries to `require()` Node built-ins or CJS modules inside the Worker (build may succeed, deploy fails or 500s on affected routes). |
-| **Remove when** | Upstream bundler / EmDash / adapter emits a Workers-safe `createRequire` call without relying on `import.meta.url`. |
-| **Build logs** | No `found`/`applied` line; silent `replaceAll`. |
-
-### 3. Writable response for baseline security headers
-
-| | |
-|---|---|
-| **What it fixes** | Replaces `setBaselineSecurityHeaders` so it clones the `Response` when header mutation throws, sets headers on the writable copy, and **returns** that response. |
-| **Why needed** | Some EmDash/OAuth responses arrive with **immutable** headers in Workers. Mutating them in place throws; cloning preserves the body and allows security headers to be applied. |
-| **Symptoms if missing** | Uncaught exceptions or missing `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, or `X-Frame-Options` on OAuth/admin responses; intermittent 500s on middleware paths that set baseline headers. |
-| **Remove when** | Middleware always receives mutable responses, or upstream applies baseline security headers before the response is frozen. |
-| **Build logs** | No `found`/`applied` line; single `replace` per matching file. |
-
-### 4. Return value from `setBaselineSecurityHeaders` call sites
-
-| | |
-|---|---|
-| **What it fixes** | Changes middleware patterns from `setBaselineSecurityHeaders(response); return response;` to `return setBaselineSecurityHeaders(response);` (two indentation variants). |
-| **Why needed** | Patch 3 makes `setBaselineSecurityHeaders` return a possibly cloned response; callers must return that value, not the original immutable reference. |
-| **Symptoms if missing** | Security header clone from patch 3 is discarded; same immutable-header failures or missing headers as patch 3. |
-| **Remove when** | Remove together with patch 3 when upstream handles writable responses correctly. |
-| **Build logs** | No `found`/`applied` line. |
-
-### 5. Publish `syncDataColumns` column-drift guard
-
-| | |
-|---|---|
-| **What it fixes** | Wraps `await this.syncDataColumns(type, id, revision.data)` in try/catch and **ignores** errors whose message contains `no such column` or `unknown column`; rethrows all other errors. |
-| **Why needed** | On publish, draft revision JSON can still contain keys for columns removed from `ec_*` tables (schema drift). `syncDataColumns` would otherwise hard-fail the publish. |
-| **Symptoms if missing** | `content_publish` / EmDash admin publish fails with SQLite/Turso “no such column” (or “unknown column”) during publish; MCP returns opaque failure. |
-| **Remove when** | EmDash publish path no longer calls `syncDataColumns` on stale keys, or migrations/revisions are cleaned so drift cannot occur; staging publishes consistently without the guard (see [ARCHITECTURE.md](../../ARCHITECTURE.md) deliverable §8.3). |
-| **Build logs** | **Yes:** `publish syncDataColumns guard: found=…, applied=…`. `found` increments when the needle appears in a file; `applied` increments when the replacement actually changed content. |
-
-### 6. MCP publish error diagnostics
-
-| | |
-|---|---|
-| **What it fixes** | Replaces a generic `CONTENT_PUBLISH_ERROR` / `"Failed to publish content"` return with a message that includes the underlying error: `` `Failed to publish content: ${detail}` ``. |
-| **Why needed** | Operators and agents calling MCP `content_publish` need the real failure reason in the tool response, not a fixed string. |
-| **Symptoms if missing** | MCP publish failures only report `"Failed to publish content"` with no root cause; harder to debug in CI, Cursor MCP, or `emdash-mcp-tools-call.mjs`. |
-| **Remove when** | Upstream EmDash MCP handler includes the caught error message in `CONTENT_PUBLISH_ERROR` responses by default. |
-| **Build logs** | **Yes:** `publish error diagnostics: found=…, applied=…`. |
-
-### 7. `env.ASSETS` null guards (`worker-entry_*` only)
-
-| | |
-|---|---|
-| **What it fixes** | In files whose basename starts with `worker-entry_`: introduces `const assetsBinding = env.ASSETS`, guards all `env.ASSETS.fetch(...)` call sites with `assetsBinding` checks, and returns `404` from `prerenderedErrorPageFetch` when the binding is missing. |
-| **Why needed** | Astro’s generated Worker entry assumes the `ASSETS` binding is always present. In some dev/preview or misconfigured deploy contexts the binding can be undefined; unguarded `.fetch` throws. |
-| **Symptoms if missing** | Runtime `TypeError` (cannot read properties of undefined) when serving static assets, prerendered fallbacks, or error pages if `ASSETS` is not bound. |
-| **Remove when** | `@astrojs/cloudflare` generates null-safe asset access, or the project guarantees `ASSETS` on every target environment where this entry runs. |
-| **Build logs** | No `found`/`applied` line; only applied in `worker-entry_*.mjs` files. |
+1. **Required patch `MISSING`** (`present` ≠ `expectMatches`): open the new bundle (`web/dist/server/chunks/*.mjs`)
+   and the package source (`web/node_modules/emdash/dist/…`). If the bug is still there, update `pattern` /
+   `appliedMarker` in the registry. If upstream fixed it, change the entry to `obsolete` with a `reason`, a
+   `regressionNeedle` (the old buggy code) and the `verifiedRange` you checked.
+2. **Obsolete patch outside `verifiedRange`:** for each such entry, check that the `reason` still holds in the
+   new version (search the bundle and `node_modules` for the old code and the upstream fix). Only then move
+   `verifiedRange` to the new version.
+3. **Obsolete patch `regressionNeedle` found:** the old code is back. Restore the patch as `required` (the
+   original replacement is in git history of `web/scripts/patch-cloudflare-bundle.ts`).
+4. Update [`web/scripts/test-cloudflare-bundle-patches.mts`](../scripts/test-cloudflare-bundle-patches.mts)
+   (runs in `npm test`) and the table above, then run `npm run build` again until there is no `ERROR`.
+5. For the remaining required patch, smoke-test on staging that a failing MCP `content_publish` returns
+   `Failed to publish content: <detail>`.
 
 ---
 
 ## Related docs
 
 - Build pipeline and Wrangler configs: [../README.md](../README.md)
-- EmDash publish / MCP workflow: [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md), [PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md](PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md), [SELF_HOSTED_VIDEO_EMBEDS.md](SELF_HOSTED_VIDEO_EMBEDS.md)
-- Architecture note on removing these patches: [ARCHITECTURE.md](../../ARCHITECTURE.md) (remaining decisions and deliverable §8.3)
+- EmDash publish / MCP workflow: [CONTENT_PROMOTION_RUNBOOK.md](../CONTENT_PROMOTION_RUNBOOK.md), [PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md](PLAN_EMDASH_CONTENT_FORMAT_AND_MCP_HANDOFF.md)
+- Open work: [ARCHITECTURE.md](../../ARCHITECTURE.md) (remaining decision 1, deliverable §8.3)

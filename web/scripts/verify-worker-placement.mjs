@@ -7,15 +7,28 @@
 //   node scripts/verify-worker-placement.mjs --env staging|production [--url https://host/path] [--samples 5]
 //        [--cookie-env FT_STAGING_COOKIE] [--max-ms-per-query 60] [--strict-timing] [--env-file ../.env.dev]
 //
-// Auth: CLOUDFLARE_API_TOKEN (or TF_VAR_CLOUDFLARE_API_TOKEN) from the environment, or read from
-// --env-file (only those two keys are read). The token is never printed. Account id comes from
-// CLOUDFLARE_ACCOUNT_ID or wrangler.jsonc. Only GET requests are made.
+// Auth: the first plausible token (40+ chars, no whitespace, same rule as the deploy scripts) from
+// CLOUDFLARE_API_TOKEN, TF_VAR_CLOUDFLARE_API_TOKEN, TF_VAR_cloudflare_api_token, then the same keys in
+// --env-file (only those keys are read). A short process stub is skipped. The token and its length are
+// never printed; only the source name is. Account id comes from CLOUDFLARE_ACCOUNT_ID or wrangler.jsonc.
+// Only GET requests are made.
 //
-// Exit codes: 0 OK, 1 mismatch, 2 usage / auth / API error.
+// Exit codes: 0 OK, 1 mismatch, 2 usage / auth / API / network error.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { evaluateWorker, expectedFromWrangler, parseJsonc, parseServerTiming, placementFromService, summarizeDbTiming } from './lib/worker-placement-check.mjs';
+import {
+	evaluateWorker,
+	expectedFromWrangler,
+	parseEnvFileValues,
+	parseJsonc,
+	placementFromService,
+	redactUrl,
+	sampleServerTimings,
+	selectCloudflareApiToken,
+	summarizeDbTiming,
+	TOKEN_ENV_FILE_KEYS,
+} from './lib/worker-placement-check.mjs';
 
 function arg(name, fallback) {
 	const i = process.argv.indexOf(name);
@@ -23,16 +36,13 @@ function arg(name, fallback) {
 }
 const flag = (name) => process.argv.includes(name);
 
-function readTokenFromEnvFile(path) {
+function readEnvFileValues(path) {
 	try {
-		for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-			const m = /^\s*(?:export\s+)?(CLOUDFLARE_API_TOKEN|TF_VAR_CLOUDFLARE_API_TOKEN)\s*=\s*(.*)\s*$/.exec(line);
-			if (m && m[2]) return m[2].replace(/^['"]|['"]$/g, '');
-		}
+		return parseEnvFileValues(readFileSync(path, 'utf8'), TOKEN_ENV_FILE_KEYS);
 	} catch {
 		console.error(`[verify-worker-placement] cannot read --env-file ${path}`);
+		return {};
 	}
-	return undefined;
 }
 
 async function cfGet(path, token) {
@@ -60,12 +70,15 @@ async function main() {
 	const expected = expectedFromWrangler(wrangler, env);
 	const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || expected.accountId;
 	const envFile = arg('--env-file');
-	const token =
-		process.env.CLOUDFLARE_API_TOKEN || process.env.TF_VAR_CLOUDFLARE_API_TOKEN || (envFile ? readTokenFromEnvFile(envFile) : undefined);
+	const { token, source, skipped } = selectCloudflareApiToken(process.env, envFile ? readEnvFileValues(envFile) : {});
+	if (skipped.length > 0) console.log(`[verify-worker-placement] skipped implausible token(s) (stub or malformed): ${skipped.join(', ')}`);
 	if (!token || !accountId) {
-		console.error('[verify-worker-placement] set CLOUDFLARE_API_TOKEN (or TF_VAR_CLOUDFLARE_API_TOKEN / --env-file) and CLOUDFLARE_ACCOUNT_ID.');
+		console.error(
+			'[verify-worker-placement] no usable Cloudflare API token (CLOUDFLARE_API_TOKEN, TF_VAR_CLOUDFLARE_API_TOKEN, TF_VAR_cloudflare_api_token or --env-file) or no CLOUDFLARE_ACCOUNT_ID.',
+		);
 		return 2;
 	}
+	console.log(`[verify-worker-placement] token source: ${source}`);
 
 	let service;
 	let settings;
@@ -93,16 +106,17 @@ async function main() {
 		const samples = Number(arg('--samples', '5'));
 		const cookieEnv = arg('--cookie-env');
 		const headers = cookieEnv && process.env[cookieEnv] ? { cookie: process.env[cookieEnv] } : {};
-		const timings = [];
-		for (let i = 0; i < samples; i += 1) {
-			const res = await fetch(url, { headers, redirect: 'manual' });
-			await res.arrayBuffer();
-			if (i === 0) continue; // first request may be cold (isolate start, connection setup)
-			timings.push(parseServerTiming(res.headers.get('server-timing')));
+		const sampled = await sampleServerTimings({ url, samples, headers });
+		if ('error' in sampled) {
+			// Network / DNS failure is "could not verify" (2), never "mismatch" (1); an API mismatch found
+			// above still wins. No headers or cookies are logged.
+			console.error(`[verify-worker-placement] ${sampled.error}`);
+			return result.ok ? 2 : 1;
 		}
+		const timings = sampled.timings;
 		const s = summarizeDbTiming(timings, Number(arg('--max-ms-per-query', '60')));
 		console.log(
-			`[verify-worker-placement] Server-Timing ${url}: warm samples with DB=${s.samples}, median ms/query=${s.medianMsPerQuery ?? '-'} — ${s.note}`,
+			`[verify-worker-placement] Server-Timing ${redactUrl(url)}: warm samples with DB=${s.samples}, median ms/query=${s.medianMsPerQuery ?? '-'} — ${s.note}`,
 		);
 		timingOk = s.ok || !flag('--strict-timing');
 	}
@@ -112,4 +126,10 @@ async function main() {
 	return 0;
 }
 
-process.exitCode = await main();
+try {
+	process.exitCode = await main();
+} catch (err) {
+	// Anything unexpected is "could not verify" (2); exit 1 is reserved for a real mismatch.
+	console.error(`[verify-worker-placement] unexpected error: ${err instanceof Error ? err.message : String(err)}`);
+	process.exitCode = 2;
+}

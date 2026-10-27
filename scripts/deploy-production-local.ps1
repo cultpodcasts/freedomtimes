@@ -71,12 +71,9 @@ if (-not $DryRun) {
     Invoke-DeployEmDashTursoBackup -SkipTursoBackup:$SkipTursoBackup
 }
 
-if (-not $WorkerOnly) {
-    Invoke-DeployTerraformApplyWithRecovery
-}
-
 try {
     if (-not $WorkerOnly) {
+        Invoke-DeployTerraformApplyWithRecovery
         Sync-DeployProductionAuth0EnvFromTerraform
         Assert-DeployAuth0SyncToEnv
         Invoke-DeploySecretSync
@@ -107,5 +104,7 @@ try {
     exit 0
 }
 finally {
+    # Terraform applied but wrangler deploy did not finish: loud redeploy warning + live check.
+    Write-DeployIncompleteAfterTerraformWarning
     Complete-DeployTerraformLockfileRestore
 }

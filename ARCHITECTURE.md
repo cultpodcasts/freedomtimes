@@ -453,8 +453,8 @@ Editor action in EmDash admin or MCP client
 
 **Current operational note:**
 
-- The Worker build includes a compatibility patch that improves publish diagnostics and tolerates one known publish-time schema drift case in staging.
-- Until that underlying behavior is fully resolved upstream, publish reliability should be validated as an EmDash runtime concern.
+- The Worker build includes one compatibility patch that adds the underlying error to EmDash publish failures (MCP `content_publish` / admin). The earlier publish-time schema drift guard is obsolete: emdash 1.3.1 publish filters revision data to known fields. See [web/docs/PATCH_CLOUDFLARE_BUNDLE.md](web/docs/PATCH_CLOUDFLARE_BUNDLE.md).
+- Publish reliability is still validated as an EmDash runtime concern after each `emdash` upgrade.
 
 ---
 
@@ -543,7 +543,7 @@ Architectural choices for framework (Astro), body format (Portable Text via EmDa
 
 | # | Topic | What remains |
 |---|---|---|
-| 1 | **EmDash publish reliability** | Temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) stay until upstream publish-time schema drift is resolved; remove once staging consistently publishes without them. |
+| 1 | **EmDash bundle patches** | Upstream fixed publish-time schema drift (emdash 1.3.1 publish filters revision data with `keepKnownFields`), so that guard and four other patches are marked obsolete. One patch remains required (MCP publish error diagnostics) until upstream returns the error detail. The registry and re-verify procedure: [web/docs/PATCH_CLOUDFLARE_BUNDLE.md](web/docs/PATCH_CLOUDFLARE_BUNDLE.md). |
 | 2 | **Privacy operations** | Reader [Privacy Policy](https://freedomtimes.news/privacy-policy) is published (EmDash, May 2026); pseudonymous push handling is settled in §4.9 and §4.13. Still needed: internal retention schedules and subject-rights runbooks for **editorial** data (Auth0 accounts, CMS content) — deliverable §8.4. |
 | 3 | **Metadata taxonomy** | Managed canonical lists for people, groups, and institutions with editor approval and merge history — described in §4.7 but not fully built (deliverable §8.2). |
 
@@ -555,7 +555,7 @@ Open work only, in priority order. Completed foundation (Astro Worker deploy, Te
 
 1. **PWA hardening:** Web App Manifest and service worker already ship (`manifest.webmanifest.ts`, `src/service-worker.ts`, `src/lib/pwa.ts`; shell precache and push `notificationclick` handlers). Remaining: stale-while-revalidate offline caching for article pages (§4.8); formal Lighthouse PWA audit.
 2. **Metadata taxonomy:** Managed canonical lists for people, groups, and institutions with editor approval, merge history, and submission prefill — outlined in §4.7 progressive admin scope; no app-side taxonomy module yet.
-3. **EmDash publish hardening:** Remove temporary Worker bundle patches (`web/scripts/patch-cloudflare-bundle.ts`) once upstream publish-time schema drift is resolved; validate staging publishes cleanly without guards.
+3. **EmDash bundle patch upkeep:** Remove the last required patch (`publish-error-diagnostics` in `web/scripts/lib/cloudflare-bundle-patches.mjs`) once upstream EmDash includes the caught error in `CONTENT_PUBLISH_ERROR`; on every `emdash` / `@astrojs/cloudflare` bump, re-verify the obsolete patches as described in [web/docs/PATCH_CLOUDFLARE_BUNDLE.md](web/docs/PATCH_CLOUDFLARE_BUNDLE.md).
 4. **Privacy operations:** Reader [privacy notice](https://freedomtimes.news/privacy-policy) is live; push pseudonymity and browser/OS consent are settled (§4.9, §4.13). Still needed: internal retention schedules and subject-rights runbooks for editorial/operational data (Auth0 accounts, CMS revisions).
 5. **MVP sign-off:** Automated end-to-end smoke test; Lighthouse performance / Core Web Vitals baseline; formal MVP sign-off checklist.
 

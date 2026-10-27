@@ -167,3 +167,106 @@ export function summarizeDbTiming(samples, maxMsPerQuery = 60) {
 		note: median <= maxMsPerQuery ? 'consistent with placement near the DB' : `median ${median.toFixed(1)} ms/query > ${maxMsPerQuery} ms: Worker may not be running near the DB`,
 	};
 }
+
+// --- Credentials ----------------------------------------------------------------------------------
+
+/**
+ * Same rule as Test-DeployCloudflareApiTokenPlausible (scripts/Deploy-EnvironmentCommon.ps1): real
+ * Cloudflare API tokens are 40+ characters with no whitespace. Cursor Cloud injects a ~31-character
+ * CLOUDFLARE_API_TOKEN stub that would otherwise shadow the real TF_VAR token (HTTP 401 / 6111 / 9106).
+ */
+export function isPlausibleCloudflareApiToken(token) {
+	if (typeof token !== 'string') return false;
+	const t = token.trim();
+	return t.length >= 40 && !/\s/.test(t);
+}
+
+/** Process-env names tried in order. terraform-run.ps1 remaps to the lowercase TF_VAR name (case-sensitive on Linux/WSL). */
+export const TOKEN_ENV_NAMES = ['CLOUDFLARE_API_TOKEN', 'TF_VAR_CLOUDFLARE_API_TOKEN', 'TF_VAR_cloudflare_api_token'];
+/** Keys read from --env-file, in order (only these keys are read). */
+export const TOKEN_ENV_FILE_KEYS = ['CLOUDFLARE_API_TOKEN', 'TF_VAR_CLOUDFLARE_API_TOKEN', 'TF_VAR_cloudflare_api_token'];
+
+/**
+ * Parse only `keys` from .env text. Same base rules as scripts/lib/EnvFile.ps1 (#113): blank and `#`
+ * lines skipped, KEY=VALUE with KEY [A-Za-z_][A-Za-z0-9_]*, key/value trimmed incl. BOM, first
+ * non-empty occurrence wins. Additionally tolerated here (never part of a token): an `export ` prefix,
+ * one pair of matching surrounding quotes, and an unquoted inline comment (`<whitespace>#...`).
+ * @returns {Record<string, string>}
+ */
+export function parseEnvFileValues(text, keys) {
+	const wanted = new Set(keys);
+	const out = {};
+	for (const raw of String(text ?? '').split(/\r?\n/)) {
+		const line = raw.replace(/^\uFEFF/, '').trim();
+		if (!line || line.startsWith('#')) continue;
+		const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(line);
+		if (!m || !wanted.has(m[1]) || m[1] in out) continue;
+		let value = m[2].replace(/\uFEFF/g, '').trim();
+		const quoted = /^(["'])(.*)\1(?:\s+#.*)?$/.exec(value);
+		if (quoted) value = quoted[2];
+		else value = value.replace(/\s+#.*$/, '').trim();
+		if (value) out[m[1]] = value;
+	}
+	return out;
+}
+
+/**
+ * Pick the first plausible token: process env (TOKEN_ENV_NAMES), then env-file values. Never returns
+ * or logs anything about rejected values except their source name.
+ * @param {Record<string, string|undefined>} env
+ * @param {Record<string, string>} [envFileValues]
+ * @returns {{ token: string|undefined, source: string|undefined, skipped: string[] }}
+ */
+export function selectCloudflareApiToken(env, envFileValues = {}) {
+	const candidates = [
+		...TOKEN_ENV_NAMES.map((n) => ({ source: `env ${n}`, value: env?.[n] })),
+		...TOKEN_ENV_FILE_KEYS.map((n) => ({ source: `--env-file ${n}`, value: envFileValues?.[n] })),
+	];
+	const skipped = [];
+	for (const c of candidates) {
+		if (typeof c.value !== 'string' || c.value.trim() === '') continue;
+		if (isPlausibleCloudflareApiToken(c.value)) return { token: c.value.trim(), source: c.source, skipped };
+		skipped.push(c.source);
+	}
+	return { token: undefined, source: undefined, skipped };
+}
+
+/** URL safe to log: origin + path only (no query string, which could carry a token). */
+export function redactUrl(url) {
+	try {
+		const u = new URL(url);
+		return `${u.origin}${u.pathname}`;
+	} catch {
+		return '(invalid URL)';
+	}
+}
+
+/** Short reason for a fetch() failure (never includes request headers or cookies). */
+export function describeNetworkError(err) {
+	const cause = err && typeof err === 'object' && 'cause' in err ? err.cause : undefined;
+	const code = cause && typeof cause === 'object' && 'code' in cause ? String(cause.code) : undefined;
+	const msg = err instanceof Error ? err.message : String(err);
+	return code ? `${msg} (${code})` : msg;
+}
+
+/**
+ * Fetch `url` `samples` times and parse Server-Timing on the warm ones (the first, possibly cold,
+ * request is discarded). Network / DNS errors are returned as `{ error }` so the caller exits 2
+ * ("could not verify"), never 1 ("mismatch").
+ * @param {{ url: string, samples: number, headers?: Record<string,string>, fetchImpl?: typeof fetch }} opts
+ * @returns {Promise<{ timings: Record<string, number>[] } | { error: string }>}
+ */
+export async function sampleServerTimings({ url, samples, headers = {}, fetchImpl = fetch }) {
+	const timings = [];
+	try {
+		for (let i = 0; i < samples; i += 1) {
+			const res = await fetchImpl(url, { headers, redirect: 'manual' });
+			await res.arrayBuffer();
+			if (i === 0) continue;
+			timings.push(parseServerTiming(res.headers.get('server-timing')));
+		}
+	} catch (err) {
+		return { error: `Server-Timing sampling of ${redactUrl(url)} failed: ${describeNetworkError(err)}` };
+	}
+	return { timings };
+}

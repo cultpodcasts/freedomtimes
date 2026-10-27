@@ -80,18 +80,61 @@ computed-only attribute (only `mode` is settable), so Terraform cannot express r
 Without the ignore, a Terraform upload (for example a secret rotation) could send script
 settings without placement and silently revert to eyeball placement.
 
-**Known plan drift on `cloudflare_workers_script.holding_page` (expected, "1 to change").** On refresh,
+<a id="terraform-holding-page-drift"></a>
+### Terraform drift on the Worker script: do not apply it on its own (canonical statement)
+
+This is the single source for what the holding-page "1 to change" means and what to do about it. Other docs
+link here instead of restating it.
+
+**What the plan shows.** After any Wrangler deploy, `terraform plan` shows "1 to change" on
+`cloudflare_workers_script.holding_page`: `~ bindings = (sensitive value)` plus computed attributes
+(`etag`, `modified_on`, `has_assets`, `placement.*`, `placement_mode`) "known after apply". On refresh,
 provider 5.22 adds every live non-secret binding that is not already in state to `bindings`
 (`internal/services/workers_script/custom.go`: "Add any new elements from API that weren't in state
 (except unmanaged secret_text bindings)"). Wrangler owns KV, R2, `plain_text` vars (`PAGE_CACHE`,
-`SITE_ACCESS_MODE`, …) and `ASSETS`; Terraform config lists only `PAGE_VIEWS`, `EMAIL` and `secret_text`.
-So after any Wrangler deploy the plan shows `~ bindings = (sensitive value)` and computed attributes
-(`etag`, `modified_on`, `has_assets`, `placement.*`, `placement_mode`) as "known after apply". This is not
-specific to `PAGE_CACHE` and predates placement. An apply of it is safe for vars (`keep_bindings` includes
-`plain_text`, so `PAGE_CACHE` is kept, not switched off) but it **re-uploads the script** from state, which is
-why every apply must be followed by the verification below. We deliberately do not mirror `wrangler.jsonc`
-bindings into Terraform (two owners that can disagree) or add `bindings` to `ignore_changes` (Terraform owns
-the `secret_text` bindings and secret rotations would silently stop applying).
+`SITE_ACCESS_MODE`, …) and `ASSETS`; the Terraform config lists only `PAGE_VIEWS`, `EMAIL` and `secret_text`.
+The drift is expected. It is **not** safe to apply on its own.
+
+**Why applying it is not safe (confirmed facts).**
+
+1. Any update to this resource is a full script upload (`PUT .../workers/scripts/<name>`, multipart), not a
+   settings-only call. `keep_bindings` / `keep_assets` only keep bindings and assets; the upload replaces the
+   script's modules.
+2. The provider uploads exactly **one** module: `MarshalMultipart` writes `content` as a single part named
+   after `main_module` (provider 5.22 `internal/services/workers_script/model.go`), which this module sets to
+   `"worker.js"` (`infra/terraform/modules/cloudflare_holding_page/main.tf`).
+3. That `content` comes from state, and `Read` stores only the **first** part of the live script's
+   multipart content (`resource.go`: one `mr.NextPart()`). `content` is in `ignore_changes`, so Terraform
+   never notices the difference.
+4. The live Worker is multi-module. `npx wrangler deploy --dry-run` of the current build (no upload,
+   27 Oct 2026, emdash 1.3.1, `@astrojs/cloudflare` 14.4.2) lists **690 ES modules** (21.4 MB); the main module
+   `entry.mjs` imports `./chunks/entrypoints_*.mjs`.
+
+**Consequence (inference, not tested against live infra).** A Terraform apply of this resource re-uploads one
+module that imports modules it does not send. Cloudflare will most likely reject the upload (unresolvable
+import) and the apply fails; if it were accepted, the Worker would be replaced by a broken script. Either way
+the outcome is wrong, so the tooling blocks it:
+
+- **Before apply:** `scripts/terraform-run.ps1 -Operation apply` (staging/production) plans to a file and runs
+  `scripts/terraform-plan-guard-worker-script-upload.ps1`. Any planned create/update/replace/delete of
+  `cloudflare_workers_script.holding_page` blocks the apply (exit 1) **unless** the run is part of a deploy that
+  runs `wrangler deploy` straight after (`FT_WRANGLER_DEPLOY_FOLLOWS=1`, set by `deploy-*-local.ps1`) or the
+  operator passes the break-glass switch `-AllowWorkerScriptUpload`. For a non-Worker change, apply with
+  `-Target` (for example `-Target 'cloudflare_dns_record.api_custom_hostname'`), or run the full
+  `deploy-<env>-local.ps1`, which re-uploads the real bundle with Wrangler right after Terraform.
+- **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
+  `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`; exit **5** = could not verify (no token, API or
+  network error); both print the redeploy command. The deploy scripts defer this check until after their
+  `wrangler deploy`, and warn loudly if Terraform applied but `wrangler deploy` did not complete.
+- **Recovery:** `pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly -SkipVersionBump` (Wrangler redeploy), or roll
+  back to the last Wrangler version in the Cloudflare dashboard.
+- **Local tests (no network, fake `terraform` / `node`, no CI):**
+  `pwsh -NoProfile -File ./scripts/test-terraform-worker-script-guards.ps1` and
+  `pwsh -NoProfile -File ./scripts/test-deploy-cloud-agent-guards.ps1`.
+
+We deliberately do not mirror `wrangler.jsonc` bindings into Terraform (two owners that can disagree) or add
+`bindings` to `ignore_changes` (Terraform owns the `secret_text` bindings, and secret rotations would silently
+stop applying). A secret rotation therefore goes through the full deploy (Terraform, then Wrangler).
 
 **Check after a staging deploy (plan only, never apply from an agent):** `terraform plan` in
 `infra/terraform/environments/staging` must show no Terraform-owned change on
@@ -109,8 +152,5 @@ removed" and it is not emitted for this Worker
 ([Workers placement docs](https://developers.cloudflare.com/workers/configuration/placement/#cf-placement-header);
 status via the API: [Check placement status](https://developers.cloudflare.com/workers/configuration/placement/#check-placement-status)).
 
-**After any `terraform apply` (staging or production): verify `PAGE_CACHE` and placement.**
-`scripts/terraform-run.ps1 -Operation apply` now runs the verifier itself and exits non-zero (4) on a
-mismatch; the deploy scripts defer that check until after their `wrangler deploy`. If it fails, redeploy the
-Worker with Wrangler (`pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly`) or roll back to the last Wrangler
-version.
+**After any `terraform apply` (staging or production):** see
+[the canonical statement above](#terraform-holding-page-drift) (pre-apply guard, exit 4 / 5, recovery).

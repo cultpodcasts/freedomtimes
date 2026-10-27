@@ -79,16 +79,15 @@ resource "cloudflare_workers_script" "holding_page" {
   # primary) is the single owner. Provider 5.22 cannot declare it (placement.target[].region is
   # computed-only), so it is ignored here and Terraform never plans a placement value of its own.
   #
-  # Expected plan drift (provider behaviour, not a config bug): on refresh the provider merges every
-  # live non-secret binding that is not in state (Wrangler's KV, R2, plain_text vars such as
-  # PAGE_CACHE, ASSETS) into `bindings`, while this config lists only the TF-owned ones above. So
-  # after any Wrangler deploy the plan shows `~ bindings = (sensitive value)` plus "known after
-  # apply" computed attributes (etag, modified_on, placement.*), i.e. "1 to change". Do not "fix"
-  # it by mirroring wrangler.jsonc here (two owners) or ignoring `bindings` (TF owns secret_text).
-  # An apply of that change re-uploads the script; keep_bindings keeps PAGE_CACHE & co, and
-  # scripts/terraform-run.ps1 then verifies placement / PAGE_CACHE / ASSETS against wrangler.jsonc
-  # (web/scripts/verify-worker-placement.mjs) and fails loudly with the Wrangler redeploy command.
-  # See NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
+  # Expected plan drift, NOT safe to apply on its own: after any Wrangler deploy the provider merges
+  # Wrangler's bindings (KV, R2, plain_text vars such as PAGE_CACHE, ASSETS) into state on refresh, so
+  # the plan shows `~ bindings` + "known after apply" computed attributes ("1 to change"). Applying it
+  # re-uploads `content` from state, which is only the FIRST module of the live multi-module Worker,
+  # as "worker.js". scripts/terraform-run.ps1 therefore blocks any holding_page change before apply
+  # unless wrangler deploy follows (deploy-*-local.ps1) or -AllowWorkerScriptUpload is passed, and
+  # verifies placement / PAGE_CACHE / ASSETS after apply. Do not "fix" the drift by mirroring
+  # wrangler.jsonc here (two owners) or ignoring `bindings` (TF owns secret_text).
+  # Canonical statement: NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift
   lifecycle {
     ignore_changes = [
       content,

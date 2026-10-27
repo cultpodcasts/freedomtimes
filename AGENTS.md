@@ -149,7 +149,7 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 | CA-16 | Rollback JSON mtime 1970 / old `createdAtUtc` | Skip check uses `createdAtUtc`; epoch mtime is not fresh | Omit `-SkipTursoBackup`; create a new rollback branch |
 | CA-09 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Ignore. Cause is Actions **billing lock** (`job was not started`), not empty YAML | Do not treat as this VM deploy failing. Operator unlocks Actions billing if those PR checks are needed |
 | CA-10 | Staging `/` 1–3s with `Server-Timing` | Success | A hang is **0-byte pending**, not a slow 200 |
-| CA-11 | `punycode` deprecation / `patch-cloudflare-bundle` patched 0 | Ignore | Noise |
+| CA-11 | `punycode` deprecation | Ignore | Noise. A `[patch-cloudflare-bundle] ERROR` (exit 1) is **not** noise: see [web/docs/PATCH_CLOUDFLARE_BUNDLE.md](web/docs/PATCH_CLOUDFLARE_BUNDLE.md) |
 | CA-18 | Agents unset process `TURSO_*` by hand | Scripts skip the process pair; do not unset | Only if resolve still selected production |
 | CA-19 | Process `TURSO_DATABASE_URL` equals `TURSO_PRODUCTION_EMDASH_DB_URL` | Run `deploy-*-local.ps1`. Do not abort because process hosts match | STOP only if resolve throws |
 | CA-20 | `wsl` / `where.exe` on this Linux VM | Native `turso` (`$HOME/.turso/turso`) and `terraform` on PATH | Interactive `turso auth login` only if platform token missing |
