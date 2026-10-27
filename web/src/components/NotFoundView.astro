@@ -1,0 +1,75 @@
+---
+/**
+ * The site's standard "not found" page body (HTTP 404). Used by `src/pages/404.astro`
+ * (any URL no route matches, e.g. `/2026/10/11/`, `/category/x`) and by `[slug].astro`
+ * when no EmDash page or post has that slug. The caller sets the 404 status.
+ * noindex: a 404 must never be indexed, and Google drops it on the status anyway.
+ */
+import Layout from '../layouts/Layout.astro';
+import { getHomePath } from '../lib/auth';
+---
+
+<Layout title="Page not found" description="The page you asked for does not exist." noindex>
+	<article class="not-found-wrap" data-ft-not-found>
+		<header class="masthead">
+			<p class="eyebrow">404</p>
+			<h1>Page not found</h1>
+			<p class="summary">The page you asked for doesn't exist. It may have been moved or removed, or the address may be mistyped.</p>
+		</header>
+		<nav>
+			<a href={getHomePath()}>Back to homepage</a>
+			<a href="/archives">Browse the archives</a>
+		</nav>
+	</article>
+</Layout>
+
+<style>
+	.not-found-wrap {
+		max-width: 860px;
+		margin: 0 auto;
+		padding: 2rem 1.25rem 3rem;
+	}
+
+	.masthead {
+		border-bottom: 1px solid #111111;
+		padding-bottom: 1.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.eyebrow {
+		margin: 0;
+		font-size: 0.8rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+
+	h1 {
+		margin: 0.2rem 0 0;
+		font-size: clamp(2.2rem, 6vw, 4.25rem);
+		line-height: 0.95;
+		font-family: 'Playfair Display', serif;
+	}
+
+	.summary {
+		margin: 0.8rem 0 0;
+		font-size: 1.08rem;
+		line-height: 1.6;
+	}
+
+	nav {
+		display: flex;
+		gap: 0.9rem;
+		flex-wrap: wrap;
+	}
+
+	nav a {
+		color: #111111;
+		font-weight: 700;
+		text-decoration: none;
+	}
+
+	nav a:hover {
+		color: #0044bb;
+		text-decoration: underline;
+	}
+</style>

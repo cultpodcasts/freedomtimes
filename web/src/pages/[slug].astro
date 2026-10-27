@@ -3,6 +3,7 @@ import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../components/EmDashContentView.astro';
 import HomepageView from '../components/HomepageView.astro';
+import NotFoundView from '../components/NotFoundView.astro';
 import { isLockedSiteAccess, readOptionalEnv, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
 	HOMEPAGE_ROOT_REDIRECT_LOCATION,
@@ -15,11 +16,13 @@ import {
 import { resolveHomepageGet } from '../lib/root-route';
 
 const slug = Astro.params.slug;
-if (!slug) {
-	return new Response('Missing slug', { status: 400 });
+// No slug, or no EmDash page/post with it: the site's standard 404 page (see 404.astro).
+let notFound = !slug;
+if (notFound) {
+	Astro.response.status = 404;
 }
 
-if (slug === 'homepage' && shouldRedirectHomepageToRoot({
+if (!notFound && slug === 'homepage' && shouldRedirectHomepageToRoot({
 	pathname: Astro.url.pathname,
 	hostname: Astro.url.hostname,
 	siteAccessMode: readOptionalEnv('SITE_ACCESS_MODE'),
@@ -28,7 +31,7 @@ if (slug === 'homepage' && shouldRedirectHomepageToRoot({
 }
 
 /** `/homepage` is a staging-only URL; production serves the newsroom at `/`. */
-const isHomepage = slug === 'homepage' && isLockedSiteAccess();
+const isHomepage = !notFound && slug === 'homepage' && isLockedSiteAccess();
 
 const isLocked = isLockedSiteAccess();
 
@@ -87,7 +90,7 @@ if (isHomepage) {
 	}
 }
 
-if (!isHomepage) {
+if (!isHomepage && !notFound && slug) {
 
 	const collections = [
 		{ key: 'pages', label: 'Page' },
@@ -137,12 +140,15 @@ if (!isHomepage) {
 			return new Response('Unable to load page right now', { status: 500 });
 		}
 
-		return new Response('Page not found', { status: 404 });
+		notFound = true;
+		Astro.response.status = 404;
 	}
 }
 ---
 
-{isHomepage ? (
+{notFound ? (
+	<NotFoundView />
+) : isHomepage ? (
 	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
 ) : (
 	<EmDashContentView

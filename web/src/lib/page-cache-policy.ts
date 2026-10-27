@@ -51,6 +51,8 @@ export const DENY_TOP_LEVEL: ReadonlySet<string> = new Set([
   'cdn-cgi',
   // /pages/<slug> (EmDash pages collection) is not cached in this change.
   'pages',
+  // src/pages/404.astro: the not-found page; only ever served with status 404 (never cached).
+  '404',
 ]);
 
 /**

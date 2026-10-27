@@ -1,0 +1,16 @@
+---
+/**
+ * Rendered by Astro for any URL that no route in `src/pages` matches (multi-segment
+ * paths such as `/2026/10/11/`, `/category/x`, `/posts/a/b`). Server-rendered, not
+ * prerendered: the Worker answers these itself after the ASSETS fallback misses.
+ * Must stay a real 404 (never a redirect to the homepage: Google treats that as a soft 404).
+ * The anonymous page cache only stores 200s, so this response is never cached there.
+ */
+import NotFoundView from '../components/NotFoundView.astro';
+
+export const prerender = false;
+
+Astro.response.status = 404;
+---
+
+<NotFoundView />
