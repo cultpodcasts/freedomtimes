@@ -34,7 +34,7 @@ There is no silent skip any more: a missing target or an unverified upgrade is a
 | `oauth-csrf-cookie-path` | obsolete | Upstream sets the CSRF cookie with `Path=/_emdash/oauth/authorize`. |
 | `baseline-security-headers-writable-response` | obsolete | `setBaselineSecurityHeaders()` no longer exists; EmDash middleware clones the response before setting headers. (This also covers the old "return value from `setBaselineSecurityHeaders` call sites" patch.) |
 | `publish-syncdatacolumns-drift-guard` | obsolete | Publish no longer calls `syncDataColumns()`; it filters revision data with `keepKnownFields`, so dropped columns cannot cause "no such column". |
-| `worker-entry-assets-guard` | obsolete | `@astrojs/cloudflare` 14 removed the `worker-entry_` chunk; `ASSETS` is always bound (`wrangler.jsonc`, Terraform `keep_assets = true`). |
+| `worker-entry-assets-guard` | obsolete | `@astrojs/cloudflare` 14 removed the `worker-entry_` chunk; `ASSETS` is bound by `assets.binding` in `web/wrangler.jsonc` (checked by `verify-worker-placement.mjs`). |
 | `create-require-import-meta-url` | obsolete | No server chunk calls `createRequire(import.meta.url)`; the build-time occurrence is handled by `scripts/patch-emdash-windows-createrequire.mjs`. |
 
 The exact `reason`, `regressionNeedle` and `verifiedRange` for each entry are in the registry file.

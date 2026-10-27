@@ -88,9 +88,14 @@ export function expectedFromWrangler(wrangler, env) {
 
 const FAILED_PLACEMENT_STATUSES = new Set(['UNSUPPORTED_APPLICATION', 'INSUFFICIENT_INVOCATIONS', 'NO_VALID_HOSTS', 'NO_VALID_HOSTNAMES', 'UNSUPPORTED_HOST']);
 
+/** The script object of a GET /workers/services/{name} result (shape varies by API version). */
+export function scriptFromService(serviceResult) {
+	return serviceResult?.default_environment?.script ?? serviceResult?.script ?? serviceResult ?? {};
+}
+
 /** Extract placement from GET /workers/services/{name} result (shape varies by API version). */
 export function placementFromService(serviceResult) {
-	const script = serviceResult?.default_environment?.script ?? serviceResult?.script ?? serviceResult ?? {};
+	const script = scriptFromService(serviceResult);
 	const placement = script.placement ?? {};
 	const targets = Array.isArray(placement.target) ? placement.target : [];
 	const regions = targets
@@ -111,7 +116,7 @@ export function placementFromService(serviceResult) {
  * @returns {boolean|undefined}
  */
 export function hasAssetsFromApi(serviceResult, scriptList, workerName) {
-	const script = serviceResult?.default_environment?.script ?? serviceResult?.script ?? serviceResult ?? {};
+	const script = scriptFromService(serviceResult);
 	if (typeof script.has_assets === 'boolean') return script.has_assets;
 	const entry = Array.isArray(scriptList) ? scriptList.find((s) => s && (s.id === workerName || s.script_name === workerName)) : undefined;
 	return typeof entry?.has_assets === 'boolean' ? entry.has_assets : undefined;
@@ -179,13 +184,25 @@ export const SITE_ORIGINS = Object.freeze({
 /** Default probe path: web/public/favicon.svg, copied to dist/client by astro build (asserted by a unit test). */
 export const DEFAULT_ASSET_PROBE_PATH = '/favicon.svg';
 
+/** Query parameter that makes each static-asset probe URL unique, so an edge-cached copy cannot answer it. */
+export const ASSET_PROBE_CACHE_BUST_PARAM = 'ft-verify';
+
+/** `<url>?ft-verify=<now>` (or `&ft-verify=` when the URL already has a query). redactUrl drops it from logs. */
+export function withCacheBust(url, now = Date.now()) {
+	const u = new URL(url);
+	u.searchParams.set(ASSET_PROBE_CACHE_BUST_PARAM, String(now));
+	return u.href;
+}
+
 /**
  * Logged-out GET of one static asset (no cookies, redirects not followed). Static assets are served before
  * the Worker runs, so this bypasses the staging login wall. Pass: HTTP 200 and a non-HTML content-type.
  * A missing asset falls through to the Worker: 302 to the login wall (staging) or an HTML 404 (production).
- * Network / DNS errors return `{ error }` (exit 2 "could not verify"), never a mismatch.
+ * Callers pass a cache-busted URL (withCacheBust) so a cached copy from before the deploy cannot pass it;
+ * `cf-cache-status` is returned for the log. Network / DNS errors return `{ error }` (exit 2 "could not
+ * verify"), never a mismatch.
  * @param {{ url: string, fetchImpl?: typeof fetch }} opts
- * @returns {Promise<{ ok: boolean, status: number, contentType: string, failure?: string } | { error: string }>}
+ * @returns {Promise<{ ok: boolean, status: number, contentType: string, cfCacheStatus?: string, failure?: string } | { error: string }>}
  */
 export async function probeStaticAsset({ url, fetchImpl = fetch }) {
 	let res;
@@ -196,6 +213,7 @@ export async function probeStaticAsset({ url, fetchImpl = fetch }) {
 		return { error: `static asset probe of ${redactUrl(url)} failed: ${describeNetworkError(err)}` };
 	}
 	const contentType = res.headers.get('content-type') ?? '';
+	const cfCacheStatus = res.headers.get('cf-cache-status') ?? undefined;
 	let failure;
 	if (res.status !== 200) {
 		const location = res.headers.get('location');
@@ -203,7 +221,9 @@ export async function probeStaticAsset({ url, fetchImpl = fetch }) {
 	} else if (/^\s*text\/html\b/i.test(contentType) || contentType.trim() === '') {
 		failure = `static asset ${redactUrl(url)} returned content-type ${JSON.stringify(contentType)}, expected a non-HTML asset type (the Worker answered, not the assets layer)`;
 	}
-	return failure ? { ok: false, status: res.status, contentType, failure } : { ok: true, status: res.status, contentType };
+	return failure
+		? { ok: false, status: res.status, contentType, cfCacheStatus, failure }
+		: { ok: true, status: res.status, contentType, cfCacheStatus };
 }
 
 /**
@@ -213,7 +233,57 @@ export async function probeStaticAsset({ url, fetchImpl = fetch }) {
 export function classifyAssetProbe(probe) {
 	if ('error' in probe) return { outcome: 'unverified', message: probe.error };
 	if (!probe.ok) return { outcome: 'mismatch', message: probe.failure ?? `probe failed (HTTP ${probe.status})` };
-	return { outcome: 'ok', message: `HTTP ${probe.status} ${probe.contentType || '(no content-type)'} (logged out)` };
+	const cache = probe.cfCacheStatus ? `, cf-cache-status ${probe.cfCacheStatus}` : '';
+	return { outcome: 'ok', message: `HTTP ${probe.status} ${probe.contentType || '(no content-type)'} (logged out${cache})` };
+}
+
+/** Live probes retry this many times, this far apart, before a 5xx / non-200 / network error counts. */
+export const DEFAULT_PROBE_ATTEMPTS = 4;
+export const DEFAULT_PROBE_DELAY_MS = 5000;
+
+/**
+ * Run a live probe (probeStaticAsset / probeUnmatchedRoute) up to `attempts` times, `delayMs` apart, so a
+ * single transient edge 5xx or a just-deployed version that is still propagating does not fail a deploy.
+ * Stops at the first ok attempt. Returns the result to classify (classifyAssetProbe):
+ * - any attempt ok → that ok result;
+ * - otherwise, if any attempt got an HTTP response → the last HTTP failure (mismatch, exit 1);
+ * - every attempt was a network error → the last `{ error }` (could not verify, exit 2).
+ * `makeUrl(attempt)` builds each attempt's URL (fresh cache-buster per attempt). `log` gets one line per
+ * attempt with the status only (no headers, no cookies, query stripped by redactUrl).
+ * @param {{ probe: (o: { url: string, fetchImpl?: typeof fetch }) => Promise<any>, makeUrl: (attempt: number) => string,
+ *   attempts?: number, delayMs?: number, sleep?: (ms: number) => Promise<void>, fetchImpl?: typeof fetch,
+ *   log?: (line: string) => void, label?: string }} opts
+ */
+export async function probeWithRetry({
+	probe,
+	makeUrl,
+	attempts = DEFAULT_PROBE_ATTEMPTS,
+	delayMs = DEFAULT_PROBE_DELAY_MS,
+	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+	fetchImpl,
+	log = () => {},
+	label = 'probe',
+}) {
+	const total = Math.max(1, Math.floor(attempts));
+	let lastHttpFailure;
+	let lastError;
+	for (let attempt = 1; attempt <= total; attempt++) {
+		const url = makeUrl(attempt);
+		const result = await probe(fetchImpl ? { url, fetchImpl } : { url });
+		if ('error' in result) {
+			lastError = result;
+			log(`${label} attempt ${attempt}/${total}: network error`);
+		} else {
+			log(`${label} attempt ${attempt}/${total}: HTTP ${result.status}${result.ok ? '' : ' (not ok)'}`);
+			if (result.ok) return { ...result, attempts: attempt };
+			lastHttpFailure = result;
+		}
+		if (attempt < total) await sleep(delayMs);
+	}
+	if (lastHttpFailure) {
+		return { ...lastHttpFailure, failure: `${lastHttpFailure.failure} (after ${total} attempts)`, attempts: total };
+	}
+	return { error: `${lastError.error} (after ${total} attempts)` };
 }
 
 /** Verifier exit code: 1 if any real mismatch, else 2 if anything could not be checked, else 0. */
@@ -229,7 +299,9 @@ export const DEFAULT_UNMATCHED_PROBE_PATH = '/__ft-verify/no-such-route/a/b';
  * Logged-out GET of a URL no route matches (redirects not followed). The @astrojs/cloudflare entry sends
  * unmatched routes to env.ASSETS.fetch() (fallbackToAssets) before rendering the 404, so a missing assets
  * binding shows up here as HTTP 500 ("Cannot read properties of undefined (reading 'fetch')"). Pass: any
- * status below 500 (404 on production; the staging login wall may answer 302).
+ * status below 500 (404 on production; the staging login wall may answer 302). This checks "no 5xx", NOT
+ * "is a 404": which 4xx a deep unmatched URL gets depends on the route Astro matches (a proper 404 page
+ * for every unmatched URL is issue #119), so a 400 also passes.
  * @param {{ url: string, fetchImpl?: typeof fetch }} opts
  * @returns {Promise<{ ok: boolean, status: number, contentType: string, failure?: string } | { error: string }>}
  */

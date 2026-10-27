@@ -133,7 +133,7 @@ bundle, so the tooling blocks it:
   If it does not work there, the guard fails closed and the deploy stops before applying.
 - **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
   `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`, or a static-asset / unmatched-route probe failed; exit **5** = could not verify (no token, API or
-  network error); both print the redeploy command. The deploy scripts defer this check until after their
+  network error, or a probe could not run: network error on every attempt, probe path not in the build); both print the redeploy command. The deploy scripts defer this check until after their
   `wrangler deploy`, and warn loudly if Terraform applied but `wrangler deploy` did not complete.
 - **Recovery:** `pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly -SkipVersionBump` (Wrangler redeploy), or roll
   back to the last Wrangler version in the Cloudflare dashboard.
@@ -160,7 +160,12 @@ It checks placement `mode = targeted` + region `aws:eu-west-1`, `PAGE_CACHE` / `
 `last_deployed_from = wrangler`. It then makes two logged-out GETs on the environment's own origin
 (`https://staging.freedomtimes.news` / `https://freedomtimes.news`): `/favicon.svg` must be HTTP 200 with a
 non-HTML content-type (static assets are served before the Worker, so the staging login wall does not apply),
-and `/__ft-verify/no-such-route/a/b` must not be 5xx (an unbound `env.ASSETS` makes every unmatched route 500).
+and `/__ft-verify/no-such-route/a/b` must not be 5xx (an unbound `env.ASSETS` makes every unmatched route 500;
+any 4xx/3xx passes — the probe checks "no 5xx", not "is 404"). The static-asset URL gets a fresh
+`?ft-verify=<ms>` cache-buster so an edge-cached copy cannot pass it, and `cf-cache-status` is logged. Each probe
+retries up to 4 attempts, 5 s apart (a transient edge 5xx or a version still propagating does not fail the
+deploy); every attempt's status is logged, never headers or cookies. Still failing after the last attempt =
+mismatch (exit 1); a network error on every attempt = could not verify (exit 2).
 `--no-asset-probe` skips both; `--asset-path` / `--asset-origin` override them.
 The `cf-placement` response header is **not** a valid check any more: Cloudflare documents it "may be
 removed" and it is not emitted for this Worker

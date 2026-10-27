@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { existsSync } from 'node:fs';
-
 import {
+	ASSET_PROBE_CACHE_BUST_PARAM,
 	classifyAssetProbe,
+	DEFAULT_PROBE_ATTEMPTS,
+	DEFAULT_PROBE_DELAY_MS,
 	DEFAULT_ASSET_PROBE_PATH,
 	DEFAULT_UNMATCHED_PROBE_PATH,
 	evaluateWorker,
@@ -19,13 +20,16 @@ import {
 	placementFromService,
 	probeStaticAsset,
 	probeUnmatchedRoute,
+	probeWithRetry,
 	redactUrl,
+	scriptFromService,
 	sampleServerTimings,
 	selectCloudflareApiToken,
 	SITE_ORIGINS,
 	summarizeDbTiming,
 	TOKEN_ENV_FILE_KEYS,
 	verifierExitCode,
+	withCacheBust,
 } from './lib/worker-placement-check.mjs';
 
 const wrangler = parseJsonc(readFileSync(fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)), 'utf8'));
@@ -357,5 +361,118 @@ describe('verify-worker-placement: static assets', () => {
 			throw new TypeError('fetch failed');
 		}) as unknown as typeof fetch;
 		assert.equal(classifyAssetProbe(await probeUnmatchedRoute({ url, fetchImpl: failing })).outcome, 'unverified');
+	});
+
+	it('unmatched route 400 (e.g. a "Missing slug" answer until #119): ok — the probe checks "no 5xx", not "is 404"', async () => {
+		const url = `https://freedomtimes.news${DEFAULT_UNMATCHED_PROBE_PATH}`;
+		const c = classifyAssetProbe(await probeUnmatchedRoute({ url, fetchImpl: fakeFetch(400, { 'content-type': 'text/plain' }) }));
+		assert.equal(c.outcome, 'ok');
+	});
+
+	it('static asset probe URL is cache-busted with ?ft-verify=<ms>; redactUrl drops it; cf-cache-status is logged', async () => {
+		const busted = withCacheBust('https://staging.freedomtimes.news/favicon.svg', 1761523200000);
+		assert.equal(busted, `https://staging.freedomtimes.news/favicon.svg?${ASSET_PROBE_CACHE_BUST_PARAM}=1761523200000`);
+		assert.equal(withCacheBust('https://x.test/a.svg?v=1', 5), 'https://x.test/a.svg?v=1&ft-verify=5');
+		assert.equal(redactUrl(busted), 'https://staging.freedomtimes.news/favicon.svg');
+		let seen = '';
+		const fetchImpl = (async (u: string, init?: RequestInit) => {
+			seen = u;
+			assert.equal(init?.redirect, 'manual');
+			return new Response('x', { status: 200, headers: { 'content-type': 'image/svg+xml', 'cf-cache-status': 'MISS' } });
+		}) as unknown as typeof fetch;
+		const c = classifyAssetProbe(await probeStaticAsset({ url: busted, fetchImpl }));
+		assert.equal(seen, busted);
+		assert.equal(c.outcome, 'ok');
+		assert.match(c.message, /cf-cache-status MISS/);
+		const verifier = readFileSync(fileURLToPath(new URL('./verify-worker-placement.mjs', import.meta.url)), 'utf8');
+		assert.match(verifier, /withCacheBust\(`\$\{origin\}\$\{assetPath\}`\)/, 'verifier busts the cache on every static asset attempt');
+		assert.match(verifier, /probeWithRetry\(/, 'verifier retries the live probes');
+	});
+
+	it('scriptFromService: default_environment.script, then .script, then the result itself', () => {
+		assert.deepEqual(scriptFromService({ default_environment: { script: { a: 1 } }, script: { a: 2 } }), { a: 1 });
+		assert.deepEqual(scriptFromService({ script: { a: 2 } }), { a: 2 });
+		assert.deepEqual(scriptFromService({ a: 3 }), { a: 3 });
+		assert.deepEqual(scriptFromService(undefined), {});
+	});
+});
+
+describe('verify-worker-placement: live probe retries', () => {
+	const url = `https://freedomtimes.news${DEFAULT_UNMATCHED_PROBE_PATH}`;
+	const sequence = (steps: Array<number | 'neterr'>) => {
+		let i = 0;
+		return (async () => {
+			const step = steps[Math.min(i++, steps.length - 1)];
+			if (step === 'neterr') throw new TypeError('fetch failed');
+			return new Response('x', { status: step, headers: { 'content-type': 'text/html' } });
+		}) as unknown as typeof fetch;
+	};
+	const run = async (steps: Array<number | 'neterr'>) => {
+		const lines: string[] = [];
+		const sleeps: number[] = [];
+		const result = await probeWithRetry({
+			probe: probeUnmatchedRoute,
+			makeUrl: () => url,
+			fetchImpl: sequence(steps),
+			sleep: async (ms: number) => {
+				sleeps.push(ms);
+			},
+			log: (l: string) => lines.push(l),
+			label: 'unmatched route',
+		});
+		return { result, lines, sleeps, c: classifyAssetProbe(result) };
+	};
+
+	it('defaults: 4 attempts, 5 s apart', () => {
+		assert.equal(DEFAULT_PROBE_ATTEMPTS, 4);
+		assert.equal(DEFAULT_PROBE_DELAY_MS, 5000);
+	});
+
+	it('500 then 404: ok after 2 attempts, one 5 s wait, each attempt logged with status only', async () => {
+		const { c, lines, sleeps, result } = await run([500, 404]);
+		assert.equal(c.outcome, 'ok');
+		assert.equal(result.attempts, 2);
+		assert.deepEqual(sleeps, [5000]);
+		assert.deepEqual(lines, ['unmatched route attempt 1/4: HTTP 500 (not ok)', 'unmatched route attempt 2/4: HTTP 404']);
+	});
+
+	it('500 on every attempt: mismatch (exit 1) after 4 attempts', async () => {
+		const { c, lines, sleeps } = await run([500, 500, 500, 500]);
+		assert.equal(c.outcome, 'mismatch');
+		assert.match(c.message, /HTTP 500.*\(after 4 attempts\)/);
+		assert.equal(lines.length, 4);
+		assert.deepEqual(sleeps, [5000, 5000, 5000]);
+	});
+
+	it('network error on every attempt: unverified (exit 2), never a mismatch', async () => {
+		const { c, lines } = await run(['neterr']);
+		assert.equal(c.outcome, 'unverified');
+		assert.match(c.message, /\(after 4 attempts\)/);
+		assert.deepEqual(lines, [1, 2, 3, 4].map((n) => `unmatched route attempt ${n}/4: network error`));
+	});
+
+	it('a 5xx seen before network errors is still a mismatch; network error then 404 is ok', async () => {
+		assert.equal((await run([502, 'neterr'])).c.outcome, 'mismatch');
+		assert.equal((await run(['neterr', 404])).c.outcome, 'ok');
+	});
+
+	it('static asset retries too, with a fresh cache-buster per attempt', async () => {
+		const urls: string[] = [];
+		let n = 0;
+		const fetchImpl = (async (u: string) => {
+			urls.push(u);
+			n++;
+			return n === 1
+				? new Response('<html>', { status: 404, headers: { 'content-type': 'text/html' } })
+				: new Response('x', { status: 200, headers: { 'content-type': 'image/svg+xml' } });
+		}) as unknown as typeof fetch;
+		const result = await probeWithRetry({
+			probe: probeStaticAsset,
+			makeUrl: (attempt: number) => withCacheBust('https://freedomtimes.news/favicon.svg', 1000 + attempt),
+			fetchImpl,
+			sleep: async () => {},
+		});
+		assert.equal(classifyAssetProbe(result).outcome, 'ok');
+		assert.deepEqual(urls, ['https://freedomtimes.news/favicon.svg?ft-verify=1001', 'https://freedomtimes.news/favicon.svg?ft-verify=1002']);
 	});
 });

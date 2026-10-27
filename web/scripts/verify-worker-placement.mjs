@@ -10,9 +10,10 @@
 //        [--cookie-env FT_STAGING_COOKIE] [--max-ms-per-query 60] [--strict-timing] [--env-file ../.env.dev]
 //        [--asset-origin https://host] [--asset-path /favicon.svg] [--no-asset-probe]
 //
-// Asset probes (no cookies, redirects not followed): GET <origin><asset-path> must be HTTP 200 with a non-HTML
-// content-type, and GET <origin>/__ft-verify/no-such-route/a/b must not be 5xx (an unbound env.ASSETS makes
-// every unmatched route 500). Origin defaults to SITE_ORIGINS[env] (staging.freedomtimes.news / freedomtimes.news); static
+// Asset probes (no cookies, redirects not followed): GET <origin><asset-path>?ft-verify=<ms> (cache-busted)
+// must be HTTP 200 with a non-HTML content-type, and GET <origin>/__ft-verify/no-such-route/a/b must not be
+// 5xx (an unbound env.ASSETS makes every unmatched route 500; any 4xx/3xx passes). Each probe retries up to
+// 4 attempts, 5 s apart, before a failure counts; every attempt's status is logged (no headers/cookies). Origin defaults to SITE_ORIGINS[env] (staging.freedomtimes.news / freedomtimes.news); static
 // assets are served before the Worker, so the staging login wall does not apply. The path must exist in
 // dist/client or public/ (default /favicon.svg), otherwise exit 2.
 //
@@ -38,6 +39,7 @@ import {
 	placementFromService,
 	probeStaticAsset,
 	probeUnmatchedRoute,
+	probeWithRetry,
 	redactUrl,
 	sampleServerTimings,
 	selectCloudflareApiToken,
@@ -45,6 +47,7 @@ import {
 	summarizeDbTiming,
 	TOKEN_ENV_FILE_KEYS,
 	verifierExitCode,
+	withCacheBust,
 } from './lib/worker-placement-check.mjs';
 
 function arg(name, fallback) {
@@ -138,12 +141,20 @@ async function main() {
 		if (!assetPath.startsWith('/') || !inBuild) {
 			unverified.push(`static asset probe path ${assetPath} is not in web/dist/client or web/public; pass --asset-path with a file from the build output`);
 		} else {
+			// Each live probe retries (DEFAULT_PROBE_ATTEMPTS x DEFAULT_PROBE_DELAY_MS) before a 5xx / non-200 /
+			// network error counts; the static asset gets a fresh ?ft-verify=<ms> cache-buster per attempt.
 			const probes = [
-				['static asset', `${origin}${assetPath}`, probeStaticAsset],
-				['unmatched route', `${origin}${DEFAULT_UNMATCHED_PROBE_PATH}`, probeUnmatchedRoute],
+				['static asset', `${origin}${assetPath}`, probeStaticAsset, () => withCacheBust(`${origin}${assetPath}`)],
+				['unmatched route', `${origin}${DEFAULT_UNMATCHED_PROBE_PATH}`, probeUnmatchedRoute, () => `${origin}${DEFAULT_UNMATCHED_PROBE_PATH}`],
 			];
-			for (const [label, probeUrl, probe] of probes) {
-				const { outcome, message } = classifyAssetProbe(await probe({ url: probeUrl }));
+			for (const [label, probeUrl, probe, makeUrl] of probes) {
+				const result = await probeWithRetry({
+					probe,
+					makeUrl,
+					label,
+					log: (line) => console.log(`[verify-worker-placement] ${line}`),
+				});
+				const { outcome, message } = classifyAssetProbe(result);
 				if (outcome === 'unverified') unverified.push(message);
 				else if (outcome === 'mismatch') {
 					assetOk = false;
