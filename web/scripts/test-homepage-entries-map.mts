@@ -84,3 +84,25 @@ describe('mapHomepageRow mirrors the EmDash loader', () => {
 		assert.equal(entry.data.excerpt, 'not {json');
 	});
 });
+
+describe('homepage light query: EmDash loader drift tripwire', () => {
+	// src/lib/content/homepage-entries.ts mirrors emdash's collection loader
+	// (locale, status = published, deleted_at IS NULL, ordering, byline hydration).
+	// The mirror was diffed against emdash 1.3.1. Widening this range is a
+	// deliberate act: re-diff `emdash` loader.ts against homepage-entries.ts first.
+	const SUPPORTED = { min: [1, 3, 1], belowMinor: [1, 4] } as const;
+	it('installed emdash is within the range the mirror was verified against (>=1.3.1 <1.4.0)', () => {
+		const pkg = JSON.parse(
+			readFileSync(fileURLToPath(new URL('../node_modules/emdash/package.json', import.meta.url)), 'utf8'),
+		) as { version: string };
+		const [major, minor, patch] = pkg.version.split(/[.+-]/).map((n) => Number.parseInt(n, 10));
+		const ok =
+			major === SUPPORTED.belowMinor[0] &&
+			minor < SUPPORTED.belowMinor[1] &&
+			(minor > SUPPORTED.min[1] || (minor === SUPPORTED.min[1] && patch >= SUPPORTED.min[2]));
+		assert.ok(
+			ok,
+			`emdash ${pkg.version} is outside >=1.3.1 <1.4.0. Re-diff node_modules/emdash loader (collection query: locale, status, deleted_at, ORDER BY, byline hydration) against src/lib/content/homepage-entries.ts, then update this range.`,
+		);
+	});
+});
