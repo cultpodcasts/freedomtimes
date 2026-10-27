@@ -110,18 +110,27 @@ The drift is expected. It is **not** safe to apply on its own.
    27 Oct 2026, emdash 1.3.1, `@astrojs/cloudflare` 14.4.2) lists **690 ES modules** (21.4 MB); the main module
    `entry.mjs` imports `./chunks/entrypoints_*.mjs`.
 
-**Consequence (inference, not tested against live infra).** A Terraform apply of this resource re-uploads one
-module that imports modules it does not send. Cloudflare will most likely reject the upload (unresolvable
-import) and the apply fails; if it were accepted, the Worker would be replaced by a broken script. Either way
-the outcome is wrong, so the tooling blocks it:
+**Consequence.** Cloudflare has **accepted** this upload: full staging and production deploys have applied
+`0 added, 1 changed` on `holding_page` successfully (CA-12 and CA-23 in
+[`web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md`](web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md)). So after the apply the live
+Worker is Terraform's single-module upload, and it stays that way until `wrangler deploy` re-uploads the real
+bundle. **Not measured:** whether that script serves errors in the meantime (it imports modules it does not
+send). Inside the full deploy that window covers secret sync, Auth0 sync, `npm run build` (minutes) and migrate;
+reordering the deploy or measuring the window is tracked in
+[#116](https://github.com/cultpodcasts/freedomtimes/issues/116). Outside the deploy nothing re-uploads the real
+bundle, so the tooling blocks it:
 
 - **Before apply:** `scripts/terraform-run.ps1 -Operation apply` (staging/production) plans to a file and runs
   `scripts/terraform-plan-guard-worker-script-upload.ps1`. Any planned create/update/replace/delete of
   `cloudflare_workers_script.holding_page` blocks the apply (exit 1) **unless** the run is part of a deploy that
-  runs `wrangler deploy` straight after (`FT_WRANGLER_DEPLOY_FOLLOWS=1`, set by `deploy-*-local.ps1`) or the
-  operator passes the break-glass switch `-AllowWorkerScriptUpload`. For a non-Worker change, apply with
+  runs `wrangler deploy` later in the same run, after secret sync, Auth0 sync, build and migrate
+  (`FT_WRANGLER_DEPLOY_FOLLOWS=1`, set by `deploy-*-local.ps1`; the window is [#116](https://github.com/cultpodcasts/freedomtimes/issues/116)),
+  or the operator passes the break-glass switch `-AllowWorkerScriptUpload`. For a non-Worker change, apply with
   `-Target` (for example `-Target 'cloudflare_dns_record.api_custom_hostname'`), or run the full
-  `deploy-<env>-local.ps1`, which re-uploads the real bundle with Wrangler right after Terraform.
+  `deploy-<env>-local.ps1`, which re-uploads the real bundle with Wrangler later in the same run. The saved-plan
+  + `terraform show -json` path has only been tested with a fake `terraform`; checking it against the Terraform
+  Cloud backend (plan only) before the next full deploy is [#117](https://github.com/cultpodcasts/freedomtimes/issues/117).
+  If it does not work there, the guard fails closed and the deploy stops before applying.
 - **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
   `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`; exit **5** = could not verify (no token, API or
   network error); both print the redeploy command. The deploy scripts defer this check until after their

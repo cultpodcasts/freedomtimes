@@ -414,16 +414,16 @@ That conflicted with the real Astro bundle deployed by Wrangler (`nodejs_compat`
 
 ### Current model
 
-Terraform (`infra/terraform/modules/cloudflare_holding_page/main.tf`) **owns**:
+Ownership of the Worker script (bundle, vars, KV / R2, assets, placement → Wrangler; `PAGE_VIEWS`, `EMAIL`,
+`secret_text` such as Turnstile → Terraform; Turso secrets → deploy scripts, **not** Terraform) is listed once in
+[NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings](../../NON_TERRAFORM_RESOURCES.md#wrangler-owned-worker-settings)
+and [infra/terraform/README.md](../../infra/terraform/README.md#worker-turso-secrets-emdash--not-terraform-managed).
 
-- Worker **name**, custom domain / route bindings
-- EmDash Turso secrets (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`)
-
-Wrangler **owns**:
-
-- Deployed bundle (`content`, `module`, `compatibility_date`, bindings metadata, …) — ignored by Terraform via `lifecycle.ignore_changes`
-
-**Operator rule:** deploy the app with Wrangler after Terraform apply. Do not expect Terraform to upload the Astro worker bundle. If Terraform plan wants to change `content` or `module` on the live script, ensure `ignore_changes` is present before apply.
+**Operator rule:** `ignore_changes` stops Terraform from planning its own `content`, but any apply that updates
+`cloudflare_workers_script.holding_page` still re-uploads the refreshed first module as `worker.js`, and
+Cloudflare has accepted that upload. Only apply it through the full `deploy-*-local.ps1`, which runs
+`wrangler deploy` later in the same run; a standalone `terraform-run.ps1` apply blocks it. Details, break-glass
+and recovery: [NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift).
 
 ---
 

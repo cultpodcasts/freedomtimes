@@ -1060,7 +1060,8 @@ function Invoke-DeployTerraformApplyWithRecovery {
     )
 
     # terraform-run.ps1 defers its post-apply Worker settings check: this pipeline always runs
-    # wrangler deploy next (restoring placement / vars from wrangler.jsonc) and verifies after it.
+    # wrangler deploy later in the same run (after secret sync, build and migrate; issue #116),
+    # restoring the real bundle, placement and vars from wrangler.jsonc, and verifies after it.
     $previousWranglerFollows = $env:FT_WRANGLER_DEPLOY_FOLLOWS
     $env:FT_WRANGLER_DEPLOY_FOLLOWS = "1"
     try {

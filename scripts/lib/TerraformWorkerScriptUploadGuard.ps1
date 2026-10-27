@@ -3,9 +3,11 @@
 # Why: any create/update/replace of cloudflare_workers_script.holding_page makes provider v5.22
 # PUT the Worker script. Its content is the refreshed FIRST multipart part of the live script only
 # (content is in ignore_changes), uploaded as main_module "worker.js". The live Astro/EmDash Worker
-# is a multi-module Wrangler upload, so that PUT is not a harmless metadata change. Only the deploy
-# pipeline (which runs wrangler deploy straight after) or an explicit break-glass may apply it.
-# Canonical statement: NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
+# is a multi-module Wrangler upload. Cloudflare has accepted this PUT (CA-12), so the live Worker
+# runs Terraform's single-module script until wrangler deploy re-uploads the real bundle. Only the
+# deploy pipeline (which runs wrangler deploy later in the same run, after build and migrate; see
+# issue #116) or an explicit break-glass may apply it.
+# Canonical statement: NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift
 
 $script:WorkerScriptUploadResourceType = "cloudflare_workers_script"
 $script:WorkerScriptUploadResourceName = "holding_page"
@@ -50,14 +52,15 @@ function Get-WorkerScriptUploadGuardMessage {
 BLOCKED: this $Environment plan would re-upload the web Worker script outside the deploy pipeline:
   $($Changes -join "$([Environment]::NewLine)  ")
 
-Provider v5.22 re-uploads only the first module of the live multi-module Worker, as worker.js
-(NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift). The plan shows this after every
-Wrangler deploy (binding drift), so it is expected in a plan, but it must not be applied on its own.
+Provider v5.22 re-uploads only the first module of the live multi-module Worker, as worker.js.
+Cloudflare accepts that upload, so the live Worker would run that single module until the next
+wrangler deploy (NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift). The plan shows this after
+every Wrangler deploy (binding drift), so it is expected in a plan, but it must not be applied on its own.
 
 To change other resources, target them and leave the Worker out, for example:
   pwsh scripts/terraform-run.ps1 -Environment $Environment -Operation apply -AutoApprove -Target 'cloudflare_dns_record.api_custom_hostname'
 To apply Worker bindings or secrets (secret_text, PAGE_VIEWS, EMAIL), run the full deploy, which runs
-wrangler deploy straight after the apply:
+wrangler deploy later in the same run (after build and migrate):
   $deploy
 Break-glass only (then redeploy with Wrangler and verify): add -AllowWorkerScriptUpload.
 "@

@@ -1,8 +1,8 @@
 # Pre-apply guard: refuse a plan that would create/update/replace the web Worker script
-# (cloudflare_workers_script.holding_page) unless the deploy pipeline runs wrangler deploy next
-# (FT_WRANGLER_DEPLOY_FOLLOWS=1) or -AllowWorkerScriptUpload (break-glass) is passed.
+# (cloudflare_workers_script.holding_page) unless the deploy pipeline runs wrangler deploy later in
+# the same run (FT_WRANGLER_DEPLOY_FOLLOWS=1; the gap until then is issue #116) or -AllowWorkerScriptUpload (break-glass) is passed.
 # Called by terraform-run.ps1 before every staging/production apply (-UsePlanFile and -AutoApprove).
-# Exit codes: 0 allowed, 1 blocked. See NON_TERRAFORM_RESOURCES.md § Wrangler-owned Worker settings.
+# Exit codes: 0 allowed, 1 blocked. See NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
@@ -63,7 +63,7 @@ if ($changes.Count -eq 0) {
 }
 
 if ($env:FT_WRANGLER_DEPLOY_FOLLOWS -eq "1") {
-    Write-Host "Worker script upload guard: allowed for $Environment because the deploy pipeline runs wrangler deploy next (FT_WRANGLER_DEPLOY_FOLLOWS=1): $($changes -join '; ')" -ForegroundColor DarkGray
+    Write-Host "Worker script upload guard: allowed for $Environment because the deploy pipeline runs wrangler deploy later in this run (FT_WRANGLER_DEPLOY_FOLLOWS=1): $($changes -join '; ')" -ForegroundColor DarkGray
     exit 0
 }
 

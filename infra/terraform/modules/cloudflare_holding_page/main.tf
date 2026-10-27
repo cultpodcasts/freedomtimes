@@ -83,9 +83,10 @@ resource "cloudflare_workers_script" "holding_page" {
   # Wrangler's bindings (KV, R2, plain_text vars such as PAGE_CACHE, ASSETS) into state on refresh, so
   # the plan shows `~ bindings` + "known after apply" computed attributes ("1 to change"). Applying it
   # re-uploads `content` from state, which is only the FIRST module of the live multi-module Worker,
-  # as "worker.js". scripts/terraform-run.ps1 therefore blocks any holding_page change before apply
-  # unless wrangler deploy follows (deploy-*-local.ps1) or -AllowWorkerScriptUpload is passed, and
-  # verifies placement / PAGE_CACHE / ASSETS after apply. Do not "fix" the drift by mirroring
+  # as "worker.js". Cloudflare accepts that upload, so the Worker runs it until the next wrangler
+  # deploy (issue #116). scripts/terraform-run.ps1 therefore blocks any holding_page change before
+  # apply unless wrangler deploy follows later in the same run (deploy-*-local.ps1) or
+  # -AllowWorkerScriptUpload is passed, and verifies placement / PAGE_CACHE / ASSETS after apply. Do not "fix" the drift by mirroring
   # wrangler.jsonc here (two owners) or ignoring `bindings` (TF owns secret_text).
   # Canonical statement: NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift
   lifecycle {
