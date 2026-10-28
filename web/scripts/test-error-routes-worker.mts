@@ -16,7 +16,8 @@
  *   - `/` → 200, unknown slug / unknown multi-segment → 404, locked staging → 302 to sign-in
  *   - with PAGE_CACHE=on: `/` → MISS then HIT with the same complete page; `/?x=1` → BYPASS-query
  *   - FT_TEST_POST_SLUG / FT_TEST_PAGE_SLUG (optional): a published post / page that must render 200
- *     at `/posts/<slug>` and `/<slug>` (also through `[slug]` for the post)
+ *     at `/posts/<slug>` and `/<slug>` (also through `[slug]` for the post), end at `</html>` (no
+ *     script after it), pass `isCompleteStorableBody`, and with PAGE_CACHE=on go MISS then HIT
  * Never point FT_TEST_LIBSQL_URL at staging or production: the Worker may write (auto-seed).
  *
  * Not part of `npm test` / the build: it needs a fresh dist/, wrangler and ~30 s per Worker.
@@ -27,6 +28,8 @@ import { existsSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { isCompleteStorableBody } from '../src/lib/page-cache-policy.ts';
 
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
 const config = 'wrangler.jsonc';
@@ -188,6 +191,8 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 				assert.equal(r.status, 200, `${path}: got ${r.status}`);
 				assert.doesNotMatch(r.body, /data-ft-not-found/);
 				assert.match(r.body, /rel="canonical"/, `${path}: real pages keep their canonical`);
+				assert.match(r.body, /<\/html>\s*$/i, `${path}: the document ends at </html> (no script after it)`);
+				assert.ok(isCompleteStorableBody(r.headers.get('content-type'), new TextEncoder().encode(r.body)), `${path}: storable body`);
 			});
 		}
 	});
@@ -199,21 +204,26 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		});
 		after(() => stopWorker(w));
 
-		it('/ → MISS then HIT with the same complete page', async () => {
-			const miss = await get(w!, '/');
-			assert.equal(miss.status, 200);
-			assert.equal(miss.headers.get('x-ft-cache'), 'MISS');
-			assert.match(miss.body, /<\/html>\s*$/i, 'complete document');
-			let hit = await get(w!, '/');
+		async function assertMissThenHit(path: string) {
+			const miss = await get(w!, path);
+			assert.equal(miss.status, 200, `${path}: status`);
+			assert.equal(miss.headers.get('x-ft-cache'), 'MISS', `${path}: first request`);
+			assert.match(miss.body, /<\/html>\s*$/i, `${path}: complete document`);
+			let hit = await get(w!, path);
 			// cache.put runs in waitUntil after the MISS response; allow it a moment to land.
 			for (let i = 0; i < 10 && hit.headers.get('x-ft-cache') !== 'HIT'; i += 1) {
 				await new Promise((r) => setTimeout(r, 500));
-				hit = await get(w!, '/');
+				hit = await get(w!, path);
 			}
-			assert.equal(hit.status, 200);
-			assert.equal(hit.headers.get('x-ft-cache'), 'HIT');
-			assert.equal(hit.body, miss.body);
-		});
+			assert.equal(hit.status, 200, `${path}: status`);
+			assert.equal(hit.headers.get('x-ft-cache'), 'HIT', `${path}: served from the page cache`);
+			assert.equal(hit.body, miss.body, `${path}: same page`);
+		}
+		it('/ → MISS then HIT with the same complete page', async () => assertMissThenHit('/'));
+		it('a published post → MISS then HIT (article pages are stored)', { skip: !postSlug && 'set FT_TEST_POST_SLUG' }, async () =>
+			assertMissThenHit(`/posts/${postSlug}`));
+		it('a published page → MISS then HIT (/<page-slug>, e.g. /contact-us, is stored)', { skip: !pageSlug && 'set FT_TEST_PAGE_SLUG' }, async () =>
+			assertMissThenHit(`/${pageSlug}`));
 		it('/?x=1 → BYPASS-query (query strings never use the cache)', async () => {
 			const r = await get(w!, '/?x=1');
 			assert.equal(r.status, 200);

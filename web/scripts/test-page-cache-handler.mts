@@ -3,6 +3,7 @@
  * purge plugin hooks, driven with an in-memory Cache fake (no Workers runtime).
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { ORIG_CACHE_CONTROL_HEADER, handlePageCache, type PageCacheDeps } from '../src/lib/page-cache-handler.ts';
@@ -140,6 +141,37 @@ describe('page cache handler: never stores unsafe responses', () => {
 			assert.equal(h.cache.store.size, 0);
 		});
 	}
+});
+
+describe('page cache handler: article pages with a <script> after </html> are stored', () => {
+	// The real ending of /posts/weekly-summary-11-october-2026 on production (28 Oct 2026): Astro
+	// emitted EmDashContentView's module script after Layout's </html>, so #124's tail check
+	// refused every article page and /contact-us ("empty or incomplete body; not stored").
+	const ending = readFileSync(new URL('./fixtures/page-cache-post-ending.html', import.meta.url), 'utf8');
+	const page = `<!DOCTYPE html><html lang="en"><head><title>Weekly summary</title></head><body><main class="shell">${'<p>body</p>'.repeat(8_000)}</main>${ending}`;
+
+	for (const path of ['/posts/weekly-summary-11-october-2026', '/contact-us']) {
+		it(`${path}: MISS → stored → HIT with the identical body`, async () => {
+			const h = harness();
+			const miss = await h.run(path, { response: () => new Response(page, { status: 200, headers: HTML }) });
+			assert.equal(miss.headers.get('x-ft-cache'), 'MISS');
+			assert.equal(await miss.text(), page);
+			assert.equal(h.cache.store.size, 1, 'stored');
+			const hit = await h.run(path, { response: () => new Response('should not render', { status: 200, headers: HTML }) });
+			assert.equal(hit.headers.get('x-ft-cache'), 'HIT');
+			assert.equal(await hit.text(), page);
+			assert.equal(h.renders(), 1);
+		});
+	}
+
+	it('the same page cut off inside the trailing script is not stored', async () => {
+		const h = harness();
+		const cut = page.slice(0, page.length - 40);
+		const miss = await h.run('/posts/weekly-summary-11-october-2026', { response: () => new Response(cut, { status: 200, headers: HTML }) });
+		assert.equal(miss.headers.get('x-ft-cache'), 'MISS');
+		await miss.text();
+		assert.equal(h.cache.store.size, 0);
+	});
 });
 
 /** A body that sends `chunks`, then errors (a render that failed after the 200 headers). */

@@ -10,6 +10,7 @@ import {
 	decidePageCacheRequest,
 	hasOnlyNonSessionCookies,
 	isCacheablePath,
+	HTML_END_TAIL_BYTES,
 	isCompleteStorableBody,
 	isPageCacheEnabled,
 	isStorableResponse,
@@ -203,8 +204,79 @@ describe('page cache: body completeness before store (#123)', () => {
 	it('empty or cut-off HTML is never complete', () => {
 		assert.equal(isCompleteStorableBody(html, new Uint8Array(0)), false);
 		assert.equal(isCompleteStorableBody(html, enc('<!DOCTYPE html><html><head><title>x</title></head><body>')), false);
-		assert.equal(isCompleteStorableBody(html, enc('<html><body></html><p>trailing junk</p>')), false);
 		assert.equal(isCompleteStorableBody(null, new Uint8Array(0)), false);
+	});
+
+	it('junk after </html> is rejected; only whitespace and complete <script> blocks may follow it', () => {
+		const doc = '<!DOCTYPE html><html><body>x</body></html>';
+		for (const junk of [
+			'<p>trailing junk</p>',
+			'trailing text',
+			'<!-- comment -->',
+			'<div></div>',
+			'<style>p{}</style>',
+			'<script>ok()</script><p>junk</p>',
+			'<script>ok()</script>junk',
+			'<scripts>x</scripts>',
+		]) {
+			assert.equal(isCompleteStorableBody(html, enc(doc + junk)), false, `junk: ${junk}`);
+		}
+		assert.equal(isCompleteStorableBody(html, enc('<html><body></html><p>trailing junk</p>')), false);
+	});
+
+	it('a <script> after </html> that was cut off is rejected (the stream ended mid-script)', () => {
+		const doc = '<!DOCTYPE html><html><body>x</body></html>';
+		for (const cut of ['<script', '<script type="module"', '<script type="module">', '<script type="module">function e(){', '<script>a()</script><script>b(', '<script>a()</scr']) {
+			assert.equal(isCompleteStorableBody(html, enc(doc + cut)), false, `cut: ${cut}`);
+		}
+	});
+
+	it('complete <script> blocks (and whitespace) after </html> are allowed', () => {
+		const doc = '<!DOCTYPE html><html><body>x</body></html>';
+		for (const ok of [
+			'<script type="module">init();</script>',
+			'\n<script type="module">init();</script>\n',
+			'<script>a()</script>\n  <SCRIPT type="module">b()</SCRIPT >\n',
+			'<script type="application/ld+json">{"a":1}</script>',
+		]) {
+			assert.equal(isCompleteStorableBody(html, enc(doc + ok)), true, `ok: ${JSON.stringify(ok)}`);
+		}
+	});
+
+	it("a real article page's ending (production, 28 Oct 2026: module script after </html>) is complete", () => {
+		const ending = read('./fixtures/page-cache-post-ending.html');
+		assert.match(ending, /<\/html><script type="module">/, 'fixture keeps the script-after-</html> shape');
+		const page = `<!DOCTYPE html><html lang="en"><head><title>Weekly summary</title></head><body><main class="shell">${'<p>body</p>'.repeat(8_000)}</main>${ending}`;
+		assert.equal(isCompleteStorableBody(html, enc(page)), true);
+		// ...and every cut of that ending is not complete.
+		for (const cutAt of [ending.indexOf('</html>'), ending.indexOf('</html>') + 7 + 10, ending.length - 10, ending.length - 1]) {
+			const cut = page.slice(0, page.length - ending.length + cutAt);
+			assert.equal(isCompleteStorableBody(html, enc(cut)), false, `cut at ${cutAt}`);
+		}
+	});
+
+	it('known limit: a stream cut exactly at the end of </html>, before a trailing <script>, is accepted', () => {
+		// Pins current behaviour (see isCompleteStorableBody JSDoc): the stream-error check, not this
+		// tail check, is the primary guard against cut-off renders.
+		const ending = read('./fixtures/page-cache-post-ending.html');
+		const page = `<!DOCTYPE html><html lang="en"><head><title>x</title></head><body><main>${'<p>body</p>'.repeat(100)}</main>${ending}`;
+		const cut = page.slice(0, page.length - ending.length + ending.indexOf('</html>') + '</html>'.length);
+		assert.ok(cut.endsWith('</html>'));
+		assert.equal(isCompleteStorableBody(html, enc(cut)), true);
+	});
+
+	it('known limit: a literal </html> string inside a trailing <script> fails closed (not stored)', () => {
+		const doc = '<!DOCTYPE html><html><body>x</body></html>';
+		assert.equal(isCompleteStorableBody(html, enc(`${doc}<script type="module">var s="</html>";init();</script>`)), false);
+		assert.equal(isCompleteStorableBody(html, enc(`${doc}<script type="module">var s="</script>";init();</script>`)), false);
+	});
+
+	it('fails closed when </html> is not in the inspected tail (huge trailing scripts)', () => {
+		const doc = '<!DOCTYPE html><html><body>x</body></html>';
+		const inside = `<script>${'x'.repeat(HTML_END_TAIL_BYTES - 200)}</script>`;
+		assert.equal(isCompleteStorableBody(html, enc(doc + inside)), true);
+		const outside = `<script>${'x'.repeat(HTML_END_TAIL_BYTES)}</script>`;
+		assert.equal(isCompleteStorableBody(html, enc(doc + outside)), false);
 	});
 
 	it('plain text only has to be non-empty', () => {
@@ -216,10 +288,12 @@ describe('page cache: body completeness before store (#123)', () => {
 describe('page cache: the `</html>` contract of cacheable documents (#123)', () => {
 	const lastNonBlankLine = (text: string) => text.trimEnd().split('\n').pop()!.trim();
 	const VIEWS = ['HomepageView', 'EmDashContentView', 'NotFoundView'];
+	/** Every page that answers a cacheable reader path (isCacheablePath), plus the error pages. */
+	const READER_ROUTES = ['index.astro', 'homepage.astro', '[slug].astro', '404.astro', '500.astro', 'posts/[slug].astro', 'archives/index.astro', 'archives/[slug].astro'];
 
 	it('src/layouts/Layout.astro ends with </html> as its last non-blank line', () => {
-		// isCompleteStorableBody stores an HTML page only if it ends with </html>. If Layout ever
-		// stops ending there (a snippet appended after </html>), the cache silently stops storing.
+		// The rendered document must end at Layout's </html>: anything Astro emits after it has to
+		// pass isCompleteStorableBody's tail check, and only complete <script> blocks do.
 		assert.equal(lastNonBlankLine(read('../src/layouts/Layout.astro')), '</html>');
 	});
 
@@ -233,11 +307,53 @@ describe('page cache: the `</html>` contract of cacheable documents (#123)', () 
 	});
 
 	it('reader routes render a view or Layout, never their own <html> document', () => {
-		for (const page of ['index.astro', 'homepage.astro', '[slug].astro', '404.astro', '500.astro', 'posts/[slug].astro', 'archives/index.astro', 'archives/[slug].astro']) {
+		for (const page of READER_ROUTES) {
 			const source = read(`../src/pages/${page}`);
 			assert.doesNotMatch(source, /<html[\s>]/i, `${page}: no document shell of its own`);
 			const usesShell = /import Layout from /.test(source) || VIEWS.some((v) => new RegExp(`import ${v} from `).test(source));
 			assert.ok(usesShell, `${page}: renders through Layout or a reader view`);
+		}
+	});
+
+	/**
+	 * Every component or page that renders Layout, found on disk (fails closed: a new view or route
+	 * is covered without editing a list), minus pages whose top-level segment the cache never serves
+	 * (DENY_TOP_LEVEL; e.g. submit-a-tip and admin do have scripts after </Layout>).
+	 */
+	const layoutUsers = (): string[] => {
+		const out: string[] = [];
+		for (const dir of ['components', 'pages'] as const) {
+			const root = fileURLToPath(new URL(`../src/${dir}/`, import.meta.url));
+			for (const rel of readdirSync(root, { recursive: true }) as string[]) {
+				const path = rel.split('\\').join('/');
+				if (!path.endsWith('.astro')) continue;
+				const file = `../src/${dir}/${path}`;
+				if (!/^import Layout from /m.test(read(file))) continue;
+				if (dir === 'pages' && DENY_TOP_LEVEL.has(path.split('/')[0].replace(/\.astro$/, ''))) continue;
+				out.push(file);
+			}
+		}
+		return out.sort();
+	};
+
+	it('the Layout-user scan finds the reader views and Layout-rendering reader routes', () => {
+		const files = layoutUsers();
+		for (const v of VIEWS) assert.ok(files.includes(`../src/components/${v}.astro`), `${v} found`);
+		assert.ok(files.includes('../src/pages/archives/index.astro'), 'archives/index.astro found');
+		// Denied top-level segments are skipped (the 500 page is a 500 response, never stored).
+		for (const f of files) assert.doesNotMatch(f, /\/pages\/(admin|submit-a-tip|signed-in|tip-source|500)\b/, `${f} is denied`);
+	});
+
+	it('every cacheable Layout user puts nothing but <style> after </Layout> (a <script> there lands after </html>)', () => {
+		// Astro emits a component's markup in template order: a <script> written after </Layout> is
+		// rendered after Layout's </html>. Article pages and /contact-us did this via
+		// EmDashContentView until this change. Styles are extracted to CSS, so they are fine.
+		for (const file of layoutUsers()) {
+			const source = read(file);
+			const close = source.lastIndexOf('</Layout>');
+			if (close < 0) continue; // renders a view instead
+			const after = source.slice(close + '</Layout>'.length).replace(/<style[\s>][\s\S]*?<\/style>/g, '').trim();
+			assert.equal(after, '', `${file}: only <style> may follow </Layout>, found: ${after.slice(0, 80)}`);
 		}
 	});
 

@@ -169,7 +169,13 @@ export function isStorableResponse(res: PageCacheResponseInfo): boolean {
   return true;
 }
 
-const HTML_END_TAIL_BYTES = 512;
+/**
+ * How much of the end of an HTML body `isCompleteStorableBody` inspects. Reader pages end with
+ * `</html>` followed by at most a few small inlined `<script>` blocks (about 1.9 KB on article
+ * pages today); 16 KB leaves room for that without decoding whole pages. If `</html>` is not in
+ * this tail the page is not stored (fail closed).
+ */
+export const HTML_END_TAIL_BYTES = 16 * 1024;
 
 /**
  * Upper bound on the buffered cache copy of one page (#123 review). Reader pages are hundreds of
@@ -178,17 +184,55 @@ const HTML_END_TAIL_BYTES = 512;
  */
 export const PAGE_CACHE_MAX_STORE_BYTES = 4 * 1024 * 1024;
 
+const SCRIPT_OPEN_RE = /^<script\b[^<>]*>/i;
+const SCRIPT_CLOSE_RE = /<\/script\s*>/i;
+
+/**
+ * True when `rest` (everything after the last `</html>`) is only whitespace and COMPLETE
+ * `<script ...>...</script>` blocks. Astro can emit a component's processed `<script>` after the
+ * layout's `</html>` (it did on article pages and /contact-us until this change); browsers run it
+ * as if it were in `<body>`. A script that never closes means the stream was cut off; any other
+ * markup or text after `</html>` is junk. Both reject.
+ */
+function isOnlyCompleteScriptsAndWhitespace(rest: string): boolean {
+  let s = rest;
+  for (;;) {
+    s = s.replace(/^\s+/, '');
+    if (s === '') return true;
+    const open = SCRIPT_OPEN_RE.exec(s);
+    if (!open) return false;
+    s = s.slice(open[0].length);
+    const close = SCRIPT_CLOSE_RE.exec(s);
+    if (!close) return false;
+    s = s.slice(close.index + close[0].length);
+  }
+}
+
 /**
  * Body check run on the fully read copy before `cache.put` (#123): never store an empty page or
  * an HTML page that was cut off (a render that failed after the 200 headers were sent ends the
- * stream early, so `</html>` never arrives). Plain text (robots.txt) only has to be non-empty.
+ * stream early, so `</html>` never arrives). An HTML page is complete when its last `</html>`
+ * lies in the final `HTML_END_TAIL_BYTES` and is followed only by whitespace and complete
+ * `<script>...</script>` blocks. Plain text (robots.txt) only has to be non-empty.
+ *
+ * This is a tail heuristic, not an HTML parser. The PRIMARY guard against a cut-off render is the
+ * stream-error check in the store path (a failed render errors the stream and is never stored);
+ * this check is the second line. Two known limits, both pinned in test-page-cache-policy.mts:
+ * - A stream cut exactly at the end of `</html>`, before a trailing `<script>`, is accepted (the
+ *   rest is empty). Harmless while cacheable pages emit nothing after `</html>`.
+ * - A trailing script whose code contains a literal `</html>` or `</script>` string fails closed
+ *   (the page is not stored), matching how browsers tokenise `</script>`. Keep such strings out of
+ *   inline scripts, or the page silently stops being cached.
  */
 export function isCompleteStorableBody(contentType: string | null, body: Uint8Array): boolean {
   if (body.byteLength === 0) return false;
   const ct = (contentType ?? '').toLowerCase();
   if (!ct.startsWith('text/html')) return true;
   const tail = new TextDecoder().decode(body.subarray(Math.max(0, body.byteLength - HTML_END_TAIL_BYTES)));
-  return /<\/html>\s*$/i.test(tail);
+  let after = -1;
+  for (const m of tail.matchAll(/<\/html\s*>/gi)) after = m.index + m[0].length;
+  if (after < 0) return false;
+  return isOnlyCompleteScriptsAndWhitespace(tail.slice(after));
 }
 
 /** Synthetic cache key URL (never a routable path); epoch makes purges global. */
