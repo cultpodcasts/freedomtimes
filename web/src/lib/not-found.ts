@@ -50,21 +50,25 @@ export type EntryLookupResult = { entry: unknown | null | undefined; error?: unk
  * Outcome of looking a slug up in one or more collections, in order.
  * - `found`: the index of the first collection that returned an entry.
  * - `server-error`: no entry, and at least one lookup failed for a reason other than a miss.
+ *   `error` is the first such failure, for the route to rethrow so Astro renders
+ *   `src/pages/500.astro` (#123).
  * - `not-found`: every lookup was a clean miss.
  */
 export type EntryLookupOutcome =
 	| { kind: 'found'; index: number }
 	| { kind: 'not-found' }
-	| { kind: 'server-error'; message: string };
+	| { kind: 'server-error'; message: string; error: unknown };
 
 export function decideEntryLookup(results: readonly EntryLookupResult[]): EntryLookupOutcome {
-	let unexpected: string | null = null;
+	let unexpected: { error: unknown } | null = null;
 	for (const [index, result] of results.entries()) {
 		if (result.error) {
-			if (!isExpectedLookupMiss(result.error)) unexpected = errorMessage(result.error);
+			if (unexpected === null && !isExpectedLookupMiss(result.error)) unexpected = { error: result.error };
 			continue;
 		}
 		if (result.entry) return { kind: 'found', index };
 	}
-	return unexpected === null ? { kind: 'not-found' } : { kind: 'server-error', message: unexpected };
+	return unexpected === null
+		? { kind: 'not-found' }
+		: { kind: 'server-error', message: errorMessage(unexpected.error), error: unexpected.error };
 }

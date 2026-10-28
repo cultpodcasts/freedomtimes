@@ -77,14 +77,33 @@ describe('src/lib/not-found.ts', () => {
 	});
 
 	it('decideEntryLookup: any unexpected failure with no entry → server-error (500), never 404', () => {
+		const fetchFailed = new Error('fetch failed');
 		assert.deepEqual(
-			decideEntryLookup([{ entry: null, error: new Error('fetch failed') }, { entry: null }]),
-			{ kind: 'server-error', message: 'fetch failed' },
+			decideEntryLookup([{ entry: null, error: fetchFailed }, { entry: null }]),
+			{ kind: 'server-error', message: 'fetch failed', error: fetchFailed },
 		);
+		const reset = new Error('Hrana: connection reset');
 		assert.deepEqual(
-			decideEntryLookup([{ entry: null }, { entry: null, error: new Error('Hrana: connection reset') }]),
-			{ kind: 'server-error', message: 'Hrana: connection reset' },
+			decideEntryLookup([{ entry: null }, { entry: null, error: reset }]),
+			{ kind: 'server-error', message: 'Hrana: connection reset', error: reset },
 		);
+	});
+
+	it('decideEntryLookup: server-error carries the FIRST unexpected error (the one [slug] rethrows)', () => {
+		const first = new Error('fetch failed');
+		const outcome = decideEntryLookup([
+			{ entry: null, error: new Error('Entry not found') },
+			{ entry: null, error: first },
+			{ entry: null, error: new Error('SERVER_ERROR: 503') },
+		]);
+		assert.equal(outcome.kind, 'server-error');
+		assert.equal(outcome.kind === 'server-error' && outcome.error, first);
+	});
+
+	it('[slug].astro: a lookup server-error rethrows (500.astro); only the empty-slug branch is plain text', () => {
+		const page = read('src/pages/[slug].astro');
+		assert.match(page, /if \(outcome\.kind === 'server-error'\) \{[\s\S]*?throw outcome\.error;[\s\S]*?\}/);
+		assert.equal([...page.matchAll(/Unable to load page right now/g)].length, 1, 'plain-text 500 only on the decideSlugParam error-render path');
 	});
 
 	it('decideEntryLookup: an entry wins (first collection that has it)', () => {

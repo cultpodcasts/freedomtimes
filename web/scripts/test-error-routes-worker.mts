@@ -9,7 +9,8 @@
  * Always runs (database unreachable, TURSO_DATABASE_URL → a closed local port):
  *   - unknown multi-segment URLs → 404, NotFoundView, noindex, no canonical
  *   - `/<slug>` and `/posts/<slug>` → 5xx, NOT 404 (an outage must never look like "gone");
- *     `/posts/<slug>` and `/` render src/pages/500.astro (#123: `/` used to stream a cut-off 200)
+ *     `/<slug>`, `/posts/<slug>` and `/` render src/pages/500.astro (#123: `/` used to stream a
+ *     cut-off 200, `/<slug>` used to answer an unstyled plain-text 500)
  *   - with PAGE_CACHE=on: `/` stays a 5xx on repeat requests, never `x-ft-cache: HIT` (#123)
  * With FT_TEST_LIBSQL_URL (a LOCAL libsql / `turso dev` URL, migrated with `npx emdash migrate`):
  *   - `/` → 200, unknown slug / unknown multi-segment → 404, locked staging → 302 to sign-in
@@ -120,13 +121,14 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		for (const path of UNKNOWN) {
 			it(`${path} → 404 page`, async () => assertNotFoundPage(await get(w!, path), path));
 		}
-		for (const path of ['/posts/some-real-looking-post', '/some-real-looking-page']) {
-			it(`${path} → 5xx, never 404 (outage is not "gone")`, async () => {
-				const r = await get(w!, path);
-				assert.ok(r.status >= 500 && r.status < 600, `${path}: got ${r.status}`);
-				assert.doesNotMatch(r.body, /data-ft-not-found/);
-			});
-		}
+		it('/posts/some-real-looking-post → 5xx, never 404 (outage is not "gone")', async () => {
+			const r = await get(w!, '/posts/some-real-looking-post');
+			assert.ok(r.status >= 500 && r.status < 600, `/posts/some-real-looking-post: got ${r.status}`);
+			assert.doesNotMatch(r.body, /data-ft-not-found/);
+		});
+		it('/some-real-looking-page → 500 page via [slug] (no-store, noindex), never 404 or plain text', async () => {
+			assertServerErrorPage(await get(w!, '/some-real-looking-page'), '/some-real-looking-page');
+		});
 		it('/ → 500 page (no-store, noindex), never a cut-off 200 or the 404 page (#123)', async () => {
 			const r = await get(w!, '/');
 			assertServerErrorPage(r, '/');

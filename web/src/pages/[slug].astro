@@ -18,7 +18,9 @@ import { decideEntryLookup, decideSlugParam, errorMessage, isExpectedLookupMiss 
 import { resolveHomepageGet } from '../lib/root-route';
 
 // An empty slug only happens when Astro renders an error page through this route: fail safe
-// with a 500, never a 404 (see decideSlugParam in src/lib/not-found.ts).
+// with a 500, never a 404 (see decideSlugParam in src/lib/not-found.ts). This branch IS the
+// error-render path, so it answers with plain text and must not throw: rethrowing here could
+// recurse into error rendering. Every other server error below rethrows so 500.astro renders.
 const slugParam = decideSlugParam(Astro.params.slug);
 if (slugParam.kind === 'server-error') {
 	return new Response('Unable to load page right now', {
@@ -133,10 +135,9 @@ if (!isHomepage) {
 
 	const outcome = decideEntryLookup(lookups);
 	if (outcome.kind === 'server-error') {
-		return new Response('Unable to load page right now', {
-			status: 500,
-			headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
-		});
+		// Rethrow like posts/[slug].astro, so Astro renders src/pages/500.astro (500, no-store,
+		// noindex, no canonical) instead of an unstyled text page (#123 review).
+		throw outcome.error;
 	}
 	if (outcome.kind === 'not-found') {
 		notFound = true;
