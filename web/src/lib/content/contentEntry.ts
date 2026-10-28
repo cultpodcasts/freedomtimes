@@ -3,7 +3,8 @@ import { createClient } from '@libsql/client/web';
 import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
 import { readImageCaption } from './imageCaption';
-import { resolveHeroImageAlt } from './imageAlt';
+import { resolveHeroImage } from './heroImage';
+import { readMediaValueSrc as readFeaturedImageSrc } from './mediaValue';
 import {
 	readEmDashPublishedOrCreatedAt,
 	readEmDashUpdatedAt,
@@ -73,45 +74,6 @@ function tryParseJsonString(value: string): unknown {
 	} catch {
 		return null;
 	}
-}
-
-function readFeaturedImageSrc(value: unknown): string | null {
-	if (typeof value === 'string') {
-		const trimmed = value.trim();
-		if (trimmed.length === 0) {
-			return null;
-		}
-		const parsed = tryParseJsonString(trimmed);
-		if (parsed && typeof parsed === 'object' && parsed !== null) {
-			return readFeaturedImageSrc(parsed);
-		}
-		return normalizeToPublicMediaFilePath(trimmed);
-	}
-
-	if (value && typeof value === 'object') {
-		const candidate = value as Record<string, unknown>;
-		const meta =
-			candidate.meta && typeof candidate.meta === 'object'
-				? (candidate.meta as Record<string, unknown>)
-				: null;
-		const storageKey =
-			readString(meta?.storageKey)
-			?? readString(meta?.storage_key)
-			?? readString(candidate.storageKey)
-			?? readString(candidate.storage_key);
-		if (storageKey) {
-			return `/_emdash/api/media/file/${storageKey}`;
-		}
-
-		const src = readString(candidate.src) ?? readString(candidate.url);
-		if (src) {
-			return normalizeToPublicMediaFilePath(src);
-		}
-
-		return null;
-	}
-
-	return null;
 }
 
 function normalizeEmdashMediaFileUrl(value: string): string | null {
@@ -604,14 +566,8 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 			.filter((paragraph) => paragraph.length > 0)
 		: [];
 	const { portableContent, textContent } = resolveEntryBody(data);
-	const featuredImageFromFeatured = readFeaturedImageSrc(data.featured_image);
-	const featuredImageSrc = featuredImageFromFeatured ?? readFeaturedImageSrc(data.cover_image);
-	// #108: the hero alt is the rendered image's own stored alt; the generic text is only a fallback.
-	const featuredImageAlt = resolveHeroImageAlt(
-		data,
-		title,
-		featuredImageFromFeatured ? 'featured_image' : 'cover_image',
-	);
+	// #108: src and alt come from the same (rendered) field; the generic alt is only a fallback.
+	const { src: featuredImageSrc, alt: featuredImageAlt } = resolveHeroImage(data, title);
 	const featuredImageCaption =
 		readImageCaption(data.featured_image) ?? readImageCaption(data.cover_image);
 	const socialImageSrc =
