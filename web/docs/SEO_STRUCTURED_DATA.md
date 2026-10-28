@@ -70,7 +70,24 @@ and the retired `/weekly-summaries` URL 301s to `/`.
 non-empty slug, not `seo_no_index`; drafts and unpublished items are never listed. Pages are
 limited to `SITEMAP_PAGE_SLUGS` (about, contact, privacy). A row whose SEO canonical points
 elsewhere is left out, so every `<loc>` equals the page's `<link rel="canonical">`. `lastmod`:
-the row's `updated_at`; `/` uses the newest indexable post, `/archives` the newest archive.
+the row's `updated_at`. `/` uses the newest update over published, non-deleted posts, the
+set the homepage lists (`loadHomepageEntries()`, noindex posts included), so it moves when `/`
+changes. `/archives` is listed only when at least one archive is listed, and dated from the
+newest listed archive, so every `lastmod` reflects a URL in this sitemap.
+
+```mermaid
+flowchart LR
+  R["GET /sitemap-site-pages.xml"] --> L{"site locked?"}
+  L -- "yes (staging)" --> E["EmDash 404 (unchanged)"]
+  L -- "no (production)" --> W["serveSitemapResiliently"]
+  W -- "fresh cache" --> C["200 cached"]
+  W -- "miss" --> G["site-sitemap-db.ts: 3 reads, build urlset"]
+  G -- "ok" --> S["200 + store"]
+  G -- "throw" --> F["last-known-good, else 503 + Retry-After"]
+```
+
+The database read runs in `src/middleware.ts`, never in `middleware.outer`; see
+[EMDASH_MIDDLEWARE_AND_ROUTING.md](EMDASH_MIDDLEWARE_AND_ROUTING.md) (Where database calls may run).
 
 All three are edge-cached (15 min fresh, 7 days last-known-good). If generation fails (any
 non-200 or throw) the last-known-good copy is served, else `503` + `Retry-After: 300`. These

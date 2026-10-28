@@ -59,6 +59,33 @@ describe('site sitemap (#34): /, reader pages and archives', () => {
 		assert.ok(!locs.includes('https://freedomtimes.news/archives'));
 	});
 
+	it('omits /archives when every archive canonicalises elsewhere (review r4400497029)', () => {
+		const locs = buildSiteSitemapUrls(ORIGIN, {
+			postsUpdatedAt: null,
+			pages: [],
+			archives: [
+				{ slug: 'a', updatedAt: '2026-10-01T00:00:00.000Z', seoCanonical: '/posts/elsewhere' },
+				{ slug: 'b', updatedAt: '2026-10-02T00:00:00.000Z', seoCanonical: 'https://freedomtimes.news/archives/a' },
+			],
+		}).map((u) => u.loc);
+		assert.deepEqual(locs, ['https://freedomtimes.news/']);
+	});
+
+	it('dates /archives from the listed archives only, never from one canonicalised away', () => {
+		const urls = buildSiteSitemapUrls(ORIGIN, {
+			postsUpdatedAt: null,
+			pages: [],
+			archives: [
+				{ slug: 'listed', updatedAt: '2026-05-01T00:00:00.000Z' },
+				{ slug: 'away', updatedAt: '2026-10-01T00:00:00.000Z', seoCanonical: '/posts/elsewhere' },
+			],
+		});
+		assert.deepEqual(urls.slice(1), [
+			{ loc: 'https://freedomtimes.news/archives', lastmod: '2026-05-01T00:00:00.000Z' },
+			{ loc: 'https://freedomtimes.news/archives/listed', lastmod: '2026-05-01T00:00:00.000Z' },
+		]);
+	});
+
 	it('leaves out rows whose SEO canonical points at another URL; keeps self-canonical overrides', () => {
 		const urls = buildSiteSitemapUrls(ORIGIN, {
 			postsUpdatedAt: null,
@@ -136,5 +163,18 @@ describe('middleware wiring (production only; staging unchanged)', () => {
 		]) {
 			assert.match(db, clause);
 		}
+		assert.match(db, /\$\{indexableFrom\('pages'\)\}/);
+		assert.match(db, /\$\{indexableFrom\('archives'\)\}/);
+	});
+
+	it('/ lastmod uses the homepage set: published, not deleted, noindex posts included (review r4400497041)', () => {
+		const db = readFileSync(new URL('../src/lib/site-sitemap-db.ts', import.meta.url), 'utf8');
+		assert.match(db, /SELECT MAX\(c\.updated_at\) AS updated_at \$\{publishedFrom\('posts'\)\}/);
+		const published = db.match(/function publishedFrom[\s\S]*?\n\}/)?.[0] ?? '';
+		assert.match(published, /c\.status = 'published'/);
+		assert.match(published, /c\.deleted_at IS NULL/);
+		assert.doesNotMatch(published, /seo_no_index/, 'the homepage lists noindex posts too');
+		const homepage = readFileSync(new URL('../src/lib/content/homepage-entries.ts', import.meta.url), 'utf8');
+		assert.match(homepage, /WHERE deleted_at IS NULL AND status = \$\{'published'\}/, 'homepage filter this mirrors');
 	});
 });

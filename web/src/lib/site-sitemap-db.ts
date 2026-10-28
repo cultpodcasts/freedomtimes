@@ -1,10 +1,13 @@
 /**
  * Database read for `/sitemap-site-pages.xml` (see `site-sitemap.ts`).
  *
- * Reads only slug / updated_at / SEO columns with the same WHERE as EmDash's own sitemap
- * query (`emdash` seo handler `indexableRows`): published, not deleted, non-empty slug, not
- * `seo_no_index`. Drafts and unpublished items are never listed, and draft revisions are never
- * overlaid (an editor in edit mode fetching the sitemap cannot put draft data in the cache).
+ * Reads only slug / updated_at / SEO columns. Listed rows use the same WHERE as EmDash's own
+ * sitemap query (`emdash` seo handler `indexableRows`): published, not deleted, non-empty slug,
+ * not `seo_no_index`. Drafts and unpublished items are never listed, and draft revisions are
+ * never overlaid (an editor in edit mode fetching the sitemap cannot put draft data in the cache).
+ *
+ * `/`'s lastmod uses the homepage's own set instead (`loadHomepageEntries()`: published, not
+ * deleted, noindex posts included), so it moves when what `/` renders changes.
  *
  * Any query error throws, so the resilient wrapper serves the last-known-good copy (else 503)
  * instead of caching a sitemap with URLs missing.
@@ -19,6 +22,16 @@ import { SITEMAP_PAGE_SLUGS, buildSiteSitemapUrls, renderUrlset, type SitemapCon
 
 type Collection = 'posts' | 'pages' | 'archives';
 
+/** Published, not-deleted rows: the filter `loadHomepageEntries()` uses for the homepage. */
+function publishedFrom(collection: Collection) {
+	return sql`
+		FROM ${sql.ref(`ec_${collection}`)} c
+		WHERE c.status = 'published'
+		AND c.deleted_at IS NULL
+	`;
+}
+
+/** Rows EmDash's sitemap would list: published, not deleted, slug set, not `seo_no_index`. */
 function indexableFrom(collection: Collection) {
 	return sql`
 		FROM ${sql.ref(`ec_${collection}`)} c
@@ -52,7 +65,7 @@ function toRows(rows: Record<string, unknown>[]): SitemapContentRow[] {
 export async function generateSiteSitemapXml(origin: string): Promise<string> {
 	const db = await getDb();
 	const posts = await sql<{ updated_at: unknown }>`
-		SELECT MAX(c.updated_at) AS updated_at ${indexableFrom('posts')}
+		SELECT MAX(c.updated_at) AS updated_at ${publishedFrom('posts')}
 	`.execute(db);
 	const pages = await sql<Record<string, unknown>>`
 		SELECT c.slug, c.updated_at, s.seo_canonical ${indexableFrom('pages')}

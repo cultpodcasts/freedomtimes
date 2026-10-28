@@ -67,6 +67,18 @@ describe('EmDash middleware.outer logs only (not an app slug map)', () => {
 		assert.match(outerSource, /official-redirect-after-runtime/);
 	});
 
+	it('outer never imports the middleware sitemap DB read (it must stay inside serveSitemapResiliently)', () => {
+		assert.doesNotMatch(outerSource, /site-sitemap-db/);
+		assert.doesNotMatch(outerSource, /sitemap-resilience/);
+		const routingDoc = readFileSync(
+			fileURLToPath(new URL('../docs/EMDASH_MIDDLEWARE_AND_ROUTING.md', import.meta.url)),
+			'utf8',
+		);
+		assert.match(routingDoc, /site-sitemap-db\.ts/);
+		assert.match(routingDoc, /serveSitemapResiliently/);
+		assert.match(routingDoc, /never in `middleware\.outer`/);
+	});
+
 	it('posts/[slug] uses getEmDashEntry and does not invent a lookup timeout or preview gate', () => {
 		const postPage = readFileSync(
 			fileURLToPath(new URL('../src/pages/posts/[slug].astro', import.meta.url)),

@@ -138,6 +138,14 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   `scripts/test-homepage-entries-map.mts` lists every component / layout frontmatter
   `await`, so a new one has to be added there on purpose. The body check above is the
   backstop: a page cut off by a component failure is never cached.
+  **Middleware** (`src/middleware.ts`) has one database read: `/sitemap-site-pages.xml`
+  (#34, `src/lib/site-sitemap-db.ts`, public site only). It runs after EmDash's runtime
+  middleware, so `getDb()` is the request-scoped client, and only inside
+  `serveSitemapResiliently` (`src/lib/sitemap-resilience.ts`): any throw serves the
+  last-known-good copy, else 503 + `Retry-After: 300`, and a partial sitemap is never
+  cached. It must never run outside that wrapper and never in `middleware.outer`
+  (`test-emdash-outer-middleware.mts` checks that outer does not import it). See
+  [SEO_STRUCTURED_DATA.md § Sitemaps](SEO_STRUCTURED_DATA.md#sitemaps).
 - **Purge:** site plugin `ft-page-cache-purge` (`src/plugins/page-cache-purge.ts`,
   hooks in `page-cache-purge-hooks.ts`) bumps the epoch in KV `SESSION` key
   `ft:page-cache:epoch` on `content:afterPublish|afterUnpublish|afterDelete|afterRestore`

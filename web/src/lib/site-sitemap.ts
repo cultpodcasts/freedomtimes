@@ -3,9 +3,11 @@
  *
  * EmDash only builds `/sitemap-<collection>.xml` for collections with SEO and a URL
  * pattern, which on Freedom Times is `posts` alone. This child sitemap adds:
- * - `/` (newsroom; lastmod = newest indexable post update)
+ * - `/` (newsroom; lastmod = newest update over published posts, the set the homepage lists,
+ *   noindex posts included)
  * - `/about-us`, `/contact-us`, `/privacy-policy` (the `pages` entries in SITEMAP_PAGE_SLUGS)
- * - `/archives` (lastmod = newest indexable archive update) and each `/archives/<slug>`
+ * - each `/archives/<slug>`, and `/archives` when at least one archive is listed (lastmod =
+ *   newest update among the listed archives)
  *
  * Rows follow the same rule as EmDash's own sitemap query: published, not deleted, a
  * non-empty slug, and not `seo_no_index`. A row whose SEO canonical points at another URL is
@@ -36,7 +38,10 @@ export interface SitemapContentRow {
 }
 
 export interface SiteSitemapInput {
-	/** Newest `updated_at` over indexable posts (the newsroom lists them), or null. */
+	/**
+	 * Newest `updated_at` over published, non-deleted posts (the homepage's set, noindex
+	 * included, as in `loadHomepageEntries()`), or null.
+	 */
 	postsUpdatedAt: string | null;
 	pages: SitemapContentRow[];
 	archives: SitemapContentRow[];
@@ -104,17 +109,20 @@ export function buildSiteSitemapUrls(originInput: string, input: SiteSitemapInpu
 		.map((row) => ({ ...row, slug: row.slug.trim() }))
 		.filter((row) => row.slug.length > 0 && !/[/?#\\]/.test(row.slug))
 		.sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
-	const listed = archives.filter((row) => isSelfCanonical(row, contentCanonicalPath('archives', row.slug), origin));
-	if (archives.length > 0) {
-		urls.push(url(origin, ARCHIVES_INDEX_PATH, newest(archives.map((row) => row.updatedAt))));
-	}
+	// Only self-canonical, deduped archives are listed; `/archives` is listed (and dated) from
+	// exactly those rows, so every lastmod reflects a URL that is in this sitemap.
 	const seen = new Set<string>();
-	for (const row of listed) {
+	const listed: { path: string; updatedAt: string | null | undefined }[] = [];
+	for (const row of archives) {
 		const path = contentCanonicalPath('archives', row.slug);
-		if (seen.has(path)) continue;
+		if (seen.has(path) || !isSelfCanonical(row, path, origin)) continue;
 		seen.add(path);
-		urls.push(url(origin, path, toW3CDate(row.updatedAt)));
+		listed.push({ path, updatedAt: row.updatedAt });
 	}
+	if (listed.length > 0) {
+		urls.push(url(origin, ARCHIVES_INDEX_PATH, newest(listed.map((row) => row.updatedAt))));
+	}
+	for (const row of listed) urls.push(url(origin, row.path, toW3CDate(row.updatedAt)));
 	return urls;
 }
 
