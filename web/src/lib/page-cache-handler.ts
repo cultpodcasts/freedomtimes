@@ -11,6 +11,7 @@ import {
   isCompleteStorableBody,
   isSilentBypass,
   isStorableResponse,
+  PAGE_CACHE_MAX_STORE_BYTES,
   pageCacheKeyUrl,
   pageCacheTtlSeconds,
   type PageCacheEnv,
@@ -55,6 +56,8 @@ function withCacheHeader(response: Response, state: string): Response {
  * Reads the cache copy to the end and stores it only when the body is complete (#123). The client
  * copy still streams; a render that fails after the 200 headers errors (or cuts off) both tee
  * branches, so that body is dropped here instead of being served from cache for the whole TTL.
+ * The copy is capped at PAGE_CACHE_MAX_STORE_BYTES: past it the cache branch is
+ * cancelled, which does not affect the client branch, and nothing is stored.
  */
 async function storeIfComplete(
   cache: PageCacheStore,
@@ -63,14 +66,35 @@ async function storeIfComplete(
   headers: Headers,
   pathname: string,
 ): Promise<void> {
-  let bytes: ArrayBuffer;
-  try {
-    bytes = body ? await new Response(body).arrayBuffer() : new ArrayBuffer(0);
-  } catch (error) {
-    console.warn('[ft-page-cache] body stream failed; not stored', JSON.stringify({ pathname }), error);
-    return;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  if (body) {
+    const reader = body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > PAGE_CACHE_MAX_STORE_BYTES) {
+          console.warn('[ft-page-cache] body too large; not stored', JSON.stringify({ pathname, maxBytes: PAGE_CACHE_MAX_STORE_BYTES }));
+          await reader.cancel().catch(() => undefined);
+          return;
+        }
+        chunks.push(value);
+      }
+    } catch (error) {
+      console.warn('[ft-page-cache] body stream failed; not stored', JSON.stringify({ pathname }), error);
+      return;
+    }
   }
-  if (!isCompleteStorableBody(headers.get('content-type'), new Uint8Array(bytes))) {
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  chunks.length = 0;
+  if (!isCompleteStorableBody(headers.get('content-type'), bytes)) {
     console.warn('[ft-page-cache] empty or incomplete body; not stored', JSON.stringify({ pathname, bytes: bytes.byteLength }));
     return;
   }

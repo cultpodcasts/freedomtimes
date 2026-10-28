@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ORIG_CACHE_CONTROL_HEADER, handlePageCache, type PageCacheDeps } from '../src/lib/page-cache-handler.ts';
-import { pageCacheKeyUrl } from '../src/lib/page-cache-policy.ts';
+import { PAGE_CACHE_MAX_STORE_BYTES, pageCacheKeyUrl } from '../src/lib/page-cache-policy.ts';
 import { createPurgeHooks } from '../src/plugins/page-cache-purge-hooks.ts';
 
 const ORIGIN = 'https://freedomtimes.news';
@@ -210,6 +210,50 @@ describe('page cache handler: never stores empty or cut-off pages (#123)', () =>
 		assert.equal(miss.status, 200, 'headers were already sent when the render failed');
 		await assert.rejects(miss.text(), /Network connection lost/);
 		assert.equal(h.cache.store.size, 0);
+	});
+
+	/** A complete HTML page of exactly `size` bytes, streamed in 64 KB chunks. */
+	function htmlOfSize(size: number) {
+		const head = '<!DOCTYPE html><html><body>';
+		const tail = '</body></html>\n';
+		const page = head + 'x'.repeat(size - head.length - tail.length) + tail;
+		const bytes = new TextEncoder().encode(page);
+		const step = 64 * 1024;
+		return {
+			page,
+			response: () =>
+				new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							for (let i = 0; i < bytes.byteLength; i += step) controller.enqueue(bytes.slice(i, i + step));
+							controller.close();
+						},
+					}),
+					{ status: 200, headers: HTML },
+				),
+		};
+	}
+
+	it('a body over PAGE_CACHE_MAX_STORE_BYTES is not stored; the client still gets the full body', async () => {
+		const h = harness();
+		const big = htmlOfSize(PAGE_CACHE_MAX_STORE_BYTES + 1);
+		const miss = await h.run('/posts/huge', { response: big.response });
+		assert.equal(miss.headers.get('x-ft-cache'), 'MISS');
+		const body = await miss.text();
+		assert.equal(body.length, big.page.length, 'client body is complete');
+		assert.equal(body, big.page);
+		assert.equal(h.cache.store.size, 0, 'oversized body not stored');
+	});
+
+	it('a complete body of exactly PAGE_CACHE_MAX_STORE_BYTES is stored (the cap is inclusive)', async () => {
+		const h = harness();
+		const edge = htmlOfSize(PAGE_CACHE_MAX_STORE_BYTES);
+		const miss = await h.run('/posts/edge', { response: edge.response });
+		assert.equal(await miss.text(), edge.page);
+		assert.equal(h.cache.store.size, 1);
+		const hit = await h.run('/posts/edge', { response: edge.response });
+		assert.equal(hit.headers.get('x-ft-cache'), 'HIT');
+		assert.equal(await hit.text(), edge.page);
 	});
 
 	it('a complete text/plain body (robots.txt) is stored; an empty one is not', async () => {
