@@ -259,6 +259,15 @@ const jsonLd: Record<string, unknown>[] = isPost
 			</section>
 		</div>
 	</article>
+	{/*
+		Inside the Layout slot, not after </Layout>: a script placed after </Layout> is emitted after
+		the document's </html> (follow-up to #124: those pages were never stored in the page cache).
+	*/}
+	<script>
+		import { initContentEnhancements } from "../lib/content/contentEnhancements";
+
+		initContentEnhancements();
+	</script>
 </Layout>
 
 <style>
@@ -730,9 +739,3 @@ const jsonLd: Record<string, unknown>[] = isPost
 		}
 	}
 </style>
-
-<script>
-	import { initContentEnhancements } from "../lib/content/contentEnhancements";
-
-	initContentEnhancements();
-</script>

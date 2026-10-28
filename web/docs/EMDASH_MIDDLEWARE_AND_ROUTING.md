@@ -108,11 +108,16 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   copy is read to the end first and stored only if the stream did not error, the
   body is non-empty, it is at most `PAGE_CACHE_MAX_STORE_BYTES` (4 MB; past that the
   cache copy is cancelled and nothing is stored, the client copy is unaffected) and
-  HTML ends with `</html>` (`isCompleteStorableBody`). A render that fails after the
-  200 headers is therefore never cached. Ending with `</html>` is a contract
-  `src/layouts/Layout.astro` must keep: every reader page renders through it, and a
-  snippet appended after `</html>` would silently stop the cache from storing
-  anything (`scripts/test-page-cache-policy.mts` pins it).
+  HTML is complete (`isCompleteStorableBody`): the last `</html>` must be in the final
+  16 KB (`HTML_END_TAIL_BYTES`) and be followed only by whitespace and complete
+  `<script>…</script>` blocks. Missing `</html>`, a script that never closes, or any
+  other markup or text after `</html>` (comments, `<p>`, `<style>`) means not stored. A
+  render that fails after the 200 headers is therefore never cached. Every reader page
+  renders through `src/layouts/Layout.astro`, which ends with `</html>`; views and
+  reader routes put nothing but `<style>` after `</Layout>`, because Astro emits a
+  `<script>` written there after `</html>` (article pages and `/contact-us` did this via
+  `EmDashContentView` until web 0.0.42, so they were never stored). The script-tolerant
+  check is the backstop; `scripts/test-page-cache-policy.mts` pins both rules.
 - **Where database calls may run (#123):** anything that can fail the page loads in
   the **page** frontmatter, before rendering starts, so a failure there renders
   `src/pages/500.astro` (500, `no-store`, noindex, no canonical) instead of a cut-off
