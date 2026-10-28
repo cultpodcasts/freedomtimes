@@ -3,6 +3,7 @@ import { createClient } from '@libsql/client/web';
 import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
 import { readImageCaption } from './imageCaption';
+import { resolveHeroImageAlt } from './imageAlt';
 import {
 	readEmDashPublishedOrCreatedAt,
 	readEmDashUpdatedAt,
@@ -603,9 +604,14 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 			.filter((paragraph) => paragraph.length > 0)
 		: [];
 	const { portableContent, textContent } = resolveEntryBody(data);
-	const featuredImageSrc = readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image);
-	const featuredImageAlt =
-		readString(data.featured_image_alt) ?? readString(data.cover_image_alt) ?? `${title} featured image`;
+	const featuredImageFromFeatured = readFeaturedImageSrc(data.featured_image);
+	const featuredImageSrc = featuredImageFromFeatured ?? readFeaturedImageSrc(data.cover_image);
+	// #108: the hero alt is the rendered image's own stored alt; the generic text is only a fallback.
+	const featuredImageAlt = resolveHeroImageAlt(
+		data,
+		title,
+		featuredImageFromFeatured ? 'featured_image' : 'cover_image',
+	);
 	const featuredImageCaption =
 		readImageCaption(data.featured_image) ?? readImageCaption(data.cover_image);
 	const socialImageSrc =

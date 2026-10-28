@@ -15,6 +15,17 @@ Code: `web/src/lib/seo/article-seo.ts`, `web/src/lib/sitemap-resilience.ts`,
 | canonical | `seo.canonical` (http(s) or `/path`) | own URL |
 | robots | `seo.noIndex` → `noindex,nofollow` | `index,follow,max-image-preview:large` |
 
+### Hero image alt (posts and pages)
+
+The hero `<img>` alt (`featuredImageAlt`, `web/src/lib/content/imageAlt.ts`) is the alt stored on
+the image that is rendered: `featured_image.alt`, or `cover_image.alt` when the cover is the hero
+(EmDash copies the media library item's alt onto the post's image value). Then the legacy
+`featured_image_alt` / `cover_image_alt` strings, and only then `"<title> featured image"`. Empty or
+whitespace-only alt counts as unset. `og:image:alt` / `twitter:image:alt` are separate and unchanged:
+they describe the social card (social title when there is a social image). Test:
+`npm run test:hero-image-alt` (also in `npm test`). See
+[#108](https://github.com/cultpodcasts/freedomtimes/issues/108).
+
 ## Structured data (posts only)
 
 Every post emits `NewsArticle` and `BreadcrumbList` JSON-LD. Empty properties are omitted.
