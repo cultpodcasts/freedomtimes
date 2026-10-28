@@ -112,9 +112,15 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   16 KB (`HTML_END_TAIL_BYTES`) and be followed only by whitespace and complete
   `<script>…</script>` blocks. Missing `</html>`, a script that never closes, or any
   other markup or text after `</html>` (comments, `<p>`, `<style>`) means not stored. A
-  render that fails after the 200 headers is therefore never cached. Every reader page
-  renders through `src/layouts/Layout.astro`, which ends with `</html>`; views and
-  reader routes put nothing but `<style>` after `</Layout>`, because Astro emits a
+  render that fails after the 200 headers errors the stream, so it is never cached; the
+  stream-error check is the primary guard and the `</html>` tail check is a heuristic
+  second line. Its two known limits are pinned by tests: a stream cut exactly at the end
+  of `</html>`, before a trailing script, is accepted (harmless while nothing follows
+  `</html>`), and a literal `</html>` or `</script>` string inside a trailing script makes
+  the page not stored. Every reader page renders through `src/layouts/Layout.astro`,
+  which ends with `</html>`; every component or page that imports `Layout` (found on
+  disk, minus `DENY_TOP_LEVEL` pages the cache never serves) puts nothing but `<style>`
+  after `</Layout>`, because Astro emits a
   `<script>` written there after `</html>` (article pages and `/contact-us` did this via
   `EmDashContentView` until web 0.0.42, so they were never stored). The script-tolerant
   check is the backstop; `scripts/test-page-cache-policy.mts` pins both rules.

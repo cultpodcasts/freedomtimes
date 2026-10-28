@@ -214,6 +214,15 @@ function isOnlyCompleteScriptsAndWhitespace(rest: string): boolean {
  * stream early, so `</html>` never arrives). An HTML page is complete when its last `</html>`
  * lies in the final `HTML_END_TAIL_BYTES` and is followed only by whitespace and complete
  * `<script>...</script>` blocks. Plain text (robots.txt) only has to be non-empty.
+ *
+ * This is a tail heuristic, not an HTML parser. The PRIMARY guard against a cut-off render is the
+ * stream-error check in the store path (a failed render errors the stream and is never stored);
+ * this check is the second line. Two known limits, both pinned in test-page-cache-policy.mts:
+ * - A stream cut exactly at the end of `</html>`, before a trailing `<script>`, is accepted (the
+ *   rest is empty). Harmless while cacheable pages emit nothing after `</html>`.
+ * - A trailing script whose code contains a literal `</html>` or `</script>` string fails closed
+ *   (the page is not stored), matching how browsers tokenise `</script>`. Keep such strings out of
+ *   inline scripts, or the page silently stops being cached.
  */
 export function isCompleteStorableBody(contentType: string | null, body: Uint8Array): boolean {
   if (body.byteLength === 0) return false;
