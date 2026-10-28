@@ -1,0 +1,34 @@
+---
+/**
+ * Astro's 404 error route: rendered for any URL that no route in the app matches (multi-segment
+ * paths such as `/2026/10/11/`, `/category/x`, `/posts/a/b`), after the adapter's ASSETS fallback
+ * misses. A direct `GET /404` is this file too (a static route outranks `[slug]`; checked in
+ * `npm run test:worker-routes`: `/404` → 404 page, `/500` → 500 page).
+ * Server-rendered so it can apply the staging lock like every other reader route.
+ *
+ * Must stay a real 404: never a redirect to the homepage (Google treats that as a soft 404).
+ * The anonymous page cache only stores 200s, so this response is never cached there.
+ */
+import NotFoundView from '../components/NotFoundView.astro';
+import { isLockedSiteAccess } from '../lib/auth';
+import { requireEditorialSession } from '../lib/editorial-session';
+
+export const prerender = false;
+
+// Locked staging: nothing is public, including the 404 page (same gate as `[slug].astro`).
+if (isLockedSiteAccess()) {
+	const session = await requireEditorialSession({
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+	});
+	if (session instanceof Response) {
+		return session;
+	}
+}
+
+Astro.response.status = 404;
+---
+
+<NotFoundView />

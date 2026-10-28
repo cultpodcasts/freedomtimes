@@ -9,7 +9,8 @@ interface Props {
 	title?: string;
 	description?: string;
 	twitterDescription?: string | null;
-	canonicalUrl?: string;
+	/** `null` omits `<link rel="canonical">` and `og:url` (error pages: 404 / 500). Default: this URL. */
+	canonicalUrl?: string | null;
 	ogType?: 'website' | 'article';
 	ogImage?: string | null;
 	ogImageWidth?: number;
@@ -57,7 +58,7 @@ const resolvedTwitterDescription = twitterDescription === null
 	? null
 	: (twitterDescription !== undefined ? twitterDescription : resolvedDescription);
 const resolvedCanonicalUrl = canonicalUrl?.trim().length ? canonicalUrl.trim() : Astro.url.href;
-const absoluteCanonical = new URL(resolvedCanonicalUrl, Astro.url).toString();
+const absoluteCanonical = canonicalUrl === null ? null : new URL(resolvedCanonicalUrl, Astro.url).toString();
 const absoluteOgImage = ogImage?.trim().length ? new URL(ogImage.trim(), Astro.url).toString() : null;
 const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${siteName} share preview`;
 ---
@@ -77,12 +78,12 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 		<meta name="generator" content={Astro.generator} />
 		<meta name="description" content={resolvedDescription} />
 		<meta name="robots" content={noindex ? 'noindex,nofollow' : 'index,follow,max-image-preview:large'} />
-		<link rel="canonical" href={absoluteCanonical} />
+		{absoluteCanonical && <link rel="canonical" href={absoluteCanonical} />}
 		<meta property="og:site_name" content={siteName} />
 		<meta property="og:type" content={ogType} />
 		<meta property="og:title" content={resolvedSocialTitle} />
 		<meta property="og:description" content={resolvedDescription} />
-		<meta property="og:url" content={absoluteCanonical} />
+		{absoluteCanonical && <meta property="og:url" content={absoluteCanonical} />}
 		{absoluteOgImage && <meta property="og:image" content={absoluteOgImage} />}
 		{absoluteOgImage && <meta property="og:image:secure_url" content={absoluteOgImage} />}
 		{absoluteOgImage && <meta property="og:image:alt" content={resolvedOgImageAlt} />}

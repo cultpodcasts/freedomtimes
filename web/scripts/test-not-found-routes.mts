@@ -1,0 +1,201 @@
+/**
+ * Unknown URLs must return the site's 404 page (HTTP 404, noindex), never a 400/500 or a
+ * redirect, and real failures must stay 5xx (never a fake 404 that would de-index a live URL).
+ *
+ * Before src/pages/404.astro / 500.astro existed, Astro rendered its error routes by matching
+ * `/404` and `/500` against the route table, which hit `[slug].astro` with no `slug` param:
+ * HTTP 400 "Missing slug" in plain text (observed in a local Worker with the ASSETS binding from
+ * PR #118; on the live Workers the unbound ASSETS made unmatched URLs a 500 / error 1101 first).
+ *
+ * The decisions are pure functions in src/lib/not-found.ts (tested here). The rendered Worker
+ * responses are covered by `npm run test:worker-routes` (scripts/test-error-routes-worker.mts),
+ * which needs a built dist/ and wrangler, so it is not part of `npm test`.
+ */
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { decideEntryLookup, decideSlugParam, isExpectedLookupMiss } from '../src/lib/not-found.ts';
+import { decidePageCacheRequest, isCacheablePath, isStorableResponse } from '../src/lib/page-cache-policy.ts';
+
+const webRoot = fileURLToPath(new URL('../', import.meta.url));
+const read = (rel: string) => readFileSync(join(webRoot, rel), 'utf8');
+
+/** File-system routes under src/pages as regexes (Astro: `[x]` = one segment, `[...x]` = rest). */
+function pageRoutes(): { file: string; re: RegExp }[] {
+	const pagesDir = join(webRoot, 'src/pages');
+	const out: { file: string; re: RegExp }[] = [];
+	const walk = (dir: string) => {
+		for (const name of readdirSync(dir)) {
+			const full = join(dir, name);
+			if (statSync(full).isDirectory()) {
+				walk(full);
+				continue;
+			}
+			if (!/\.(astro|ts|js)$/.test(name)) continue;
+			const rel = relative(pagesDir, full).replace(/\\/g, '/');
+			let route = rel.replace(/\.(astro|ts|js)$/, '').replace(/(^|\/)index$/, '');
+			const segs = route.split('/').filter(Boolean).map((seg) => {
+				if (/^\[\.\.\.[^\]]+\]$/.test(seg)) return '.*';
+				return seg
+					.split(/(\[[^\]]+\])/)
+					.map((part) => (/^\[[^\]]+\]$/.test(part) ? '[^/]+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+					.join('');
+			});
+			out.push({ file: rel, re: new RegExp(`^/${segs.join('/')}/?$`) });
+		}
+	};
+	walk(pagesDir);
+	return out;
+}
+
+const matching = (pathname: string) => pageRoutes().filter((r) => r.re.test(pathname)).map((r) => r.file);
+
+describe('src/lib/not-found.ts', () => {
+	it('decideSlugParam: a slug is looked up; an empty slug (error render) is a server error, not 404', () => {
+		assert.deepEqual(decideSlugParam('about'), { kind: 'lookup', slug: 'about' });
+		assert.deepEqual(decideSlugParam(undefined), { kind: 'server-error' });
+		assert.deepEqual(decideSlugParam(''), { kind: 'server-error' });
+	});
+
+	it('isExpectedLookupMiss: only "no such entry" messages are misses', () => {
+		for (const message of ['Entry not found', 'no rows returned', 'Missing entry', 'SQLITE_ERROR: no such table: ec_pages', 'collection does not exist', 'Unknown collection: pages']) {
+			assert.equal(isExpectedLookupMiss(new Error(message)), true, message);
+		}
+		assert.equal(isExpectedLookupMiss('Entry not found'), true, 'non-Error values too');
+		for (const message of ['fetch failed', 'Hrana: connection reset', 'SERVER_ERROR: 503', 'Network connection lost', 'timeout']) {
+			assert.equal(isExpectedLookupMiss(new Error(message)), false, message);
+		}
+	});
+
+	it('decideEntryLookup: clean misses → not-found (404)', () => {
+		assert.deepEqual(decideEntryLookup([{ entry: null }, { entry: null }]), { kind: 'not-found' });
+		assert.deepEqual(decideEntryLookup([{ entry: null, error: new Error('not found') }, { entry: null }]), { kind: 'not-found' });
+		assert.deepEqual(decideEntryLookup([]), { kind: 'not-found' });
+	});
+
+	it('decideEntryLookup: any unexpected failure with no entry → server-error (500), never 404', () => {
+		assert.deepEqual(
+			decideEntryLookup([{ entry: null, error: new Error('fetch failed') }, { entry: null }]),
+			{ kind: 'server-error', message: 'fetch failed' },
+		);
+		assert.deepEqual(
+			decideEntryLookup([{ entry: null }, { entry: null, error: new Error('Hrana: connection reset') }]),
+			{ kind: 'server-error', message: 'Hrana: connection reset' },
+		);
+	});
+
+	it('decideEntryLookup: an entry wins (first collection that has it)', () => {
+		assert.deepEqual(decideEntryLookup([{ entry: { id: 1 } }, { entry: null }]), { kind: 'found', index: 0 });
+		assert.deepEqual(decideEntryLookup([{ entry: null, error: new Error('fetch failed') }, { entry: { id: 2 } }]), { kind: 'found', index: 1 });
+	});
+});
+
+describe('error routes', () => {
+	it('/404 and /500 resolve to src/pages/404.astro / 500.astro (static routes outrank [slug])', () => {
+		// Astro ranks a static segment above a dynamic one, so with both files present it renders
+		// 404.astro / 500.astro for its error routes instead of falling through to [slug].astro.
+		assert.ok(matching('/404').includes('404.astro'), matching('/404').join(', '));
+		assert.ok(matching('/500').includes('500.astro'), matching('/500').join(', '));
+	});
+
+	it('404.astro: status 404, staging lock gate, standard view, no redirect', () => {
+		const page = read('src/pages/404.astro');
+		assert.match(page, /export const prerender = false;/);
+		assert.match(page, /Astro\.response\.status = 404;/);
+		assert.match(page, /if \(isLockedSiteAccess\(\)\) \{[\s\S]*requireEditorialSession\(/);
+		assert.match(page, /<NotFoundView \/>/);
+		assert.doesNotMatch(page, /Astro\.redirect\(|Astro\.rewrite|Response\.redirect/);
+	});
+
+	it('500.astro: status 500, no-store, noindex, no canonical, and no DB / EmDash imports', () => {
+		const page = read('src/pages/500.astro');
+		assert.match(page, /export const prerender = false;/);
+		assert.match(page, /Astro\.response\.status = 500;/);
+		assert.match(page, /Cache-Control', 'no-store'/);
+		assert.match(page, /<Layout [^>]*canonicalUrl=\{null\}[^>]*noindex/);
+		const imports = [...page.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
+		assert.deepEqual(imports, ['../layouts/Layout.astro']);
+		const layoutImports = [...read('src/layouts/Layout.astro').matchAll(/^import .*'([^']+)';$/gm)].map((m) => m[1]);
+		assert.ok(layoutImports.every((i) => !/emdash|editorial-session|auth/.test(i)), layoutImports.join(', '));
+	});
+
+	it('NotFoundView: noindex, no canonical / og:url, no CMS link; used by every reader 404', () => {
+		const view = read('src/components/NotFoundView.astro');
+		assert.match(view, /<Layout [^>]*canonicalUrl=\{null\}[^>]*noindex/);
+		assert.doesNotMatch(view, /_emdash/);
+		const layout = read('src/layouts/Layout.astro');
+		assert.match(layout, /\{absoluteCanonical && <link rel="canonical"/);
+		assert.match(layout, /\{absoluteCanonical && <meta property="og:url"/);
+		for (const file of ['src/pages/[slug].astro', 'src/pages/posts/[slug].astro', 'src/pages/archives/[slug].astro']) {
+			const page = read(file);
+			assert.match(page, /<NotFoundView[ \/]/, file);
+			assert.doesNotMatch(page, /_emdash\/admin/, `${file}: no CMS link on a public 404`);
+			assert.doesNotMatch(page, /lower\.includes\('not found'\)/, `${file}: use isExpectedLookupMiss from src/lib/not-found`);
+		}
+	});
+
+	it('there is no catch-all route that would swallow unknown multi-segment URLs', () => {
+		const catchAll = pageRoutes().filter((r) => r.re.source.includes('.*'));
+		assert.deepEqual(catchAll.map((r) => r.file), []);
+	});
+
+	// URLs that returned 500 (error 1101) on production on 27 Oct 2026, and 400 "Missing slug" once
+	// ASSETS is bound: no route matches them, so Astro now renders src/pages/404.astro.
+	for (const pathname of [
+		'/2026/10/11/',
+		'/2026/13/40',
+		'/category/nope',
+		'/tag/x',
+		'/author/x',
+		'/page/999',
+		'/a/b',
+		'/a/b/c',
+		'/posts/x/y',
+		'/archives/a/b',
+		'/admin/nope',
+		'/api/nope',
+		'/auth/nope',
+		'/_emdash/nope/x',
+		'/.well-known/x/y',
+	]) {
+		it(`${pathname} matches no route (→ 404.astro)`, () => {
+			assert.deepEqual(matching(pathname), []);
+			assert.equal(isCacheablePath(pathname), false);
+		});
+	}
+
+	// Single-segment and /posts/<slug> misses are handled by their own route's not-found branch.
+	for (const [pathname, file] of [
+		['/no-such-page', '[slug].astro'],
+		['/2026', '[slug].astro'],
+		['/posts/does-not-exist-xyz', 'posts/[slug].astro'],
+		['/archives/nope', 'archives/[slug].astro'],
+	] as const) {
+		it(`${pathname} → ${file}`, () => {
+			assert.ok(matching(pathname).includes(file), `${pathname} should match ${file}: ${matching(pathname).join(', ')}`);
+		});
+	}
+
+	it('/404 and /500 are not cacheable reader pages and 404 / 500 responses are never stored', () => {
+		assert.equal(isCacheablePath('/404'), false);
+		assert.equal(isCacheablePath('/500'), false);
+		assert.equal(
+			decidePageCacheRequest(
+				{ PAGE_CACHE: 'on', SITE_ACCESS_MODE: 'public' },
+				{ method: 'GET', pathname: '/no-such-page', search: '', cookie: null, authorization: null },
+			).cacheable,
+			true,
+			'single-segment misses do go through the cache handler…',
+		);
+		for (const status of [404, 500]) {
+			assert.equal(
+				isStorableResponse({ status, headers: new Headers({ 'content-type': 'text/html' }) }),
+				false,
+				`…but a ${status} is never stored`,
+			);
+		}
+	});
+});

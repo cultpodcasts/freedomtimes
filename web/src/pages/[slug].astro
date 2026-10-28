@@ -3,6 +3,7 @@ import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../components/EmDashContentView.astro';
 import HomepageView from '../components/HomepageView.astro';
+import NotFoundView from '../components/NotFoundView.astro';
 import { isLockedSiteAccess, readOptionalEnv, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
 	HOMEPAGE_ROOT_REDIRECT_LOCATION,
@@ -12,12 +13,21 @@ import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../lib/editorial-session';
+import { decideEntryLookup, decideSlugParam, errorMessage, isExpectedLookupMiss } from '../lib/not-found';
 import { resolveHomepageGet } from '../lib/root-route';
 
-const slug = Astro.params.slug;
-if (!slug) {
-	return new Response('Missing slug', { status: 400 });
+// An empty slug only happens when Astro renders an error page through this route: fail safe
+// with a 500, never a 404 (see decideSlugParam in src/lib/not-found.ts).
+const slugParam = decideSlugParam(Astro.params.slug);
+if (slugParam.kind === 'server-error') {
+	return new Response('Unable to load page right now', {
+		status: 500,
+		headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+	});
 }
+const slug = slugParam.slug;
+// No EmDash page/post with this slug: the site's standard 404 page (NotFoundView, as 404.astro).
+let notFound = false;
 
 if (slug === 'homepage' && shouldRedirectHomepageToRoot({
 	pathname: Astro.url.pathname,
@@ -94,32 +104,20 @@ if (!isHomepage) {
 		{ key: 'posts', label: 'Post' },
 	] as const;
 
-	let lastUnexpectedError: string | null = null;
+	const lookups: { entry: unknown; error?: unknown }[] = [];
 
 	for (const collection of collections) {
 		const { entry, error, isPreview } = await getEmDashEntry(collection.key, slug);
+		lookups.push({ entry, error });
 
 		if (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			const lower = message.toLowerCase();
-
-			const isExpectedLookupMiss =
-				lower.includes('not found')
-				|| lower.includes('no row')
-				|| lower.includes('missing')
-				|| lower.includes('no such table')
-				|| lower.includes('does not exist')
-				|| lower.includes('unknown collection');
-
-			if (!isExpectedLookupMiss) {
-				lastUnexpectedError = message;
+			if (!isExpectedLookupMiss(error)) {
 				console.error('[page.slug] failed to resolve entry', {
 					slug,
 					collection: collection.key,
-					message,
+					message: errorMessage(error),
 				});
 			}
-
 			continue;
 		}
 
@@ -132,17 +130,20 @@ if (!isHomepage) {
 		}
 	}
 
-	if (!resolvedEntry) {
-		if (lastUnexpectedError) {
-			return new Response('Unable to load page right now', { status: 500 });
-		}
-
-		return new Response('Page not found', { status: 404 });
+	const outcome = decideEntryLookup(lookups);
+	if (outcome.kind === 'server-error') {
+		return new Response('Unable to load page right now', { status: 500 });
+	}
+	if (outcome.kind === 'not-found') {
+		notFound = true;
+		Astro.response.status = 404;
 	}
 }
 ---
 
-{isHomepage ? (
+{notFound ? (
+	<NotFoundView />
+) : isHomepage ? (
 	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
 ) : (
 	<EmDashContentView

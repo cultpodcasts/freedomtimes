@@ -1,0 +1,38 @@
+---
+/**
+ * Astro's 500 error route. Astro renders server errors by matching `/500` against the route
+ * table; without this file `[slug].astro` captured it, so an outage (Turso blip, runtime-init
+ * throw) on the homepage or a real article would have rendered through the reader route.
+ *
+ * Must never touch the database or EmDash (that is usually what just failed), must stay a 5xx
+ * (Google treats 5xx as temporary; a 404 would drop the URL), noindex, no canonical, no-store.
+ * Deliberately no session gate: it shows no content, and a gate would need the failing runtime.
+ */
+import Layout from '../layouts/Layout.astro';
+
+export const prerender = false;
+
+Astro.response.status = 500;
+Astro.response.headers.set('Cache-Control', 'no-store');
+---
+
+<Layout title="Temporarily unavailable" description="This page is temporarily unavailable." canonicalUrl={null} noindex>
+	<article class="error-wrap" data-ft-server-error>
+		<h1>Temporarily unavailable</h1>
+		<p>Something went wrong on our side. Please try again in a minute.</p>
+		<p><a href="/">Back to homepage</a></p>
+	</article>
+</Layout>
+
+<style>
+	.error-wrap {
+		max-width: 860px;
+		margin: 0 auto;
+		padding: 2rem 1.25rem 3rem;
+	}
+
+	h1 {
+		margin: 0 0 0.8rem;
+		font-family: 'Playfair Display', serif;
+	}
+</style>
