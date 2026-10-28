@@ -1,5 +1,5 @@
 ---
-import { loadHomepageEntries } from '../lib/content/homepage-entries';
+import type { HomepageEntry } from '../lib/content/homepage-entries';
 
 import Layout from '../layouts/Layout.astro';
 import Header from './Header.astro';
@@ -12,11 +12,17 @@ import {
   readEmDashUpdatedAt,
 } from '../lib/content/emdashTimestamps';
 type Props = {
+  /**
+   * Published posts, loaded by the PAGE frontmatter (`loadHomepageEntries`), never here: a
+   * component's frontmatter runs after Astro has sent the 200 headers, so a database failure
+   * here would cut the body off mid-stream instead of rendering src/pages/500.astro (#123).
+   */
+  entries: HomepageEntry[];
   isAdmin?: boolean;
   isSignedIn?: boolean;
 };
 
-const { isAdmin = false, isSignedIn = false } = Astro.props;
+const { entries: postEntries, isAdmin = false, isSignedIn = false } = Astro.props;
 
 type Story = {
   slug: string;
@@ -157,11 +163,6 @@ function prepareDek(value: string): string {
   }
   return text;
 }
-
-// Show all published posts (newest first). A hard cap of 12 was dropping
-// older features (PBCC, Ahmadi, intro) once weekly roundups filled the slot.
-// Narrow column query (no Portable Text bodies) — see lib/content/homepage-entries.ts.
-const postEntries = await loadHomepageEntries(100);
 
 const stories: Story[] = postEntries.map((entry) => {
   const data = entry.data as Record<string, unknown>;

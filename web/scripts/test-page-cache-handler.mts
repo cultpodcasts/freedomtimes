@@ -11,6 +11,7 @@ import { createPurgeHooks } from '../src/plugins/page-cache-purge-hooks.ts';
 
 const ORIGIN = 'https://freedomtimes.news';
 const PROD = { PAGE_CACHE: 'on', PAGE_CACHE_TTL_SECONDS: '120', SITE_ACCESS_MODE: 'public' };
+const PAGE = '<!DOCTYPE html><html><body><p>page</p></body></html>\n';
 const HTML = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=0, must-revalidate' };
 
 class FakeCache {
@@ -50,7 +51,7 @@ function harness(over: Partial<PageCacheDeps> = {}) {
 		{
 			method = 'GET',
 			headers = {} as Record<string, string>,
-			response = () => new Response('<p>page</p>', { status: 200, headers: HTML }),
+			response = () => new Response(PAGE, { status: 200, headers: HTML }),
 			pendingCookies = false,
 		} = {},
 	) => {
@@ -79,7 +80,7 @@ describe('page cache handler: MISS → store → HIT', () => {
 		const miss = await h.run('/archives');
 		assert.equal(miss.headers.get('x-ft-cache'), 'MISS');
 		assert.equal(miss.headers.get('cache-control'), HTML['cache-control']);
-		assert.equal(await miss.text(), '<p>page</p>');
+		assert.equal(await miss.text(), PAGE);
 		const stored = h.cache.store.get(key('/archives'));
 		assert.ok(stored, 'stored under the epoch key');
 		assert.equal(stored.headers.get('cache-control'), 'public, max-age=120');
@@ -96,7 +97,7 @@ describe('page cache handler: MISS → store → HIT', () => {
 		assert.equal(hit.headers.get('cache-control'), HTML['cache-control']);
 		assert.equal(hit.headers.has(ORIG_CACHE_CONTROL_HEADER), false);
 		assert.match(hit.headers.get('server-timing') ?? '', /^ftcache;desc="HIT";dur=/);
-		assert.equal(await hit.text(), '<p>page</p>');
+		assert.equal(await hit.text(), PAGE);
 		assert.deepEqual(h.pageViews, [{ path: '/posts/a', state: 'HIT' }]);
 	});
 
@@ -139,6 +140,86 @@ describe('page cache handler: never stores unsafe responses', () => {
 			assert.equal(h.cache.store.size, 0);
 		});
 	}
+});
+
+/** A body that sends `chunks`, then errors (a render that failed after the 200 headers). */
+function failingBody(chunks: string[], error = new Error('Failed to load collection: Network connection lost.')) {
+	const encoder = new TextEncoder();
+	return new ReadableStream<Uint8Array>({
+		start(controller) {
+			for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+			controller.error(error);
+		},
+	});
+}
+
+describe('page cache handler: never stores empty or cut-off pages (#123)', () => {
+	const cases: [string, () => Response][] = [
+		['empty 200 body', () => new Response('', { status: 200, headers: HTML })],
+		['null 200 body', () => new Response(null, { status: 200, headers: HTML })],
+		['HTML cut off before </html>', () => new Response('<!DOCTYPE html><html><head><title>Freedom Times</title></head><body><main>', { status: 200, headers: HTML })],
+		['stream errors after the 200 headers', () => new Response(failingBody(['<!DOCTYPE html><html><head>']), { status: 200, headers: HTML })],
+		['stream errors before any byte', () => new Response(failingBody([]), { status: 200, headers: HTML })],
+		['500 page', () => new Response(PAGE, { status: 500, headers: { ...HTML, 'cache-control': 'no-store' } })],
+		['503', () => new Response(PAGE, { status: 503, headers: HTML })],
+	];
+	for (const [name, response] of cases) {
+		it(`${name}: not stored, next request renders again`, async () => {
+			const h = harness();
+			const first = await h.run('/', { response });
+			assert.notEqual(first.headers.get('x-ft-cache'), 'HIT');
+			await first.text().catch(() => undefined);
+			assert.equal(h.cache.store.size, 0, 'nothing stored');
+			const second = await h.run('/', { response });
+			assert.notEqual(second.headers.get('x-ft-cache'), 'HIT');
+			await second.text().catch(() => undefined);
+			assert.equal(h.renders(), 2, 'the failure is never served from cache');
+		});
+	}
+
+	it('a DB failure on / is a 5xx with no-store and is not cached; the recovered / then caches MISS → HIT', async () => {
+		const h = harness();
+		let dbUp = false;
+		const response = () =>
+			dbUp
+				? new Response(PAGE, { status: 200, headers: HTML })
+				: new Response('<!DOCTYPE html><html><body data-ft-server-error></body></html>', {
+						status: 500,
+						headers: { ...HTML, 'cache-control': 'no-store' },
+					});
+		const down = await h.run('/', { response });
+		assert.equal(down.status, 500);
+		assert.equal(down.headers.get('cache-control'), 'no-store');
+		assert.equal(down.headers.get('x-ft-cache'), 'BYPASS-500');
+		assert.equal(h.cache.store.size, 0);
+		dbUp = true;
+		const miss = await h.run('/', { response });
+		assert.equal(miss.headers.get('x-ft-cache'), 'MISS');
+		assert.equal(await miss.text(), PAGE);
+		const hit = await h.run('/', { response });
+		assert.equal(hit.headers.get('x-ft-cache'), 'HIT');
+		assert.equal(await hit.text(), PAGE);
+		assert.equal(h.renders(), 2);
+	});
+
+	it('the client still gets the streamed body on a MISS (no extra buffering for readers)', async () => {
+		const h = harness();
+		const miss = await h.run('/posts/a', {
+			response: () => new Response(failingBody(['<!DOCTYPE html><html>']), { status: 200, headers: HTML }),
+		});
+		assert.equal(miss.status, 200, 'headers were already sent when the render failed');
+		await assert.rejects(miss.text(), /Network connection lost/);
+		assert.equal(h.cache.store.size, 0);
+	});
+
+	it('a complete text/plain body (robots.txt) is stored; an empty one is not', async () => {
+		const h = harness();
+		const text = { 'content-type': 'text/plain; charset=utf-8' };
+		await h.run('/robots.txt', { response: () => new Response('', { status: 200, headers: text }) });
+		assert.equal(h.cache.store.size, 0);
+		await h.run('/robots.txt', { response: () => new Response('User-agent: *\n', { status: 200, headers: text }) });
+		assert.equal(h.cache.store.size, 1);
+	});
 });
 
 describe('page cache handler: request bypass', () => {
@@ -188,7 +269,7 @@ describe('page cache handler: request bypass', () => {
 			[{}, '/posts/a', 'POST'],
 			[{ env: { ...PROD, SITE_ACCESS_MODE: 'locked' } }, '/', 'GET'],
 		] as [Partial<PageCacheDeps>, string, string][]) {
-			const original = new Response('x', { status: 200, headers: HTML });
+			const original = new Response(PAGE, { status: 200, headers: HTML });
 			const h = harness(deps);
 			const res = await h.run(path, { method, response: () => original });
 			assert.equal(res, original, `${method} ${path}`);

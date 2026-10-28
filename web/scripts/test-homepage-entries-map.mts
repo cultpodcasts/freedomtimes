@@ -14,6 +14,11 @@ const homepageView = readFileSync(
 	'utf8',
 );
 
+const homepageEntries = readFileSync(
+	fileURLToPath(new URL('../src/lib/content/homepage-entries.ts', import.meta.url)),
+	'utf8',
+);
+
 describe('homepage light query', () => {
 	it('never selects the Portable Text body or SEO blobs', () => {
 		const cols: readonly string[] = HOMEPAGE_POST_COLUMNS;
@@ -25,10 +30,29 @@ describe('homepage light query', () => {
 		}
 	});
 
-	it('HomepageView uses loadHomepageEntries, not a full collection load', () => {
-		assert.match(homepageView, /loadHomepageEntries\(100\)/);
+	it('the homepage uses loadHomepageEntries (100 posts), not a full collection load', () => {
+		assert.match(homepageEntries, /export const HOMEPAGE_POST_LIMIT = 100;/);
+		assert.match(homepageEntries, /loadHomepageEntries\(limit = HOMEPAGE_POST_LIMIT\)/);
 		assert.doesNotMatch(homepageView, /getEmDashCollection\(/);
 	});
+});
+
+describe('homepage: posts load in the page frontmatter, before rendering starts (#123)', () => {
+	// A component's frontmatter runs after Astro has sent the 200 headers; a database failure there
+	// cuts the body off. A throw in the page frontmatter renders src/pages/500.astro instead.
+	it('HomepageView takes entries as a prop and never queries the database itself', () => {
+		assert.doesNotMatch(homepageView, /loadHomepageEntries\(|getEmDashCollection\(|getDb\(/);
+		assert.match(homepageView, /entries: HomepageEntry\[\]/);
+	});
+
+	for (const page of ['index.astro', 'homepage.astro', '[slug].astro']) {
+		it(`src/pages/${page} awaits loadHomepageEntries() and passes it to HomepageView`, () => {
+			const src = readFileSync(fileURLToPath(new URL(`../src/pages/${page}`, import.meta.url)), 'utf8');
+			const [, frontmatter = '', template = ''] = src.split(/^---$/m);
+			assert.match(frontmatter, /await loadHomepageEntries\(\)/);
+			assert.match(template, /<HomepageView entries=\{/);
+		});
+	}
 });
 
 describe('mapHomepageRow mirrors the EmDash loader', () => {

@@ -10,6 +10,7 @@ import {
 	decidePageCacheRequest,
 	hasOnlyNonSessionCookies,
 	isCacheablePath,
+	isCompleteStorableBody,
 	isPageCacheEnabled,
 	isStorableResponse,
 	pageCacheKeyUrl,
@@ -185,6 +186,29 @@ describe('page cache: response storability', () => {
 		const key = pageCacheKeyUrl('https://freedomtimes.news', 'mabc', '/posts/x');
 		assert.equal(key, 'https://freedomtimes.news/__ft_page_cache/mabc/posts/x');
 		assert.equal(isCacheablePath(new URL(key).pathname), false);
+	});
+});
+
+describe('page cache: body completeness before store (#123)', () => {
+	const enc = (text: string) => new TextEncoder().encode(text);
+	const html = 'text/html; charset=utf-8';
+
+	it('a full HTML document is complete (trailing whitespace allowed, any case)', () => {
+		assert.equal(isCompleteStorableBody(html, enc('<!DOCTYPE html><html><body>x</body></html>')), true);
+		assert.equal(isCompleteStorableBody(html, enc('<!DOCTYPE html><html><body>x</body></HTML>\n\n')), true);
+		assert.equal(isCompleteStorableBody(html, enc(`<html><body>${'x'.repeat(200_000)}</body></html>`)), true);
+	});
+
+	it('empty or cut-off HTML is never complete', () => {
+		assert.equal(isCompleteStorableBody(html, new Uint8Array(0)), false);
+		assert.equal(isCompleteStorableBody(html, enc('<!DOCTYPE html><html><head><title>x</title></head><body>')), false);
+		assert.equal(isCompleteStorableBody(html, enc('<html><body></html><p>trailing junk</p>')), false);
+		assert.equal(isCompleteStorableBody(null, new Uint8Array(0)), false);
+	});
+
+	it('plain text only has to be non-empty', () => {
+		assert.equal(isCompleteStorableBody('text/plain', enc('User-agent: *\n')), true);
+		assert.equal(isCompleteStorableBody('text/plain', new Uint8Array(0)), false);
 	});
 });
 

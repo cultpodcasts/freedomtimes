@@ -27,10 +27,16 @@ import { HOMEPAGE_POST_COLUMNS, mapHomepageRow, type HomepageEntry } from './hom
 export type { HomepageEntry };
 
 /**
+ * Show all published posts (newest first). A hard cap of 12 was dropping older features
+ * (PBCC, Ahmadi, intro) once weekly roundups filled the slot.
+ */
+export const HOMEPAGE_POST_LIMIT = 100;
+
+/**
  * Published posts for the homepage, newest first. Same filter/order/limit as
  * `getEmDashCollection('posts', { status: 'published', limit, orderBy: { published_at: 'desc', updated_at: 'desc' } })`.
  */
-export async function loadHomepageEntries(limit = 100): Promise<HomepageEntry[]> {
+export async function loadHomepageEntries(limit = HOMEPAGE_POST_LIMIT): Promise<HomepageEntry[]> {
   const ctx = getRequestContext();
   const needsDrafts = Boolean(ctx?.editMode) || ctx?.preview?.collection === 'posts';
   if (!needsDrafts) {

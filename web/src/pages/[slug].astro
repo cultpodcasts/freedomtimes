@@ -4,6 +4,7 @@ import { getEmDashEntry } from 'emdash';
 import EmDashContentView from '../components/EmDashContentView.astro';
 import HomepageView from '../components/HomepageView.astro';
 import NotFoundView from '../components/NotFoundView.astro';
+import { loadHomepageEntries, type HomepageEntry } from '../lib/content/homepage-entries';
 import { isLockedSiteAccess, readOptionalEnv, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
 	HOMEPAGE_ROOT_REDIRECT_LOCATION,
@@ -132,19 +133,25 @@ if (!isHomepage) {
 
 	const outcome = decideEntryLookup(lookups);
 	if (outcome.kind === 'server-error') {
-		return new Response('Unable to load page right now', { status: 500 });
+		return new Response('Unable to load page right now', {
+			status: 500,
+			headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+		});
 	}
 	if (outcome.kind === 'not-found') {
 		notFound = true;
 		Astro.response.status = 404;
 	}
 }
+
+// Before rendering starts, so a database failure is a 500 page, not a cut-off 200 (#123).
+const homepageEntries: HomepageEntry[] = isHomepage ? await loadHomepageEntries() : [];
 ---
 
 {notFound ? (
 	<NotFoundView />
 ) : isHomepage ? (
-	<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
+	<HomepageView entries={homepageEntries} isAdmin={isAdmin} isSignedIn={isSignedIn} />
 ) : (
 	<EmDashContentView
 		entry={resolvedEntry!}

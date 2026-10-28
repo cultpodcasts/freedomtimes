@@ -104,6 +104,14 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   and fails for an unclassified new route. `/_*` and `/.well-known` never cache.
 - **Response bypass:** status ≠ 200, `Set-Cookie` (header or pending `Astro.cookies`),
   `Cache-Control` private/no-store/no-cache, `Vary: Cookie|Authorization|*`, non-HTML/text.
+- **Body check before store (#123):** the client copy streams as before; the cache
+  copy is read to the end first and stored only if the stream did not error, the
+  body is non-empty and HTML ends with `</html>` (`isCompleteStorableBody`). A render
+  that fails after the 200 headers is therefore never cached. Pages load their data
+  in the page frontmatter, before rendering starts, so a database failure renders
+  `src/pages/500.astro` (500, `no-store`, noindex) instead of a cut-off 200: the
+  homepage posts come from `loadHomepageEntries()` in `index.astro` /
+  `homepage.astro` / `[slug].astro`, never inside `HomepageView`.
 - **Purge:** site plugin `ft-page-cache-purge` (`src/plugins/page-cache-purge.ts`,
   hooks in `page-cache-purge-hooks.ts`) bumps the epoch in KV `SESSION` key
   `ft:page-cache:epoch` on `content:afterPublish|afterUnpublish|afterDelete|afterRestore`
