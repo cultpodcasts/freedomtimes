@@ -12,6 +12,10 @@
  *     `/<slug>`, `/posts/<slug>` and `/` render src/pages/500.astro (#123: `/` used to stream a
  *     cut-off 200, `/<slug>` used to answer an unstyled plain-text 500)
  *   - with PAGE_CACHE=on: `/` stays a 5xx on repeat requests, never `x-ft-cache: HIT` (#123)
+ * Always runs (database answers HTTP 404 "Not Found" with a body saying "missing", like the wrong
+ * libsql host of July 2026, from a local stub server):
+ *   - `/<slug>`, `/posts/<slug>` and `/archives/<slug>` → 500 page, NEVER the noindex 404 page,
+ *     although the error message reads like a miss (#121: only a typed not-found is a 404)
  * With FT_TEST_LIBSQL_URL (a LOCAL libsql / `turso dev` URL, migrated with `npx emdash migrate`):
  *   - `/` → 200, unknown slug / unknown multi-segment → 404, locked staging → 302 to sign-in
  *   - with PAGE_CACHE=on: `/` → MISS then HIT with the same complete page; `/?x=1` → BYPASS-query
@@ -25,6 +29,7 @@
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { createServer as createHttpServer, type Server } from 'node:http';
 import { createServer } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -158,6 +163,33 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		});
 	});
 
+	describe('database answers 404 "Not Found" / "missing" (public, #121)', () => {
+		let w: Worker | undefined;
+		let stub: Server | undefined;
+		before(async () => {
+			const port = await freePort();
+			stub = createHttpServer((_req, res) => {
+				res.writeHead(404, { 'content-type': 'text/plain' });
+				res.end('Not Found: entry missing (no such database)');
+			});
+			await new Promise<void>((resolve) => stub!.listen(port, '127.0.0.1', resolve));
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'off', TURSO_DATABASE_URL: `http://127.0.0.1:${port}`, TURSO_AUTH_TOKEN: 'local-test' });
+		});
+		after(() => {
+			stopWorker(w);
+			stub?.close();
+		});
+
+		for (const path of ['/some-real-looking-page', '/posts/some-real-looking-post', '/archives/some-real-looking-issue']) {
+			it(`${path} → 500 page, never the noindex 404 (a miss-like message is still an outage)`, async () => {
+				assertServerErrorPage(await get(w!, path), path);
+			});
+		}
+		for (const path of ['/a/b/c', '/posts/x/y']) {
+			it(`${path} → 404 page (no route matches; unaffected)`, async () => assertNotFoundPage(await get(w!, path), path));
+		}
+	});
+
 	describe('local database reachable (public)', { skip: !localDb && 'set FT_TEST_LIBSQL_URL to a local migrated libsql URL' }, () => {
 		let w: Worker | undefined;
 		before(async () => {
@@ -178,6 +210,8 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		});
 		it('/no-such-page-xyz → 404 page', async () => assertNotFoundPage(await get(w!, '/no-such-page-xyz'), '/no-such-page-xyz'));
 		it('/posts/does-not-exist-xyz → 404 page', async () => assertNotFoundPage(await get(w!, '/posts/does-not-exist-xyz'), '/posts/does-not-exist-xyz'));
+		it('/archives/does-not-exist-xyz → 404 page (typed miss: entry null, no error)', async () =>
+			assertNotFoundPage(await get(w!, '/archives/does-not-exist-xyz'), '/archives/does-not-exist-xyz'));
 		for (const path of UNKNOWN) {
 			it(`${path} → 404 page`, async () => assertNotFoundPage(await get(w!, path), path));
 		}

@@ -7,27 +7,33 @@
  */
 
 /**
- * Error messages EmDash lookups produce for a genuine miss. Substring match on the message,
- * kept in one place so the routes cannot drift. Tightening this to EmDash's typed not-found
- * result is tracked separately (PR #119 review); do not widen it.
+ * Typed not-found from Astro live collections (`astro/dist/content/loaders/errors.js`). Astro's
+ * own `LiveEntryNotFoundError.is()` checks `error.name`, so we do the same (no runtime import of
+ * `astro:content` here, which keeps this module unit-testable under plain Node).
  */
-const EXPECTED_LOOKUP_MISS_SUBSTRINGS = [
-	'not found',
-	'no row',
-	'missing',
-	'no such table',
-	'does not exist',
-	'unknown collection',
-] as const;
+const LIVE_ENTRY_NOT_FOUND = 'LiveEntryNotFoundError';
 
 export function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-/** True when an EmDash lookup error means "no such entry" rather than a real failure. */
+/**
+ * True only for a typed "no such entry" error; every other error is a real failure (#121).
+ *
+ * How EmDash 1.3.1 reports a miss: `getEmDashEntry()` returns `{ entry: null }` with NO `error`.
+ * Its loader returns nothing for "no row" and for a missing `ec_*` table, Astro turns that into a
+ * `LiveEntryNotFoundError`, and `getEmDashEntry` swallows that typed error before returning. So in
+ * practice a route sees an `error` only for a real failure: the loader wraps database / runtime
+ * errors as `Failed to load entry: …`, and Astro wraps loader throws as `LiveCollectionError`.
+ * The message text is never inspected: a transient error whose message happens to contain
+ * "missing" or "not found" must stay a 5xx, never a noindex 404 that would de-index a live URL.
+ */
 export function isExpectedLookupMiss(error: unknown): boolean {
-	const lower = errorMessage(error).toLowerCase();
-	return EXPECTED_LOOKUP_MISS_SUBSTRINGS.some((needle) => lower.includes(needle));
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		(error as { name?: unknown }).name === LIVE_ENTRY_NOT_FOUND
+	);
 }
 
 /**
@@ -52,7 +58,8 @@ export type EntryLookupResult = { entry: unknown | null | undefined; error?: unk
  * - `server-error`: no entry, and at least one lookup failed for a reason other than a miss.
  *   `error` is the first such failure, for the route to rethrow so Astro renders
  *   `src/pages/500.astro` (#123).
- * - `not-found`: every lookup was a clean miss.
+ * - `not-found`: every lookup was a clean miss (`entry` null and no error, or only a typed
+ *   not-found error; see {@link isExpectedLookupMiss}).
  */
 export type EntryLookupOutcome =
 	| { kind: 'found'; index: number }

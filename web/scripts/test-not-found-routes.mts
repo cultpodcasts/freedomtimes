@@ -60,11 +60,39 @@ describe('src/lib/not-found.ts', () => {
 		assert.deepEqual(decideSlugParam(''), { kind: 'server-error' });
 	});
 
-	it('isExpectedLookupMiss: only "no such entry" messages are misses', () => {
-		for (const message of ['Entry not found', 'no rows returned', 'Missing entry', 'SQLITE_ERROR: no such table: ec_pages', 'collection does not exist', 'Unknown collection: pages']) {
-			assert.equal(isExpectedLookupMiss(new Error(message)), true, message);
+	/** Astro's typed miss (`astro/dist/content/loaders/errors.js`), as `getLiveEntry` returns it. */
+	function liveEntryNotFound(lookup: string): Error {
+		const error = new Error(`Entry emdash → ${lookup} was not found.`);
+		error.name = 'LiveEntryNotFoundError';
+		return error;
+	}
+
+	/** EmDash 1.3.1's loader wraps every database / runtime failure like this (never a typed miss). */
+	const loaderFailure = (message: string) => new Error(`Failed to load entry: ${message}`);
+
+	/** Transient failures whose message HAPPENS to read like a miss (#121): must stay 5xx. */
+	const MISS_LIKE_FAILURES = [
+		loaderFailure('Server returned HTTP status 404: Not Found'),
+		loaderFailure('SQLITE_ERROR: no such column: missing_col'),
+		loaderFailure('Hrana stream not found (expired), please retry'),
+		loaderFailure('no rows returned: connection reset by peer'),
+		loaderFailure('relation "ec_posts" does not exist'),
+		new Error('Entry not found'),
+		new Error('Missing entry'),
+		new Error('SQLITE_ERROR: no such table: ec_pages'),
+		new Error('Unknown collection: pages'),
+		Object.assign(new Error('Unexpected error loading entry emdash → x'), { name: 'LiveCollectionError' }),
+	];
+
+	it('isExpectedLookupMiss: only the typed LiveEntryNotFoundError is a miss, never message text (#121)', () => {
+		assert.equal(isExpectedLookupMiss(liveEntryNotFound('posts/x')), true);
+		assert.equal(isExpectedLookupMiss({ name: 'LiveEntryNotFoundError' }), true, 'name check like LiveEntryNotFoundError.is()');
+		for (const error of MISS_LIKE_FAILURES) {
+			assert.equal(isExpectedLookupMiss(error), false, `${error.name}: ${error.message}`);
 		}
-		assert.equal(isExpectedLookupMiss('Entry not found'), true, 'non-Error values too');
+		for (const value of ['Entry not found', 'missing', null, undefined, 404, { message: 'not found' }]) {
+			assert.equal(isExpectedLookupMiss(value), false, `non-Error value ${JSON.stringify(value)}`);
+		}
 		for (const message of ['fetch failed', 'Hrana: connection reset', 'SERVER_ERROR: 503', 'Network connection lost', 'timeout']) {
 			assert.equal(isExpectedLookupMiss(new Error(message)), false, message);
 		}
@@ -72,8 +100,31 @@ describe('src/lib/not-found.ts', () => {
 
 	it('decideEntryLookup: clean misses → not-found (404)', () => {
 		assert.deepEqual(decideEntryLookup([{ entry: null }, { entry: null }]), { kind: 'not-found' });
-		assert.deepEqual(decideEntryLookup([{ entry: null, error: new Error('not found') }, { entry: null }]), { kind: 'not-found' });
+		assert.deepEqual(decideEntryLookup([{ entry: undefined }, { entry: null }]), { kind: 'not-found' });
+		assert.deepEqual(decideEntryLookup([{ entry: null, error: liveEntryNotFound('pages/x') }, { entry: null }]), { kind: 'not-found' });
 		assert.deepEqual(decideEntryLookup([]), { kind: 'not-found' });
+	});
+
+	it('decideEntryLookup: a transient error that READS like a miss → server-error (500), never 404 (#121)', () => {
+		for (const error of MISS_LIKE_FAILURES) {
+			assert.deepEqual(
+				decideEntryLookup([{ entry: null, error }, { entry: null }]),
+				{ kind: 'server-error', message: error.message, error },
+				error.message,
+			);
+			assert.equal(decideEntryLookup([{ entry: null }, { entry: null, error }]).kind, 'server-error', `second collection: ${error.message}`);
+		}
+	});
+
+	it('posts/[slug] and archives/[slug]: every non-miss error is rethrown (500.astro), not a 404', () => {
+		const post = read('src/pages/posts/[slug].astro');
+		assert.match(post, /if \(!isExpectedLookupMiss\(result\.error\)\) \{\s*throw result\.error;/);
+		const archive = read('src/pages/archives/[slug].astro');
+		assert.match(archive, /if \(isExpectedLookupMiss\(result\.error\)\) \{[\s\S]*?\} else \{\s*throw result\.error;/);
+		assert.match(archive, /if \(error\) \{[^}]*?throw error;/, 'archives: a collection-list error is rethrown');
+		for (const file of ['src/pages/[slug].astro', 'src/pages/posts/[slug].astro', 'src/pages/archives/[slug].astro', 'src/lib/not-found.ts']) {
+			assert.doesNotMatch(read(file), /\.toLowerCase\(\)\.includes\(|message\.includes\(/, `${file}: no message-text classification (#121)`);
+		}
 	});
 
 	it('decideEntryLookup: any unexpected failure with no entry → server-error (500), never 404', () => {
@@ -92,7 +143,7 @@ describe('src/lib/not-found.ts', () => {
 	it('decideEntryLookup: server-error carries the FIRST unexpected error (the one [slug] rethrows)', () => {
 		const first = new Error('fetch failed');
 		const outcome = decideEntryLookup([
-			{ entry: null, error: new Error('Entry not found') },
+			{ entry: null, error: liveEntryNotFound('pages/x') },
 			{ entry: null, error: first },
 			{ entry: null, error: new Error('SERVER_ERROR: 503') },
 		]);

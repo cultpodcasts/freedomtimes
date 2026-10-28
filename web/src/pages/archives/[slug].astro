@@ -68,12 +68,9 @@ if (!slug) {
 			});
 
 			if (error) {
-				if (isExpectedLookupMiss(error)) {
-					notFound = true;
-					Astro.response.status = 404;
-				} else {
-					throw error;
-				}
+				// A collection-list error is never a typed entry miss (EmDash returns an empty list
+				// for a missing table): it is a real failure, so 500.astro renders (#121).
+				throw error;
 			} else {
 				const fallback = entries.find((candidate) => {
 					const data = candidate.data as Record<string, unknown>;
