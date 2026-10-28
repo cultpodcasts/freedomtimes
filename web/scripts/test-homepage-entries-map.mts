@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -53,6 +54,43 @@ describe('homepage: posts load in the page frontmatter, before rendering starts 
 			assert.match(template, /<HomepageView entries=\{/);
 		});
 	}
+});
+
+describe('component frontmatter database calls degrade, never throw mid-stream (#123)', () => {
+	// Component frontmatter runs after the 200 headers are sent, so an uncaught database failure
+	// there cuts the page off (the page cache body check then refuses to store it, but the reader
+	// still gets a broken page). Every `await` in component / layout frontmatter is listed here on
+	// purpose; a new one must catch its errors and fall back, then be added to this list.
+	const ALLOWED_COMPONENT_AWAITS: Record<string, { call: string; why: string }[]> = {
+		'src/components/EmDashContentView.astro': [
+			{ call: 'resolveSocialImageSrc', why: 'media / _emdash_seo lookups catch and fall back to the hero image' },
+			{ call: 'getWeeklySummaries', why: 'weekly prev/next is wrapped in try/catch' },
+		],
+	};
+	const webRoot = fileURLToPath(new URL('../', import.meta.url));
+	const astroFiles = (dir: string): string[] =>
+		readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+			d.isDirectory() ? astroFiles(join(dir, d.name)) : d.name.endsWith('.astro') ? [join(dir, d.name)] : [],
+		);
+
+	it('every await in src/components and src/layouts frontmatter is on the allow-list', () => {
+		const found: Record<string, string[]> = {};
+		for (const file of [...astroFiles(join(webRoot, 'src/components')), ...astroFiles(join(webRoot, 'src/layouts'))]) {
+			const [, frontmatter] = readFileSync(file, 'utf8').split(/^---$/m);
+			if (!frontmatter) continue;
+			const calls = [...frontmatter.matchAll(/\bawait\s+\(?\s*([A-Za-z_$][\w$.]*)\s*\(/g)].map((m) => m[1]);
+			const bare = [...frontmatter.matchAll(/\bawait\b/g)].length;
+			assert.equal(calls.length, bare, `${relative(webRoot, file)}: every await must be a direct call so it can be listed`);
+			if (calls.length) found[relative(webRoot, file).split('\\').join('/')] = calls;
+		}
+		const allowed = Object.fromEntries(Object.entries(ALLOWED_COMPONENT_AWAITS).map(([f, list]) => [f, list.map((a) => a.call)]));
+		assert.deepEqual(found, allowed);
+	});
+
+	it('EmDashContentView: the weekly prev/next lookup is inside try/catch', () => {
+		const view = readFileSync(join(webRoot, 'src/components/EmDashContentView.astro'), 'utf8');
+		assert.match(view, /try \{[^}]*await getWeeklySummaries\(\)[\s\S]*?\} catch \(/);
+	});
 });
 
 describe('mapHomepageRow mirrors the EmDash loader', () => {

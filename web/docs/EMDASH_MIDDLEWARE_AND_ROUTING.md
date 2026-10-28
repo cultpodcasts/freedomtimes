@@ -106,12 +106,27 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   `Cache-Control` private/no-store/no-cache, `Vary: Cookie|Authorization|*`, non-HTML/text.
 - **Body check before store (#123):** the client copy streams as before; the cache
   copy is read to the end first and stored only if the stream did not error, the
-  body is non-empty and HTML ends with `</html>` (`isCompleteStorableBody`). A render
-  that fails after the 200 headers is therefore never cached. Pages load their data
-  in the page frontmatter, before rendering starts, so a database failure renders
-  `src/pages/500.astro` (500, `no-store`, noindex) instead of a cut-off 200: the
-  homepage posts come from `loadHomepageEntries()` in `index.astro` /
-  `homepage.astro` / `[slug].astro`, never inside `HomepageView`.
+  body is non-empty, it is at most `PAGE_CACHE_MAX_STORE_BYTES` (4 MB; past that the
+  cache copy is cancelled and nothing is stored, the client copy is unaffected) and
+  HTML ends with `</html>` (`isCompleteStorableBody`). A render that fails after the
+  200 headers is therefore never cached. Ending with `</html>` is a contract
+  `src/layouts/Layout.astro` must keep: every reader page renders through it, and a
+  snippet appended after `</html>` would silently stop the cache from storing
+  anything (`scripts/test-page-cache-policy.mts` pins it).
+- **Where database calls may run (#123):** anything that can fail the page loads in
+  the **page** frontmatter, before rendering starts, so a failure there renders
+  `src/pages/500.astro` (500, `no-store`, noindex, no canonical) instead of a cut-off
+  200. That is the entry lookup (`[slug].astro`, `posts/[slug].astro` and
+  `archives/[slug].astro` rethrow a lookup failure; only `[slug].astro`'s empty-slug branch, which is the error-render
+  path itself, answers plain text) and the homepage list (`loadHomepageEntries()` in
+  `index.astro` / `homepage.astro` / `[slug].astro`, passed to `HomepageView` as a
+  prop). **Component** frontmatter runs after the 200 headers are sent, so a database
+  call there must catch its errors and degrade, never throw mid-stream: today only
+  `EmDashContentView` does this (social image `media` / `_emdash_seo` lookups fall
+  back to the hero image; weekly prev/next is wrapped in try/catch).
+  `scripts/test-homepage-entries-map.mts` lists every component / layout frontmatter
+  `await`, so a new one has to be added there on purpose. The body check above is the
+  backstop: a page cut off by a component failure is never cached.
 - **Purge:** site plugin `ft-page-cache-purge` (`src/plugins/page-cache-purge.ts`,
   hooks in `page-cache-purge-hooks.ts`) bumps the epoch in KV `SESSION` key
   `ft:page-cache:epoch` on `content:afterPublish|afterUnpublish|afterDelete|afterRestore`
