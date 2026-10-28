@@ -1,9 +1,11 @@
 # SEO: meta, structured data, weekly-summary navigation, sitemaps
 
 Code: `web/src/lib/seo/article-seo.ts`, `web/src/lib/sitemap-resilience.ts`,
+`web/src/lib/site-sitemap.ts`, `web/src/lib/site-sitemap-db.ts`,
 `web/src/components/EmDashContentView.astro`,
-`web/src/middleware.ts`. Tests: `npm run test:article-seo`, `npm run test:sitemap-resilience`
-(both also run in `npm run build`).
+`web/src/middleware.ts`. Tests: `npm run test:article-seo`, `npm run test:sitemap-resilience`,
+`npm run test:site-sitemap` (all also run in `npm run build`); built-Worker checks in
+`npm run test:worker-routes`.
 
 ## Meta (posts and pages)
 
@@ -12,7 +14,7 @@ Code: `web/src/lib/seo/article-seo.ts`, `web/src/lib/sitemap-resilience.ts`,
 | `<title>` | `seo.title` | entry title |
 | `og:title` / `twitter:title` | `social_title`, then `seo.title` | entry title (no date suffix any more) |
 | meta / og / twitter description | `seo.description` | first excerpt paragraph |
-| canonical | `seo.canonical` (http(s) or `/path`) | own URL |
+| canonical | `seo.canonical` (http(s) or `/path`) | own URL: `/posts/<slug>`, `/archives/<slug>`, or `/<slug>` for `pages` (`contentCanonicalPath`) |
 | robots | `seo.noIndex` → `noindex,nofollow` | `index,follow,max-image-preview:large` |
 
 ## Structured data (posts only)
@@ -58,7 +60,22 @@ and the retired `/weekly-summaries` URL 301s to `/`.
 
 ## Sitemaps
 
-`/sitemap.xml` and `/sitemap-posts(-n).xml` are edge-cached (15 min fresh, 7 days last-known-good).
-If EmDash generation fails (any non-200 or throw) the last-known-good copy is served, else
-`503` + `Retry-After: 300`. These paths never 404. Header `X-FT-Sitemap: generated|cache|stale`.
-Who can fetch sitemaps is unchanged.
+| Sitemap | Lists | Built by |
+|---|---|---|
+| `/sitemap.xml` | index: `/sitemap-posts(-n).xml`, plus `/sitemap-site-pages.xml` on the public site | EmDash; the middleware adds the site-pages entry |
+| `/sitemap-posts(-n).xml` | every indexable post at `/posts/<slug>` | EmDash (`posts` is the only collection with SEO + a URL pattern) |
+| `/sitemap-site-pages.xml` | `/`, `/about-us`, `/contact-us`, `/privacy-policy`, `/archives`, each `/archives/<slug>` | middleware (`site-sitemap.ts`, #34) |
+
+`/sitemap-site-pages.xml` uses the same row rule as EmDash's sitemaps: published, not deleted,
+non-empty slug, not `seo_no_index`; drafts and unpublished items are never listed. Pages are
+limited to `SITEMAP_PAGE_SLUGS` (about, contact, privacy). A row whose SEO canonical points
+elsewhere is left out, so every `<loc>` equals the page's `<link rel="canonical">`. `lastmod`:
+the row's `updated_at`; `/` uses the newest indexable post, `/archives` the newest archive.
+
+All three are edge-cached (15 min fresh, 7 days last-known-good). If generation fails (any
+non-200 or throw) the last-known-good copy is served, else `503` + `Retry-After: 300`. These
+paths never 404 on the public site. Header `X-FT-Sitemap: generated|cache|stale`.
+
+Locked staging (`SITE_ACCESS_MODE` not `public`): unchanged. `/sitemap.xml` and
+`/sitemap-posts.xml` pass through EmDash uncached (`private, no-store`), the index does not list
+`/sitemap-site-pages.xml`, and that path is EmDash's 404. Who can fetch sitemaps is unchanged.

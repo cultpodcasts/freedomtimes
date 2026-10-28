@@ -12,9 +12,14 @@
  *     `/<slug>`, `/posts/<slug>` and `/` render src/pages/500.astro (#123: `/` used to stream a
  *     cut-off 200, `/<slug>` used to answer an unstyled plain-text 500)
  *   - with PAGE_CACHE=on: `/` stays a 5xx on repeat requests, never `x-ft-cache: HIT` (#123)
+ *   - `/sitemap-site-pages.xml` (#34) → 503 + Retry-After, never 404
  * With FT_TEST_LIBSQL_URL (a LOCAL libsql / `turso dev` URL, migrated with `npx emdash migrate`):
  *   - `/` → 200, unknown slug / unknown multi-segment → 404, locked staging → 302 to sign-in
  *   - with PAGE_CACHE=on: `/` → MISS then HIT with the same complete page; `/?x=1` → BYPASS-query
+ *   - sitemaps (#34): `/sitemap.xml` lists `/sitemap-site-pages.xml`, which lists `/` (+ pages and
+ *     archives present in the database); every listed URL answers 200 with a matching canonical.
+ *     Locked staging: `/sitemap-site-pages.xml` is EmDash's 404 and `/sitemap.xml` does not list it
+ *   - FT_TEST_ARCHIVE_SLUG (optional): a published archive that must be listed in the site sitemap
  *   - FT_TEST_POST_SLUG / FT_TEST_PAGE_SLUG (optional): a published post / page that must render 200
  *     at `/posts/<slug>` and `/<slug>` (also through `[slug]` for the post), end at `</html>` (no
  *     script after it), pass `isCompleteStorableBody`, and with PAGE_CACHE=on go MISS then HIT
@@ -38,6 +43,8 @@ const UNREACHABLE_DB = 'http://127.0.0.1:9';
 const localDb = process.env.FT_TEST_LIBSQL_URL?.trim() || '';
 const postSlug = process.env.FT_TEST_POST_SLUG?.trim() || '';
 const pageSlug = process.env.FT_TEST_PAGE_SLUG?.trim() || '';
+const archiveSlug = process.env.FT_TEST_ARCHIVE_SLUG?.trim() || '';
+const SITE_SITEMAP = '/sitemap-site-pages.xml';
 
 if (localDb && !/^(https?|libsql|ws):\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(localDb)) {
 	throw new Error('FT_TEST_LIBSQL_URL must be a local URL (127.0.0.1 / localhost)');
@@ -136,6 +143,11 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 			const r = await get(w!, '/');
 			assertServerErrorPage(r, '/');
 		});
+		it(`${SITE_SITEMAP} → 503 + Retry-After, never 404 (#34)`, async () => {
+			const r = await get(w!, SITE_SITEMAP);
+			assert.equal(r.status, 503, `${SITE_SITEMAP}: got ${r.status}`);
+			assert.equal(r.headers.get('retry-after'), '300');
+		});
 		it('500.astro: server errors render the 500 page (no-store, noindex, no canonical)', async () => {
 			assertServerErrorPage(await get(w!, '/posts/some-real-looking-post'), '/posts/some-real-looking-post');
 		});
@@ -181,6 +193,34 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		for (const path of UNKNOWN) {
 			it(`${path} → 404 page`, async () => assertNotFoundPage(await get(w!, path), path));
 		}
+		it(`/sitemap.xml lists ${SITE_SITEMAP} (#34)`, async () => {
+			const r = await get(w!, '/sitemap.xml');
+			assert.equal(r.status, 200, `/sitemap.xml: got ${r.status}`);
+			assert.ok(r.body.includes(`<loc>${w!.base}${SITE_SITEMAP}</loc>`), r.body);
+		});
+		it(`${SITE_SITEMAP} lists / and every listed URL is a 200 whose canonical is that URL (#34)`, async () => {
+			const r = await get(w!, SITE_SITEMAP);
+			assert.equal(r.status, 200, `${SITE_SITEMAP}: got ${r.status} ${r.body.slice(0, 300)}`);
+			assert.match(r.headers.get('content-type') ?? '', /application\/xml/);
+			assert.match(r.body, /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
+			const locs = [...r.body.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+			assert.equal(locs[0], `${w!.base}/`);
+			if (pageSlug && ['about-us', 'contact-us', 'privacy-policy'].includes(pageSlug)) {
+				assert.ok(locs.includes(`${w!.base}/${pageSlug}`), `missing /${pageSlug}`);
+			}
+			if (archiveSlug) {
+				assert.ok(locs.includes(`${w!.base}/archives`), 'missing /archives');
+				assert.ok(locs.includes(`${w!.base}/archives/${archiveSlug}`), `missing /archives/${archiveSlug}`);
+			}
+			for (const loc of locs) {
+				const path = loc.slice(w!.base.length);
+				const page = await get(w!, path);
+				assert.equal(page.status, 200, `${path}: got ${page.status}`);
+				const canonical = /<link rel="canonical" href="([^"]+)"/.exec(page.body)?.[1];
+				assert.equal(canonical, loc, `${path}: canonical must equal its sitemap <loc>`);
+				assert.doesNotMatch(page.body, /<meta name="robots" content="noindex/, `${path}: listed URL must be indexable`);
+			}
+		});
 		for (const [label, path, skip] of [
 			['a published post', `/posts/${postSlug}`, !postSlug && 'set FT_TEST_POST_SLUG'],
 			['a published post via [slug]', `/${postSlug}`, !postSlug && 'set FT_TEST_POST_SLUG'],
@@ -238,6 +278,14 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		});
 		after(() => stopWorker(w));
 
+		it(`${SITE_SITEMAP} → EmDash's 404 and /sitemap.xml does not list it (staging sitemap behaviour unchanged, #34)`, async () => {
+			const site = await get(w!, SITE_SITEMAP);
+			assert.equal(site.status, 404, `${SITE_SITEMAP}: got ${site.status}`);
+			assert.match(site.body, /Sitemap not found/);
+			const index = await get(w!, '/sitemap.xml');
+			assert.equal(index.headers.get('cache-control'), 'private, no-store');
+			assert.doesNotMatch(index.body, /sitemap-site-pages/);
+		});
 		for (const path of ['/a/b', '/2026/10/11/', '/no-such-page-xyz', '/posts/does-not-exist-xyz']) {
 			it(`${path} → 302 to sign-in (the 404 page is not public on locked staging)`, async () => {
 				const r = await get(w!, path);
