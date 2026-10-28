@@ -62,7 +62,7 @@ export const BUNDLE_PATCHES = [
 		package: '@astrojs/cloudflare',
 		verifiedRange: { min: '14.0.0', belowMinor: '15.0' },
 		reason:
-			'@astrojs/cloudflare 14 removed the worker-entry_ chunk (static assets go through matchStaticAsset/fallbackToAssets in entry.mjs). The guard only mattered when ASSETS was unbound; wrangler.jsonc always binds assets and Terraform sets keep_assets = true.',
+			'@astrojs/cloudflare 14 removed the worker-entry_ chunk (static assets go through matchStaticAsset/fallbackToAssets in entry.mjs). The guard only mattered when ASSETS was unbound; ASSETS is bound by assets.binding in web/wrangler.jsonc (checked by verify-worker-placement.mjs).',
 		regressionNeedle: 'if (app.manifest.assets.has(requestPathname)) {',
 	},
 	{

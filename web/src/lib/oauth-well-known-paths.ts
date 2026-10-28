@@ -4,7 +4,8 @@
  * EmDash 0.34 serves:
  *   /.well-known/oauth-authorization-server/_emdash
  *   /.well-known/oauth-protected-resource
- * Do not inject those. Aliases need a route so worker-entry has `routeData`.
+ * Do not inject those. Aliases need a dedicated route (`routeData`) to run a handler: an
+ * unmatched path only gets the ASSETS fallback and then the 404.
  */
 
 export const EMDASH_OAUTH_AUTHORIZATION_SERVER_RFC_PATH =

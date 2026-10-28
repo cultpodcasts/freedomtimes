@@ -1,5 +1,7 @@
 import { defineMiddleware } from 'astro:middleware';
 import { env as cfEnv, waitUntil } from 'cloudflare:workers';
+import { GET as serveImagePassthrough } from '@astrojs/cloudflare/image-passthrough-endpoint';
+import { matchInternalMediaKey } from 'emdash/media/image-endpoint';
 
 import {
   isLockedSiteAccess,
@@ -14,6 +16,7 @@ import {
   HOMEPAGE_ROOT_REDIRECT_LOCATION,
   shouldRedirectHomepageToRoot,
 } from './lib/homepage-host';
+import { shouldServeImageOriginal } from './lib/image-endpoint-guard';
 import { maybeInlinePdfMediaDisposition } from './lib/inline-pdf-media';
 import { recordPageView } from './lib/page-view-analytics';
 import { buildRobotsTxt } from './lib/robots-txt';
@@ -264,7 +267,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // EmDash serves RFC 8414 metadata at
   // `/.well-known/oauth-authorization-server/_emdash`. Do not 302 that onto
   // `/_emdash/.well-known/oauth-authorization-server` — that path is not an
-  // EmDash route and unmatched Worker paths 1101. The legacy URL and the
+  // EmDash route (unmatched: a 404 now, 1101 while env.ASSETS was unbound). The legacy URL and the
   // RFC 9728 protected-resource suffix are dedicated alias routes (see
   // `oauth-well-known-aliases.ts`): they 302 *toward* EmDash’s documents.
   // Do not 302 well-known discovery in this middleware — no routeData, no
@@ -346,6 +349,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
       path,
       maybeInlinePdfMediaDisposition(path, bypassResponse),
     );
+  }
+
+  // `/_image` without the Cloudflare Images binding: serve the original for
+  // non-EmDash-media hrefs instead of letting the adapter's IMAGES transform
+  // endpoint throw. EmDash media hrefs keep EmDash's R2 path. Billing decision
+  // on binding IMAGES is Jon's — see src/lib/image-endpoint-guard.ts.
+  if (
+    shouldServeImageOriginal({
+      method: context.request.method,
+      pathname: path,
+      href: context.url.searchParams.get('href'),
+      hasImagesBinding: Boolean((cfEnv as Record<string, unknown>).IMAGES),
+      matchEmDashMediaKey: matchInternalMediaKey,
+    })
+  ) {
+    return serveImagePassthrough(context);
   }
 
   const response = await next();

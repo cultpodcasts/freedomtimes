@@ -1,7 +1,7 @@
 /**
- * Worker integration test for the error routes (PR #119): runs the BUILT Worker
- * (`dist/server/wrangler.json`, which carries the adapter's ASSETS binding) in `wrangler dev`
- * (local workerd, no Cloudflare account calls) and checks real HTTP responses.
+ * Worker integration test for the error routes (PR #119): runs the BUILT Worker with the deploy
+ * config (`wrangler.jsonc --env production|staging`, incl. its `assets.binding`, PR #118) in
+ * `wrangler dev` (local workerd and local bindings) and checks real HTTP responses.
  *
  *   npm run build                      # or: npx astro build && npx tsx scripts/patch-cloudflare-bundle.ts
  *   npm run test:worker-routes
@@ -26,7 +26,8 @@ import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
-const config = 'dist/server/wrangler.json';
+const config = 'wrangler.jsonc';
+const built = 'dist/server/entry.mjs';
 const UNREACHABLE_DB = 'http://127.0.0.1:9';
 const localDb = process.env.FT_TEST_LIBSQL_URL?.trim() || '';
 const postSlug = process.env.FT_TEST_POST_SLUG?.trim() || '';
@@ -52,9 +53,9 @@ async function freePort(): Promise<number> {
 
 type Worker = { base: string; proc: ChildProcess; log: string[] };
 
-async function startWorker(vars: Record<string, string>): Promise<Worker> {
+async function startWorker(env: 'production' | 'staging', vars: Record<string, string>): Promise<Worker> {
 	const port = await freePort();
-	const args = ['wrangler', 'dev', '-c', config, '--ip', '127.0.0.1', '--port', String(port), '--log-level', 'warn'];
+	const args = ['wrangler', 'dev', '-c', config, '--env', env, '--ip', '127.0.0.1', '--port', String(port), '--log-level', 'warn'];
 	for (const [k, v] of Object.entries(vars)) args.push('--var', `${k}:${v}`);
 	const proc = spawn('npx', args, { cwd: webRoot, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, CI: '1' } });
 	const log: string[] = [];
@@ -97,11 +98,11 @@ function assertNotFoundPage(r: { status: number; body: string }, path: string) {
 	assert.doesNotMatch(r.body, /rel="canonical"/, `${path}: no canonical on a 404`);
 }
 
-describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${config}`) && `no ${config}: run npm run build first` }, () => {
+describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${built}`) && `no ${built}: run npm run build first` }, () => {
 	describe('database unreachable (public)', () => {
 		let w: Worker | undefined;
 		before(async () => {
-			w = await startWorker({ SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'off', TURSO_DATABASE_URL: UNREACHABLE_DB, TURSO_AUTH_TOKEN: 'local-test' });
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'off', TURSO_DATABASE_URL: UNREACHABLE_DB, TURSO_AUTH_TOKEN: 'local-test' });
 		});
 		after(() => stopWorker(w));
 
@@ -140,7 +141,7 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${co
 	describe('local database reachable (public)', { skip: !localDb && 'set FT_TEST_LIBSQL_URL to a local migrated libsql URL' }, () => {
 		let w: Worker | undefined;
 		before(async () => {
-			w = await startWorker({ SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'off', TURSO_DATABASE_URL: localDb, TURSO_AUTH_TOKEN: 'local-test' });
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'off', TURSO_DATABASE_URL: localDb, TURSO_AUTH_TOKEN: 'local-test' });
 		});
 		after(() => stopWorker(w));
 
@@ -177,7 +178,7 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${co
 	describe('local database reachable (locked staging)', { skip: !localDb && 'set FT_TEST_LIBSQL_URL to a local migrated libsql URL' }, () => {
 		let w: Worker | undefined;
 		before(async () => {
-			w = await startWorker({ SITE_ACCESS_MODE: 'locked', PAGE_CACHE: 'off', TURSO_DATABASE_URL: localDb, TURSO_AUTH_TOKEN: 'local-test' });
+			w = await startWorker('staging', { SITE_ACCESS_MODE: 'locked', PAGE_CACHE: 'off', TURSO_DATABASE_URL: localDb, TURSO_AUTH_TOKEN: 'local-test' });
 		});
 		after(() => stopWorker(w));
 
