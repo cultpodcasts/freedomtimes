@@ -117,11 +117,9 @@ describe('src/lib/not-found.ts', () => {
 	});
 
 	it('posts/[slug] and archives/[slug]: every non-miss error is rethrown (500.astro), not a 404', () => {
-		const post = read('src/pages/posts/[slug].astro');
-		assert.match(post, /if \(!isExpectedLookupMiss\(result\.error\)\) \{\s*throw result\.error;/);
-		const archive = read('src/pages/archives/[slug].astro');
-		assert.match(archive, /if \(isExpectedLookupMiss\(result\.error\)\) \{[\s\S]*?\} else \{\s*throw result\.error;/);
-		assert.match(archive, /if \(error\) \{[^}]*?throw error;/, 'archives: a collection-list error is rethrown');
+		for (const file of ['src/pages/posts/[slug].astro', 'src/pages/archives/[slug].astro']) {
+			assert.match(read(file), /if \(!isExpectedLookupMiss\(result\.error\)\) \{\s*throw result\.error;/, file);
+		}
 		for (const file of ['src/pages/[slug].astro', 'src/pages/posts/[slug].astro', 'src/pages/archives/[slug].astro', 'src/lib/not-found.ts']) {
 			assert.doesNotMatch(read(file), /\.toLowerCase\(\)\.includes\(|message\.includes\(/, `${file}: no message-text classification (#121)`);
 		}

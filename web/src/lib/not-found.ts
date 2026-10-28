@@ -27,6 +27,8 @@ export function errorMessage(error: unknown): string {
  * errors as `Failed to load entry: …`, and Astro wraps loader throws as `LiveCollectionError`.
  * The message text is never inspected: a transient error whose message happens to contain
  * "missing" or "not found" must stay a 5xx, never a noindex 404 that would de-index a live URL.
+ * Exception this function cannot see: a missing `ec_*` table is still reported as a plain miss
+ * inside EmDash, so a Worker on an unmigrated or wrong-but-empty database serves 404s (#128).
  */
 export function isExpectedLookupMiss(error: unknown): boolean {
 	return (

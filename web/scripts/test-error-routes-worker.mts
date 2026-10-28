@@ -14,14 +14,20 @@
  *   - with PAGE_CACHE=on: `/` stays a 5xx on repeat requests, never `x-ft-cache: HIT` (#123)
  * Always runs (database answers HTTP 404 "Not Found" with a body saying "missing", like the wrong
  * libsql host of July 2026, from a local stub server):
- *   - `/<slug>`, `/posts/<slug>` and `/archives/<slug>` → 500 page, NEVER the noindex 404 page,
- *     although the error message reads like a miss (#121: only a typed not-found is a 404)
+ *   - `/<slug>` and `/posts/<slug>` → 500 page, NEVER the noindex 404 page, although the error
+ *     message reads like a miss (#121: only a typed not-found is a 404; the old message-text
+ *     classifier served the 404 for these two)
+ *   - `/archives/<slug>` → 500 page too: a regression guard (the old archives route already gave
+ *     the 500 page here), so archives keeps the posts pattern
  * With FT_TEST_LIBSQL_URL (a LOCAL libsql / `turso dev` URL, migrated with `npx emdash migrate`):
  *   - `/` → 200, unknown slug / unknown multi-segment → 404, locked staging → 302 to sign-in
  *   - with PAGE_CACHE=on: `/` → MISS then HIT with the same complete page; `/?x=1` → BYPASS-query
  *   - FT_TEST_POST_SLUG / FT_TEST_PAGE_SLUG (optional): a published post / page that must render 200
  *     at `/posts/<slug>` and `/<slug>` (also through `[slug]` for the post), end at `</html>` (no
  *     script after it), pass `isCompleteStorableBody`, and with PAGE_CACHE=on go MISS then HIT
+ *   - FT_TEST_ARCHIVE_SLUG (optional): a published archive issue that must render 200 at both
+ *     `/archives/<slug>` and `/archives/<id>` (EmDash's loader matches slug OR id; the id is read
+ *     from the local database's `ec_archives` row)
  * Never point FT_TEST_LIBSQL_URL at staging or production: the Worker may write (auto-seed).
  *
  * Not part of `npm test` / the build: it needs a fresh dist/, wrangler and ~30 s per Worker.
@@ -34,6 +40,8 @@ import { createServer } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { createClient } from '@libsql/client';
+
 import { isCompleteStorableBody } from '../src/lib/page-cache-policy.ts';
 
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -43,6 +51,7 @@ const UNREACHABLE_DB = 'http://127.0.0.1:9';
 const localDb = process.env.FT_TEST_LIBSQL_URL?.trim() || '';
 const postSlug = process.env.FT_TEST_POST_SLUG?.trim() || '';
 const pageSlug = process.env.FT_TEST_PAGE_SLUG?.trim() || '';
+const archiveSlug = process.env.FT_TEST_ARCHIVE_SLUG?.trim() || '';
 
 if (localDb && !/^(https?|libsql|ws):\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(localDb)) {
 	throw new Error('FT_TEST_LIBSQL_URL must be a local URL (127.0.0.1 / localhost)');
@@ -180,11 +189,14 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 			stub?.close();
 		});
 
-		for (const path of ['/some-real-looking-page', '/posts/some-real-looking-post', '/archives/some-real-looking-issue']) {
+		for (const path of ['/some-real-looking-page', '/posts/some-real-looking-post']) {
 			it(`${path} → 500 page, never the noindex 404 (a miss-like message is still an outage)`, async () => {
 				assertServerErrorPage(await get(w!, path), path);
 			});
 		}
+		it('/archives/some-real-looking-issue → 500 page (regression guard: archives follows the posts pattern)', async () => {
+			assertServerErrorPage(await get(w!, '/archives/some-real-looking-issue'), '/archives/some-real-looking-issue');
+		});
 		for (const path of ['/a/b/c', '/posts/x/y']) {
 			it(`${path} → 404 page (no route matches; unaffected)`, async () => assertNotFoundPage(await get(w!, path), path));
 		}
@@ -229,6 +241,24 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 				assert.ok(isCompleteStorableBody(r.headers.get('content-type'), new TextEncoder().encode(r.body)), `${path}: storable body`);
 			});
 		}
+		it('a published archive → 200 at /archives/<slug> and /archives/<id> (loader matches slug or id)', { skip: !archiveSlug && 'set FT_TEST_ARCHIVE_SLUG' }, async () => {
+			const db = createClient({ url: localDb.replace(/^libsql:/, 'http:'), authToken: 'local-test' });
+			let id: string;
+			try {
+				const rows = await db.execute({ sql: 'SELECT id FROM ec_archives WHERE slug = ? AND deleted_at IS NULL LIMIT 1', args: [archiveSlug] });
+				id = String(rows.rows[0]?.id ?? '');
+			} finally {
+				db.close();
+			}
+			assert.ok(id, `FT_TEST_ARCHIVE_SLUG=${archiveSlug}: no ec_archives row in the local database`);
+			assert.notEqual(id, archiveSlug, 'the id must differ from the slug, or the id case tests nothing');
+			for (const path of [`/archives/${archiveSlug}`, `/archives/${id}`]) {
+				const r = await get(w!, path);
+				assert.equal(r.status, 200, `${path}: got ${r.status}`);
+				assert.doesNotMatch(r.body, /data-ft-not-found/, `${path}: not the 404 page`);
+				assert.match(r.body, /<\/html>\s*$/i, `${path}: complete document`);
+			}
+		});
 	});
 
 	describe('local database reachable, PAGE_CACHE on (production cache config)', { skip: !localDb && 'set FT_TEST_LIBSQL_URL to a local migrated libsql URL' }, () => {
