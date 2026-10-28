@@ -1,5 +1,6 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
+import { loadHomepageEntries } from '../lib/content/homepage-entries';
 import { isLockedSiteAccess } from '../lib/auth';
 import { getOptionalEditorialSession } from '../lib/editorial-session';
 import { resolveRootGet } from '../lib/root-route';
@@ -34,5 +35,10 @@ if (session) {
 	isAdmin = session.isAdmin;
 	isSignedIn = true;
 }
+
+// Load the posts here, before rendering starts (#123): a database failure throws from the page
+// frontmatter, so Astro renders src/pages/500.astro (500, no-store, noindex) instead of streaming
+// a 200 whose body is cut off when HomepageView's query fails mid-render.
+const entries = await loadHomepageEntries();
 ---
-<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
+<HomepageView entries={entries} isAdmin={isAdmin} isSignedIn={isSignedIn} />

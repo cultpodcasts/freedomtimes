@@ -169,6 +169,28 @@ export function isStorableResponse(res: PageCacheResponseInfo): boolean {
   return true;
 }
 
+const HTML_END_TAIL_BYTES = 512;
+
+/**
+ * Upper bound on the buffered cache copy of one page (#123 review). Reader pages are hundreds of
+ * KB; anything past this is not stored (the client copy is unaffected), so one pathological page
+ * cannot buffer without limit in every isolate that misses at the same moment.
+ */
+export const PAGE_CACHE_MAX_STORE_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Body check run on the fully read copy before `cache.put` (#123): never store an empty page or
+ * an HTML page that was cut off (a render that failed after the 200 headers were sent ends the
+ * stream early, so `</html>` never arrives). Plain text (robots.txt) only has to be non-empty.
+ */
+export function isCompleteStorableBody(contentType: string | null, body: Uint8Array): boolean {
+  if (body.byteLength === 0) return false;
+  const ct = (contentType ?? '').toLowerCase();
+  if (!ct.startsWith('text/html')) return true;
+  const tail = new TextDecoder().decode(body.subarray(Math.max(0, body.byteLength - HTML_END_TAIL_BYTES)));
+  return /<\/html>\s*$/i.test(tail);
+}
+
 /** Synthetic cache key URL (never a routable path); epoch makes purges global. */
 export function pageCacheKeyUrl(origin: string, epoch: string, keyPath: string): string {
   return `${origin}/__ft_page_cache/${encodeURIComponent(epoch)}${keyPath}`;

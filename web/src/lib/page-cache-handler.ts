@@ -8,8 +8,10 @@
  */
 import {
   decidePageCacheRequest,
+  isCompleteStorableBody,
   isSilentBypass,
   isStorableResponse,
+  PAGE_CACHE_MAX_STORE_BYTES,
   pageCacheKeyUrl,
   pageCacheTtlSeconds,
   type PageCacheEnv,
@@ -51,9 +53,63 @@ function withCacheHeader(response: Response, state: string): Response {
 }
 
 /**
+ * Reads the cache copy to the end and stores it only when the body is complete (#123). The client
+ * copy still streams; a render that fails after the 200 headers errors (or cuts off) both tee
+ * branches, so that body is dropped here instead of being served from cache for the whole TTL.
+ * The copy is capped at PAGE_CACHE_MAX_STORE_BYTES: past it the cache branch is
+ * cancelled, which does not affect the client branch, and nothing is stored.
+ */
+async function storeIfComplete(
+  cache: PageCacheStore,
+  key: Request,
+  body: ReadableStream<Uint8Array> | null,
+  headers: Headers,
+  pathname: string,
+): Promise<void> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  if (body) {
+    const reader = body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > PAGE_CACHE_MAX_STORE_BYTES) {
+          console.warn('[ft-page-cache] body too large; not stored', JSON.stringify({ pathname, maxBytes: PAGE_CACHE_MAX_STORE_BYTES }));
+          await reader.cancel().catch(() => undefined);
+          return;
+        }
+        chunks.push(value);
+      }
+    } catch (error) {
+      console.warn('[ft-page-cache] body stream failed; not stored', JSON.stringify({ pathname }), error);
+      return;
+    }
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  chunks.length = 0;
+  if (!isCompleteStorableBody(headers.get('content-type'), bytes)) {
+    console.warn('[ft-page-cache] empty or incomplete body; not stored', JSON.stringify({ pathname, bytes: bytes.byteLength }));
+    return;
+  }
+  try {
+    await cache.put(key, new Response(bytes, { status: 200, headers }));
+  } catch (error) {
+    console.warn('[ft-page-cache] put failed', error);
+  }
+}
+
+/**
  * Returns a Response on a hit; otherwise calls `next()` and stores an eligible
- * 200. Reader-candidate bypasses are labelled `x-ft-cache: BYPASS-<reason>`;
- * disabled / method / path bypasses return `next()` untouched.
+ * 200 whose body turns out complete (storeIfComplete). Reader-candidate
+ * bypasses are labelled `x-ft-cache: BYPASS-<reason>`; disabled / method /
+ * path bypasses return `next()` untouched.
  */
 export async function handlePageCache(deps: PageCacheDeps, call: PageCacheCall): Promise<Response> {
   const { request, url, next } = call;
@@ -122,11 +178,7 @@ export async function handlePageCache(deps: PageCacheDeps, call: PageCacheCall):
   }
   storeHeaders.set('cache-control', `public, max-age=${ttl}`);
   storeHeaders.delete('server-timing');
-  deps.waitUntil(
-    cache
-      .put(key, new Response(forCache, { status: 200, headers: storeHeaders }))
-      .catch((error) => console.warn('[ft-page-cache] put failed', error)),
-  );
+  deps.waitUntil(storeIfComplete(cache, key, forCache, storeHeaders, url.pathname));
 
   const clientHeaders = new Headers(response.headers);
   clientHeaders.set('x-ft-cache', 'MISS');

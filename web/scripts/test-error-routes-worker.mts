@@ -9,9 +9,12 @@
  * Always runs (database unreachable, TURSO_DATABASE_URL → a closed local port):
  *   - unknown multi-segment URLs → 404, NotFoundView, noindex, no canonical
  *   - `/<slug>` and `/posts/<slug>` → 5xx, NOT 404 (an outage must never look like "gone");
- *     `/posts/<slug>` renders src/pages/500.astro; `/` is never the 404 page
+ *     `/<slug>`, `/posts/<slug>` and `/` render src/pages/500.astro (#123: `/` used to stream a
+ *     cut-off 200, `/<slug>` used to answer an unstyled plain-text 500)
+ *   - with PAGE_CACHE=on: `/` stays a 5xx on repeat requests, never `x-ft-cache: HIT` (#123)
  * With FT_TEST_LIBSQL_URL (a LOCAL libsql / `turso dev` URL, migrated with `npx emdash migrate`):
  *   - `/` → 200, unknown slug / unknown multi-segment → 404, locked staging → 302 to sign-in
+ *   - with PAGE_CACHE=on: `/` → MISS then HIT with the same complete page; `/?x=1` → BYPASS-query
  *   - FT_TEST_POST_SLUG / FT_TEST_PAGE_SLUG (optional): a published post / page that must render 200
  *     at `/posts/<slug>` and `/<slug>` (also through `[slug]` for the post)
  * Never point FT_TEST_LIBSQL_URL at staging or production: the Worker may write (auto-seed).
@@ -98,6 +101,15 @@ function assertNotFoundPage(r: { status: number; body: string }, path: string) {
 	assert.doesNotMatch(r.body, /rel="canonical"/, `${path}: no canonical on a 404`);
 }
 
+function assertServerErrorPage(r: { status: number; headers: Headers; body: string }, path: string) {
+	assert.equal(r.status, 500, `${path}: status`);
+	assert.equal(r.headers.get('cache-control'), 'no-store', `${path}: no-store`);
+	assert.match(r.body, /data-ft-server-error/, `${path}: src/pages/500.astro`);
+	assert.match(r.body, /<meta name="robots" content="noindex,nofollow"/, `${path}: noindex`);
+	assert.doesNotMatch(r.body, /rel="canonical"/, `${path}: no canonical on a 500`);
+	assert.doesNotMatch(r.body, /data-ft-not-found/, `${path}: never the 404 page`);
+}
+
 describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${built}`) && `no ${built}: run npm run build first` }, () => {
 	describe('database unreachable (public)', () => {
 		let w: Worker | undefined;
@@ -109,32 +121,37 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		for (const path of UNKNOWN) {
 			it(`${path} → 404 page`, async () => assertNotFoundPage(await get(w!, path), path));
 		}
-		for (const path of ['/posts/some-real-looking-post', '/some-real-looking-page']) {
-			it(`${path} → 5xx, never 404 (outage is not "gone")`, async () => {
-				const r = await get(w!, path);
-				assert.ok(r.status >= 500 && r.status < 600, `${path}: got ${r.status}`);
-				assert.doesNotMatch(r.body, /data-ft-not-found/);
-			});
-		}
-		it('/ → never the 404 page', async () => {
-			// Known, unchanged by this PR: the homepage starts streaming a 200 before its collection
-			// query fails, so the body is cut off (fetch rejects or the body is empty). Tracked as
-			// a follow-up; this test only pins that an outage is never rendered as a 404.
-			try {
-				const r = await get(w!, '/');
-				assert.notEqual(r.status, 404);
-				assert.doesNotMatch(r.body, /data-ft-not-found/);
-			} catch (error) {
-				if (error instanceof assert.AssertionError) throw error;
-			}
+		it('/posts/some-real-looking-post → 5xx, never 404 (outage is not "gone")', async () => {
+			const r = await get(w!, '/posts/some-real-looking-post');
+			assert.ok(r.status >= 500 && r.status < 600, `/posts/some-real-looking-post: got ${r.status}`);
+			assert.doesNotMatch(r.body, /data-ft-not-found/);
+		});
+		it('/some-real-looking-page → 500 page via [slug] (no-store, noindex), never 404 or plain text', async () => {
+			assertServerErrorPage(await get(w!, '/some-real-looking-page'), '/some-real-looking-page');
+		});
+		it('/ → 500 page (no-store, noindex), never a cut-off 200 or the 404 page (#123)', async () => {
+			const r = await get(w!, '/');
+			assertServerErrorPage(r, '/');
 		});
 		it('500.astro: server errors render the 500 page (no-store, noindex, no canonical)', async () => {
-			const r = await get(w!, '/posts/some-real-looking-post');
-			assert.equal(r.status, 500);
-			assert.equal(r.headers.get('cache-control'), 'no-store');
-			assert.match(r.body, /data-ft-server-error/);
-			assert.match(r.body, /<meta name="robots" content="noindex,nofollow"/);
-			assert.doesNotMatch(r.body, /rel="canonical"/);
+			assertServerErrorPage(await get(w!, '/posts/some-real-looking-post'), '/posts/some-real-looking-post');
+		});
+	});
+
+	describe('database unreachable, PAGE_CACHE on (production cache config)', () => {
+		let w: Worker | undefined;
+		before(async () => {
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'on', TURSO_DATABASE_URL: UNREACHABLE_DB, TURSO_AUTH_TOKEN: 'local-test' });
+		});
+		after(() => stopWorker(w));
+
+		it('/ → 5xx on every request, never stored or served from the page cache (#123)', async () => {
+			for (let i = 0; i < 3; i += 1) {
+				const r = await get(w!, '/');
+				assertServerErrorPage(r, `/ (request ${i + 1})`);
+				assert.notEqual(r.headers.get('x-ft-cache'), 'HIT', `/ (request ${i + 1}): served from cache`);
+				assert.notEqual(r.headers.get('x-ft-cache'), 'MISS', `/ (request ${i + 1}): a 5xx was offered to the cache`);
+			}
 		});
 	});
 
@@ -173,6 +190,35 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 				assert.match(r.body, /rel="canonical"/, `${path}: real pages keep their canonical`);
 			});
 		}
+	});
+
+	describe('local database reachable, PAGE_CACHE on (production cache config)', { skip: !localDb && 'set FT_TEST_LIBSQL_URL to a local migrated libsql URL' }, () => {
+		let w: Worker | undefined;
+		before(async () => {
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'on', TURSO_DATABASE_URL: localDb, TURSO_AUTH_TOKEN: 'local-test' });
+		});
+		after(() => stopWorker(w));
+
+		it('/ → MISS then HIT with the same complete page', async () => {
+			const miss = await get(w!, '/');
+			assert.equal(miss.status, 200);
+			assert.equal(miss.headers.get('x-ft-cache'), 'MISS');
+			assert.match(miss.body, /<\/html>\s*$/i, 'complete document');
+			let hit = await get(w!, '/');
+			// cache.put runs in waitUntil after the MISS response; allow it a moment to land.
+			for (let i = 0; i < 10 && hit.headers.get('x-ft-cache') !== 'HIT'; i += 1) {
+				await new Promise((r) => setTimeout(r, 500));
+				hit = await get(w!, '/');
+			}
+			assert.equal(hit.status, 200);
+			assert.equal(hit.headers.get('x-ft-cache'), 'HIT');
+			assert.equal(hit.body, miss.body);
+		});
+		it('/?x=1 → BYPASS-query (query strings never use the cache)', async () => {
+			const r = await get(w!, '/?x=1');
+			assert.equal(r.status, 200);
+			assert.equal(r.headers.get('x-ft-cache'), 'BYPASS-query');
+		});
 	});
 
 	describe('local database reachable (locked staging)', { skip: !localDb && 'set FT_TEST_LIBSQL_URL to a local migrated libsql URL' }, () => {

@@ -10,11 +10,13 @@ import {
 	decidePageCacheRequest,
 	hasOnlyNonSessionCookies,
 	isCacheablePath,
+	isCompleteStorableBody,
 	isPageCacheEnabled,
 	isStorableResponse,
 	pageCacheKeyUrl,
 	pageCacheTtlSeconds,
 } from '../src/lib/page-cache-policy.ts';
+import { secureAccessWallResponse } from '../src/lib/secure-access-wall.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 const PROD = { PAGE_CACHE: 'on', PAGE_CACHE_TTL_SECONDS: '120', SITE_ACCESS_MODE: 'public' };
@@ -185,6 +187,65 @@ describe('page cache: response storability', () => {
 		const key = pageCacheKeyUrl('https://freedomtimes.news', 'mabc', '/posts/x');
 		assert.equal(key, 'https://freedomtimes.news/__ft_page_cache/mabc/posts/x');
 		assert.equal(isCacheablePath(new URL(key).pathname), false);
+	});
+});
+
+describe('page cache: body completeness before store (#123)', () => {
+	const enc = (text: string) => new TextEncoder().encode(text);
+	const html = 'text/html; charset=utf-8';
+
+	it('a full HTML document is complete (trailing whitespace allowed, any case)', () => {
+		assert.equal(isCompleteStorableBody(html, enc('<!DOCTYPE html><html><body>x</body></html>')), true);
+		assert.equal(isCompleteStorableBody(html, enc('<!DOCTYPE html><html><body>x</body></HTML>\n\n')), true);
+		assert.equal(isCompleteStorableBody(html, enc(`<html><body>${'x'.repeat(200_000)}</body></html>`)), true);
+	});
+
+	it('empty or cut-off HTML is never complete', () => {
+		assert.equal(isCompleteStorableBody(html, new Uint8Array(0)), false);
+		assert.equal(isCompleteStorableBody(html, enc('<!DOCTYPE html><html><head><title>x</title></head><body>')), false);
+		assert.equal(isCompleteStorableBody(html, enc('<html><body></html><p>trailing junk</p>')), false);
+		assert.equal(isCompleteStorableBody(null, new Uint8Array(0)), false);
+	});
+
+	it('plain text only has to be non-empty', () => {
+		assert.equal(isCompleteStorableBody('text/plain', enc('User-agent: *\n')), true);
+		assert.equal(isCompleteStorableBody('text/plain', new Uint8Array(0)), false);
+	});
+});
+
+describe('page cache: the `</html>` contract of cacheable documents (#123)', () => {
+	const lastNonBlankLine = (text: string) => text.trimEnd().split('\n').pop()!.trim();
+	const VIEWS = ['HomepageView', 'EmDashContentView', 'NotFoundView'];
+
+	it('src/layouts/Layout.astro ends with </html> as its last non-blank line', () => {
+		// isCompleteStorableBody stores an HTML page only if it ends with </html>. If Layout ever
+		// stops ending there (a snippet appended after </html>), the cache silently stops storing.
+		assert.equal(lastNonBlankLine(read('../src/layouts/Layout.astro')), '</html>');
+	});
+
+	it('every reader view renders through Layout (so every cacheable page ends with </html>)', () => {
+		for (const view of VIEWS) {
+			const source = read(`../src/components/${view}.astro`);
+			assert.match(source, /^import Layout from ['"]\.\.\/layouts\/Layout\.astro['"];?$/m, view);
+			assert.match(source, /<Layout[\s>]/, view);
+			assert.doesNotMatch(source, /<html[\s>]/i, `${view}: no document shell of its own`);
+		}
+	});
+
+	it('reader routes render a view or Layout, never their own <html> document', () => {
+		for (const page of ['index.astro', 'homepage.astro', '[slug].astro', '404.astro', '500.astro', 'posts/[slug].astro', 'archives/index.astro', 'archives/[slug].astro']) {
+			const source = read(`../src/pages/${page}`);
+			assert.doesNotMatch(source, /<html[\s>]/i, `${page}: no document shell of its own`);
+			const usesShell = /import Layout from /.test(source) || VIEWS.some((v) => new RegExp(`import ${v} from `).test(source));
+			assert.ok(usesShell, `${page}: renders through Layout or a reader view`);
+		}
+	});
+
+	it('the secure-access wall is never storable (no-store), and it ends with </html> anyway', async () => {
+		const wall = secureAccessWallResponse();
+		assert.equal(isStorableResponse(wall), false);
+		const body = await wall.text();
+		assert.equal(isCompleteStorableBody(wall.headers.get('content-type'), new TextEncoder().encode(body)), true);
 	});
 });
 

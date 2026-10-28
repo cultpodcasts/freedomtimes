@@ -1,5 +1,6 @@
 ---
 import HomepageView from '../components/HomepageView.astro';
+import { loadHomepageEntries } from '../lib/content/homepage-entries';
 import { isLockedSiteAccess, REFRESH_TOKEN_COOKIE, SESSION_COOKIE } from '../lib/auth';
 import {
   getOptionalEditorialSession,
@@ -47,6 +48,9 @@ if (homepageAction.kind === 'require-session') {
     isSignedIn = true;
   }
 }
+
+// Before rendering starts, so a database failure is a 500 page, not a cut-off 200 (#123).
+const entries = await loadHomepageEntries();
 ---
 
-<HomepageView isAdmin={isAdmin} isSignedIn={isSignedIn} />
+<HomepageView entries={entries} isAdmin={isAdmin} isSignedIn={isSignedIn} />

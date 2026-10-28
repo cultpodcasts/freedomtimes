@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +15,11 @@ const homepageView = readFileSync(
 	'utf8',
 );
 
+const homepageEntries = readFileSync(
+	fileURLToPath(new URL('../src/lib/content/homepage-entries.ts', import.meta.url)),
+	'utf8',
+);
+
 describe('homepage light query', () => {
 	it('never selects the Portable Text body or SEO blobs', () => {
 		const cols: readonly string[] = HOMEPAGE_POST_COLUMNS;
@@ -25,9 +31,65 @@ describe('homepage light query', () => {
 		}
 	});
 
-	it('HomepageView uses loadHomepageEntries, not a full collection load', () => {
-		assert.match(homepageView, /loadHomepageEntries\(100\)/);
+	it('the homepage uses loadHomepageEntries (100 posts), not a full collection load', () => {
+		assert.match(homepageEntries, /export const HOMEPAGE_POST_LIMIT = 100;/);
+		assert.match(homepageEntries, /loadHomepageEntries\(limit = HOMEPAGE_POST_LIMIT\)/);
 		assert.doesNotMatch(homepageView, /getEmDashCollection\(/);
+	});
+});
+
+describe('homepage: posts load in the page frontmatter, before rendering starts (#123)', () => {
+	// A component's frontmatter runs after Astro has sent the 200 headers; a database failure there
+	// cuts the body off. A throw in the page frontmatter renders src/pages/500.astro instead.
+	it('HomepageView takes entries as a prop and never queries the database itself', () => {
+		assert.doesNotMatch(homepageView, /loadHomepageEntries\(|getEmDashCollection\(|getDb\(/);
+		assert.match(homepageView, /entries: HomepageEntry\[\]/);
+	});
+
+	for (const page of ['index.astro', 'homepage.astro', '[slug].astro']) {
+		it(`src/pages/${page} awaits loadHomepageEntries() and passes it to HomepageView`, () => {
+			const src = readFileSync(fileURLToPath(new URL(`../src/pages/${page}`, import.meta.url)), 'utf8');
+			const [, frontmatter = '', template = ''] = src.split(/^---$/m);
+			assert.match(frontmatter, /await loadHomepageEntries\(\)/);
+			assert.match(template, /<HomepageView entries=\{/);
+		});
+	}
+});
+
+describe('component frontmatter database calls degrade, never throw mid-stream (#123)', () => {
+	// Component frontmatter runs after the 200 headers are sent, so an uncaught database failure
+	// there cuts the page off (the page cache body check then refuses to store it, but the reader
+	// still gets a broken page). Every `await` in component / layout frontmatter is listed here on
+	// purpose; a new one must catch its errors and fall back, then be added to this list.
+	const ALLOWED_COMPONENT_AWAITS: Record<string, { call: string; why: string }[]> = {
+		'src/components/EmDashContentView.astro': [
+			{ call: 'resolveSocialImageSrc', why: 'media / _emdash_seo lookups catch and fall back to the hero image' },
+			{ call: 'getWeeklySummaries', why: 'weekly prev/next is wrapped in try/catch' },
+		],
+	};
+	const webRoot = fileURLToPath(new URL('../', import.meta.url));
+	const astroFiles = (dir: string): string[] =>
+		readdirSync(dir, { withFileTypes: true }).flatMap((d) =>
+			d.isDirectory() ? astroFiles(join(dir, d.name)) : d.name.endsWith('.astro') ? [join(dir, d.name)] : [],
+		);
+
+	it('every await in src/components and src/layouts frontmatter is on the allow-list', () => {
+		const found: Record<string, string[]> = {};
+		for (const file of [...astroFiles(join(webRoot, 'src/components')), ...astroFiles(join(webRoot, 'src/layouts'))]) {
+			const [, frontmatter] = readFileSync(file, 'utf8').split(/^---$/m);
+			if (!frontmatter) continue;
+			const calls = [...frontmatter.matchAll(/\bawait\s+\(?\s*([A-Za-z_$][\w$.]*)\s*\(/g)].map((m) => m[1]);
+			const bare = [...frontmatter.matchAll(/\bawait\b/g)].length;
+			assert.equal(calls.length, bare, `${relative(webRoot, file)}: every await must be a direct call so it can be listed`);
+			if (calls.length) found[relative(webRoot, file).split('\\').join('/')] = calls;
+		}
+		const allowed = Object.fromEntries(Object.entries(ALLOWED_COMPONENT_AWAITS).map(([f, list]) => [f, list.map((a) => a.call)]));
+		assert.deepEqual(found, allowed);
+	});
+
+	it('EmDashContentView: the weekly prev/next lookup is inside try/catch', () => {
+		const view = readFileSync(join(webRoot, 'src/components/EmDashContentView.astro'), 'utf8');
+		assert.match(view, /try \{[^}]*await getWeeklySummaries\(\)[\s\S]*?\} catch \(/);
 	});
 });
 
