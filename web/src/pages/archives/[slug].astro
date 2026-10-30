@@ -1,5 +1,5 @@
 ---
-import { getEmDashCollection, getEmDashEntry } from 'emdash';
+import { getEmDashEntry } from 'emdash';
 
 import EmDashContentView from '../../components/EmDashContentView.astro';
 import NotFoundView from '../../components/NotFoundView.astro';
@@ -48,53 +48,26 @@ let entry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let isPreview = false;
 let notFound = false;
 
-function readSlug(data: Record<string, unknown>): string | null {
-	return typeof data.slug === 'string' && data.slug.length > 0 ? data.slug : null;
-}
-
 if (!slug) {
 	notFound = true;
 	Astro.response.status = 404;
 } else {
+	// EmDash's loader matches the param against the entry's slug OR its id, so both
+	// `/archives/<slug>` and `/archives/<id>` resolve here with no fallback scan.
 	const result = await getEmDashEntry('archives', slug);
 	entry = result.entry;
 	isPreview = result.isPreview;
 
 	if (result.error) {
-		if (isExpectedLookupMiss(result.error)) {
-			const { entries, error } = await getEmDashCollection('archives', {
-				limit: 200,
-				orderBy: { updated_at: 'desc' },
-			});
-
-			if (error) {
-				if (isExpectedLookupMiss(error)) {
-					notFound = true;
-					Astro.response.status = 404;
-				} else {
-					throw error;
-				}
-			} else {
-				const fallback = entries.find((candidate) => {
-					const data = candidate.data as Record<string, unknown>;
-					const candidateDataSlug = readSlug(data);
-					return candidate.id === slug || candidateDataSlug === slug;
-				});
-
-				if (fallback) {
-					entry = fallback;
-					notFound = false;
-				} else {
-					notFound = true;
-					Astro.response.status = 404;
-				}
-			}
-		} else {
+		// A miss is `entry: null` with no error; any error is a real failure (#121), so rethrow
+		// and let src/pages/500.astro render.
+		if (!isExpectedLookupMiss(result.error)) {
 			throw result.error;
 		}
+		entry = null;
 	}
 
-	if (!entry && !notFound) {
+	if (!entry) {
 		notFound = true;
 		Astro.response.status = 404;
 	}
