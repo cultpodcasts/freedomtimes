@@ -225,7 +225,7 @@ Production deploy preflight requires production VAPID keys plus FCM credentials 
 ### Two Sync Paths
 
 1. **Local → GitHub**: Prepare new credentials locally, sync to GitHub for CI/CD
-2. **GitHub → Cloudflare**: GitHub Actions workflow auto-syncs after Terraform apply
+2. **GitHub → Cloudflare**: the Terraform workflows set Worker secrets only on a manual dispatch with the worker-deploy input (`staging_worker_deploy` / `production_worker_deploy`). Plan-only runs never touch Worker secrets. Local deploys (`deploy-*-local.ps1`) sync Worker secrets themselves.
 
 ---
 
@@ -308,9 +308,10 @@ If you also need GitHub Actions to hold the same values, run:
 - `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`
 - `AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION`
 - `AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION`
-- `TURSO_TOKEN` (production Turso Platform API token; prefers `TURSO_PLATFORM_API_TOKEN`, then `TURSO_TOKEN`)
-- `TURSO_TOKEN_STAGING` (staging Turso Platform API token; `TURSO_TOKEN_STAGING`, then `TURSO_PLATFORM_API_TOKEN`)
-- `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (production EmDash DB JWT; `terraform-production.yml` prefers it over the Terraform-minted `turso_database_auth_token`, as `resolve-turso-build-credentials.ps1` does locally)
+- `TURSO_TOKEN` (production Turso Platform API token, mapped to `TF_VAR_turso_api_token`; first non-empty of `TURSO_PLATFORM_API_TOKEN`, `TF_VAR_turso_api_token`, `TURSO_TOKEN`)
+- `TURSO_TOKEN_STAGING` (staging Turso Platform API token, mapped to `TF_VAR_turso_api_token`; first non-empty of `TURSO_TOKEN_STAGING`, `TURSO_PLATFORM_API_TOKEN`, `TF_VAR_turso_api_token`, `TURSO_TOKEN`)
+  - Both lists come from `Get-TursoPlatformApiTokenCandidateNames` in `scripts/terraform-turso-env.ps1`, the order Terraform uses locally. Before uploading either one, the script probes it against the Turso Platform API and warns on a 401 (it still uploads, and never prints the value).
+- `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (production EmDash DB JWT). This is a standing preference: when the secret is set, `terraform-production.yml` uses it instead of the Terraform-minted `turso_database_auth_token`, as `Resolve-ProductionEmdashTursoToken` in `resolve-turso-build-credentials.ps1` does locally (AGENTS.md CA-21). The Terraform-minted fallback currently fails (404); re-minting or retiring it is [#137](https://github.com/cultpodcasts/freedomtimes/issues/137).
 - `PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID`, `PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY` (required by the production workflow's scheduler secret check, even on plan-only runs)
 - `EMDASH_AUTH_SECRET_STAGING`
 - `EMDASH_PREVIEW_SECRET_STAGING`
@@ -408,70 +409,67 @@ If this returns `401 Unauthorized`, local credentials are stale. Re-run the cred
 
 ## GitHub Actions Deployment Workflow
 
-### Triggering Deployments
+### What these workflows are for
 
-#### Staging: Automatic on Feature Branch Push
+Freedom Times deploys from the operator machine with `scripts/deploy-staging-local.ps1` and `scripts/deploy-production-local.ps1` ([web/docs/DEPLOY.md](web/docs/DEPLOY.md#local-deploy-scripts)). `terraform-staging.yml` and `terraform-production.yml` are mainly a **plan check**. Pull requests (staging) and pushes run `terraform plan`, the plan guards and `emdash migrate --check`, and change nothing.
 
-Staging deploys automatically when you push to `feat/11-editorial-api-cosmos`:
+**A CI apply never re-uploads the Worker script.** Every plan after a local `wrangler deploy` shows the `holding_page` drift (`1 to change`, see [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)). Applying that in CI would leave the live Worker on Terraform's single-module upload until a later step deploys with wrangler, and the workflows have no recovery or placement check for that gap ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)). So `Guard Worker Script Upload Plan` refuses any apply dispatch whose plan touches `cloudflare_workers_script.holding_page`, even when the worker-deploy input is also set. The run stops at the guard, before anything is applied, migrated or deployed. While that drift exists, which is after every local deploy, **an apply dispatch is expected to fail by design**. Apply Terraform changes that touch the Worker with `deploy-*-local.ps1`.
+
+### Triggering runs
+
+#### Staging: pull requests and pushes (plan-only)
+
+Pull requests to `main` and pushes to `feat/11-editorial-api-cosmos` that touch `infra/terraform/**`, `functions/editorial-api/**`, `web/**` or the workflow file run `terraform-staging.yml` **plan-only**. Pull requests also get the plan posted as a comment.
+
+#### Staging: manual dispatch
 
 ```bash
-git checkout -b feature/my-feature
-git push origin feature/my-feature
-# Workflow: .github/workflows/terraform-staging.yml starts with plan-only
-```
+# Plan-only (default)
+gh workflow run terraform-staging.yml
 
-#### Staging: Manual Workflow Dispatch
-
-```bash
+# Apply, for non-Worker Terraform changes only. Refused at the guard while the holding_page drift exists.
 gh workflow run terraform-staging.yml -f staging_terraform_apply=true
 ```
 
-#### Production: GitHub Actions Manual Dispatch (Plan-Only by Default)
+For a real staging deploy, including any Terraform change that touches the Worker, run `pwsh ./scripts/deploy-staging-local.ps1`.
 
-Push to `main` triggers workflow but only runs `terraform plan` by default (no apply):
+#### Production: push to `main` (plan-only)
 
-```bash
-git push origin main
-# Workflow: .github/workflows/terraform-production.yml runs plan
-```
+A push to `main` runs `terraform-production.yml` **plan-only**: Terraform plan, the plan guards and `emdash migrate --check`. Nothing is applied or deployed.
 
-To apply in production, dispatch manually **with apply enabled**:
+#### Production: manual dispatch
 
 ```bash
+# Plan-only (default)
+gh workflow run terraform-production.yml
+
+# Apply, for non-Worker Terraform changes only. Refused at the guard while the holding_page drift exists.
 gh workflow run terraform-production.yml -f production_terraform_apply=true
 ```
+
+For a real production deploy, including any Terraform change that touches the Worker, back up production and run `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-operator-bypass)).
 
 ### Workflow Steps (Production Example)
 
 1. **Checkout**: Pull repo code
-2. **Setup Terraform**: Install TF 1.14.8 (`hashicorp/setup-terraform@v4`)
-3. **Validate Environment**: Check all required secrets/vars present (including `TF_VAR_cloudflare_analytics_api_token`)
-4. **Preflight Unlock**: Unlock TF Cloud workspace if stale lock exists
-5. **Terraform Init**: Initialize remote state
-6. **Terraform Validate**: Check syntax
-7. **Terraform Plan**: Generate execution plan. The workflows no longer run `terraform import` / `terraform state rm` steps; adopting or forgetting resources is done with config-level `import {}` / `removed {}` / `moved {}` blocks.
-8. **Plan guards**: Turso database and Worker Turso-secret guards; before an apply, the Worker script upload guard (see [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
-9. **Terraform Apply**: Only on manual dispatch with `production_terraform_apply=true`
-10. **Capture Outputs**: Retrieve Terraform outputs (Auth0 client ID, Turso URLs/tokens)
-11. **Fetch Auth0 App Secret**: Query Auth0 Management API for client secret
-12. **Build Worker + EmDash `--check`**: Always (read-only)
-13. **Mutating steps** (Turso SQL, EmDash migrate, wrangler deploy, Worker secrets): Only on manual dispatch with `production_worker_deploy=true`
-14. **Cleanup**: Unlock TF Cloud workspace
+2. **Resolve run mode**: Work out once whether this run applies Terraform (`apply`) and mutates the Worker (`deploy`), from the dispatch inputs. Every later step reads `steps.mode.outputs.*`.
+3. **Setup Terraform**: Install TF 1.14.8 (`hashicorp/setup-terraform@v4`)
+4. **Validate Environment**: Check all required secrets/vars present (including `TF_VAR_cloudflare_analytics_api_token`)
+5. **Preflight Unlock**: Unlock TF Cloud workspace if stale lock exists
+6. **Terraform Init**: Initialize remote state
+7. **Terraform Validate**: Check syntax
+8. **Terraform Plan**: Generate execution plan. The workflows no longer run `terraform import` / `terraform state rm` steps; adopting or forgetting resources is done with config-level `import {}` / `removed {}` / `moved {}` blocks.
+9. **Plan guards**: Turso database and Worker Turso-secret guards, then `Guard Worker Script Upload Plan` immediately before apply. That guard runs on every plan. On plan-only runs it only reports (the `holding_page` drift is expected). On an apply run it refuses any plan that touches the Worker script, so an apply dispatch is blocked by design while that drift exists (see above and [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)).
+10. **Terraform Apply**: Only on manual dispatch with `production_terraform_apply=true`, and only if the guard passed
+11. **Capture Outputs**: Retrieve Terraform outputs (Auth0 client ID, Turso URLs/tokens). The production EmDash token comes from the `TURSO_PRODUCTION_EMDASH_DB_TOKEN` secret when it is set (standing preference, AGENTS.md CA-21), otherwise from the Terraform output `turso_database_auth_token`, which currently fails ([#137](https://github.com/cultpodcasts/freedomtimes/issues/137)).
+12. **Fetch Auth0 App Secret**: Query Auth0 Management API for client secret
+13. **Build Worker + EmDash `--check`**: Always (read-only)
+14. **Mutating steps** (Turso SQL, EmDash migrate, wrangler deploy, Worker secrets): Only on manual dispatch with `production_worker_deploy=true`
+15. **Cleanup**: Unlock TF Cloud workspace
 
-### 2-Pass CNAME Proxying (Important!)
+### Retired: 2-pass API CNAME proxying
 
-**Problem:** Azure APIM custom domain registration requires a DNS lookup to verify ownership. If the CNAME is Cloudflare-proxied (orange cloud), Azure sees Cloudflare IPs and fails the ownership check.
-
-**Solution:** Two-pass application:
-1. **Pass 1 (main apply):** `api_custom_hostname_proxied = false`
-   - CNAME is unproxied, Azure can verify ownership
-   - Custom domain gets registered
-2. **Pass 2 (re-proxy step):** Target-apply with `api_custom_hostname_proxied = true`
-   - CNAME flipped to Cloudflare proxy
-   - Terraform state updated
-   - Worker now receives requests through Cloudflare edge
-
-This is already configured in both `.github/workflows/terraform-staging.yml` and `terraform-production.yml`.
+The Azure APIM custom-domain two-pass flow (unproxied CNAME for the ownership check, then a re-proxy apply) is retired with Azure. No workflow re-proxies the API CNAME.
 
 ---
 
@@ -866,13 +864,13 @@ terraform -chdir=infra/terraform/environments/staging init
 
 ### I want to deploy production via GitHub Actions
 
-Preferred wrapper command from repo root:
+Normally you don't: deploy production with `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-operator-bypass)). The CI wrapper is:
 
 ```bash
 .\scripts\production-release.ps1 -TerraformMode apply -Watch -AllowProduction
 ```
 
-This dispatches and watches `.github/workflows/terraform-production.yml` with apply enabled.
+This dispatches and watches `.github/workflows/terraform-production.yml` with apply and worker deploy enabled. While the `holding_page` drift exists, which is after every local deploy, that run is **refused at `Guard Worker Script Upload Plan`** before anything is applied, migrated or deployed ([see above](#what-these-workflows-are-for)). `-TerraformMode plan` still works as a read-only check.
 
 Recommended pre-apply checkpoint and rollback helpers:
 
@@ -900,11 +898,12 @@ git add .
 git commit -m "Deploy production"
 git push origin main
 
-# 3. Dispatch workflow to apply
-gh workflow run terraform-production.yml -f production_terraform_apply=true
+# 3. Back up production, then deploy from the operator machine (Terraform + build + migrate + wrangler + placement check)
+pwsh ./scripts/deploy-production-local.ps1
 
-# OR manually in GitHub UI:
-# GitHub repo → Actions → Terraform - Production → Run workflow → production_terraform_apply=true
+# CI apply (production_terraform_apply=true) is for non-Worker Terraform changes only. While the
+# holding_page drift exists (after every local deploy) the guard refuses it before anything changes.
+# Plan-only check: gh workflow run terraform-production.yml
 ```
 
 ### I want to test with production backend locally

@@ -132,9 +132,14 @@ bundle, so the tooling blocks it:
   Cloud backend (plan only) before the next full deploy is [#117](https://github.com/cultpodcasts/freedomtimes/issues/117).
   If it does not work there, the guard fails closed and the deploy stops before applying.
 - **GitHub Actions:** `terraform-staging.yml` and `terraform-production.yml` run the same guard
-  (`Guard Worker Script Upload Plan`) before `Terraform Apply`. It only runs when a dispatch sets the apply
-  input; `FT_WRANGLER_DEPLOY_FOLLOWS=1` is set only when the same dispatch also sets the worker-deploy input.
-  Plan-only PR and push runs show this drift (`1 to change`) and pass.
+  (`Guard Worker Script Upload Plan`) on every plan, immediately before `Terraform Apply`. CI never sets
+  `FT_WRANGLER_DEPLOY_FOLLOWS`, because the workflows have no failure recovery or placement check between the
+  Terraform upload and a later `wrangler deploy`. So an apply dispatch whose plan touches `holding_page` is
+  refused before anything is applied, migrated or deployed, even when the worker-deploy input is also set.
+  While this drift exists (after every local deploy), **an apply dispatch is blocked by design**. Apply
+  Worker-touching changes with `deploy-<env>-local.ps1`. On plan-only PR and push runs the guard is
+  report-only: it notes that an apply would be refused and the job still passes. Those runs also exercise the
+  `terraform show -json` path against the Terraform Cloud backend (evidence for #117).
 - **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
   `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`, or a static-asset / unmatched-route probe failed; exit **5** = could not verify (no token, API or
   network error, or a probe could not run: network error on every attempt, probe path not in the build); both print the redeploy command. The deploy scripts defer this check until after their
