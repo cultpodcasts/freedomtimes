@@ -138,8 +138,10 @@ bundle, so the tooling blocks it:
   refused before anything is applied, migrated or deployed, even when the worker-deploy input is also set.
   While this drift exists (after every local deploy), **an apply dispatch is blocked by design**. Apply
   Worker-touching changes with `deploy-<env>-local.ps1`. On plan-only PR and push runs the guard is
-  report-only: it notes that an apply would be refused and the job still passes. Those runs also exercise the
-  `terraform show -json` path against the Terraform Cloud backend (evidence for #117).
+  report-only: when the guard prints `BLOCKED:` it notes that an apply would be refused (the expected drift), and
+  when it could not check the plan (no plan file, `terraform show -json` failed, unparseable JSON) it raises a
+  `::warning` instead; the job still passes either way. Those runs also exercise the `terraform show -json` path
+  against the Terraform Cloud backend (evidence for #117).
 - **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
   `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`, or a static-asset / unmatched-route probe failed; exit **5** = could not verify (no token, API or
   network error, or a probe could not run: network error on every attempt, probe path not in the build); both print the redeploy command. The deploy scripts defer this check until after their

@@ -165,6 +165,9 @@ exit `$exitCode
     Assert-True ($r.Exit -eq 0 -and $r.Out -match "BREAK-GLASS") "break-glass -AllowWorkerScriptUpload allows it, loudly"
     $r = Invoke-Guard -Json "not json"
     Assert-True ($r.Exit -eq 1) "unparseable plan JSON is refused"
+    Assert-True ($r.Out -notmatch "BLOCKED:") "an unchecked plan has no BLOCKED: verdict (CI reports it as a warning, not as expected drift)"
+    $r = Invoke-Guard -Json $fixtures["update"].Json
+    Assert-True ($r.Out -match "BLOCKED:") "a blocked Worker plan prints the BLOCKED: verdict the CI guard step keys on"
 
     Write-Host "=== terraform-run.ps1 -Operation apply end to end (fake terraform + node) ==="
     if ($IsWindows) {
@@ -260,6 +263,9 @@ exit "${FAKE_NODE_EXIT:-0}"
             Assert-True ($guard -notmatch '(?m)^        if:') "${label}: guard has no 'if' (runs on every plan, report-only unless applying)"
             Assert-True ($guard -match "-Environment $($wf.Env) -PlanFile tfplan") "${label}: guard checks the $($wf.Env) plan file"
             Assert-True ($guard -match 'RUN_APPLY: \$\{\{ steps\.mode\.outputs\.apply \}\}') "${label}: guard reads apply from steps.mode"
+            Assert-True ($guard -match 'guard_out=\$\(pwsh ' -and $guard -match "printf '%s\\n' `"\`$guard_out`"") "${label}: guard output is captured and echoed to the log"
+            Assert-True ($guard -match "grep -q 'BLOCKED:'") "${label}: expected-drift wording is keyed on the BLOCKED: verdict"
+            Assert-True ($guard -match '::warning title=Worker script upload guard could not check the plan::') "${label}: an unchecked plan on a plan-only run raises ::warning, not the expected-drift notice"
             $followsAll = [regex]::Matches($text, 'FT_WRANGLER_DEPLOY_FOLLOWS:').Count
             $followsEmpty = [regex]::Matches($text, 'FT_WRANGLER_DEPLOY_FOLLOWS: ""').Count
             Assert-True ($followsAll -eq 1 -and $followsEmpty -eq 1) "${label}: FT_WRANGLER_DEPLOY_FOLLOWS is only ever set, to empty, on the guard (CI apply never re-uploads the Worker)"

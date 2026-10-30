@@ -221,24 +221,39 @@ jobs:
         run: |
           set -uo pipefail
           guard_exit=0
-          pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-script-upload.ps1" -Environment production -PlanFile tfplan || guard_exit=$?
+          guard_out=$(pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-script-upload.ps1" -Environment production -PlanFile tfplan 2>&1) || guard_exit=$?
+          printf '%s\n' "$guard_out"
           if [ "$guard_exit" -eq 0 ]; then
             echo "Worker script upload guard (production): passed (plan does not touch holding_page)." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # Exit 1 means either BLOCKED (the plan touches holding_page) or the plan could not be checked
+          # (plan file missing, terraform show -json failed, or JSON did not parse). Only BLOCKED is expected drift.
+          blocked=false
+          if printf '%s\n' "$guard_out" | grep -q 'BLOCKED:'; then blocked=true; fi
           if [ "$RUN_APPLY" = "true" ]; then
+            if [ "$blocked" = "true" ]; then
+              reason="The plan re-uploads the Worker script (\`cloudflare_workers_script.holding_page\`)."
+            else
+              reason="The guard could not check the plan (see the step log)."
+            fi
             {
               echo "### Terraform apply refused (production)"
               echo ""
-              echo "The plan re-uploads the Worker script (\`cloudflare_workers_script.holding_page\`), or the guard could not check the plan (see the step log). Nothing was applied, migrated or deployed."
+              echo "$reason Nothing was applied, migrated or deployed."
               echo ""
               echo "Apply Worker-touching changes from the operator machine with \`pwsh scripts/deploy-production-local.ps1\` (NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::error title=Terraform apply refused::The production plan touches the Worker script or could not be checked; use scripts/deploy-production-local.ps1."
             exit "$guard_exit"
           fi
-          echo "::notice title=Worker script upload guard (report-only)::An apply of this production plan would be refused (guard exit $guard_exit). Expected while the holding_page drift exists (#116)."
-          echo "Worker script upload guard (production, report-only): an apply of this plan would be refused (guard exit $guard_exit). Expected while the holding_page drift exists (#116)." >> "$GITHUB_STEP_SUMMARY"
+          if [ "$blocked" = "true" ]; then
+            echo "::notice title=Worker script upload guard (report-only)::An apply of this production plan would be refused (guard exit $guard_exit). Expected while the holding_page drift exists (#116)."
+            echo "Worker script upload guard (production, report-only): an apply of this plan would be refused (guard exit $guard_exit). Expected while the holding_page drift exists (#116)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=Worker script upload guard could not check the plan::The production guard exited $guard_exit without a BLOCKED: verdict (plan file missing, terraform show -json failed, or the plan JSON did not parse). The Terraform Cloud show -json path may have regressed (#117); see the step log."
+            echo "Worker script upload guard (production, report-only): **could not check the plan** (guard exit $guard_exit, no BLOCKED: verdict). This is not the expected holding_page drift; see the step log (#117)." >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit 0
 
       - name: Terraform Apply
