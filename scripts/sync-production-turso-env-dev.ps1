@@ -332,9 +332,13 @@ function Resolve-TursoDatabaseAuthToken {
         [string]$DefaultName
     )
 
-    $token = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName $TokenOutputName
-    if (-not [string]::IsNullOrWhiteSpace($token)) {
-        return $token
+    # An empty TokenOutputName means Terraform does not mint this token (production EmDash, #137):
+    # skip the output and mint through the Turso Platform API below.
+    if (-not [string]::IsNullOrWhiteSpace($TokenOutputName)) {
+        $token = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName $TokenOutputName
+        if (-not [string]::IsNullOrWhiteSpace($token)) {
+            return $token
+        }
     }
 
     $dbName = Get-TerraformOutputRaw -TerraformExe $TerraformExe -OutputName $NameOutputName
@@ -345,7 +349,12 @@ function Resolve-TursoDatabaseAuthToken {
         $dbName = $DefaultName
     }
 
-    Write-Warning "terraform output '$TokenOutputName' not in remote state; minting token via Turso Platform API for '$dbName'."
+    if ([string]::IsNullOrWhiteSpace($TokenOutputName)) {
+        Write-Host "Terraform does not mint this token; minting via Turso Platform API for '$dbName'." -ForegroundColor DarkGray
+    }
+    else {
+        Write-Warning "terraform output '$TokenOutputName' not in remote state; minting token via Turso Platform API for '$dbName'."
+    }
     $org = Get-TursoOrganizationFromEnv
     $platformToken = Resolve-TursoPlatformApiToken
     return New-TursoDatabaseAuthToken -Organization $org -DatabaseName $dbName -PlatformApiToken $platformToken
@@ -356,7 +365,9 @@ $logicalOutputs = @(
     @{
         UrlOutput  = "turso_database_url"
         NameOutput = "turso_database_name"
-        TokenOutput = "turso_database_auth_token"
+        # Terraform no longer mints the production EmDash token (turso_database_token.emdash retired, #137;
+        # AGENTS.md CA-21). An existing TURSO_PRODUCTION_EMDASH_DB_TOKEN is kept; otherwise one is minted below.
+        TokenOutput = ""
         DefaultName = "freedomtimes-emdash-production"
         EnvKeysUrl = @("TURSO_DATABASE_URL", "TURSO_PRODUCTION_EMDASH_DB_URL")
         EnvKeysToken = @("TURSO_AUTH_TOKEN", "TURSO_PRODUCTION_EMDASH_DB_TOKEN")

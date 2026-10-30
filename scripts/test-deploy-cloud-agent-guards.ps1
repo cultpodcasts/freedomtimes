@@ -149,6 +149,46 @@ Assert-True ($tokenSkip.Value -eq "file-staging-jwt") "skips process TURSO_AUTH_
 $tokenKeep = Select-StagingEmdashTursoToken -TerraformToken "" -ProcessToken "process-staging-jwt" -FileToken "file-staging-jwt" -IgnoredProcessProductionShadow $false
 Assert-True ($tokenKeep.Value -eq "process-staging-jwt") "keeps process TURSO_AUTH_TOKEN when URL was not a production shadow"
 
+Write-Host "=== Resolve-ProductionEmdashTursoToken: TURSO_PRODUCTION_EMDASH_DB_TOKEN only, no Terraform output (#137) ==="
+$tokenCmd = Get-Command Resolve-ProductionEmdashTursoToken
+Assert-True (-not $tokenCmd.Parameters.ContainsKey("TerraformExe")) "production token resolver no longer takes a Terraform executable"
+$resolverText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "resolve-turso-build-credentials.ps1")
+$prodTokenBody = [regex]::Match($resolverText, '(?s)function Resolve-ProductionEmdashTursoToken \{.*?\n\}').Value
+Assert-True ($prodTokenBody -notmatch 'Try-TerraformOutputRaw') "production token resolver never reads a Terraform output"
+$savedProdToken = $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN
+$savedAuthToken = $env:TURSO_AUTH_TOKEN
+$tmpEnvRoot = $env:TMPDIR
+if ([string]::IsNullOrWhiteSpace($tmpEnvRoot)) { $tmpEnvRoot = [System.IO.Path]::GetTempPath() }
+$emptyEnvDev = Join-Path $tmpEnvRoot "ft-137-empty.env.dev"
+Set-Content -LiteralPath $emptyEnvDev -Value "# empty"
+try {
+    $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN = "direct-prod-jwt"
+    $env:TURSO_AUTH_TOKEN = "paired-prod-jwt"
+    $direct = Resolve-ProductionEmdashTursoToken -EnvDevPath $emptyEnvDev -ResolvedUrl $prodUrl
+    Assert-True ($direct.Value -eq "direct-prod-jwt" -and $direct.Source -eq "TURSO_PRODUCTION_EMDASH_DB_TOKEN") "TURSO_PRODUCTION_EMDASH_DB_TOKEN wins"
+
+    $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN = ""
+    $paired = Resolve-ProductionEmdashTursoToken -EnvDevPath $emptyEnvDev -ResolvedUrl $prodUrl
+    Assert-True ($paired.Value -eq "paired-prod-jwt") "paired TURSO_AUTH_TOKEN is used only with a production EmDash URL (CA-14)"
+
+    $missingThrew = $false
+    $missingMessage = ""
+    try {
+        Resolve-ProductionEmdashTursoToken -EnvDevPath $emptyEnvDev -ResolvedUrl $stagingUrl | Out-Null
+    }
+    catch {
+        $missingThrew = $true
+        $missingMessage = $_.Exception.Message
+    }
+    Assert-True $missingThrew "throws when TURSO_PRODUCTION_EMDASH_DB_TOKEN is missing and no paired token applies"
+    Assert-True ($missingMessage -match 'TURSO_PRODUCTION_EMDASH_DB_TOKEN' -and $missingMessage -match '#137') "missing-token error names the key and #137"
+}
+finally {
+    $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN = $savedProdToken
+    $env:TURSO_AUTH_TOKEN = $savedAuthToken
+    Remove-Item -LiteralPath $emptyEnvDev -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host "=== Test-DeployTerraformPluginCacheMismatch ==="
 Assert-True (Test-DeployTerraformPluginCacheMismatch -Output @("Required plugins are not installed")) "detects missing plugins"
 Assert-True (Test-DeployTerraformPluginCacheMismatch -Output @("the cached package for registry.terraform.io/cloudflare/cloudflare 5.22.0 (in .terraform/providers) does not match any of the checksums recorded in the dependency lock file")) "detects lockfile checksum mismatch"

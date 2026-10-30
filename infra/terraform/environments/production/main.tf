@@ -62,11 +62,18 @@ resource "turso_database_configuration" "emdash" {
   size_limit        = local.turso_database_size_limit
 }
 
-resource "turso_database_token" "emdash" {
-  organization_name = var.turso_organization
-  database_name     = turso_database.emdash.name
-  authorization     = var.turso_database_token_authorization
-  expiration        = local.turso_database_token_expiration
+# The production EmDash database token is no longer minted by Terraform (#137). Turso rejected the
+# Terraform-minted JWT ("auth role not found", Oct 2026). TURSO_PRODUCTION_EMDASH_DB_TOKEN (.env.dev
+# locally, repo secret in CI) is the single source (AGENTS.md CA-21). destroy = false: Terraform only
+# forgets the resource, so there is no Turso API call, and the database and the live Worker's own
+# TURSO_AUTH_TOKEN secret are untouched. Plans show "1 to forget" until a local apply (for example a full
+# scripts/deploy-production-local.ps1 run, not -WorkerOnly) records it.
+removed {
+  from = turso_database_token.emdash
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 resource "turso_database" "scheduler" {

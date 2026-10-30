@@ -218,8 +218,8 @@ function Main {
             # Turso Platform API tokens for the Terraform turso provider (CI: TF_VAR_turso_api_token).
             "TURSO_TOKEN",
             "TURSO_TOKEN_STAGING",
-            # Production EmDash DB JWT; terraform-production.yml prefers it over the Terraform-minted
-            # turso_database_auth_token (same order as resolve-turso-build-credentials.ps1).
+            # Production EmDash DB JWT; the only source in terraform-production.yml and in
+            # resolve-turso-build-credentials.ps1 (Terraform no longer mints it, #137).
             "TURSO_PRODUCTION_EMDASH_DB_TOKEN",
             "EMDASH_AUTH_SECRET_STAGING",
             "EMDASH_PREVIEW_SECRET_STAGING",

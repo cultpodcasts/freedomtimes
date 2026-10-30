@@ -368,13 +368,12 @@ function Resolve-ProductionEmdashTursoUrl {
 function Resolve-ProductionEmdashTursoToken {
     param(
         [string]$EnvDevPath,
-        [string]$TerraformExe,
-        [string]$TerraformEnvDir,
         [string]$ResolvedUrl
     )
 
-    # Terraform-minted turso_database_auth_token has 404'd on Cloud Agent
-    # deploys. Prefer an explicit production JWT when one is already set.
+    # TURSO_PRODUCTION_EMDASH_DB_TOKEN is the single source for the production EmDash JWT
+    # (AGENTS.md CA-21, issue #137). The Terraform-minted turso_database_auth_token output was
+    # rejected by Turso ("auth role not found") and has been retired, so it is never read here.
     $directToken = Get-FirstNonEmptyTursoValue @(
         ([Environment]::GetEnvironmentVariable("TURSO_PRODUCTION_EMDASH_DB_TOKEN", "Process")),
         (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_PRODUCTION_EMDASH_DB_TOKEN")
@@ -383,11 +382,8 @@ function Resolve-ProductionEmdashTursoToken {
         return @{ Value = $directToken; Source = "TURSO_PRODUCTION_EMDASH_DB_TOKEN" }
     }
 
-    $terraformToken = Try-TerraformOutputRaw -TerraformExe $TerraformExe -TerraformEnvDir $TerraformEnvDir -OutputName "turso_database_auth_token"
-    if (-not [string]::IsNullOrWhiteSpace($terraformToken)) {
-        return @{ Value = $terraformToken; Source = "terraform output turso_database_auth_token" }
-    }
-
+    # Cloud Agent case (CA-14): the process TURSO_AUTH_TOKEN is the production JWT when it is
+    # paired with a production EmDash TURSO_DATABASE_URL.
     if (Test-IsProductionEmdashLibsqlUrl -Url $ResolvedUrl) {
         $pairedToken = Get-FirstNonEmptyTursoValue @(
             ([Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")),
@@ -399,9 +395,9 @@ function Resolve-ProductionEmdashTursoToken {
     }
 
     throw @"
-Missing production EmDash Turso auth token. Set one of these in .env.dev:
-  TURSO_PRODUCTION_EMDASH_DB_TOKEN, TURSO_AUTH_TOKEN (when TURSO_DATABASE_URL is production emdash),
-  or refresh via: pwsh ./scripts/sync-production-turso-env-dev.ps1
+Missing production EmDash Turso auth token. Set TURSO_PRODUCTION_EMDASH_DB_TOKEN in .env.dev
+(or TURSO_AUTH_TOKEN when TURSO_DATABASE_URL is the production EmDash URL). Terraform no longer
+mints this token (AGENTS.md CA-21, #137); create one with: turso db tokens create freedomtimes-emdash-production
 "@
 }
 
@@ -471,7 +467,7 @@ function Set-TursoBuildEnv {
 
     if ($Environment -eq "production") {
         $urlBinding = Resolve-ProductionEmdashTursoUrl -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir
-        $tokenBinding = Resolve-ProductionEmdashTursoToken -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir -ResolvedUrl $urlBinding.Value
+        $tokenBinding = Resolve-ProductionEmdashTursoToken -EnvDevPath $envDevPath -ResolvedUrl $urlBinding.Value
     }
     else {
         $urlBinding = Resolve-StagingEmdashTursoUrl -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir

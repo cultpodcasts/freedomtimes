@@ -98,7 +98,7 @@ variable "tips_turso_database_group" {
 }
 
 variable "turso_database_token_expiration" {
-  description = "Optional expiration for the production EmDash database token (for example 90d or 2w1d30m). Leave empty for no explicit expiration."
+  description = "Optional default expiration for the production subscriptions, scheduler and tips database tokens when their own *_token_expiration is empty (for example 90d or 2w1d30m). Leave empty for no explicit expiration. Terraform no longer mints the EmDash token (#137)."
   type        = string
   default     = ""
 }
@@ -167,12 +167,6 @@ variable "tips_turso_database_delete_protection" {
   description = "Whether delete protection should be enabled for the production tips database"
   type        = bool
   default     = false
-}
-
-variable "turso_database_token_authorization" {
-  description = "Authorization level for the production EmDash database token"
-  type        = string
-  default     = "full-access"
 }
 
 variable "subscriptions_turso_database_token_authorization" {

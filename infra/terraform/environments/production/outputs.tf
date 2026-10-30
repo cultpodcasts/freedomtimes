@@ -66,12 +66,6 @@ output "turso_database_url" {
   value       = local.turso_database_url
 }
 
-output "turso_database_auth_token" {
-  description = "Application auth token for the production EmDash database"
-  value       = turso_database_token.emdash.jwt
-  sensitive   = true
-}
-
 output "scheduler_turso_database_name" {
   description = "Turso database name for the production scheduler workload"
   value       = turso_database.scheduler.name
