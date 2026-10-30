@@ -1,7 +1,7 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.43",
+  "version": "0.0.45",
   "engines": {
     "node": ">=22.22.2"
   },
@@ -9,7 +9,7 @@
     "dev": "astro dev",
     "check": "astro check",
     "build": "astro check && node scripts/patch-emdash-windows-createrequire.mjs && tsx scripts/build-service-worker.ts && tsx scripts/build-native-shell-bridge.ts && astro build && npm run test && tsx scripts/patch-cloudflare-bundle.ts",
-    "test": "tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-article-seo.mts scripts/test-sitemap-resilience.mts scripts/test-weekly-list.mts scripts/test-video-caption-tracks.mts scripts/test-video-poster.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts scripts/test-lite-youtube-poster-styles.mts scripts/test-homepage-entries-map.mts scripts/test-page-cache-policy.mts scripts/test-page-cache-handler.mts scripts/test-cloudflare-bundle-patches.mts scripts/test-worker-placement-check.mts scripts/test-image-endpoint-guard.mts scripts/test-wrangler-binding-drift.mts scripts/test-not-found-routes.mts",
+    "test": "tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-article-seo.mts scripts/test-sitemap-resilience.mts scripts/test-weekly-list.mts scripts/test-video-caption-tracks.mts scripts/test-video-poster.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts scripts/test-lite-youtube-poster-styles.mts scripts/test-homepage-entries-map.mts scripts/test-page-cache-policy.mts scripts/test-page-cache-handler.mts scripts/test-cloudflare-bundle-patches.mts scripts/test-worker-placement-check.mts scripts/test-image-endpoint-guard.mts scripts/test-wrangler-binding-drift.mts scripts/test-not-found-routes.mts scripts/test-hero-image-alt.mts",
     "test:oauth-discovery": "tsx --test scripts/test-emdash-oauth-metadata.mts",
     "test:oauth-discovery:routes": "tsx --test scripts/test-emdash-oauth-routes.mts",
     "test:auth-session": "tsx --test scripts/test-auth-session-lifetime.mts",
@@ -22,6 +22,7 @@
     "test:article-seo": "tsx --test scripts/test-article-seo.mts",
     "test:sitemap-resilience": "tsx --test scripts/test-sitemap-resilience.mts",
     "test:weekly-list": "tsx --test scripts/test-weekly-list.mts",
+    "test:hero-image-alt": "tsx --test scripts/test-hero-image-alt.mts",
     "test:lite-youtube-poster": "tsx --test scripts/test-lite-youtube-poster-styles.mts",
     "test:homepage-entries": "tsx --test scripts/test-homepage-entries-map.mts",
     "test:worker-routes": "tsx --test --test-concurrency=1 scripts/test-error-routes-worker.mts",

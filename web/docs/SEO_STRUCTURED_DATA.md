@@ -15,6 +15,32 @@ Code: `web/src/lib/seo/article-seo.ts`, `web/src/lib/sitemap-resilience.ts`,
 | canonical | `seo.canonical` (http(s) or `/path`) | own URL |
 | robots | `seo.noIndex` → `noindex,nofollow` | `index,follow,max-image-preview:large` |
 
+### Hero image (posts and pages)
+
+`resolveHeroImage` (`web/src/lib/content/heroImage.ts`) picks the hero once and reads its `src` and
+alt from the same field: `featured_image` when it has a file, otherwise `cover_image` when it has
+one. A featured image with alt but no file does not count, so the cover (and its alt) is used.
+
+Hero `<img>` alt order: the alt stored on the rendered image (`featured_image.alt` or
+`cover_image.alt`), then the legacy flat string for that field (`featured_image_alt` /
+`cover_image_alt`), then the other field's legacy string, then `"<title> featured image"`. Empty or
+whitespace-only alt counts as unset.
+
+The stored alt is a snapshot. In EmDash 1.3.1 the admin picker copies the media library item's alt
+onto the post's image value when the image is chosen. On save, EmDash fills an empty alt from the
+media item only when it also has to look up other metadata (dimensions, storage key, file info or
+placeholder). Editing alt in the media library does **not** update posts that already use the image.
+Set the alt on the post's image field, or re-pick the image
+([#133](https://github.com/cultpodcasts/freedomtimes/issues/133)).
+
+`og:image:alt` / `twitter:image:alt` are separate and unchanged: they are the social title whenever
+there is an `og:image`. When a post has no social image (`seo.image` / `social_image`), `og:image`
+falls back to the hero image, but `og:image:alt` is still the social title, not the hero alt
+([#132](https://github.com/cultpodcasts/freedomtimes/issues/132)).
+
+Test: `npm run test:hero-image-alt` (also in `npm test`). See
+[#108](https://github.com/cultpodcasts/freedomtimes/issues/108).
+
 ## Structured data (posts only)
 
 Every post emits `NewsArticle` and `BreadcrumbList` JSON-LD. Empty properties are omitted.
