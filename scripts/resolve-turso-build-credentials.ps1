@@ -366,9 +366,22 @@ function Resolve-ProductionEmdashTursoUrl {
 }
 
 function Resolve-ProductionEmdashTursoToken {
+    <#
+    .SYNOPSIS
+      Resolve the production EmDash JWT without ever borrowing the staging token.
+
+    .PARAMETER ProcessTursoUrl
+      Process TURSO_DATABASE_URL as it was BEFORE .env.dev was imported (Set-TursoBuildEnv passes the
+      snapshot). Defaults to the current process value for direct callers.
+
+    .PARAMETER ProcessTursoToken
+      Process TURSO_AUTH_TOKEN from the same snapshot. Defaults to the current process value.
+    #>
     param(
         [string]$EnvDevPath,
-        [string]$ResolvedUrl
+        [string]$ResolvedUrl,
+        [string]$ProcessTursoUrl = ([Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")),
+        [string]$ProcessTursoToken = ([Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process"))
     )
 
     # TURSO_PRODUCTION_EMDASH_DB_TOKEN is the single source for the production EmDash JWT
@@ -382,22 +395,28 @@ function Resolve-ProductionEmdashTursoToken {
         return @{ Value = $directToken; Source = "TURSO_PRODUCTION_EMDASH_DB_TOKEN" }
     }
 
-    # Cloud Agent case (CA-14): the process TURSO_AUTH_TOKEN is the production JWT when it is
-    # paired with a production EmDash TURSO_DATABASE_URL.
-    if (Test-IsProductionEmdashLibsqlUrl -Url $ResolvedUrl) {
-        $pairedToken = Get-FirstNonEmptyTursoValue @(
-            ([Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")),
-            (Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_AUTH_TOKEN")
-        )
-        if (-not [string]::IsNullOrWhiteSpace($pairedToken)) {
-            return @{ Value = $pairedToken; Source = "TURSO_AUTH_TOKEN (paired with production emdash URL)" }
+    # Cloud Agent case (CA-14): a process TURSO_AUTH_TOKEN is the production JWT only when the
+    # process TURSO_DATABASE_URL that travels with it is the production EmDash URL being deployed.
+    # The .env.dev TURSO_DATABASE_URL / TURSO_AUTH_TOKEN pair always stays staging, so it is never
+    # a candidate: a process token copied from that file (file URL not production) is rejected too.
+    $pairedUrlMatches = (Test-IsProductionEmdashLibsqlUrl -Url $ProcessTursoUrl) -and
+        (Test-TursoLibsqlUrlsEqual -Left $ProcessTursoUrl -Right $ResolvedUrl)
+    if ($pairedUrlMatches -and -not [string]::IsNullOrWhiteSpace($ProcessTursoToken)) {
+        $fileToken = Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_AUTH_TOKEN"
+        $fileUrl = Get-EnvFileValueForTurso -Path $EnvDevPath -Key "TURSO_DATABASE_URL"
+        $tokenIsStagingFileToken = (-not [string]::IsNullOrWhiteSpace($fileToken)) -and
+            ($fileToken.Trim() -eq $ProcessTursoToken.Trim()) -and
+            -not (Test-TursoLibsqlUrlsEqual -Left $fileUrl -Right $ResolvedUrl)
+        if (-not $tokenIsStagingFileToken) {
+            return @{ Value = $ProcessTursoToken.Trim(); Source = "TURSO_AUTH_TOKEN (process, paired with production emdash TURSO_DATABASE_URL)" }
         }
     }
 
     throw @"
-Missing production EmDash Turso auth token. Set TURSO_PRODUCTION_EMDASH_DB_TOKEN in .env.dev
-(or TURSO_AUTH_TOKEN when TURSO_DATABASE_URL is the production EmDash URL). Terraform no longer
-mints this token (AGENTS.md CA-21, #137); create one with: turso db tokens create freedomtimes-emdash-production
+Missing production EmDash Turso auth token. Set TURSO_PRODUCTION_EMDASH_DB_TOKEN in .env.dev or the
+process (the .env.dev TURSO_AUTH_TOKEN is staging and is never used for production, AGENTS.md CA-14).
+Terraform no longer mints this token (AGENTS.md CA-21, #137). Mint it with
+pwsh ./scripts/sync-production-turso-env-dev.ps1 or: turso db tokens create freedomtimes-emdash-production
 "@
 }
 
@@ -463,11 +482,17 @@ function Set-TursoBuildEnv {
         $terraformExe = ""
     }
 
+    # Snapshot the process pair before .env.dev fills gaps, so a staging file token can never be
+    # mistaken for the CA-14 paired production token (Resolve-ProductionEmdashTursoToken).
+    $processTursoUrl = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+    $processTursoToken = [Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")
+
     Import-EnvFileForTurso -Path $envDevPath
 
     if ($Environment -eq "production") {
         $urlBinding = Resolve-ProductionEmdashTursoUrl -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir
-        $tokenBinding = Resolve-ProductionEmdashTursoToken -EnvDevPath $envDevPath -ResolvedUrl $urlBinding.Value
+        $tokenBinding = Resolve-ProductionEmdashTursoToken -EnvDevPath $envDevPath -ResolvedUrl $urlBinding.Value `
+            -ProcessTursoUrl $processTursoUrl -ProcessTursoToken $processTursoToken
     }
     else {
         $urlBinding = Resolve-StagingEmdashTursoUrl -EnvDevPath $envDevPath -TerraformExe $terraformExe -TerraformEnvDir $terraformEnvDir

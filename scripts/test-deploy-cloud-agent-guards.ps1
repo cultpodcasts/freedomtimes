@@ -155,38 +155,86 @@ Assert-True (-not $tokenCmd.Parameters.ContainsKey("TerraformExe")) "production 
 $resolverText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "resolve-turso-build-credentials.ps1")
 $prodTokenBody = [regex]::Match($resolverText, '(?s)function Resolve-ProductionEmdashTursoToken \{.*?\n\}').Value
 Assert-True ($prodTokenBody -notmatch 'Try-TerraformOutputRaw') "production token resolver never reads a Terraform output"
-$savedProdToken = $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN
-$savedAuthToken = $env:TURSO_AUTH_TOKEN
+$tursoKeysUnderTest = @("TURSO_PRODUCTION_EMDASH_DB_TOKEN", "TURSO_PRODUCTION_EMDASH_DB_URL", "TURSO_AUTH_TOKEN", "TURSO_DATABASE_URL")
+$savedTursoEnv = @{}
+foreach ($key in $tursoKeysUnderTest) { $savedTursoEnv[$key] = [Environment]::GetEnvironmentVariable($key, "Process") }
+$clearTursoEnv = { foreach ($key in $tursoKeysUnderTest) { [Environment]::SetEnvironmentVariable($key, $null, "Process") } }
 $tmpEnvRoot = $env:TMPDIR
 if ([string]::IsNullOrWhiteSpace($tmpEnvRoot)) { $tmpEnvRoot = [System.IO.Path]::GetTempPath() }
 $emptyEnvDev = Join-Path $tmpEnvRoot "ft-137-empty.env.dev"
 Set-Content -LiteralPath $emptyEnvDev -Value "# empty"
+$stagingFileEnvDev = Join-Path $tmpEnvRoot "ft-137-staging-pair.env.dev"
+Set-Content -LiteralPath $stagingFileEnvDev -Value @("TURSO_DATABASE_URL=$stagingUrl", "TURSO_AUTH_TOKEN=file-staging-jwt")
+$fakeRepoRoot = Join-Path $tmpEnvRoot ("ft-137-repo-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $fakeRepoRoot -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $fakeRepoRoot ".env.dev") -Value @(
+    "TURSO_PRODUCTION_EMDASH_DB_URL=$prodUrl",
+    "TURSO_DATABASE_URL=$stagingUrl",
+    "TURSO_AUTH_TOKEN=file-staging-jwt"
+)
+
+function Invoke-ProductionTokenResolveCapture {
+    param([scriptblock]$Action)
+    try {
+        $null = & $Action
+        return @{ Threw = $false; Message = "" }
+    }
+    catch {
+        return @{ Threw = $true; Message = $_.Exception.Message }
+    }
+}
+
 try {
+    & $clearTursoEnv
     $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN = "direct-prod-jwt"
+    $env:TURSO_DATABASE_URL = $prodUrl
     $env:TURSO_AUTH_TOKEN = "paired-prod-jwt"
     $direct = Resolve-ProductionEmdashTursoToken -EnvDevPath $emptyEnvDev -ResolvedUrl $prodUrl
     Assert-True ($direct.Value -eq "direct-prod-jwt" -and $direct.Source -eq "TURSO_PRODUCTION_EMDASH_DB_TOKEN") "TURSO_PRODUCTION_EMDASH_DB_TOKEN wins"
 
+    # CA-14 true pairing: process URL is the production URL being deployed.
     $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN = ""
     $paired = Resolve-ProductionEmdashTursoToken -EnvDevPath $emptyEnvDev -ResolvedUrl $prodUrl
-    Assert-True ($paired.Value -eq "paired-prod-jwt") "paired TURSO_AUTH_TOKEN is used only with a production EmDash URL (CA-14)"
+    Assert-True ($paired.Value -eq "paired-prod-jwt") "process TURSO_AUTH_TOKEN is used when process TURSO_DATABASE_URL equals the production URL (CA-14)"
 
-    $missingThrew = $false
-    $missingMessage = ""
-    try {
-        Resolve-ProductionEmdashTursoToken -EnvDevPath $emptyEnvDev -ResolvedUrl $stagingUrl | Out-Null
-    }
-    catch {
-        $missingThrew = $true
-        $missingMessage = $_.Exception.Message
-    }
-    Assert-True $missingThrew "throws when TURSO_PRODUCTION_EMDASH_DB_TOKEN is missing and no paired token applies"
-    Assert-True ($missingMessage -match 'TURSO_PRODUCTION_EMDASH_DB_TOKEN' -and $missingMessage -match '#137') "missing-token error names the key and #137"
+    # 1. Process token travels with a staging process URL: never borrowed for production.
+    $env:TURSO_DATABASE_URL = $stagingUrl
+    $env:TURSO_AUTH_TOKEN = "process-staging-jwt"
+    $stagingProcess = Invoke-ProductionTokenResolveCapture { Resolve-ProductionEmdashTursoToken -EnvDevPath $emptyEnvDev -ResolvedUrl $prodUrl }
+    Assert-True $stagingProcess.Threw "throws for the production URL when the process token is paired with a staging TURSO_DATABASE_URL"
+    Assert-True ($stagingProcess.Message -match 'TURSO_PRODUCTION_EMDASH_DB_TOKEN' -and $stagingProcess.Message -match '#137') "missing-token error names the key and #137"
+    Assert-True ($stagingProcess.Message -notmatch 'process-staging-jwt') "missing-token error does not echo the token value"
+
+    # 2. Token only in .env.dev (staging pair), resolved directly: the file TURSO_AUTH_TOKEN is not a candidate.
+    & $clearTursoEnv
+    $fileOnly = Invoke-ProductionTokenResolveCapture { Resolve-ProductionEmdashTursoToken -EnvDevPath $stagingFileEnvDev -ResolvedUrl $prodUrl }
+    Assert-True $fileOnly.Threw "throws for the production URL when the only token is the .env.dev staging TURSO_AUTH_TOKEN"
+    Assert-True ($fileOnly.Message -notmatch 'file-staging-jwt') "file-token error does not echo the token value"
+
+    # 2b. A process token copied from the staging .env.dev file is rejected even beside a production process URL.
+    $env:TURSO_DATABASE_URL = $prodUrl
+    $env:TURSO_AUTH_TOKEN = "file-staging-jwt"
+    $copied = Invoke-ProductionTokenResolveCapture { Resolve-ProductionEmdashTursoToken -EnvDevPath $stagingFileEnvDev -ResolvedUrl $prodUrl }
+    Assert-True $copied.Threw "rejects a process token that is the .env.dev staging TURSO_AUTH_TOKEN"
+
+    # 2c. End to end through Set-TursoBuildEnv: .env.dev import must not supply the staging token for production.
+    & $clearTursoEnv
+    $endToEnd = Invoke-ProductionTokenResolveCapture { Set-TursoBuildEnv -Environment production -RepoRoot $fakeRepoRoot }
+    Assert-True $endToEnd.Threw "Set-TursoBuildEnv production throws when .env.dev has only the staging TURSO_AUTH_TOKEN"
+    Assert-True ($endToEnd.Message -notmatch 'file-staging-jwt') "Set-TursoBuildEnv error does not echo the token value"
+
+    # 3. End to end with a real CA-14 process pair: the snapshot taken before the .env.dev import wins.
+    & $clearTursoEnv
+    $env:TURSO_DATABASE_URL = $prodUrl
+    $env:TURSO_AUTH_TOKEN = "paired-prod-jwt"
+    $endToEndPaired = Set-TursoBuildEnv -Environment production -RepoRoot $fakeRepoRoot
+    Assert-True ($endToEndPaired.Token.Value -eq "paired-prod-jwt" -and $env:TURSO_AUTH_TOKEN -eq "paired-prod-jwt") "Set-TursoBuildEnv production uses the CA-14 process pair"
+    Assert-True ($endToEndPaired.Url.Value -eq $prodUrl) "Set-TursoBuildEnv production resolves the production URL"
 }
 finally {
-    $env:TURSO_PRODUCTION_EMDASH_DB_TOKEN = $savedProdToken
-    $env:TURSO_AUTH_TOKEN = $savedAuthToken
-    Remove-Item -LiteralPath $emptyEnvDev -Force -ErrorAction SilentlyContinue
+    foreach ($key in $tursoKeysUnderTest) { [Environment]::SetEnvironmentVariable($key, $savedTursoEnv[$key], "Process") }
+    Remove-Item -LiteralPath $emptyEnvDev, $stagingFileEnvDev -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $fakeRepoRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "=== Test-DeployTerraformPluginCacheMismatch ==="
