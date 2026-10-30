@@ -131,6 +131,10 @@ bundle, so the tooling blocks it:
   + `terraform show -json` path has only been tested with a fake `terraform`; checking it against the Terraform
   Cloud backend (plan only) before the next full deploy is [#117](https://github.com/cultpodcasts/freedomtimes/issues/117).
   If it does not work there, the guard fails closed and the deploy stops before applying.
+- **GitHub Actions:** `terraform-staging.yml` and `terraform-production.yml` run the same guard
+  (`Guard Worker Script Upload Plan`) before `Terraform Apply`. It only runs when a dispatch sets the apply
+  input; `FT_WRANGLER_DEPLOY_FOLLOWS=1` is set only when the same dispatch also sets the worker-deploy input.
+  Plan-only PR and push runs show this drift (`1 to change`) and pass.
 - **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
   `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`, or a static-asset / unmatched-route probe failed; exit **5** = could not verify (no token, API or
   network error, or a probe could not run: network error on every attempt, probe path not in the build); both print the redeploy command. The deploy scripts defer this check until after their

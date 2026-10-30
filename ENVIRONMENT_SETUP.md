@@ -441,21 +441,19 @@ gh workflow run terraform-production.yml -f production_terraform_apply=true
 ### Workflow Steps (Production Example)
 
 1. **Checkout**: Pull repo code
-2. **Setup Terraform**: Install TF 1.14.8
-3. **Validate Environment**: Check all required secrets/vars present
+2. **Setup Terraform**: Install TF 1.14.8 (`hashicorp/setup-terraform@v4`)
+3. **Validate Environment**: Check all required secrets/vars present (including `TF_VAR_cloudflare_analytics_api_token`)
 4. **Preflight Unlock**: Unlock TF Cloud workspace if stale lock exists
 5. **Terraform Init**: Initialize remote state
 6. **Terraform Validate**: Check syntax
-7. **Adopt Existing Resources**: Import manually-created APIM and Auth0 app (idempotent)
-8. **Terraform Plan**: Generate execution plan
-9. **Terraform Apply**: If `$PRODUCTION_TERRAFORM_APPLY == 'true'`, apply changes
-10. **Re-proxy API CNAME**: After apply, flip CNAME to `proxied=true` for Cloudflare edge caching (2-pass pattern)
-11. **Capture Outputs**: Retrieve Terraform outputs (Auth0 client ID, API URL, function app name)
-12. **Fetch Auth0 App Secret**: Query Auth0 Management API for client secret
-13. **Deploy Function App**: Deploy Node.js code to Azure Function App
-14. **Build & Deploy Worker**: Build and deploy Astro Worker to Cloudflare
-15. **Set Worker Secrets**: Sync Auth0 credentials to Cloudflare Worker
-16. **Cleanup**: Unlock TF Cloud workspace
+7. **Terraform Plan**: Generate execution plan. The workflows no longer run `terraform import` / `terraform state rm` steps; adopting or forgetting resources is done with config-level `import {}` / `removed {}` / `moved {}` blocks.
+8. **Plan guards**: Turso database and Worker Turso-secret guards; before an apply, the Worker script upload guard (see [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
+9. **Terraform Apply**: Only on manual dispatch with `production_terraform_apply=true`
+10. **Capture Outputs**: Retrieve Terraform outputs (Auth0 client ID, Turso URLs/tokens)
+11. **Fetch Auth0 App Secret**: Query Auth0 Management API for client secret
+12. **Build Worker + EmDash `--check`**: Always (read-only)
+13. **Mutating steps** (Turso SQL, EmDash migrate, wrangler deploy, Worker secrets): Only on manual dispatch with `production_worker_deploy=true`
+14. **Cleanup**: Unlock TF Cloud workspace
 
 ### 2-Pass CNAME Proxying (Important!)
 
