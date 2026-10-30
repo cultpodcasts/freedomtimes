@@ -32,8 +32,13 @@ permissions:
   contents: read
   pull-requests: write
 
+# Only runs that can mutate staging (workflow_dispatch with staging_terraform_apply or
+# staging_worker_deploy) share staging-emdash-migrate with deploy-worker.yml. Push/PR plan runs use
+# their own group, so they can never sit in (and displace) the deploy queue: GitHub keeps one
+# pending run per group and cancels the older pending one. The STAGING_TERRAFORM_APPLY /
+# STAGING_WORKER_DEPLOY env flags below are "false"; if either is ever set to "true", add it here.
 concurrency:
-  group: staging-emdash-migrate
+  group: ${{ (inputs.staging_terraform_apply || inputs.staging_worker_deploy) && 'staging-emdash-migrate' || format('terraform-staging-plan-{0}', github.ref) }}
   cancel-in-progress: false
 
 env:
@@ -91,7 +96,7 @@ jobs:
           echo "Run mode (staging): terraform apply=$apply, worker deploy=$deploy"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.14.8"
           terraform_wrapper: false
@@ -610,28 +615,18 @@ jobs:
             echo "ERROR: turso_database_name is required but empty from Terraform outputs"
             exit 1
           fi
-          bash "$GITHUB_WORKSPACE/scripts/ci-turso-emdash-backup.sh" staging "$DB_NAME"
-
-      - name: Upload staging EmDash backup artifact
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: emdash-staging-backup
-          path: .release/backups/emdash-staging-*.db
-          if-no-files-found: error
-          retention-days: 14
+          bash "$GITHUB_WORKSPACE/scripts/ci-turso-emdash-backup.sh" staging "$DB_NAME" "${TF_VAR_turso_database_group:-}"
 
       - name: Record staging EmDash backup in job summary
         if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        env:
+          BACKUP_BRANCH: ${{ steps.emdash_backup.outputs.rollback_branch }}
         run: |
           set -euo pipefail
           {
             echo "## Staging EmDash Turso backup"
             echo
-            echo "Recoverable runner export uploaded as artifact \`emdash-staging-backup\` (14-day retention)."
-            echo
-            echo "Files:"
-            ls -la .release/backups/emdash-staging-*.db
+            echo "Turso branch \`${BACKUP_BRANCH}\` (no .db exported or uploaded: this repo is public)."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build Astro Worker

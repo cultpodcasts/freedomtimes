@@ -150,8 +150,8 @@ describe('mapHomepageRow mirrors the EmDash loader', () => {
 describe('homepage light query: EmDash loader drift tripwire', () => {
 	// src/lib/content/homepage-entries.ts mirrors emdash's collection loader
 	// (locale, status = published, deleted_at IS NULL, ordering, byline hydration).
-	// The mirror was diffed against emdash 1.3.1 and re-diffed against 1.4.0 (1.4.0 only changed\r
-	// byline folding and dropped cacheHint.lastModified; WHERE / ORDER BY / locale are unchanged and\r
+	// The mirror was diffed against emdash 1.3.1 and re-diffed against 1.4.0 (1.4.0 only changed
+	// byline folding and dropped cacheHint.lastModified; WHERE / ORDER BY / locale are unchanged and
 	// the light query does no byline hydration). Widening this range is a
 	// deliberate act: re-diff `emdash` loader.ts against homepage-entries.ts first.
 	const SUPPORTED = { min: [1, 4, 0], belowMinor: [1, 5] } as const;

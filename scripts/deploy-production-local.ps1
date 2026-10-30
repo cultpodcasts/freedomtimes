@@ -35,11 +35,14 @@ param(
   requirement. Combined with -WorkerOnly it also skips emdash migrate
   apply/check (Worker hotfix; no Turso mutate). Skipped for -DryRun.
 
-  -UseFreshTursoCheckpoint: do not take a new backup here; require a verified
-  production rollback metadata file newer than 24h under .release/rollback-branches/
-  (written by backup-production-emdash.ps1 earlier in the same run), then migrate +
-  deploy as normal. Used by .github/workflows/deploy-worker.yml, which takes the
-  backup in its own step so the encrypted artifact is uploaded before any deploy.
+  -UseFreshTursoCheckpoint: do not take a new backup here. Require backup metadata
+  newer than 24h under .release/rollback-branches/ (written by
+  backup-production-emdash.ps1 earlier in the same run) that is kind
+  production-emdash-content-backup, verificationPass true, a prod-backup-* branch and
+  has workerTursoHost; a name match alone is not accepted. After the build resolves
+  the emdash migrate target, refuse to migrate or deploy unless its host equals the
+  backed-up workerTursoHost. Used by .github/workflows/deploy-worker.yml, which takes
+  the verified prod-backup-* Turso branch in its own step before this one.
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1
@@ -107,6 +110,11 @@ try {
     }
 
     Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
+    if ($UseFreshTursoCheckpoint) {
+        # The backup ran in an earlier step with its own credential resolution: fail closed
+        # if the build's migrate target is a different DB from the one that was backed up.
+        Assert-DeployMigrateTargetMatchesBackupHost
+    }
     Invoke-DeployEmdashCoreMigrate
     Invoke-DeployWorkerDeploy
     Invoke-DeployEmdashCoreMigrateCheck

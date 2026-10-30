@@ -444,6 +444,76 @@ foreach ($deployScript in "deploy-staging-local.ps1", "deploy-production-local.p
     Assert-True ($text -match '(?s)try \{.*Invoke-DeployTerraformApplyWithRecovery.*finally \{\s*#[^\n]*\n\s*Write-DeployIncompleteAfterTerraformWarning') "$deployScript runs the Terraform apply inside try and warns in finally"
 }
 
+Write-Host "=== -UseFreshTursoCheckpoint: verified backup selection ==="
+$checkpointTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ft-checkpoint-" + [guid]::NewGuid().ToString("N"))
+$previousCheckpointRoot = $script:DeployRepoRoot
+$previousTursoUrl = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+try {
+    $metaDir = Join-Path $checkpointTmp ".release/rollback-branches"
+    New-Item -ItemType Directory -Force -Path $metaDir | Out-Null
+    $nowUtc = (Get-Date).ToUniversalTime()
+    function New-TestBackupMeta {
+        param([string]$Name, [hashtable]$Fields, [int]$AgeSeconds)
+        $path = Join-Path $metaDir $Name
+        ($Fields | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath $path
+        (Get-Item -LiteralPath $path).LastWriteTimeUtc = $nowUtc.AddSeconds(-$AgeSeconds)
+    }
+    $goodHost = "freedomtimes-emdash-production-org.aws-eu-west-1.turso.io"
+    $base = @{ kind = "production-emdash-content-backup"; workerTursoHost = $goodHost }
+
+    $empty = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc $nowUtc.AddHours(-24)
+    Assert-True ($null -eq $empty.Metadata) "no metadata: nothing selected"
+
+    $good = $base.Clone(); $good.backupDatabase = "prod-backup-20261030-100000"; $good.verificationPass = $true; $good.createdAtUtc = $nowUtc.AddMinutes(-5).ToString("o")
+    New-TestBackupMeta -Name "20261030-100000-prod-backup-20261030-100000.json" -Fields $good -AgeSeconds 40
+    $noHost = $good.Clone(); $noHost.backupDatabase = "prod-backup-20261030-100100"; $noHost.workerTursoHost = ""
+    New-TestBackupMeta -Name "20261030-100100-prod-backup-20261030-100100.json" -Fields $noHost -AgeSeconds 30
+    $old = $good.Clone(); $old.backupDatabase = "prod-backup-20261028-100000"; $old.createdAtUtc = $nowUtc.AddHours(-30).ToString("o")
+    New-TestBackupMeta -Name "20261030-100200-prod-backup-20261028-100000.json" -Fields $old -AgeSeconds 20
+    # Newest file: name-matched but NOT verified. The old code accepted this; it must be skipped.
+    $unverified = $good.Clone(); $unverified.backupDatabase = "prod-backup-20261030-100300"; $unverified.verificationPass = $false
+    New-TestBackupMeta -Name "20261030-100300-prod-backup-20261030-100300.json" -Fields $unverified -AgeSeconds 10
+
+    $pick = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc $nowUtc.AddHours(-24)
+    Assert-True ($null -ne $pick.Metadata -and $pick.Metadata.backupDatabase -eq "prod-backup-20261030-100000") "picks the newest verified, fresh, complete backup"
+    Assert-True (@($pick.Rejected).Count -eq 3) "rejects unverified, stale and host-less candidates"
+    Assert-True ((@($pick.Rejected) -join "`n") -match "verificationPass is not true") "unverified candidate is reported"
+
+    Remove-Item -LiteralPath (Join-Path $metaDir "20261030-100000-prod-backup-20261030-100000.json")
+    $script:DeployRepoRoot = $checkpointTmp
+    $script:DeployIsStaging = $false
+    $assertMessage = ""
+    try { Assert-DeployFreshEmDashTursoBackup 3>$null } catch { $assertMessage = $_.Exception.Message }
+    Assert-True ($assertMessage -match "Refusing to migrate or deploy" -and $assertMessage -match "-UseFreshTursoCheckpoint") "only unverified/stale backups: refuses with a -UseFreshTursoCheckpoint message"
+    Assert-True ($assertMessage -notmatch "SkipTursoBackup") "refusal does not mention -SkipTursoBackup"
+
+    Write-Host "=== -UseFreshTursoCheckpoint: migrate target must be the backed-up host ==="
+    Assert-True (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost -MigrateUrl "libsql://$goodHost") "same host matches"
+    Assert-True (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost.ToUpperInvariant() -MigrateUrl "libsql://$goodHost/?tls=1") "case and query string ignored"
+    Assert-True (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost -MigrateUrl "libsql://freedomtimes-emdash-production-dr-org.aws-eu-west-1.turso.io")) "different host does not match"
+    Assert-True (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost "" -MigrateUrl "libsql://$goodHost")) "empty backup host never matches"
+    Assert-True (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost -MigrateUrl "")) "empty migrate URL never matches"
+
+    $script:DeployFreshBackupMetadata = [pscustomobject]$good
+    $env:TURSO_DATABASE_URL = "libsql://freedomtimes-emdash-production-dr-org.aws-eu-west-1.turso.io"
+    $mismatchThrew = $false
+    try { Assert-DeployMigrateTargetMatchesBackupHost 6>$null } catch { $mismatchThrew = $_.Exception.Message -match "Nothing was migrated or deployed" }
+    Assert-True $mismatchThrew "migrate target on another host: refuses before migrate"
+    $env:TURSO_DATABASE_URL = "libsql://$goodHost"
+    $matchThrew = $false
+    try { Assert-DeployMigrateTargetMatchesBackupHost 6>$null } catch { $matchThrew = $true }
+    Assert-True (-not $matchThrew) "migrate target on the backed-up host: proceeds"
+}
+finally {
+    $script:DeployRepoRoot = $previousCheckpointRoot
+    $script:DeployFreshBackupMetadata = $null
+    [Environment]::SetEnvironmentVariable("TURSO_DATABASE_URL", $previousTursoUrl, "Process")
+    Remove-Item -LiteralPath $checkpointTmp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$productionDeployText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "deploy-production-local.ps1")
+Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerBuild[^\n]*\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployMigrateTargetMatchesBackupHost.*?\}\s*\n\s*Invoke-DeployEmdashCoreMigrate') "deploy-production-local.ps1 checks the migrate host after build, before migrate"
+
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {

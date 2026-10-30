@@ -62,6 +62,10 @@ function Initialize-DeployEnvironment {
     Initialize-LinuxNvmNodePath
     $script:DeployTerraformLockfileWasClean = $null
     $script:DeploySkipTursoMutate = $false
+    # Set by Assert-DeployFreshEmDashTursoBackup (-UseFreshTursoCheckpoint).
+    $script:DeployFreshBackupMetadata = $null
+    # Set by deploy-staging-local.ps1 -TursoBranchBackup (deploy-worker.yml: no .db export in CI).
+    $script:DeployStagingBackupAsBranch = $false
 }
 
 function Set-DeploySkipTursoMutate {
@@ -813,84 +817,156 @@ function Get-DeployRollbackMetadataFreshnessUtc {
     return $mtime
 }
 
-function Assert-DeployFreshEmDashTursoBackup {
-    $cutoff = Get-DeployFreshBackupCutoffUtc
+function Select-DeployFreshVerifiedProductionBackup {
+    <#
+    .SYNOPSIS
+      Pick the newest production backup metadata that is verified, fresh and complete.
 
-    if ($script:DeployIsStaging) {
-        $backupDir = Join-Path $script:DeployRepoRoot ".release/backups"
-        $newest = Get-ChildItem -Path $backupDir -Filter "emdash-staging-*.db" -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTimeUtc -Descending |
-            Select-Object -First 1
-        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff -or $newest.LastWriteTimeUtc -le [datetime]::UnixEpoch.AddMinutes(1)) {
-            throw @(
-                "Refusing -SkipTursoBackup: no staging EmDash export newer than 24h under .release/backups/emdash-staging-*.db.",
-                "Create one (see web/CONTENT_PROMOTION_RUNBOOK.md) or omit -SkipTursoBackup."
-            ) -join " "
-        }
-        Write-DeployStep "Using existing staging EmDash export $($newest.Name) (SkipTursoBackup)"
-        return
-    }
+    .DESCRIPTION
+      Used by deploy-production-local.ps1 -UseFreshTursoCheckpoint (deploy-worker.yml), which
+      takes the backup in an earlier step instead of here. Pure apart from reading the files,
+      so scripts/test-deploy-cloud-agent-guards.ps1 can exercise it.
 
-    $expectedDb = Get-DeployTursoDatabaseNameFromEnv `
-        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
-        -DefaultName ""
-    if ($expectedDb -eq "[REDACTED]-emdash-production" -or $expectedDb -match "REDACTED") {
-        $expectedDb = ""
-    }
-    $productionUrls = @(Get-DeployProductionEmdashUrlCandidates)
-    $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
-    $newestMeta = $null
-    $candidates = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending
+      A candidate counts only when ALL of these hold:
+        - kind = production-emdash-content-backup (written by backup-production-emdash.ps1)
+        - verificationPass = true (a name match alone is never enough)
+        - backupDatabase is a prod-backup-* Turso branch
+        - workerTursoHost is set (the migrate-target host check needs it)
+        - createdAtUtc (else file mtime) is not older than CutoffUtc
+
+      Returns [pscustomobject]@{ Metadata; File; Rejected } where Metadata/File are $null when
+      nothing qualifies, and Rejected lists "<file>: <reason>" for every candidate skipped.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$MetadataDir,
+        [Parameter(Mandatory = $true)]
+        [datetime]$CutoffUtc
+    )
+
+    $rejected = [System.Collections.Generic.List[string]]::new()
+    $candidates = @(Get-ChildItem -Path $MetadataDir -Filter "*prod-backup-*.json" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending)
     foreach ($candidate in $candidates) {
         try {
             $meta = Get-Content -LiteralPath $candidate.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
         }
         catch {
-            Write-Warning "Ignoring malformed rollback metadata $($candidate.Name) (not valid JSON)."
+            $rejected.Add("$($candidate.Name): not valid JSON")
             continue
         }
-        $sourceDatabase = [string]$meta.sourceDatabase
-        if ([string]::IsNullOrWhiteSpace($sourceDatabase)) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (missing sourceDatabase)."
+        if ($null -eq $meta -or $meta -isnot [pscustomobject]) {
+            $rejected.Add("$($candidate.Name): not a JSON object")
             continue
         }
-        $verifiedPass = $false
-        if ($null -ne $meta.PSObject.Properties["verificationPass"]) {
-            $verifiedPass = [bool]$meta.verificationPass
+        $props = $meta.PSObject.Properties
+        $kind = if ($props["kind"]) { [string]$meta.kind } else { "" }
+        if ($kind -ne "production-emdash-content-backup") {
+            $rejected.Add("$($candidate.Name): kind '$kind' is not production-emdash-content-backup")
+            continue
         }
-        elseif ($null -ne $meta.verification -and $null -ne $meta.verification.PSObject.Properties["pass"]) {
-            $verifiedPass = [bool]$meta.verification.pass
+        $verified = $props["verificationPass"] -and ($meta.verificationPass -eq $true)
+        if (-not $verified) {
+            $rejected.Add("$($candidate.Name): verificationPass is not true")
+            continue
         }
-        $matchesNamedOrUrl = Test-DeployRollbackSourceMatchesProductionEmDash `
-            -SourceDatabase $sourceDatabase `
-            -ExpectedDatabase $expectedDb `
-            -ProductionUrls $productionUrls
-        $workerResolved = $verifiedPass -and (
-            $sourceDatabase -match '^(prod-rollback-|prod-work-|prod-recovery-|prod-backup-)' -or
-            [string]$meta.kind -eq "production-emdash-content-backup"
-        )
-        if (-not $matchesNamedOrUrl -and -not $workerResolved) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name/URL and is not a verified Worker-resolved backup)."
+        $backupDatabase = if ($props["backupDatabase"]) { [string]$meta.backupDatabase } else { "" }
+        if ($backupDatabase -notmatch '^prod-backup-\d{8}-\d{6}$') {
+            $rejected.Add("$($candidate.Name): backupDatabase '$backupDatabase' is not a prod-backup-YYYYMMDD-HHMMSS branch")
+            continue
+        }
+        $workerHost = if ($props["workerTursoHost"]) { [string]$meta.workerTursoHost } else { "" }
+        if ([string]::IsNullOrWhiteSpace($workerHost)) {
+            $rejected.Add("$($candidate.Name): workerTursoHost is missing")
             continue
         }
         $freshAt = Get-DeployRollbackMetadataFreshnessUtc -File $candidate -Meta $meta
-        if ($freshAt -lt $cutoff) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (createdAtUtc/mtime $freshAt is older than 24h; Unix-epoch snapshot mtimes do not count)."
+        if ($freshAt -lt $CutoffUtc) {
+            $rejected.Add("$($candidate.Name): created $($freshAt.ToString('o')) is older than the cutoff $($CutoffUtc.ToString('o'))")
             continue
         }
-        $newestMeta = $candidate
-        break
+        return [pscustomobject]@{ Metadata = $meta; File = $candidate; Rejected = $rejected.ToArray() }
     }
-    if ($null -eq $newestMeta) {
-        throw @(
-            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h whose sourceDatabase matches the Worker-resolved production EmDash DB (or a verified backup log).",
-            "Run pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction or omit -SkipTursoBackup."
-        ) -join " "
-    }
-    Write-DeployStep "Using existing production rollback metadata $($newestMeta.Name) for '$expectedDb' (SkipTursoBackup)"
+
+    return [pscustomobject]@{ Metadata = $null; File = $null; Rejected = $rejected.ToArray() }
 }
 
+function Assert-DeployFreshEmDashTursoBackup {
+    <#
+    .SYNOPSIS
+      -UseFreshTursoCheckpoint gate: require a verified production backup from earlier in the run.
+
+    .DESCRIPTION
+      Throws (nothing migrated or deployed) unless Select-DeployFreshVerifiedProductionBackup finds
+      a verified, fresh prod-backup-* metadata file. Stores it in $script:DeployFreshBackupMetadata so
+      Assert-DeployMigrateTargetMatchesBackupHost can compare hosts after the build resolves the
+      migrate target.
+    #>
+    if ($script:DeployIsStaging) {
+        throw "Assert-DeployFreshEmDashTursoBackup is production-only (-UseFreshTursoCheckpoint)."
+    }
+
+    $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
+    $selection = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc (Get-DeployFreshBackupCutoffUtc)
+    foreach ($reason in @($selection.Rejected)) {
+        Write-Warning "Ignoring backup metadata $reason"
+    }
+    if ($null -eq $selection.Metadata) {
+        throw @(
+            "Refusing to migrate or deploy: -UseFreshTursoCheckpoint needs a verified production backup newer than 24h",
+            "(.release/rollback-branches/*.json with kind production-emdash-content-backup, verificationPass true,",
+            "a prod-backup-* branch and workerTursoHost) and none was found.",
+            "Run pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction first, or run deploy-production-local.ps1 without -UseFreshTursoCheckpoint so it takes its own backup."
+        ) -join " "
+    }
+
+    $script:DeployFreshBackupMetadata = $selection.Metadata
+    Write-DeployStep "Using verified production backup $($selection.Metadata.backupDatabase) ($($selection.File.Name)); no second backup taken (-UseFreshTursoCheckpoint)"
+}
+
+function Test-DeployMigrateTargetMatchesBackupHost {
+    <#
+    .SYNOPSIS
+      True when the libsql URL emdash migrate will use has the same host as the backed-up DB.
+    #>
+    param(
+        [string]$BackupHost,
+        [string]$MigrateUrl
+    )
+
+    $backup = ([string]$BackupHost).Trim().TrimEnd("/").ToLowerInvariant()
+    $target = Get-DeployLibsqlHostname -Url $MigrateUrl
+    if ([string]::IsNullOrWhiteSpace($backup) -or [string]::IsNullOrWhiteSpace($target)) {
+        return $false
+    }
+    return $backup -eq $target
+}
+
+function Assert-DeployMigrateTargetMatchesBackupHost {
+    <#
+    .SYNOPSIS
+      Fail closed before emdash migrate when the migrate target is not the DB that was backed up.
+
+    .DESCRIPTION
+      Only for -UseFreshTursoCheckpoint, where the backup ran in an earlier step with its own
+      credential resolution. Call after Invoke-DeployWorkerBuild (which sets TURSO_DATABASE_URL via
+      Set-TursoBuildEnv) and before Invoke-DeployEmdashCoreMigrate. Never prints tokens.
+    #>
+    if ($null -eq $script:DeployFreshBackupMetadata) {
+        throw "Internal: Assert-DeployMigrateTargetMatchesBackupHost called without a selected backup (Assert-DeployFreshEmDashTursoBackup first)."
+    }
+    $backupHost = [string]$script:DeployFreshBackupMetadata.workerTursoHost
+    $migrateUrl = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+    $targetHost = Get-DeployLibsqlHostname -Url $migrateUrl
+    if (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $backupHost -MigrateUrl $migrateUrl)) {
+        throw @(
+            "Refusing to migrate or deploy: the backed-up DB host '$backupHost' (backup $($script:DeployFreshBackupMetadata.backupDatabase))",
+            "is not the emdash migrate target host '$targetHost'. Fix TURSO_PRODUCTION_EMDASH_DB_URL / _TOKEN so both point at the",
+            "DB the production Worker uses (web/docs/DEPLOY.md § Standard path), then re-run. Nothing was migrated or deployed."
+        ) -join " "
+    }
+    Write-DeployStep "Migrate target host matches the backed-up DB host ($targetHost)"
+}
 function Invoke-DeployStagingTursoExport {
     Assert-DeployTursoAuth
 
@@ -919,6 +995,46 @@ function Invoke-DeployStagingTursoExport {
     Write-Host "Staging EmDash backup saved: $outputAbs" -ForegroundColor Green
 }
 
+function Invoke-DeployStagingTursoBranchBackup {
+    <#
+    .SYNOPSIS
+      Staging backup as a Turso branch (staging-backup-YYYYMMDD-HHMMSS); writes no .db file.
+
+    .DESCRIPTION
+      Used by deploy-worker.yml through deploy-staging-local.ps1 -TursoBranchBackup: the repo is
+      public, so CI never exports or uploads a database file. Restore = point the staging Worker at
+      the branch, or copy it back with turso db create --from-db (web/docs/DEPLOY.md).
+      The group is TF_VAR_TURSO_DATABASE_GROUP_STAGING when set, else the Turso org default group.
+    #>
+    Assert-DeployTursoAuth
+
+    $databaseName = Get-DeployTursoDatabaseNameFromEnv `
+        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_STAGING" `
+        -DefaultName "freedomtimes-emdash-staging" # pragma: allowlist secret
+    $group = Get-DeployTursoDatabaseNameFromEnv -EnvKey "TF_VAR_TURSO_DATABASE_GROUP_STAGING" -DefaultName ""
+
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $branchName = "staging-backup-$stamp"
+    Write-DeployStep "Creating staging EmDash backup branch '$branchName' from '$databaseName' (no .db export)"
+
+    $createArgs = @("db", "create", $branchName, "--from-db", $databaseName)
+    if (-not [string]::IsNullOrWhiteSpace($group)) {
+        $createArgs += @("--group", $group)
+    }
+    $create = Invoke-DeployTursoCli -TursoArgs $createArgs
+    if ($create.ExitCode -ne 0) {
+        throw "Staging EmDash backup branch create failed (exit $($create.ExitCode)). Nothing migrated or deployed."
+    }
+    $script:DeployStagingBackupBranch = $branchName
+    Write-Host "Staging EmDash backup branch: $branchName" -ForegroundColor Green
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+        Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value @(
+            "### Staging EmDash backup",
+            "- Turso branch: ``$branchName`` (from ``$databaseName``; no .db exported or uploaded)"
+        )
+    }
+}
+
 function Invoke-DeployEmDashTursoBackup {
     param(
         [switch]$SkipTursoBackup
@@ -930,7 +1046,12 @@ function Invoke-DeployEmDashTursoBackup {
     }
 
     if ($script:DeployIsStaging) {
-        Invoke-DeployStagingTursoExport
+        if ($script:DeployStagingBackupAsBranch) {
+            Invoke-DeployStagingTursoBranchBackup
+        }
+        else {
+            Invoke-DeployStagingTursoExport
+        }
         return
     }
 

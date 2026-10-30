@@ -99,7 +99,7 @@ Do not run this step for EmDash-dependent code until Step 3 shows production sch
 
 ### 2a. Standard: GitHub Actions (`deploy-worker.yml`)
 
-Web Worker releases go through a PR: the PR deploys staging, the operator checks staging and merges, and the merge runs a verified production Turso backup (Turso branch + encrypted 90-day artifact) and then the production Worker deploy. Steps, secrets and restore: **[web/docs/DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)** (the one place that defines it). This workflow never applies Terraform; see the Terraform row above.
+Web Worker releases go through a PR: the PR deploys staging, the operator checks staging and merges, and the merge runs a verified production Turso backup (Turso branch `prod-backup-YYYYMMDD-HHMMSS` only; no `.db` or artifact from CI) and then the production Worker deploy. Steps, secrets and restore: **[web/docs/DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)** (the one place that defines it). This workflow never applies Terraform; see the Terraform row above.
 
 ### Legacy: Terraform dispatch (`production-release.ps1`)
 

@@ -4,7 +4,8 @@ param(
     [switch]$WorkersOnly,
     [switch]$SkipVersionBump,
     [switch]$SyncCloudflareWorkerSecrets,
-    [switch]$SkipTursoBackup
+    [switch]$SkipTursoBackup,
+    [switch]$TursoBranchBackup
 )
 
 <#
@@ -28,6 +29,11 @@ param(
   -SkipTursoBackup: skip the staging Turso export. With -WorkerOnly / -WorkersOnly
   also skip emdash migrate apply/check (Worker hotfix; no Turso mutate).
 
+  -TursoBranchBackup: take the pre-migrate staging backup as a Turso branch
+  (staging-backup-YYYYMMDD-HHMMSS) instead of a .db export. Used by
+  .github/workflows/deploy-worker.yml: the repo is public, so CI never writes or
+  uploads a database file. Cannot combine with -SkipTursoBackup.
+
   -WorkerOnly and -WorkersOnly are mutually exclusive.
 
 .EXAMPLE
@@ -47,9 +53,14 @@ if ($WorkerOnly -and $WorkersOnly) {
     throw "Pass -WorkerOnly or -WorkersOnly, not both."
 }
 
+if ($TursoBranchBackup -and $SkipTursoBackup) {
+    throw "Cannot combine -TursoBranchBackup and -SkipTursoBackup."
+}
+
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 Initialize-DeployEnvironment -Environment staging
 Set-DeploySkipTursoMutate -SkipTursoBackup:$SkipTursoBackup -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly
+$script:DeployStagingBackupAsBranch = [bool]$TursoBranchBackup
 
 $skipTerraform = $WorkerOnly -or $WorkersOnly
 $workflowLabel = if ($WorkersOnly) { "workers deploy" } elseif ($WorkerOnly) { "worker deploy" } else { "full deploy" }

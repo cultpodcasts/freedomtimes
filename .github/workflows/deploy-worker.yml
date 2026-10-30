@@ -2,10 +2,14 @@ name: Deploy Worker
 
 # Standard Freedom Times web Worker deploy path (web/docs/DEPLOY.md):
 #   - pull_request to main from a cultpodcasts branch (not a fork) -> staging Worker
-#     (same steps as `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump`).
-#   - push/merge to main -> verified production Turso backup (`prod-backup-YYYYMMDD-HHMMSS`
-#     branch + .db export), encrypted backup uploaded as a 90-day artifact, THEN the production
-#     Worker deploy (same steps as `deploy-production-local.ps1 -WorkerOnly -AllowProduction`).
+#     (same steps as `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump`,
+#     with the pre-migrate staging backup taken as a Turso branch).
+#   - push/merge to main -> verified production Turso backup branch `prod-backup-YYYYMMDD-HHMMSS`
+#     in its own step, THEN the production Worker deploy (same steps as
+#     `deploy-production-local.ps1 -WorkerOnly -AllowProduction`). The deploy step only runs if the
+#     backup step passed, and refuses to migrate if its target host is not the backed-up host.
+# This repo is public: CI never exports, uploads or stores a database file or artifact.
+# Secrets are scoped to the steps that use them; installs and npm ci run with none.
 # No Terraform apply here: Terraform stays plan-only in terraform-*.yml (holding_page guard there).
 # The local deploy scripts stay as the fallback.
 
@@ -44,26 +48,12 @@ jobs:
       name: staging
       url: https://staging.freedomtimes.news
     concurrency:
-      # Shared with terraform-staging.yml so EmDash migrate never races.
+      # Shared only with mutating (dispatch) terraform-staging.yml runs, so EmDash migrate never
+      # races. A running deploy is never cancelled. GitHub keeps one PENDING run per group: a
+      # newer push replaces an older pending one (the most recent push owns staging). A run shown
+      # as cancelled while pending was superseded; re-run it if its commit still needs staging.
       group: staging-emdash-migrate
       cancel-in-progress: false
-    env:
-      TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
-      TF_VAR_CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-      TF_VAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-      # Turso platform API token (turso CLI auth for the staging export); same secret terraform-staging.yml uses.
-      TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN_STAGING }}
-      TF_VAR_TURSO_ORGANIZATION: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
-      TF_VAR_WORKER_NAME_STAGING: ${{ vars.TF_VAR_WORKER_NAME_STAGING }}
-      PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
-      PUSH_STAGING_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_STAGING_VAPID_PRIVATE_KEY }}
-      PUSH_STAGING_VAPID_SUBJECT: ${{ secrets.PUSH_STAGING_VAPID_SUBJECT }}
-      PUSH_STAGING_ANDROID_FCM_PROJECT_ID: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PROJECT_ID }}
-      PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL: ${{ secrets.PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL }}
-      PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY }}
-      BACKUP_ARTIFACT_PASSPHRASE: ${{ secrets.PRODUCTION_BACKUP_ARTIFACT_PASSPHRASE }}
     steps:
       - name: Checkout PR head
         uses: actions/checkout@v6
@@ -83,63 +73,54 @@ jobs:
         run: npm ci
 
       - name: Setup Terraform (outputs only; no plan/apply)
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
           terraform_wrapper: false
 
       - name: Terraform init (staging, for turso_database_url / auth_token outputs)
         working-directory: infra/terraform/environments/staging
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
         run: terraform init -input=false
 
-      - name: Install Turso CLI
-        run: |
-          curl -sSfL https://get.tur.so/install.sh | bash
-          echo "$HOME/.turso" >> "$GITHUB_PATH"
+      - name: Install pinned Turso CLI (sha256-verified, no secrets)
+        run: bash ./scripts/ci-install-turso-cli.sh
 
-      - name: Deploy staging Worker (backup export, build, migrate, deploy, verify)
+      - name: Deploy staging Worker (backup branch, build, migrate, deploy, verify)
         shell: pwsh
-        run: ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
+          TF_VAR_CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          # Turso platform API token (turso CLI auth for the staging backup branch); same secret terraform-staging.yml uses.
+          TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN_STAGING }}
+          TF_VAR_TURSO_ORGANIZATION: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
+          TF_VAR_TURSO_DATABASE_GROUP_STAGING: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_STAGING }}
+          TF_VAR_WORKER_NAME_STAGING: ${{ vars.TF_VAR_WORKER_NAME_STAGING }}
+          PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY: ${{ secrets.PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_STAGING_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_STAGING_VAPID_PRIVATE_KEY }}
+          PUSH_STAGING_VAPID_SUBJECT: ${{ secrets.PUSH_STAGING_VAPID_SUBJECT }}
+          PUSH_STAGING_ANDROID_FCM_PROJECT_ID: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PROJECT_ID }}
+          PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL: ${{ secrets.PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL }}
+          PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY }}
+        run: ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump -TursoBranchBackup
 
       - name: Record staging Worker deployments
         if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          # Author: lines carry the Cloudflare account email; keep them out of this public summary.
           {
             echo "### Staging Worker deployments"
             echo '```'
-            npx --prefix web wrangler deployments list --config web/wrangler.jsonc --env staging 2>&1 | tail -n 40
+            npx --prefix web wrangler deployments list --config web/wrangler.jsonc --env staging 2>&1 | grep -v -i '^[[:space:]]*Author:' | tail -n 40
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Encrypt staging EmDash export
-        id: staging_backup
-        if: always()
-        run: |
-          shopt -s nullglob
-          files=(.release/backups/emdash-staging-*.db)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No staging export found."
-            exit 0
-          fi
-          if [ -z "${BACKUP_ARTIFACT_PASSPHRASE:-}" ]; then
-            echo "::warning::PRODUCTION_BACKUP_ARTIFACT_PASSPHRASE is not set; staging export not uploaded (repo is public, never upload plain .db)."
-            exit 0
-          fi
-          mkdir -p "$RUNNER_TEMP/backup-artifact"
-          tar -czf "$RUNNER_TEMP/staging-backup.tar.gz" "${files[@]}"
-          printf '%s' "$BACKUP_ARTIFACT_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
-            --symmetric --cipher-algo AES256 -o "$RUNNER_TEMP/backup-artifact/staging-emdash-backup.tar.gz.gpg" "$RUNNER_TEMP/staging-backup.tar.gz"
-          rm -f "$RUNNER_TEMP/staging-backup.tar.gz"
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-
-      - name: Upload encrypted staging export
-        if: always() && steps.staging_backup.outputs.ready == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: staging-emdash-backup-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/backup-artifact/
-          retention-days: 90
-          if-no-files-found: error
 
   production:
     name: Backup + Deploy Worker to Production
@@ -150,38 +131,12 @@ jobs:
       name: production
       url: https://freedomtimes.news
     concurrency:
-      # Shared with terraform-production.yml so EmDash migrate never races.
+      # Shared only with mutating (dispatch) terraform-production.yml runs, so EmDash migrate never
+      # races. A running deploy is never cancelled. A newer merge replaces an older PENDING run
+      # (the newest main is deployed); re-run a superseded run only if its commit must ship alone.
       group: production-emdash-migrate
       cancel-in-progress: false
-    env:
-      TF_VAR_CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-      TF_VAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
-      # Turso platform API token (turso CLI auth for the prod-backup branch + export); same secret terraform-production.yml uses.
-      TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN }}
-      TF_VAR_TURSO_ORGANIZATION: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
-      TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}
-      TF_VAR_TURSO_DATABASE_NAME_PRODUCTION: ${{ vars.TF_VAR_TURSO_DATABASE_NAME_PRODUCTION }}
-      TF_VAR_WORKER_NAME_PRODUCTION: ${{ vars.TF_VAR_WORKER_NAME_PRODUCTION }}
-      # Build-time EmDash migrate credentials (runtime uses the Worker's own TURSO_* secrets).
-      TURSO_PRODUCTION_EMDASH_DB_URL: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_URL }}
-      TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
-      PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
-      PUSH_PRODUCTION_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
-      PUSH_PRODUCTION_VAPID_SUBJECT: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}
-      PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID }}
-      PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL }}
-      PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY }}
-      BACKUP_ARTIFACT_PASSPHRASE: ${{ secrets.PRODUCTION_BACKUP_ARTIFACT_PASSPHRASE }}
     steps:
-      - name: Require backup artifact passphrase (fail closed, before touching production)
-        run: |
-          if [ -z "${BACKUP_ARTIFACT_PASSPHRASE:-}" ]; then
-            echo "::error::PRODUCTION_BACKUP_ARTIFACT_PASSPHRASE is not set. The production backup must be stored off-Turso as an encrypted artifact before any deploy. Nothing was deployed."
-            exit 1
-          fi
-
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -198,62 +153,77 @@ jobs:
         working-directory: web
         run: npm ci
 
-      - name: Install Turso CLI
-        run: |
-          curl -sSfL https://get.tur.so/install.sh | bash
-          echo "$HOME/.turso" >> "$GITHUB_PATH"
+      - name: Install pinned Turso CLI (sha256-verified, no secrets)
+        run: bash ./scripts/ci-install-turso-cli.sh
 
-      - name: Verified production EmDash backup (prod-backup-YYYYMMDD-HHMMSS + .db export)
+      - name: Verified production EmDash backup (Turso branch prod-backup-YYYYMMDD-HHMMSS; no .db)
         shell: pwsh
+        env:
+          # Turso platform API token (turso CLI auth for the prod-backup branch); same secret terraform-production.yml uses.
+          TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN }}
+          TF_VAR_TURSO_ORGANIZATION: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
+          TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}
+          TF_VAR_TURSO_DATABASE_NAME_PRODUCTION: ${{ vars.TF_VAR_TURSO_DATABASE_NAME_PRODUCTION }}
+          # The DB the backup reads. The deploy step migrates the URL from the same secret and
+          # refuses to run if its host differs from the backed-up workerTursoHost.
+          TURSO_PRODUCTION_EMDASH_DB_URL: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_URL }}
+          TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
         run: |
-          $env:FREEDOMTIMES_AGENTS_DIR = Join-Path $env:RUNNER_TEMP "freedomtimes-agents"
-          New-Item -ItemType Directory -Force -Path $env:FREEDOMTIMES_AGENTS_DIR | Out-Null
           $group = if ([string]::IsNullOrWhiteSpace($env:TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION)) { "freedomtimes-production" } else { $env:TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }
+          # -SkipFileExport: verify reads the new branch directly; nothing is written to disk.
+          # -SkipAgentsLog: the backup log commit in freedomtimes-agents is a manual follow-up.
           ./scripts/backup-production-emdash.ps1 -AllowProduction -TursoGroup $group -SkipStagingCompare -UseNativeTurso `
+            -SkipFileExport -SkipAgentsLog `
             -Notes "deploy-worker.yml run ${{ github.run_id }} (${{ github.sha }}) Worker-resolved EmDash backup"
           if ($LASTEXITCODE -ne 0) { throw "Production EmDash backup/verify failed (exit $LASTEXITCODE). Nothing deployed." }
-
-      - name: Encrypt production backup (repo is public; never upload a plain .db)
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          dbs=(.release/backups/emdash-production-*.db)
-          metas=(.release/rollback-branches/*.json)
-          if [ ${#dbs[@]} -eq 0 ] || [ ${#metas[@]} -eq 0 ]; then
-            echo "::error::Backup step did not leave a .db export and rollback metadata. Nothing deployed."
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/backup-artifact"
-          tar -czf "$RUNNER_TEMP/production-backup.tar.gz" "${dbs[@]}" "${metas[@]}" -C "$RUNNER_TEMP" freedomtimes-agents
-          printf '%s' "$BACKUP_ARTIFACT_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
-            --symmetric --cipher-algo AES256 -o "$RUNNER_TEMP/backup-artifact/production-emdash-backup.tar.gz.gpg" "$RUNNER_TEMP/production-backup.tar.gz"
-          rm -f "$RUNNER_TEMP/production-backup.tar.gz"
-          branch=$(grep -ho 'prod-backup-[0-9]\{8\}-[0-9]\{6\}' "${metas[@]}" | head -n 1 || true)
-          {
-            echo "### Production EmDash backup"
-            echo "- Turso branch: \`${branch:-see metadata}\`"
-            for f in "${dbs[@]}"; do echo "- Export: \`$(basename "$f")\` ($(du -h "$f" | cut -f1))"; done
-            echo "- Encrypted artifact: \`production-emdash-backup-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\` (90 days; gpg AES256, passphrase = PRODUCTION_BACKUP_ARTIFACT_PASSPHRASE)"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload encrypted production backup (before any deploy)
-        uses: actions/upload-artifact@v7
-        with:
-          name: production-emdash-backup-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/backup-artifact/
-          retention-days: 90
-          if-no-files-found: error
+          $meta = Get-ChildItem .release/rollback-branches/*-prod-backup-*.json | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if ($null -eq $meta) { throw "Backup step left no prod-backup metadata. Nothing deployed." }
+          $m = Get-Content -Raw -LiteralPath $meta.FullName | ConvertFrom-Json
+          if ($m.verificationPass -ne $true) { throw "Backup $($m.backupDatabase) is not verified. Nothing deployed." }
+          if ($m.resolveSource -ne "wrangler-getPlatformProxy-production") {
+            Write-Host "::warning::Backup source came from env fallback $($m.resolveSource) (the TURSO_PRODUCTION_EMDASH_DB_URL secret), not the live Worker binding. After any DR retarget, update that secret first (web/docs/DEPLOY.md)."
+          }
+          @(
+            "### Production EmDash backup",
+            "- Turso branch: ``$($m.backupDatabase)`` (verified; no .db exported or uploaded)",
+            "- Source: ``$($m.sourceDatabase)`` via $($m.resolveSource)",
+            "- Restore: web/docs/DEPLOY.md § If the production job fails"
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
       - name: Deploy production Worker (build, migrate, deploy, verify)
+        # Runs only when the backup step above passed (default success() gate).
         shell: pwsh
+        env:
+          TF_VAR_CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_TURSO_ORGANIZATION: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
+          TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}
+          TF_VAR_TURSO_DATABASE_NAME_PRODUCTION: ${{ vars.TF_VAR_TURSO_DATABASE_NAME_PRODUCTION }}
+          TF_VAR_WORKER_NAME_PRODUCTION: ${{ vars.TF_VAR_WORKER_NAME_PRODUCTION }}
+          # Build-time EmDash migrate credentials (runtime uses the Worker's own TURSO_* secrets).
+          TURSO_PRODUCTION_EMDASH_DB_URL: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_URL }}
+          TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
+          PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
+          PUSH_PRODUCTION_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
+          PUSH_PRODUCTION_VAPID_SUBJECT: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}
+          PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID }}
+          PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL }}
+          PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY: ${{ secrets.PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY }}
         run: ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -UseFreshTursoCheckpoint
 
       - name: Record production Worker deployments
         if: always()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.TF_VAR_CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          # Author: lines carry the Cloudflare account email; keep them out of this public summary.
+          # The version ids listed here are the `wrangler rollback` targets (web/docs/DEPLOY.md).
           {
             echo "### Production Worker deployments"
             echo '```'
-            npx --prefix web wrangler deployments list --config web/wrangler.jsonc --env production 2>&1 | tail -n 40
+            npx --prefix web wrangler deployments list --config web/wrangler.jsonc --env production 2>&1 | grep -v -i '^[[:space:]]*Author:' | tail -n 40
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
