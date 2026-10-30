@@ -437,6 +437,7 @@ After the public route is verified live:
 3. Resubmit sitemaps so Google refreshes the index (domain property — use OAuth + Search Console API if MCP `list_sitemaps` / `submit_sitemap` rewrites to a missing URL-prefix):
    - `https://freedomtimes.news/sitemap.xml`
    - `https://freedomtimes.news/sitemap-posts.xml`
+   - `https://freedomtimes.news/sitemap-site-pages.xml` (homepage, about/contact/privacy, archives; also listed in `sitemap.xml`)
 4. Re-run **`inspect_url`** later (hours–days) to confirm crawl/index progress. Do not expect instant “Submitted and indexed.”
 
 Example agent/operator asks after promote:
@@ -450,7 +451,7 @@ If MCP/Indexing API is unavailable:
 
 1. Open [Google Search Console](https://search.google.com/search-console) → property `freedomtimes.news` (domain).
 2. **URL Inspection** → paste `https://freedomtimes.news/posts/<slug>` → **Request indexing**.
-3. **Sitemaps** → ensure `sitemap.xml` / `sitemap-posts.xml` are submitted; use **Resubmit** if stale.
+3. **Sitemaps** → ensure `sitemap.xml` / `sitemap-posts.xml` / `sitemap-site-pages.xml` are submitted; use **Resubmit** if stale.
 
 ### Notes
 

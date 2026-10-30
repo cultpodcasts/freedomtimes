@@ -26,6 +26,8 @@ import {
   isKnownSitemapPath,
   serveSitemapResiliently,
 } from './lib/sitemap-resilience';
+import { SITE_SITEMAP_PATH } from './lib/site-sitemap';
+import { generateSiteSitemapResponse } from './lib/site-sitemap-db';
 
 enum PathMode {
   Exact = 'exact',
@@ -220,22 +222,41 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // Sitemaps: edge-cached, never 404 on a generation failure (last-known-good, else 503 + Retry-After).
   // Locked staging: cache bypassed, downstream access control unchanged. HEAD → headers only.
+  // Public site only (#34): `/sitemap-site-pages.xml` (/, about/contact/privacy pages, archives) is
+  // built here and listed in `/sitemap.xml`. Locked staging never takes this branch, so EmDash
+  // answers that path (404) and its index is passed through exactly as before.
+  const sitemapLocked = isLockedSiteAccess();
+  const sitemapLog = (event: string, extra: Record<string, unknown>) =>
+    console.warn('[sitemap]', JSON.stringify({ event, cfRay: context.request.headers.get('cf-ray') ?? '', ...extra }));
+  const sitemapWaitUntil = (p: Promise<unknown>) => {
+    try {
+      waitUntil(p);
+    } catch {
+      // Not on Workers (dev): let the promise run detached.
+    }
+  };
+  if ((context.request.method === 'GET' || context.request.method === 'HEAD') && path === SITE_SITEMAP_PATH && !sitemapLocked) {
+    return serveSitemapResiliently({
+      head: context.request.method === 'HEAD',
+      origin: context.url.origin,
+      pathname: path,
+      generate: () => generateSiteSitemapResponse(context.url.origin),
+      cache: defaultSitemapCache(),
+      waitUntil: sitemapWaitUntil,
+      log: sitemapLog,
+    });
+  }
   if ((context.request.method === 'GET' || context.request.method === 'HEAD') && isKnownSitemapPath(path)) {
     return serveSitemapResiliently({
-      locked: isLockedSiteAccess(),
+      locked: sitemapLocked,
       head: context.request.method === 'HEAD',
       origin: context.url.origin,
       pathname: path,
       generate: () => next(),
+      extraIndexSitemaps: sitemapLocked ? [] : [SITE_SITEMAP_PATH],
       cache: defaultSitemapCache(),
-      waitUntil: (p) => {
-        try {
-          waitUntil(p);
-        } catch {
-          // Not on Workers (dev): let the promise run detached.
-        }
-      },
-      log: (event, extra) => console.warn('[sitemap]', JSON.stringify({ event, cfRay: context.request.headers.get('cf-ray') ?? '', ...extra })),
+      waitUntil: sitemapWaitUntil,
+      log: sitemapLog,
     });
   }
 

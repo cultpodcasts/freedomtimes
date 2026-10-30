@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
 	SITEMAP_RETRY_AFTER_SECONDS,
+	injectIndexSitemaps,
 	isKnownSitemapPath,
 	serveSitemapResiliently,
 	type SitemapCache,
@@ -125,6 +126,59 @@ describe('sitemap resilience', () => {
 		assert.equal(res.status, 200);
 		assert.equal(res.headers.get('Cache-Control'), 'private, no-store');
 		assert.equal(cache.store.size, 0);
+	});
+
+	it('adds extra child sitemaps to /sitemap.xml only (once), and caches the result', async () => {
+		const index = '<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <sitemap>\n    <loc>https://freedomtimes.news/sitemap-posts.xml</loc>\n  </sitemap>\n</sitemapindex>';
+		const cache = memoryCache();
+		const pending: Promise<unknown>[] = [];
+		const res = await serveSitemapResiliently({
+			origin: ORIGIN,
+			pathname: '/sitemap.xml',
+			generate: async () => new Response(index, { status: 200 }),
+			extraIndexSitemaps: ['/sitemap-site-pages.xml'],
+			cache,
+			waitUntil: (p) => pending.push(p),
+		});
+		await flush(pending);
+		const body = await res.text();
+		assert.match(body, /<sitemap>\n {4}<loc>https:\/\/freedomtimes\.news\/sitemap-site-pages\.xml<\/loc>\n {2}<\/sitemap>\n<\/sitemapindex>$/);
+		assert.match(body, /sitemap-posts\.xml/);
+		assert.equal(cache.store.get(`${ORIGIN}/__ft-sitemap-cache/fresh/sitemap.xml`), body);
+		assert.equal(injectIndexSitemaps(body, ORIGIN, ['/sitemap-site-pages.xml']), body, 'never listed twice');
+
+		const posts = await serveSitemapResiliently({
+			origin: ORIGIN,
+			pathname: '/sitemap-posts.xml',
+			generate: async () => new Response(XML, { status: 200 }),
+			extraIndexSitemaps: ['/sitemap-site-pages.xml'],
+			cache: null,
+		});
+		assert.doesNotMatch(await posts.text(), /sitemap-site-pages/);
+	});
+
+	it('locked site: extra child sitemaps are never added to the index', async () => {
+		const index = '<sitemapindex>\n</sitemapindex>';
+		const res = await serveSitemapResiliently({
+			origin: ORIGIN,
+			pathname: '/sitemap.xml',
+			locked: true,
+			generate: async () => new Response(index, { status: 200 }),
+			extraIndexSitemaps: ['/sitemap-site-pages.xml'],
+			cache: null,
+		});
+		assert.equal(await res.text(), index);
+	});
+
+	it('a site-sitemap generation that throws serves last-known-good, else 503 (never 404)', async () => {
+		const cache = memoryCache();
+		const failing = async () => { throw new Error('no such table: ec_archives'); };
+		const none = await serveSitemapResiliently({ origin: ORIGIN, pathname: '/sitemap-site-pages.xml', generate: failing, cache });
+		assert.equal(none.status, 503);
+		cache.store.set(`${ORIGIN}/__ft-sitemap-cache/stale/sitemap-site-pages.xml`, XML);
+		const stale = await serveSitemapResiliently({ origin: ORIGIN, pathname: '/sitemap-site-pages.xml', generate: failing, cache });
+		assert.equal(stale.status, 200);
+		assert.equal(stale.headers.get('X-FT-Sitemap'), 'stale');
 	});
 
 	it('HEAD returns status and headers without a body', async () => {

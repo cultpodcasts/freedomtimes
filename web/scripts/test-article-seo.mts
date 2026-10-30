@@ -5,6 +5,7 @@ import {
 	PUBLISHER_LOGO_PATH,
 	buildBreadcrumbJsonLd,
 	buildNewsArticleJsonLd,
+	contentCanonicalPath,
 	findWeeklyNeighbours,
 	organisationSchemaType,
 	readArticleStructuredFields,
@@ -261,5 +262,26 @@ describe('review fixes (PR 109)', () => {
 		assert.deepEqual(withUrl.author, { '@type': 'Person', name: 'Jane Doe', url: 'https://example.org/jane' });
 		const without = buildNewsArticleJsonLd({ ...base, bylineName: 'Jane Doe', bylineUrl: null });
 		assert.deepEqual(without.author, { '@type': 'Person', name: 'Jane Doe' });
+	});
+});
+
+describe('contentCanonicalPath (#34)', () => {
+	it('pages canonicalise to /<slug> (where they are served), never /posts/<slug> (a 301)', () => {
+		for (const slug of ['about-us', 'contact-us', 'privacy-policy']) {
+			assert.equal(contentCanonicalPath('pages', slug), `/${slug}`);
+			assert.equal(resolveCanonicalRedirect(`/posts/${slug}`), `/${slug}`, 'the old canonical 301s here');
+			assert.equal(resolveCanonicalRedirect(contentCanonicalPath('pages', slug)), null, 'the new canonical does not redirect');
+		}
+	});
+
+	it('posts and archives are unchanged', () => {
+		assert.equal(contentCanonicalPath('posts', 'weekly-summary-11-october-2026'), '/posts/weekly-summary-11-october-2026');
+		assert.equal(contentCanonicalPath('archives', '2024-07-14-freedom-times'), '/archives/2024-07-14-freedom-times');
+	});
+
+	it('EmDashContentView uses it with the EmDash collection key', async () => {
+		const { readFileSync } = await import('node:fs');
+		const src = readFileSync(new URL('../src/components/EmDashContentView.astro', import.meta.url), 'utf8');
+		assert.match(src, /const canonicalPath = contentCanonicalPath\(emdashCollection, entry\.slug \?\? entry\.id\);/);
 	});
 });

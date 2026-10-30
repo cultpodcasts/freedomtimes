@@ -355,6 +355,18 @@ export function findWeeklyNeighbours(
 	};
 }
 
+/**
+ * Reader URL path for an EmDash entry, used as its default canonical (and by the sitemap):
+ * - `archives` → `/archives/<slug>`
+ * - `pages` → `/<slug>` (pages are served by `src/pages/[slug].astro`; `/posts/<page-slug>` 301s there)
+ * - anything else (`posts`) → `/posts/<slug>`
+ */
+export function contentCanonicalPath(collection: string, slug: string): string {
+	if (collection === 'archives') return `/archives/${slug}`;
+	if (collection === 'pages') return `/${slug}`;
+	return `/posts/${slug}`;
+}
+
 /** Reader-site pages that have historically been linked under `/posts/`. */
 export const MISROUTED_PAGE_SLUGS = ['about-us', 'contact-us', 'privacy-policy', 'submit-a-tip'] as const;
 

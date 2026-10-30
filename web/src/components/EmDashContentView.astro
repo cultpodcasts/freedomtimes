@@ -26,6 +26,7 @@ import {
 	WEEKLY_SUMMARIES_SECTION_TITLE,
 	buildBreadcrumbJsonLd,
 	buildNewsArticleJsonLd,
+	contentCanonicalPath,
 	findWeeklyNeighbours,
 	isWeeklySummarySlug,
 	readArticleStructuredFields,
@@ -108,10 +109,8 @@ const portableComponents = {
 
 const legacyBlocks = textContent ? parseLegacyTextContent(textContent) : [];
 const portableRenderNodes = buildPortableRenderNodes(portableContent);
-const canonicalPath =
-	collectionLabel === "Archive"
-		? `/archives/${entry.slug ?? entry.id}`
-		: `/posts/${entry.slug ?? entry.id}`;
+// Pages canonicalise to `/<slug>` (where they are served), not `/posts/<slug>`, which 301s (#34).
+const canonicalPath = contentCanonicalPath(emdashCollection, entry.slug ?? entry.id);
 const structuredFields = readArticleStructuredFields(entry.data);
 // SEO record (title / description / canonical / noIndex) with fallbacks to the
 // pre-existing behaviour. og:title never carries a date suffix.

@@ -14,6 +14,10 @@
  * - A failed generation (any non-200 or a throw) serves last-known-good,
  *   else 503 + Retry-After. Known sitemap paths never return 404.
  * - Optional `hubPath` injects an extra URL into `/sitemap-posts.xml` (unused since the weekly hub was retired).
+ * - Optional `extraIndexSitemaps` adds child sitemaps to `/sitemap.xml` (production passes
+ *   `/sitemap-site-pages.xml`, #34). Never applied on a locked site.
+ * - The middleware also serves `/sitemap-site-pages.xml` through this wrapper (public site
+ *   only), with `generate` building it from the database instead of calling EmDash.
  *
  * Access control: when the site is locked (staging), the wrapper does NOT
  * read or write the cache and passes the downstream response through
@@ -64,6 +68,19 @@ export function injectHubUrl(xml: string, origin: string, hubPath: string): stri
 	return xml.replace('</urlset>', `${entry}</urlset>`);
 }
 
+/** Add `<sitemap>` entries for `paths` to a sitemap index (skips any already listed). */
+export function injectIndexSitemaps(xml: string, origin: string, paths: readonly string[]): string {
+	if (!xml.includes('</sitemapindex>')) return xml;
+	const base = origin.replace(/\/$/, '');
+	let entries = '';
+	for (const path of paths) {
+		const loc = `${base}${path}`;
+		if (xml.includes(`<loc>${loc}</loc>`)) continue;
+		entries += `  <sitemap>\n    <loc>${loc}</loc>\n  </sitemap>\n`;
+	}
+	return entries ? xml.replace('</sitemapindex>', `${entries}</sitemapindex>`) : xml;
+}
+
 function xmlResponse(body: string, extra: Record<string, string>): Response {
 	return new Response(body, {
 		status: 200,
@@ -90,6 +107,8 @@ async function serveSitemapInner(options: {
 	generate: () => Promise<Response>;
 	cache: SitemapCache | null;
 	hubPath?: string;
+	/** Child sitemap paths to add to `/sitemap.xml` (ignored when `locked`). */
+	extraIndexSitemaps?: readonly string[];
 	/** Locked site (staging): bypass cache entirely; downstream access control decides. */
 	locked?: boolean;
 	/** HEAD request: same status/headers, no body. */
@@ -133,6 +152,9 @@ async function serveSitemapInner(options: {
 		let body = await generated.text();
 		if (options.hubPath && pathname === '/sitemap-posts.xml') {
 			body = injectHubUrl(body, origin, options.hubPath);
+		}
+		if (options.extraIndexSitemaps?.length && pathname === '/sitemap.xml') {
+			body = injectIndexSitemaps(body, origin, options.extraIndexSitemaps);
 		}
 		if (cache) {
 			defer(cache.put(cacheKey(origin, pathname, 'fresh'), new Response(body, {
