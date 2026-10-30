@@ -536,7 +536,7 @@ Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $provHash)) -eq "Match
 Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $provDrHash)) -eq "Mismatch") "verdict: other host hash = Mismatch"
 Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $null)) -eq "Fail") "verdict: missing host hash = Fail"
 Assert-True ((Get-ProvOutcome PreDeploy 200 "<html>not json</html>") -eq "Fail") "verdict: non-JSON body = Fail"
-Assert-True ((Get-ProvOutcome PreDeploy 404 "") -eq "Bootstrap") "verdict: 404 before deploy = Bootstrap (Worker predates endpoint)"
+Assert-True ((Get-ProvOutcome PreDeploy 404 "") -eq "BootstrapCandidate") "verdict: 404 before deploy = BootstrapCandidate (needs #144 evidence, never a pass on its own)"
 Assert-True ((Get-ProvOutcome PostDeploy 404 "") -eq "Retry") "verdict: 404 after deploy = Retry (never Bootstrap)"
 Assert-True ((Get-ProvOutcome PreDeploy 401 "") -eq "Fail") "verdict: 401 = Fail"
 Assert-True ((Get-ProvOutcome PreDeploy 302 "") -eq "Fail") "verdict: redirect = Fail"
@@ -565,10 +565,92 @@ try {
     try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchNoHash -DelaySeconds 0 6>$null | Out-Null } catch { $missingMessage = $_.Exception.Message }
     Assert-True ($missingMessage -match "no Turso host hash") "pre-deploy: live Worker without a host hash fails closed"
 
+    # #144: a pre-deploy 404 is the bootstrap only with proof the live Worker predates the endpoint.
+    $preSha = "1646f96749e245d9f6df44a8e8f633fb86500cdf"
+    $endpointSha = "9a71314353aacd24e18b71906358e80791ffa820"
+    $laterSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    function New-FakeGitOps {
+        param([bool]$Shallow = $false, [string[]]$Known = @(), [string[]]$HasRoute = @(), [string[]]$Introducing = @(), [string[]]$Descendants = @(), [bool]$Throw = $false)
+        $state = @{ Shallow = $Shallow; Known = $Known; HasRoute = $HasRoute; Introducing = $Introducing; Descendants = $Descendants; Throw = $Throw }
+        return @{
+            IsShallow          = { if ($state.Throw) { throw "git exploded" }; $state.Shallow }.GetNewClosure()
+            CommitExists       = { param($Sha) $state.Known -contains $Sha }.GetNewClosure()
+            TreeHasPath        = { param($Sha, $Path) $state.HasRoute -contains $Sha }.GetNewClosure()
+            IntroducingCommits = { param($Path) $state.Introducing }.GetNewClosure()
+            IsAncestor         = { param($Ancestor, $Descendant) $state.Descendants -contains $Descendant }.GetNewClosure()
+        }
+    }
+    function New-VersionBody { param([string]$Commit) ([ordered]@{ repository = "cultpodcasts/freedomtimes"; commitSha = $Commit } | ConvertTo-Json -Compress) }
+    $gitPre = New-FakeGitOps -Known @($preSha, $endpointSha, $laterSha) -HasRoute @($endpointSha, $laterSha) -Introducing @($endpointSha) -Descendants @($endpointSha, $laterSha)
+    $ev = { param($Status, $Body, $Git) Resolve-DeployProvenanceBootstrapEvidence -VersionStatusCode $Status -VersionBody $Body -Git $Git }
+
+    Assert-True ((& $ev 200 (New-VersionBody $preSha) $gitPre).Allowed) "#144 evidence: live commit predates the endpoint = bootstrap allowed"
+    Assert-True (-not (& $ev 200 (New-VersionBody $laterSha) $gitPre).Allowed) "#144 evidence: live commit already ships the endpoint = refused"
+    $gitCherry = New-FakeGitOps -Known @($preSha) -HasRoute @($preSha) -Introducing @($endpointSha)
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) $gitCherry).Allowed) "#144 evidence: route file in the live tree (not via ancestry) = refused"
+    $gitDesc = New-FakeGitOps -Known @($preSha) -Introducing @($endpointSha) -Descendants @($preSha)
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) $gitDesc).Allowed) "#144 evidence: endpoint commit is an ancestor of the live commit = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody "unknown") $gitPre).Allowed) "#144 evidence: live commit 'unknown' = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody "1646f96") $gitPre).Allowed) "#144 evidence: short/partial live commit = refused"
+    Assert-True (-not (& $ev 200 '{"repository":"x"}' $gitPre).Allowed) "#144 evidence: version.json without commitSha = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") $gitPre).Allowed) "#144 evidence: live commit not in history = refused"
+    Assert-True (-not (& $ev 0 "" $gitPre).Allowed) "#144 evidence: version.json unreachable = refused"
+    Assert-True (-not (& $ev 301 "" $gitPre).Allowed) "#144 evidence: version.json redirect = refused"
+    Assert-True (-not (& $ev 503 "" $gitPre).Allowed) "#144 evidence: version.json 5xx = refused"
+    Assert-True (-not (& $ev 200 "<html>login</html>" $gitPre).Allowed) "#144 evidence: version.json not JSON = refused"
+    Assert-True (-not (& $ev 200 '["x"]' $gitPre).Allowed) "#144 evidence: version.json not an object = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) (New-FakeGitOps -Shallow $true -Known @($preSha) -Introducing @($endpointSha))).Allowed) "#144 evidence: shallow checkout = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) (New-FakeGitOps -Known @($preSha))).Allowed) "#144 evidence: no introducing commit found = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) (New-FakeGitOps -Throw $true)).Allowed) "#144 evidence: git error = refused"
+
     $script:DeployLiveProvenanceBootstrap = $false
     $fetch404 = { [pscustomobject]@{ StatusCode = 404; Body = "" } }
-    $bootstrap = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -DelaySeconds 0 3>$null 6>$null
-    Assert-True ($bootstrap -eq "Bootstrap" -and $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 (Worker predates endpoint) is the one-off bootstrap"
+    $fetchVersionPre = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody $preSha) } }
+    $bootstrap = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionPre -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null
+    Assert-True ($bootstrap -eq "Bootstrap" -and $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 with a live Worker that predates the endpoint is the one-off bootstrap"
+
+    $script:DeployLiveProvenanceBootstrap = $false
+    $refused = ""
+    $fetchVersionLater = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody $laterSha) } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionLater -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
+    Assert-True ($refused -match "Not the one-off bootstrap \(#144\)" -and $refused -match "Nothing was migrated or deployed" -and -not $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 from a live Worker that ships the endpoint fails closed"
+
+    $refused = ""
+    $fetchVersionDown = { [pscustomobject]@{ StatusCode = 0; Body = "" } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionDown -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
+    Assert-True ($refused -match "unreachable" -and $refused -match "Nothing was migrated or deployed") "pre-deploy: 404 with version.json unreachable fails closed"
+
+    $refused = ""
+    $fetchVersionUnknown = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody "unknown") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionUnknown -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
+    Assert-True ($refused -match "Not the one-off bootstrap" ) "pre-deploy: 404 with an unknown live commit fails closed"
+
+    # Real git (temp repo): the default ops read history the way CI does (full clone).
+    $gitRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("ft144-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $gitRepo | Out-Null
+    try {
+        $g = { param([Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArgs) & git -C $gitRepo -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false @GitArgs 2>$null }
+        & $g init -q | Out-Null
+        Set-Content -LiteralPath (Join-Path $gitRepo "README.md") -Value "a"
+        & $g add -A | Out-Null; & $g commit -q -m before | Out-Null
+        $realPre = ([string](& $g rev-parse HEAD)).Trim()
+        $routeDir = Join-Path $gitRepo "web/src/pages/api"
+        New-Item -ItemType Directory -Path $routeDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $routeDir "deploy-provenance.json.ts") -Value "export {}"
+        & $g add -A | Out-Null; & $g commit -q -m endpoint | Out-Null
+        $realEndpoint = ([string](& $g rev-parse HEAD)).Trim()
+        Set-Content -LiteralPath (Join-Path $gitRepo "README.md") -Value "b"
+        & $g add -A | Out-Null; & $g commit -q -m after | Out-Null
+        $realAfter = ([string](& $g rev-parse HEAD)).Trim()
+        $realOps = Get-DeployGitProvenanceEvidenceOps -RepoRoot $gitRepo
+        Assert-True ((& $ev 200 (New-VersionBody $realPre) $realOps).Allowed) "#144 real git: commit before the endpoint = bootstrap allowed"
+        Assert-True (-not (& $ev 200 (New-VersionBody $realEndpoint) $realOps).Allowed) "#144 real git: the endpoint commit itself = refused"
+        Assert-True (-not (& $ev 200 (New-VersionBody $realAfter) $realOps).Allowed) "#144 real git: a later commit = refused"
+        Assert-True (-not (& $ev 200 (New-VersionBody ("c" * 40)) $realOps).Allowed) "#144 real git: commit not in history = refused"
+    }
+    finally {
+        Remove-Item -LiteralPath $gitRepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
 
     $post404Message = ""
     try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy -Fetch $fetch404 -MaxAttempts 3 -DelaySeconds 0 6>$null | Out-Null } catch { $post404Message = $_.Exception.Message }

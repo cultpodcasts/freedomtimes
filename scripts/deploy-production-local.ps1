@@ -46,9 +46,11 @@ param(
   It also proves the LIVE production Worker reads that host (#142): before build it
   compares GET https://freedomtimes.news/api/deploy-provenance.json (a hash of the
   Worker's Turso host, never the host) with the backed-up host, and again right after
-  wrangler deploy against the new version. Mismatch fails closed. A 404 before deploy
-  (the live Worker predates the endpoint) is a one-off bootstrap: loud warning, the
-  secret-vs-backup host check above still applies, and the post-deploy check is mandatory.
+  wrangler deploy against the new version. Mismatch fails closed. A 404 before deploy is
+  the one-off bootstrap only if the live commit (/api/version.json) is in this clone's
+  history and predates the endpoint (#144; run from a full, fetched clone); then a loud
+  warning, the secret-vs-backup host check above still applies, and the post-deploy check
+  is mandatory. Any other 404 fails closed.
   Set FT_PRODUCTION_SITE_ORIGIN to override the origin; DEPLOY_PROVENANCE_TOKEN is sent
   as a bearer when set (only needed if the Worker has that secret).
 
@@ -93,7 +95,8 @@ if (-not $DryRun) {
     if ($UseFreshTursoCheckpoint) {
         Assert-DeployFreshEmDashTursoBackup
         # #142: the LIVE production Worker must read the backed-up DB before anything is built,
-        # migrated or deployed (404 = Worker predates the endpoint: loud bootstrap warning).
+        # migrated or deployed (404 = one-off bootstrap only with proof the live Worker predates
+        # the endpoint, #144; otherwise fail closed).
         Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy | Out-Null
     }
     else {

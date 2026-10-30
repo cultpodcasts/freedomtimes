@@ -979,6 +979,9 @@ function Assert-DeployMigrateTargetMatchesBackupHost {
 
 $script:DeployTursoHostHashDomain = "freedomtimes-turso-host-v1:"
 $script:DeployProvenancePath = "/api/deploy-provenance.json"
+$script:DeployVersionPath = "/api/version.json"
+# Repo path of the route. A live commit whose tree has this file ships the endpoint (#144).
+$script:DeployProvenanceRouteFile = "web/src/pages/api/deploy-provenance.json.ts"
 
 function Get-DeployTursoHostProvenanceHash {
     <#
@@ -1016,7 +1019,9 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
       Pure decision for one provenance response. Outcome is one of:
         Match      live Worker host hash equals the backed-up host hash
         Mismatch   live Worker reads another DB (fail closed)
-        Bootstrap  PreDeploy only: the live Worker predates the endpoint (404)
+        BootstrapCandidate  PreDeploy 404. NOT a pass: Assert-DeployLiveWorkerTursoHostMatchesBackup
+                   allows the one-off bootstrap only with positive evidence that the live Worker
+                   predates the endpoint (Resolve-DeployProvenanceBootstrapEvidence, #144)
         Retry      transient (network, 5xx; PostDeploy also 404 or old commit still serving)
         Fail       anything else (fail closed)
     #>
@@ -1037,7 +1042,7 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
     }
     if ($StatusCode -eq 404) {
         if ($Phase -eq "PreDeploy") {
-            return (& $verdict "Bootstrap" "The live production Worker returned 404 for $($script:DeployProvenancePath): it predates the provenance endpoint.")
+            return (& $verdict "BootstrapCandidate" "The live production Worker returned 404 for $($script:DeployProvenancePath).")
         }
         return (& $verdict "Retry" "The deployed Worker still returns 404 for $($script:DeployProvenancePath).")
     }
@@ -1077,17 +1082,21 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
     return (& $verdict "Match" "The live production Worker reads the backed-up DB host (commit '$liveCommit').")
 }
 
-function Invoke-DeployLiveWorkerProvenanceRequest {
+function Invoke-DeployProductionSiteGet {
     <#
     .SYNOPSIS
-      GET the production provenance endpoint once. Returns @{ StatusCode; Body }; StatusCode 0 on
-      a network error. No redirects followed. Sends DEPLOY_PROVENANCE_TOKEN as a bearer when set.
+      GET one production-site path once (cache-busting nonce, no-cache). Returns @{ StatusCode; Body };
+      StatusCode 0 on a network error. No redirects followed (a 3xx is returned as-is).
     #>
-    $uri = "$(Get-DeployProductionSiteOrigin)$($script:DeployProvenancePath)?ci=$([guid]::NewGuid().ToString('N'))"
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [string]$BearerToken = ""
+    )
+    $uri = "$(Get-DeployProductionSiteOrigin)$($Path)?ci=$([guid]::NewGuid().ToString('N'))"
     $headers = @{ "Cache-Control" = "no-cache" }
-    $token = [Environment]::GetEnvironmentVariable("DEPLOY_PROVENANCE_TOKEN", "Process")
-    if (-not [string]::IsNullOrWhiteSpace($token)) {
-        $headers["Authorization"] = "Bearer $($token.Trim())"
+    if (-not [string]::IsNullOrWhiteSpace($BearerToken)) {
+        $headers["Authorization"] = "Bearer $($BearerToken.Trim())"
     }
     try {
         $response = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -MaximumRedirection 0 `
@@ -1100,6 +1109,143 @@ function Invoke-DeployLiveWorkerProvenanceRequest {
     }
 }
 
+function Invoke-DeployLiveWorkerProvenanceRequest {
+    <#
+    .SYNOPSIS
+      GET the production provenance endpoint once. Sends DEPLOY_PROVENANCE_TOKEN as a bearer when set.
+    #>
+    $token = [Environment]::GetEnvironmentVariable("DEPLOY_PROVENANCE_TOKEN", "Process")
+    return (Invoke-DeployProductionSiteGet -Path $script:DeployProvenancePath -BearerToken ([string]$token))
+}
+
+function Invoke-DeployLiveWorkerVersionRequest {
+    <#
+    .SYNOPSIS
+      GET the production /api/version.json once (public; build commit only).
+    #>
+    return (Invoke-DeployProductionSiteGet -Path $script:DeployVersionPath)
+}
+
+function Get-DeployGitProvenanceEvidenceOps {
+    <#
+    .SYNOPSIS
+      Git lookups used by Resolve-DeployProvenanceBootstrapEvidence, as injectable scriptblocks.
+      Every lookup returns a value or throws; callers treat a throw as "no evidence" (fail closed).
+    #>
+    param([string]$RepoRoot = $script:DeployRepoRoot)
+
+    if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+        $RepoRoot = Split-Path $PSScriptRoot -Parent
+    }
+    $root = $RepoRoot
+    return @{
+        IsShallow          = {
+            $out = & git -C $root rev-parse --is-shallow-repository 2>$null
+            if ($LASTEXITCODE -ne 0) { throw "git rev-parse --is-shallow-repository failed." }
+            return ([string]$out).Trim() -eq "true"
+        }.GetNewClosure()
+        CommitExists       = {
+            param([string]$Sha)
+            & git -C $root cat-file -e "$Sha^{commit}" 2>$null
+            return $LASTEXITCODE -eq 0
+        }.GetNewClosure()
+        TreeHasPath        = {
+            param([string]$Sha, [string]$Path)
+            & git -C $root cat-file -e "$($Sha):$Path" 2>$null
+            return $LASTEXITCODE -eq 0
+        }.GetNewClosure()
+        IntroducingCommits = {
+            param([string]$Path)
+            $out = & git -C $root log --format=%H --diff-filter=A HEAD -- $Path 2>$null
+            if ($LASTEXITCODE -ne 0) { throw "git log for $Path failed." }
+            return @($out | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne "" })
+        }.GetNewClosure()
+        IsAncestor         = {
+            param([string]$Ancestor, [string]$Descendant)
+            & git -C $root merge-base --is-ancestor $Ancestor $Descendant 2>$null
+            switch ($LASTEXITCODE) {
+                0 { return $true }
+                1 { return $false }
+                default { throw "git merge-base --is-ancestor failed (exit $LASTEXITCODE)." }
+            }
+        }.GetNewClosure()
+    }
+}
+
+function Resolve-DeployProvenanceBootstrapEvidence {
+    <#
+    .SYNOPSIS
+      Issue #144: is a pre-deploy 404 from /api/deploy-provenance.json the legitimate one-off
+      bootstrap (the live Worker predates the endpoint)? Returns @{ Allowed; LiveCommit; Message }.
+
+    .DESCRIPTION
+      Allowed only with positive evidence, all of:
+        - /api/version.json answered 200 with a JSON object whose commitSha is a full 40-hex SHA;
+        - this checkout has full history (not shallow) and contains that commit;
+        - the live commit's tree does NOT contain the provenance route file;
+        - no commit that added the route (git log --diff-filter=A on HEAD) is an ancestor of it
+          (git merge-base --is-ancestor).
+      Anything else (lookup failure, redirect, non-JSON, "unknown" commit, commit not in history,
+      a live commit that already ships the endpoint, any git error) is Allowed = $false: the
+      404 then fails the run closed.
+    #>
+    param(
+        [int]$VersionStatusCode,
+        [string]$VersionBody,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Git
+    )
+
+    $result = { param($Allowed, $LiveCommit, $Message) [pscustomobject]@{ Allowed = [bool]$Allowed; LiveCommit = $LiveCommit; Message = $Message } }
+    $versionPath = $script:DeployVersionPath
+    $route = $script:DeployProvenanceRouteFile
+
+    if ($VersionStatusCode -ne 200) {
+        $what = if ($VersionStatusCode -eq 0) { "was unreachable" } elseif ($VersionStatusCode -ge 300 -and $VersionStatusCode -lt 400) { "redirected ($VersionStatusCode)" } else { "returned status $VersionStatusCode" }
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: $versionPath $what.")
+    }
+    try {
+        $payload = $VersionBody | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: $versionPath is not JSON.")
+    }
+    if ($payload -isnot [pscustomobject]) {
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: $versionPath is not a JSON object.")
+    }
+    $live = if ($payload.PSObject.Properties["commitSha"]) { ([string]$payload.commitSha).Trim().ToLowerInvariant() } else { "" }
+    if ($live -notmatch '^[0-9a-f]{40}$') {
+        $shown = if ([string]::IsNullOrWhiteSpace($live)) { "missing" } else { "'$live'" }
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: its commit is $shown (needs a full SHA).")
+    }
+
+    try {
+        if (& $Git.IsShallow) {
+            return (& $result $false $live "Cannot check live commit $live against history: this checkout is shallow (CI needs actions/checkout fetch-depth: 0).")
+        }
+        if (-not (& $Git.CommitExists $live)) {
+            return (& $result $false $live "Live commit $live is not in this checkout's history (unknown or unpushed build; run git fetch origin locally).")
+        }
+        if (& $Git.TreeHasPath $live $route) {
+            return (& $result $false $live "Live commit $live already contains $route, yet the endpoint returns 404 (route regression, a build without the page, or a misrouted origin).")
+        }
+        $introducing = @(& $Git.IntroducingCommits $route)
+        if ($introducing.Count -eq 0) {
+            return (& $result $false $live "Cannot find the commit that added $route in this checkout's history.")
+        }
+        foreach ($commit in $introducing) {
+            if (& $Git.IsAncestor $commit $live) {
+                return (& $result $false $live "Live commit $live already includes $commit, which added the endpoint, yet the endpoint returns 404.")
+            }
+        }
+        $first = $introducing[-1]
+        return (& $result $true $live "Live commit $live predates the provenance endpoint (added in $first).")
+    }
+    catch {
+        return (& $result $false $live "Cannot check live commit $live against git history: $($_.Exception.Message)")
+    }
+}
+
 function Assert-DeployLiveWorkerTursoHostMatchesBackup {
     <#
     .SYNOPSIS
@@ -1107,18 +1253,23 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
 
     .DESCRIPTION
       PreDeploy: before build/migrate/deploy. Mismatch, missing hash or any unexpected response
-      throws (nothing migrated or deployed). A 404 means the live Worker predates the endpoint
-      (first deploy that ships it): loud ::warning::, and the secret-vs-backup host assertion
-      (Assert-DeployMigrateTargetMatchesBackupHost) is the only check for this one run.
+      throws (nothing migrated or deployed). A 404 is the one-off bootstrap ONLY when
+      Resolve-DeployProvenanceBootstrapEvidence proves the live Worker predates the endpoint
+      (#144: its /api/version.json commit is known and does not contain the route); then a loud
+      ::warning:: and the secret-vs-backup host assertion (Assert-DeployMigrateTargetMatchesBackupHost)
+      is the only check for this one run. Without that proof the 404 fails closed.
       PostDeploy: right after wrangler deploy, against the NEW version (waits for its commit).
       Here 404 is a hard failure once retries run out: the bootstrap cannot repeat.
-      -Fetch is injectable for tests; it must return @{ StatusCode; Body }.
+      -Fetch / -FetchVersion are injectable for tests; they must return @{ StatusCode; Body }.
+      -GitOps is injectable for tests (shape: Get-DeployGitProvenanceEvidenceOps).
     #>
     param(
         [Parameter(Mandatory = $true)]
         [ValidateSet("PreDeploy", "PostDeploy")]
         [string]$Phase,
         [scriptblock]$Fetch = { Invoke-DeployLiveWorkerProvenanceRequest },
+        [scriptblock]$FetchVersion = { Invoke-DeployLiveWorkerVersionRequest },
+        [hashtable]$GitOps = $null,
         [int]$MaxAttempts = 0,
         [int]$DelaySeconds = 5
     )
@@ -1158,14 +1309,22 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
                 & $summary "- Live Worker provenance ($Phase, #142): match (Turso host hash = backup ``$backupName``)"
                 return "Match"
             }
-            "Bootstrap" {
-                $message = "$($last.Message) This run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory. If this appears again after the endpoint has shipped, stop and investigate."
+            "BootstrapCandidate" {
+                # #144: a 404 is only the bootstrap with proof that the live Worker predates the endpoint.
+                $ops = if ($null -ne $GitOps) { $GitOps } else { Get-DeployGitProvenanceEvidenceOps }
+                $versionResponse = & $FetchVersion
+                $evidence = Resolve-DeployProvenanceBootstrapEvidence -VersionStatusCode ([int]$versionResponse.StatusCode) `
+                    -VersionBody ([string]$versionResponse.Body) -Git $ops
+                if (-not $evidence.Allowed) {
+                    throw "$failurePrefix $($last.Message) Not the one-off bootstrap (#144): $($evidence.Message) Nothing was migrated or deployed."
+                }
+                $message = "$($last.Message) $($evidence.Message) One-off bootstrap: this run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory."
                 if ($env:GITHUB_ACTIONS -eq "true") {
                     Write-Host "::warning title=Live Worker provenance bootstrap (#142)::$message"
                 }
                 Write-Warning $message
                 $script:DeployLiveProvenanceBootstrap = $true
-                & $summary "- Live Worker provenance ($Phase, #142): **bootstrap** (live Worker predates the endpoint; secret-vs-backup host check only)"
+                & $summary "- Live Worker provenance ($Phase, #142): **bootstrap** (live commit ``$($evidence.LiveCommit)`` predates the endpoint; secret-vs-backup host check only)"
                 return "Bootstrap"
             }
             "Mismatch" {
