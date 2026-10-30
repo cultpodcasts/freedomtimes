@@ -366,11 +366,14 @@ $logicalOutputs = @(
         UrlOutput  = "turso_database_url"
         NameOutput = "turso_database_name"
         # Terraform no longer mints the production EmDash token (turso_database_token.emdash retired, #137;
-        # AGENTS.md CA-21). An existing TURSO_PRODUCTION_EMDASH_DB_TOKEN is kept; otherwise one is minted below.
+        # AGENTS.md CA-21). Only the TURSO_PRODUCTION_EMDASH_DB_* keys are written: the .env.dev
+        # TURSO_DATABASE_URL / TURSO_AUTH_TOKEN pair stays staging (AGENTS.md CA-14), so it is neither
+        # overwritten nor treated as an existing token. An existing TURSO_PRODUCTION_EMDASH_DB_TOKEN is
+        # kept; otherwise one is minted via the Turso Platform API below.
         TokenOutput = ""
         DefaultName = "freedomtimes-emdash-production"
-        EnvKeysUrl = @("TURSO_DATABASE_URL", "TURSO_PRODUCTION_EMDASH_DB_URL")
-        EnvKeysToken = @("TURSO_AUTH_TOKEN", "TURSO_PRODUCTION_EMDASH_DB_TOKEN")
+        EnvKeysUrl = @("TURSO_PRODUCTION_EMDASH_DB_URL")
+        EnvKeysToken = @("TURSO_PRODUCTION_EMDASH_DB_TOKEN")
     },
     @{
         UrlOutput  = "subscriptions_turso_database_url"

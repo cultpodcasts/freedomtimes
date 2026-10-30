@@ -664,7 +664,7 @@ jobs:
           fi
 
           if [ -z "${TURSO_AUTH_TOKEN}" ]; then
-            echo "ERROR: TURSO_AUTH_TOKEN is required but empty from Terraform outputs"
+            echo "ERROR: TURSO_AUTH_TOKEN is required but empty (it comes from the TURSO_PRODUCTION_EMDASH_DB_TOKEN secret, #137)"
             exit 1
           fi
 

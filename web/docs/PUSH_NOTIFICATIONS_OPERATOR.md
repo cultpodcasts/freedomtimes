@@ -83,7 +83,7 @@ Production uses the `TURSO_SUBSCRIPTIONS_*` / `TURSO_SCHEDULER_*` or `TURSO_PROD
 
 ### Turso Platform API (production token mint only)
 
-Used by **`scripts/sync-production-turso-env-dev.ps1`** when Terraform `*_auth_token` outputs are absent from remote state, and for the production EmDash token when `.env.dev` has none (Terraform no longer mints that one, #137). Not used for routine query auth.
+Used by **`scripts/sync-production-turso-env-dev.ps1`** when Terraform `*_auth_token` outputs are absent from remote state, and for the production EmDash token when `.env.dev` has no `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (Terraform no longer mints that one, #137). Not used for routine query auth.
 
 | Variable | Purpose | Common mistakes |
 |----------|---------|-----------------|

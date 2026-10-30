@@ -361,7 +361,7 @@ Expect `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. If missing:
 
 `deploy-production-local.ps1 -WorkerOnly` now **does** resolve Turso URL/token (URL from Terraform outputs or `.env.dev`, token from `TURSO_PRODUCTION_EMDASH_DB_TOKEN` in `.env.dev`, via `resolve-turso-build-credentials.ps1`) so `.emdash/migrations.json` and `npx emdash migrate` target the real EmDash database. The libsql Worker shim still prefers Cloudflare `TURSO_*` secrets at runtime.
 
-Keep `.env.dev` Turso values for full deploys, `-WorkerOnly`, `astro dev`, `-WorkersOnly`, secret sync, and core migrate. Refresh them when outputs exist:
+Keep `.env.dev` Turso values for full deploys, `-WorkerOnly`, `astro dev`, `-WorkersOnly`, secret sync, and core migrate. Refresh the production keys (`TURSO_PRODUCTION_EMDASH_DB_URL`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN`, and the scheduler, subscriptions and tips keys) with the command below. It mints the EmDash token when it is missing, and never writes `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN`, which stay staging ([AGENTS.md](../../AGENTS.md) CA-14):
 
 ```powershell
 pwsh ./scripts/sync-production-turso-env-dev.ps1

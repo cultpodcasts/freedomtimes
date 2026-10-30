@@ -33,7 +33,9 @@ After `.env.dev` exists, refresh database URLs/tokens from Terraform:
 # Staging scheduler + subscriptions + tips → TURSO_STAGING_* keys
 pwsh ./scripts/sync-staging-turso-env-dev.ps1
 
-# Production EmDash + scheduler + subscriptions + tips → TURSO_DATABASE_URL, TURSO_* aliases
+# Production EmDash → TURSO_PRODUCTION_EMDASH_DB_URL / _TOKEN (mints the token when missing);
+# scheduler + subscriptions + tips → TURSO_*_DATABASE_URL / TURSO_PRODUCTION_*_DB_* aliases.
+# Never writes TURSO_DATABASE_URL / TURSO_AUTH_TOKEN (that pair stays staging, AGENTS.md CA-14).
 pwsh ./scripts/sync-production-turso-env-dev.ps1
 ```
 
@@ -66,7 +68,8 @@ Same pattern applies to `npm run build` (see [SOCIAL_IMAGES_AND_FAVICONS.md](./S
 | Cloudflare API / zone | `TF_VAR_CLOUDFLARE_*` | Cloudflare dashboard → API tokens |
 | Auth0 tenant + Management API | `TF_VAR_AUTH0_DOMAIN`, `TF_VAR_AUTH0_MANAGEMENT_*` | Auth0 dashboard; see [NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md) |
 | Auth0 login app (per env) | `AUTH0_LOGIN_APP_CLIENT_ID_STAGING`, `_PRODUCTION`, secrets | Terraform outputs after `terraform apply`; `scripts/terraform-run.ps1` can write staging keys into `.env.dev` |
-| EmDash Turso (CMS) | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | `sync-production-turso-env-dev.ps1` or Terraform production outputs (URL only for production: the production EmDash token is `TURSO_PRODUCTION_EMDASH_DB_TOKEN`, which Terraform no longer mints, #137). Production outage: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (Worker-resolved; do not assume named `freedomtimes-emdash-production`) |
+| EmDash Turso (CMS), staging | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Staging only (AGENTS.md CA-14). Terraform staging outputs `turso_database_url` / `turso_database_auth_token` (the resolver prefers them at deploy time), or set by hand. Never put production values here. |
+| EmDash Turso (CMS), production | `TURSO_PRODUCTION_EMDASH_DB_URL`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN` | `sync-production-turso-env-dev.ps1` (writes the URL; mints the token through the Turso Platform API when it is missing). Terraform production outputs give the URL only: Terraform no longer mints this token ([#137](https://github.com/cultpodcasts/freedomtimes/issues/137)). Production outage: sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md) (Worker-resolved; do not assume named `freedomtimes-emdash-production`) |
 | Scheduler / subscriptions / tips Turso | `TURSO_STAGING_*`, `TURSO_SUBSCRIPTIONS_*`, `TURSO_SCHEDULER_*`, `TURSO_STAGING_TIPS_DB_*`, `TURSO_TIPS_*`, `TURSO_PRODUCTION_TIPS_DB_*` | `sync-staging-turso-env-dev.ps1`, `sync-production-turso-env-dev.ps1` |
 | Turso Platform API (Terraform create DBs) | **`TURSO_PLATFORM_API_TOKEN`** or `TF_VAR_turso_api_token` (production); **`TURSO_TOKEN_STAGING`** (staging) | Turso dashboard → Settings → API tokens. May be JWT-shaped but must pass the Platform API probe (`GET /v1/organizations`). Do not copy `TURSO_AUTH_TOKEN` or `TURSO_*_DB_TOKEN` into `TURSO_TOKEN` / `TURSO_PLATFORM_API_TOKEN`. |
 | Turso Platform API (mint DB JWTs) | `TF_VAR_TURSO_ORGANIZATION` | Turso dashboard → organization slug |
