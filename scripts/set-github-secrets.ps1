@@ -261,14 +261,17 @@ function Main {
                 $keys = @("TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN", "ANALYTICS_CF_TOKEN")
             }
             elseif ($name -eq "TURSO_TOKEN_STAGING") {
-                # Same order as Get-TursoPlatformApiTokenCandidateNames (terraform-turso-env.ps1), staging.
-                $keys = @("TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
+                # terraform-staging.yml maps this to TF_VAR_turso_api_token.
+                $keys = Get-TursoPlatformTokenSecretKeys -Environment staging
             }
             elseif ($name -eq "TURSO_TOKEN") {
-                # terraform-production.yml maps this to TF_VAR_turso_api_token; same order as production there.
-                $keys = @("TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
+                # terraform-production.yml maps this to TF_VAR_turso_api_token.
+                $keys = Get-TursoPlatformTokenSecretKeys -Environment production
             }
             $value = Get-EnvValue -Values $baseEnvValues -Keys $keys
+            if ($name -eq "TURSO_TOKEN_STAGING" -or $name -eq "TURSO_TOKEN") {
+                Test-TursoPlatformTokenBeforeSync -Name $name -Value $value
+            }
             Set-GhSecret -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun
         }
 
@@ -422,6 +425,54 @@ function Get-PageViewsDatasetId {
     $fallback = if ($Environment -eq "staging") { "freedomtimes_staging_page_views" } else { "freedomtimes_page_views" }
     Write-Host "  [page_views_dataset/$Environment] using documented default $fallback" -ForegroundColor Gray
     return $fallback
+}
+
+function Get-TursoPlatformTokenSecretKeys {
+    # .env.dev keys for a Turso Platform API token, in the order Terraform resolves them locally.
+    # Single source of truth: Get-TursoPlatformApiTokenCandidateNames in terraform-turso-env.ps1.
+    param(
+        [ValidateSet("staging", "production")]
+        [string]$Environment
+    )
+    # Child scope (&): terraform-turso-env.ps1 sets StrictMode, which must not leak into this script.
+    $names = & {
+        param($HelperPath, $TargetEnvironment)
+        . $HelperPath
+        @(Get-TursoPlatformApiTokenCandidateNames -Environment $TargetEnvironment | Where-Object { -not (Test-IsWrongTursoPlatformTokenVarName $_) })
+    } (Join-Path $PSScriptRoot "terraform-turso-env.ps1") $Environment
+    if (@($names).Count -eq 0) {
+        throw "No Turso Platform API token candidate names for $Environment (terraform-turso-env.ps1)."
+    }
+    return [string[]]@($names)
+}
+
+function Test-TursoPlatformTokenBeforeSync {
+    # Warn (never block, never print the value) when a Turso Platform API token is rejected: stale
+    # repo secrets made the Terraform workflows fail silently for months (PR #136).
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+    try {
+        $accepted = & {
+            param($HelperPath, $Token)
+            . $HelperPath
+            Test-TursoPlatformApiToken $Token
+        } (Join-Path $PSScriptRoot "terraform-turso-env.ps1") $Value
+    }
+    catch {
+        Write-Warning "Could not probe $Name against the Turso Platform API ($($_.Exception.Message)); syncing it unchecked."
+        return
+    }
+    if ($accepted) {
+        Write-Host "  [probe] $Name accepted by the Turso Platform API" -ForegroundColor DarkGray
+    }
+    else {
+        Write-Warning "$Name was rejected by the Turso Platform API (401). Syncing it anyway; Terraform plans in CI will fail until it is replaced in .env.dev and re-synced."
+    }
 }
 
 function Get-EnvValueOrThrow {
