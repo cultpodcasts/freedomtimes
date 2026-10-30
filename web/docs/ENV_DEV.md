@@ -47,7 +47,7 @@ node web/scripts/pull-production-turso-secrets.mjs
 
 **Local staging Terraform** (`terraform-run.ps1 -Environment staging`) needs a **Platform API** token in `.env.dev` as **`TURSO_TOKEN_STAGING`** (same value as the GitHub Actions secret). This is not the same as `TURSO_STAGING_SUBSCRIPTIONS_DB_TOKEN` or other database JWTs. Copy from GitHub → Settings → Secrets → `TURSO_TOKEN_STAGING`, or create one in Turso → Settings → API tokens.
 
-`astro.config.ts` requires **`TURSO_DATABASE_URL`** and **`TURSO_AUTH_TOKEN`** at startup (EmDash CMS). Those live in `.env.dev` after production sync. For `npm run dev`, either:
+`astro.config.ts` requires **`TURSO_DATABASE_URL`** and **`TURSO_AUTH_TOKEN`** at startup (EmDash CMS). In `.env.dev` that pair is the **staging** EmDash pair (Terraform staging outputs or set by hand, [AGENTS.md](../../AGENTS.md) CA-14); production sync never writes it. For `npm run dev`, either:
 
 - copy those two keys into `web/.env`, or
 - run with repo-root env loaded:
