@@ -308,7 +308,10 @@ If you also need GitHub Actions to hold the same values, run:
 - `AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING`
 - `AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION`
 - `AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION`
-- `TURSO_TOKEN`
+- `TURSO_TOKEN` (production Turso Platform API token; prefers `TURSO_PLATFORM_API_TOKEN`, then `TURSO_TOKEN`)
+- `TURSO_TOKEN_STAGING` (staging Turso Platform API token; `TURSO_TOKEN_STAGING`, then `TURSO_PLATFORM_API_TOKEN`)
+- `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (production EmDash DB JWT; `terraform-production.yml` prefers it over the Terraform-minted `turso_database_auth_token`, as `resolve-turso-build-credentials.ps1` does locally)
+- `PUSH_PRODUCTION_ANDROID_FCM_PROJECT_ID`, `PUSH_PRODUCTION_ANDROID_FCM_CLIENT_EMAIL`, `PUSH_PRODUCTION_ANDROID_FCM_PRIVATE_KEY` (required by the production workflow's scheduler secret check, even on plan-only runs)
 - `EMDASH_AUTH_SECRET_STAGING`
 - `EMDASH_PREVIEW_SECRET_STAGING`
 - `EMDASH_AUTH_SECRET_PRODUCTION`

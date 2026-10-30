@@ -215,7 +215,12 @@ function Main {
             "AUTH0_LOGIN_APP_CLIENT_SECRET_STAGING",
             "AUTH0_LOGIN_APP_CLIENT_ID_PRODUCTION",
             "AUTH0_LOGIN_APP_CLIENT_SECRET_PRODUCTION",
+            # Turso Platform API tokens for the Terraform turso provider (CI: TF_VAR_turso_api_token).
+            "TURSO_TOKEN",
             "TURSO_TOKEN_STAGING",
+            # Production EmDash DB JWT; terraform-production.yml prefers it over the Terraform-minted
+            # turso_database_auth_token (same order as resolve-turso-build-credentials.ps1).
+            "TURSO_PRODUCTION_EMDASH_DB_TOKEN",
             "EMDASH_AUTH_SECRET_STAGING",
             "EMDASH_PREVIEW_SECRET_STAGING",
             "ANDROID_STAGING_SIGNING_KEYSTORE_BASE64",
@@ -254,6 +259,14 @@ function Main {
             if ($name -eq "TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN") {
                 # Prefer explicit TF_VAR name; fall back to house name ANALYTICS_CF_TOKEN.
                 $keys = @("TF_VAR_CLOUDFLARE_ANALYTICS_API_TOKEN", "ANALYTICS_CF_TOKEN")
+            }
+            elseif ($name -eq "TURSO_TOKEN_STAGING") {
+                # Same order as Get-TursoPlatformApiTokenCandidateNames (terraform-turso-env.ps1), staging.
+                $keys = @("TURSO_TOKEN_STAGING", "TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
+            }
+            elseif ($name -eq "TURSO_TOKEN") {
+                # terraform-production.yml maps this to TF_VAR_turso_api_token; same order as production there.
+                $keys = @("TURSO_PLATFORM_API_TOKEN", "TURSO_TOKEN")
             }
             $value = Get-EnvValue -Values $baseEnvValues -Keys $keys
             Set-GhSecret -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun

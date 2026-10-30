@@ -235,6 +235,12 @@ jobs:
 
       - name: Capture Terraform Outputs
         id: tf_outputs
+        env:
+          # Same preference as scripts/resolve-turso-build-credentials.ps1
+          # (Resolve-ProductionEmdashTursoToken): an explicit production EmDash JWT wins over the
+          # Terraform-minted turso_database_token.emdash, which Turso no longer accepts
+          # (404 "auth role not found", Oct 2026).
+          TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -242,6 +248,12 @@ jobs:
           TURSO_DATABASE_NAME=$(terraform output -raw turso_database_name 2>/dev/null || echo "")
           TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
           TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
+          if [ -n "${TURSO_PRODUCTION_EMDASH_DB_TOKEN:-}" ]; then
+            echo "EmDash Turso token source: TURSO_PRODUCTION_EMDASH_DB_TOKEN secret"
+            TURSO_AUTH_TOKEN="$TURSO_PRODUCTION_EMDASH_DB_TOKEN"
+          else
+            echo "EmDash Turso token source: terraform output turso_database_auth_token"
+          fi
           SCHEDULER_TURSO_DATABASE_URL=$(terraform output -raw scheduler_turso_database_url 2>/dev/null || echo "")
           SCHEDULER_TURSO_AUTH_TOKEN=$(terraform output -raw scheduler_turso_database_auth_token 2>/dev/null || echo "")
           SUBSCRIPTIONS_TURSO_DATABASE_URL=$(terraform output -raw subscriptions_turso_database_url 2>/dev/null || echo "")
