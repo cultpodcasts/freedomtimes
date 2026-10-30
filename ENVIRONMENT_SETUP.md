@@ -447,7 +447,7 @@ gh workflow run terraform-production.yml
 gh workflow run terraform-production.yml -f production_terraform_apply=true
 ```
 
-For a real production deploy, including any Terraform change that touches the Worker, back up production and run `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-operator-bypass)).
+For a real production deploy, including any Terraform change that touches the Worker, back up production and run `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-default-path)).
 
 ### Workflow Steps (Production Example)
 
@@ -459,7 +459,7 @@ For a real production deploy, including any Terraform change that touches the Wo
 6. **Terraform Init**: Initialize remote state
 7. **Terraform Validate**: Check syntax
 8. **Terraform Plan**: Generate execution plan. The workflows no longer run `terraform import` / `terraform state rm` steps; adopting or forgetting resources is done with config-level `import {}` / `removed {}` / `moved {}` blocks.
-9. **Plan guards**: Turso database and Worker Turso-secret guards, then `Guard Worker Script Upload Plan` immediately before apply. That guard runs on every plan. On plan-only runs it only reports (the `holding_page` drift is expected). On an apply run it refuses any plan that touches the Worker script, so an apply dispatch is blocked by design while that drift exists (see above and [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)).
+9. **Plan guards**: Turso database and Worker Turso-secret guards, then `Guard Worker Script Upload Plan` immediately before apply. That guard runs on every plan. On plan-only runs it only reports: a notice when the plan touches the Worker script (`BLOCKED:`, the expected `holding_page` drift), or a warning when it could not check the plan at all. On an apply run it refuses any plan that touches the Worker script, so an apply dispatch is blocked by design while that drift exists (see above and [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)).
 10. **Terraform Apply**: Only on manual dispatch with `production_terraform_apply=true`, and only if the guard passed
 11. **Capture Outputs**: Retrieve Terraform outputs (Auth0 client ID, Turso URLs/tokens). The production EmDash token comes from the `TURSO_PRODUCTION_EMDASH_DB_TOKEN` secret when it is set (standing preference, AGENTS.md CA-21), otherwise from the Terraform output `turso_database_auth_token`, which currently fails ([#137](https://github.com/cultpodcasts/freedomtimes/issues/137)).
 12. **Fetch Auth0 App Secret**: Query Auth0 Management API for client secret
@@ -864,7 +864,7 @@ terraform -chdir=infra/terraform/environments/staging init
 
 ### I want to deploy production via GitHub Actions
 
-Normally you don't: deploy production with `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-operator-bypass)). The CI wrapper is:
+Normally you don't: deploy production with `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-default-path)). The CI wrapper is:
 
 ```bash
 .\scripts\production-release.ps1 -TerraformMode apply -Watch -AllowProduction

@@ -12,10 +12,10 @@ This runbook is the single path for promoting all production-facing changes:
 
 | Change type | Deployment path | Notes |
 |---|---|---|
-| Layout/UI changes (`web/src/**`) | Local `deploy-production-local.ps1` ([§2b](#2b-local-production-deploy-operator-bypass)). CI `production-release.ps1 -TerraformMode apply` is refused while the `holding_page` drift exists (see §2) | Push to `main` is plan + EmDash `--check` only. Worker wrangler/secrets ship only on a deploy, never on a push. |
-| EmDash runtime updates (`web` dependencies/config) | Same apply dispatch | Same gate: merge does not wrangler production. |
+| Layout/UI changes (`web/src/**`) | Local `deploy-production-local.ps1` ([§2b](#2b-local-production-deploy-default-path)). CI `production-release.ps1 -TerraformMode apply` is refused while the `holding_page` drift exists (see §2) | Push to `main` is plan + EmDash `--check` only. Worker wrangler/secrets ship only on a deploy, never on a push. |
+| EmDash runtime updates (`web` dependencies/config) | Local `deploy-production-local.ps1` ([§2b](#2b-local-production-deploy-default-path)), as for layout/UI | Same gate: merge does not wrangler production. |
 | Terraform/IaC changes (`infra/terraform/**`) | `terraform-production.yml` plans on push. Apply with `deploy-production-local.ps1`; a CI apply dispatch is for non-Worker changes only and is refused while the `holding_page` drift exists | Applies managed infrastructure and captures outputs |
-| EmDash **core** schema (`emdash migrate` / `.emdash/migrations.json`) | Deploy pipeline: local `deploy-*-local.ps1` or CI `production-release.ps1` (`production_worker_deploy=true`) | Backup first, then apply, wrangler, `--check`. Runtime stays `check` (no first-request auto-migrate). |
+| EmDash **core** schema (`emdash migrate` / `.emdash/migrations.json`) | Deploy pipeline: local `deploy-*-local.ps1` ([§2b](#2b-local-production-deploy-default-path)). CI `production-release.ps1` (`production_worker_deploy=true`) is refused while the `holding_page` drift exists (see §2) | Backup first, then apply, wrangler, `--check`. Runtime stays `check` (no first-request auto-migrate). |
 | EmDash collection/field model | Cursor EmDash MCP (`schema_*` / content tools) against staging, then production | Not `npx emdash schema` for agents. Apply the same collection/field operations to production after staging validation. |
 | EmDash content changes | Staging-to-production promotion | Use [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md) |
 
@@ -120,9 +120,9 @@ Plan-only dry path (Terraform plan + `emdash migrate --check` only — **no** Tu
 .\scripts\production-release.ps1 -TerraformMode plan -Watch -AllowProduction
 ```
 
-### 2b. Local production deploy (operator bypass)
+### 2b. Local production deploy (default path)
 
-When CI is unavailable or the operator needs a local full production deploy, use **`scripts/deploy-production-local.ps1`**. **Script matrix, flags, step order, prerequisites, and troubleshooting:** [web/docs/DEPLOY.md — Local deploy scripts](web/docs/DEPLOY.md#local-deploy-scripts).
+This is the normal way to deploy production while the `holding_page` drift exists, because the CI apply in §2 is refused at the guard. Use **`scripts/deploy-production-local.ps1`**. **Script matrix, flags, step order, prerequisites, and troubleshooting:** [web/docs/DEPLOY.md — Local deploy scripts](web/docs/DEPLOY.md#local-deploy-scripts).
 
 ```powershell
 pwsh ./scripts/deploy-production-local.ps1
@@ -130,7 +130,7 @@ pwsh ./scripts/deploy-production-local.ps1
 
 **Release-specific notes (not duplicated in deploy guide):**
 
-- Prefer the CI path (§2 above) for routine releases on `main`.
+- Routine releases on `main` use this local path. The CI path (§2) is refused while the `holding_page` drift exists; use it with `-TerraformMode plan` as a dry run.
 - Local full deploy **and** `-WorkerOnly` auto-create a Turso rollback checkpoint, then `emdash migrate`, wrangler, `--check` (same sequence as CI).
 - After deploy, post-deploy secret verify runs on the production web Worker (`AUTH0_*`, `EMDASH_*`) — see canonical doc if verify fails.
 
