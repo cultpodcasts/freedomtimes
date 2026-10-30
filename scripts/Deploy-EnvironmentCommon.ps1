@@ -1020,7 +1020,7 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
         Match      live Worker host hash equals the backed-up host hash
         Mismatch   live Worker reads another DB (fail closed)
         BootstrapCandidate  PreDeploy 404. NOT a pass: Assert-DeployLiveWorkerTursoHostMatchesBackup
-                   allows the one-off bootstrap only with positive evidence that the live Worker
+                   allows a bootstrap only with positive evidence that the live Worker
                    predates the endpoint (Resolve-DeployProvenanceBootstrapEvidence, #144)
         Retry      transient (network, 5xx; PostDeploy also 404 or old commit still serving)
         Fail       anything else (fail closed)
@@ -1175,7 +1175,7 @@ function Get-DeployGitProvenanceEvidenceOps {
 function Resolve-DeployProvenanceBootstrapEvidence {
     <#
     .SYNOPSIS
-      Issue #144: is a pre-deploy 404 from /api/deploy-provenance.json the legitimate one-off
+      Issue #144: is a pre-deploy 404 from /api/deploy-provenance.json the legitimate
       bootstrap (the live Worker predates the endpoint)? Returns @{ Allowed; LiveCommit; Message }.
 
     .DESCRIPTION
@@ -1253,13 +1253,13 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
 
     .DESCRIPTION
       PreDeploy: before build/migrate/deploy. Mismatch, missing hash or any unexpected response
-      throws (nothing migrated or deployed). A 404 is the one-off bootstrap ONLY when
+      throws (nothing migrated or deployed). A 404 is a bootstrap ONLY when
       Resolve-DeployProvenanceBootstrapEvidence proves the live Worker predates the endpoint
       (#144: its /api/version.json commit is known and does not contain the route); then a loud
       ::warning:: and the secret-vs-backup host assertion (Assert-DeployMigrateTargetMatchesBackupHost)
       is the only check for this one run. Without that proof the 404 fails closed.
       PostDeploy: right after wrangler deploy, against the NEW version (waits for its commit).
-      Here 404 is a hard failure once retries run out: the bootstrap cannot repeat.
+      Here 404 is a hard failure once retries run out: there is no bootstrap after deploy.
       -Fetch / -FetchVersion are injectable for tests; they must return @{ StatusCode; Body }.
       -GitOps is injectable for tests (shape: Get-DeployGitProvenanceEvidenceOps).
     #>
@@ -1316,9 +1316,9 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
                 $evidence = Resolve-DeployProvenanceBootstrapEvidence -VersionStatusCode ([int]$versionResponse.StatusCode) `
                     -VersionBody ([string]$versionResponse.Body) -Git $ops
                 if (-not $evidence.Allowed) {
-                    throw "$failurePrefix $($last.Message) Not the one-off bootstrap (#144): $($evidence.Message) Nothing was migrated or deployed."
+                    throw "$failurePrefix $($last.Message) Not a provenance bootstrap (#144): $($evidence.Message) Nothing was migrated or deployed."
                 }
-                $message = "$($last.Message) $($evidence.Message) One-off bootstrap: this run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory."
+                $message = "$($last.Message) $($evidence.Message) Bootstrap: this run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory."
                 if ($env:GITHUB_ACTIONS -eq "true") {
                     Write-Host "::warning title=Live Worker provenance bootstrap (#142)::$message"
                 }

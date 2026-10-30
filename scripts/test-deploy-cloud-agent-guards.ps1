@@ -607,13 +607,13 @@ try {
     $fetch404 = { [pscustomobject]@{ StatusCode = 404; Body = "" } }
     $fetchVersionPre = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody $preSha) } }
     $bootstrap = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionPre -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null
-    Assert-True ($bootstrap -eq "Bootstrap" -and $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 with a live Worker that predates the endpoint is the one-off bootstrap"
+    Assert-True ($bootstrap -eq "Bootstrap" -and $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 with a live Worker that predates the endpoint is a bootstrap"
 
     $script:DeployLiveProvenanceBootstrap = $false
     $refused = ""
     $fetchVersionLater = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody $laterSha) } }
     try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionLater -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
-    Assert-True ($refused -match "Not the one-off bootstrap \(#144\)" -and $refused -match "Nothing was migrated or deployed" -and -not $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 from a live Worker that ships the endpoint fails closed"
+    Assert-True ($refused -match "Not a provenance bootstrap \(#144\)" -and $refused -match "Nothing was migrated or deployed" -and -not $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 from a live Worker that ships the endpoint fails closed"
 
     $refused = ""
     $fetchVersionDown = { [pscustomobject]@{ StatusCode = 0; Body = "" } }
@@ -623,7 +623,7 @@ try {
     $refused = ""
     $fetchVersionUnknown = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody "unknown") } }
     try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionUnknown -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
-    Assert-True ($refused -match "Not the one-off bootstrap" ) "pre-deploy: 404 with an unknown live commit fails closed"
+    Assert-True ($refused -match "Not a provenance bootstrap") "pre-deploy: 404 with an unknown live commit fails closed"
 
     # Real git (temp repo): the default ops read history the way CI does (full clone).
     $gitRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("ft144-" + [guid]::NewGuid().ToString("N"))
