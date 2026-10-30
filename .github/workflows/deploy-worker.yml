@@ -10,8 +10,10 @@ name: Deploy Worker
 #     backup step passed, and refuses to migrate if its target host is not the backed-up host.
 #     It also fails closed (#142) unless the LIVE production Worker's DB host hash
 #     (/api/deploy-provenance.json) matches the backed-up host, before migrate and again
-#     against the new version after deploy. One-off bootstrap: a pre-deploy 404 (Worker older
-#     than the endpoint) is a loud ::warning:: and falls back to the secret-vs-backup check.
+#     against the new version after deploy. Bootstrap: a pre-deploy 404 is a loud ::warning::
+#     falling back to the secret-vs-backup check ONLY when the live Worker's commit
+#     (/api/version.json) is in history and predates the endpoint (#144: first run after the
+#     endpoint ships, or after a rollback past it); otherwise it fails closed.
 # This repo is public: backups are never public (web/docs/DEPLOY.md § Backups are never public).
 # CI never exports, uploads, caches or prints a database file, dump or row data;
 # scripts/ci-check-no-public-backups.mjs enforces the workflow side.
@@ -157,6 +159,9 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+          # Full history: a pre-deploy provenance 404 is a bootstrap only if the live
+          # Worker's commit (/api/version.json) is in history and predates the endpoint (#144).
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6
