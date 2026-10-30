@@ -240,6 +240,36 @@ exit "${FAKE_NODE_EXIT:-0}"
             foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k], "Process") }
         }
     }
+
+    Write-Host "=== GitHub Actions: Worker script upload guard wiring (text-level, both Terraform workflows) ==="
+    foreach ($wf in @(@{ File = "terraform-staging.yml"; Env = "staging" }, @{ File = "terraform-production.yml"; Env = "production" })) {
+        $label = $wf.File
+        $text = Get-Content -Raw -LiteralPath (Join-Path $repoRoot ".github/workflows/$($wf.File)")
+        # Steps of jobs.terraform are list items indented six spaces; split the file into one block per step.
+        $blocks = @([regex]::Split($text, '(?m)^(?=      - )') | Where-Object { $_ -match '^      - ' })
+        $names = @($blocks | ForEach-Object { if ($_ -match '(?m)^      - name: (.+?)\s*$') { $Matches[1] } else { "" } })
+        $iMode = [array]::IndexOf($names, "Resolve run mode")
+        $iPlan = [array]::IndexOf($names, "Terraform Plan")
+        $iGuard = [array]::IndexOf($names, "Guard Worker Script Upload Plan")
+        $iApply = [array]::IndexOf($names, "Terraform Apply")
+        $iDecide = [array]::IndexOf($names, "Decide worker / Turso mutate")
+        Assert-True ($iMode -ge 0 -and $iPlan -gt $iMode) "${label}: 'Resolve run mode' runs before 'Terraform Plan'"
+        Assert-True ($iGuard -ge 0 -and $iApply -eq $iGuard + 1) "${label}: guard step is immediately before 'Terraform Apply'"
+        if ($iGuard -ge 0 -and $iApply -ge 0 -and $iMode -ge 0 -and $iDecide -ge 0) {
+            $guard = $blocks[$iGuard]
+            Assert-True ($guard -notmatch '(?m)^        if:') "${label}: guard has no 'if' (runs on every plan, report-only unless applying)"
+            Assert-True ($guard -match "-Environment $($wf.Env) -PlanFile tfplan") "${label}: guard checks the $($wf.Env) plan file"
+            Assert-True ($guard -match 'RUN_APPLY: \$\{\{ steps\.mode\.outputs\.apply \}\}') "${label}: guard reads apply from steps.mode"
+            $followsAll = [regex]::Matches($text, 'FT_WRANGLER_DEPLOY_FOLLOWS:').Count
+            $followsEmpty = [regex]::Matches($text, 'FT_WRANGLER_DEPLOY_FOLLOWS: ""').Count
+            Assert-True ($followsAll -eq 1 -and $followsEmpty -eq 1) "${label}: FT_WRANGLER_DEPLOY_FOLLOWS is only ever set, to empty, on the guard (CI apply never re-uploads the Worker)"
+            Assert-True ($blocks[$iApply] -match "(?m)^        if: steps\.mode\.outputs\.apply == 'true'\s*$") "${label}: 'Terraform Apply' runs only when steps.mode.outputs.apply is true"
+            Assert-True ($blocks[$iDecide] -match 'steps\.mode\.outputs\.deploy') "${label}: 'Decide worker / Turso mutate' reads steps.mode.outputs.deploy"
+            $inputsAll = [regex]::Matches($text, 'github\.event\.inputs\.').Count
+            $inputsMode = [regex]::Matches($blocks[$iMode], 'github\.event\.inputs\.').Count
+            Assert-True ($inputsAll -eq 2 -and $inputsMode -eq 2) "${label}: dispatch inputs are read only in 'Resolve run mode' (got $inputsMode of $inputsAll)"
+        }
+    }
 }
 finally {
     $env:FT_WRANGLER_DEPLOY_FOLLOWS = $previousFollows

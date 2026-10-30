@@ -1,7 +1,9 @@
 # Pre-apply guard: refuse a plan that would create/update/replace the web Worker script
 # (cloudflare_workers_script.holding_page) unless the deploy pipeline runs wrangler deploy later in
 # the same run (FT_WRANGLER_DEPLOY_FOLLOWS=1; the gap until then is issue #116) or -AllowWorkerScriptUpload (break-glass) is passed.
-# Called by terraform-run.ps1 before every staging/production apply (-UsePlanFile and -AutoApprove).
+# Called by terraform-run.ps1 before every staging/production apply (-UsePlanFile and -AutoApprove), and by
+# the Terraform GitHub workflows on every plan, which never set FT_WRANGLER_DEPLOY_FOLLOWS (CI applies that
+# touch the Worker are refused; report-only on plan-only runs).
 # Exit codes: 0 allowed, 1 blocked. See NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift.
 [CmdletBinding()]
 param(

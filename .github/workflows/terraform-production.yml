@@ -65,6 +65,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Resolve run mode
+        id: mode
+        # Single source for "does this run apply Terraform / deploy the Worker". Every later step reads
+        # steps.mode.outputs.apply / steps.mode.outputs.deploy instead of re-deriving it.
+        env:
+          DISPATCH_APPLY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.production_terraform_apply || 'false' }}
+          DISPATCH_DEPLOY: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.production_worker_deploy || 'false' }}
+        run: |
+          set -euo pipefail
+          apply=false
+          deploy=false
+          if [ "${PRODUCTION_TERRAFORM_APPLY}" = "true" ] || [ "${DISPATCH_APPLY}" = "true" ]; then apply=true; fi
+          if [ "${PRODUCTION_WORKER_DEPLOY}" = "true" ] || [ "${DISPATCH_DEPLOY}" = "true" ]; then deploy=true; fi
+          echo "apply=$apply" >> "$GITHUB_OUTPUT"
+          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
+          echo "Run mode (production): terraform apply=$apply, worker deploy=$deploy"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
         with:
@@ -191,18 +208,41 @@ jobs:
           pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-secrets.ps1" -Environment production -PlanFile tfplan
 
       - name: Guard Worker Script Upload Plan
-        # Apply only. A plan-only run expects the documented holding_page drift (1 to change)
-        # after every local wrangler deploy; applying it alone would re-upload the Worker script
-        # (issue #116). Allowed only when this run deploys the Worker with wrangler afterwards.
-        if: (env.PRODUCTION_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.production_terraform_apply == 'true')
+        # Runs on every plan, immediately before Terraform Apply. CI never sets FT_WRANGLER_DEPLOY_FOLLOWS;
+        # this workflow has no failure recovery or placement check between a Terraform re-upload of the
+        # Worker script and its wrangler deploy (issue #116), so an apply whose plan touches
+        # cloudflare_workers_script.holding_page is refused here, before anything changes. Applies that
+        # touch the Worker go through scripts/deploy-production-local.ps1. On plan-only runs the guard is
+        # report-only: that drift is expected after every local wrangler deploy, and running it proves the
+        # terraform show -json path against the Terraform Cloud backend (#117).
         env:
-          FT_WRANGLER_DEPLOY_FOLLOWS: ${{ ((env.PRODUCTION_WORKER_DEPLOY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.production_worker_deploy == 'true')) && '1' || '' }}
+          FT_WRANGLER_DEPLOY_FOLLOWS: ""
+          RUN_APPLY: ${{ steps.mode.outputs.apply }}
         run: |
-          set -euo pipefail
-          pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-script-upload.ps1" -Environment production -PlanFile tfplan
+          set -uo pipefail
+          guard_exit=0
+          pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-script-upload.ps1" -Environment production -PlanFile tfplan || guard_exit=$?
+          if [ "$guard_exit" -eq 0 ]; then
+            echo "Worker script upload guard (production): passed (plan does not touch holding_page)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$RUN_APPLY" = "true" ]; then
+            {
+              echo "### Terraform apply refused (production)"
+              echo ""
+              echo "The plan re-uploads the Worker script (\`cloudflare_workers_script.holding_page\`), or the guard could not check the plan (see the step log). Nothing was applied, migrated or deployed."
+              echo ""
+              echo "Apply Worker-touching changes from the operator machine with \`pwsh scripts/deploy-production-local.ps1\` (NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Terraform apply refused::The production plan touches the Worker script or could not be checked; use scripts/deploy-production-local.ps1."
+            exit "$guard_exit"
+          fi
+          echo "::notice title=Worker script upload guard (report-only)::An apply of this production plan would be refused (guard exit $guard_exit). Expected while the holding_page drift exists (#116)."
+          echo "Worker script upload guard (production, report-only): an apply of this plan would be refused (guard exit $guard_exit). Expected while the holding_page drift exists (#116)." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
 
       - name: Terraform Apply
-        if: (env.PRODUCTION_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.production_terraform_apply == 'true')
+        if: steps.mode.outputs.apply == 'true'
         timeout-minutes: 30
         run: |
           echo "Starting terraform apply with heartbeat logging..."
@@ -236,10 +276,10 @@ jobs:
       - name: Capture Terraform Outputs
         id: tf_outputs
         env:
-          # Same preference as scripts/resolve-turso-build-credentials.ps1
-          # (Resolve-ProductionEmdashTursoToken): an explicit production EmDash JWT wins over the
-          # Terraform-minted turso_database_token.emdash, which Turso no longer accepts
-          # (404 "auth role not found", Oct 2026).
+          # Standing preference, same as scripts/resolve-turso-build-credentials.ps1
+          # (Resolve-ProductionEmdashTursoToken) and AGENTS.md CA-21: when set, this production EmDash
+          # JWT wins over the Terraform-minted turso_database_token.emdash. That fallback is currently
+          # dead (Turso 404 "auth role not found", Oct 2026); re-minting or retiring it is #137.
           TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
         run: |
           set -euo pipefail
@@ -477,15 +517,11 @@ jobs:
 
       - name: Decide worker / Turso mutate
         id: emdash_mutate
+        env:
+          DEPLOY: ${{ steps.mode.outputs.deploy }}
         run: |
           set -euo pipefail
-          deploy=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.production_worker_deploy }}" = "true" ]; then
-            deploy=true
-          fi
-          if [ "${PRODUCTION_WORKER_DEPLOY}" = "true" ]; then
-            deploy=true
-          fi
+          deploy="${DEPLOY}"
           echo "deploy_worker=$deploy" >> "$GITHUB_OUTPUT"
           echo "Production mutate (EmDash backup/apply, SQL db:deploy, wrangler): $deploy (push to main: EmDash --check only)"
 
