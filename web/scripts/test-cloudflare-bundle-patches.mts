@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import { BUNDLE_PATCHES, applyBundlePatches, versionInRange } from './lib/cloudflare-bundle-patches.mjs';
 
-const OK_VERSIONS = { emdash: '1.3.1', '@astrojs/cloudflare': '14.4.2' };
+const OK_VERSIONS = { emdash: '1.4.0', '@astrojs/cloudflare': '14.4.3' };
 
 // Shape of emdash 1.3.1 dist (tab-indented) — the old space-indented needle never matched this.
 const PUBLISH_CATCH = [
@@ -67,9 +67,9 @@ describe('cloudflare bundle patches', () => {
 	});
 
 	it('FAILS when installed package is outside the range an obsolete patch was verified for', () => {
-		const r = applyBundlePatches(bundle(), { emdash: '1.4.0', '@astrojs/cloudflare': '14.4.2' });
-		assert.match(r.errors.join('\n'), /verified for emdash >=1\.3\.1 <1\.4 but 1\.4\.0 is installed/);
-		const r2 = applyBundlePatches(bundle(), { emdash: '1.3.1' });
+		const r = applyBundlePatches(bundle(), { emdash: '1.5.0', '@astrojs/cloudflare': '14.4.3' });
+		assert.match(r.errors.join('\n'), /verified for emdash >=1\.3\.1 <1\.5 but 1\.5\.0 is installed/);
+		const r2 = applyBundlePatches(bundle(), { emdash: '1.4.0' });
 		assert.match(r2.errors.join('\n'), /@astrojs\/cloudflare is not installed/);
 	});
 

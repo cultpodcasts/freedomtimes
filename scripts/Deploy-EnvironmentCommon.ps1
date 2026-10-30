@@ -1106,7 +1106,7 @@ function Complete-DeployTerraformLockfileRestore {
 }
 
 function Write-DeployGithubCiNoiseNote {
-    Write-Host "CA-09: Ignore GitHub Apply to Staging / Android / iOS empty-step ~3s failures (Actions billing lock, not empty YAML). Local deploy is the staging/production path." -ForegroundColor DarkGray
+    Write-Host "Standard Worker deploy path is GitHub Actions (.github/workflows/deploy-worker.yml: PR -> staging, merge to main -> production backup + deploy). This local script is the fallback (web/docs/DEPLOY.md)." -ForegroundColor DarkGray
 }
 
 function Sync-DeployProductionAuth0EnvFromTerraform {

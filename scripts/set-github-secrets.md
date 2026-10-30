@@ -141,10 +141,11 @@ Expected names:
 - Run from repo root so relative paths resolve correctly.
 - Ensure Wrangler auth is active (`npx wrangler whoami`).
 - Secret values are intentionally not printed by the sync script; only names/actions are logged.
+- The standard Worker deploy (`.github/workflows/deploy-worker.yml`, [web/docs/DEPLOY.md § Standard path](../web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)) reads secrets this script syncs (including `TURSO_PRODUCTION_EMDASH_DB_URL` / `_TOKEN`, `TURSO_TOKEN`, `TURSO_TOKEN_STAGING`, `PUSH_*`) plus one it does **not** sync: `PRODUCTION_BACKUP_ARTIFACT_PASSPHRASE` (encrypts the production backup artifact). Set that once by hand with `gh secret set PRODUCTION_BACKUP_ARTIFACT_PASSPHRASE` (stdin) and keep the same value in your password manager, because it is the only way to open the artifacts.
 
 ## Cloudflare Token Permissions (CI)
 
-For GitHub Actions staging deploys, `TF_VAR_CLOUDFLARE_API_TOKEN` must include all permissions needed by both Terraform and Wrangler.
+For GitHub Actions Worker deploys (`deploy-worker.yml`, staging and production), `TF_VAR_CLOUDFLARE_API_TOKEN` must include all permissions needed by both Terraform and Wrangler.
 
 Minimum Worker deploy permissions:
 

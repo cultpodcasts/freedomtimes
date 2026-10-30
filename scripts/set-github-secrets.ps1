@@ -221,6 +221,8 @@ function Main {
             # Production EmDash DB JWT; the only source in terraform-production.yml and in
             # resolve-turso-build-credentials.ps1 (Terraform no longer mints it, #137).
             "TURSO_PRODUCTION_EMDASH_DB_TOKEN",
+            # Production EmDash DB URL for the deploy-worker.yml production build/migrate (no Terraform init there).
+            "TURSO_PRODUCTION_EMDASH_DB_URL",
             "EMDASH_AUTH_SECRET_STAGING",
             "EMDASH_PREVIEW_SECRET_STAGING",
             "ANDROID_STAGING_SIGNING_KEYSTORE_BASE64",

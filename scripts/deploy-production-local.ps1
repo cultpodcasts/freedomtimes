@@ -6,6 +6,7 @@ param(
     [switch]$SyncCloudflareWorkerSecrets,
     [switch]$AllowProduction,
     [switch]$SkipTursoBackup,
+    [switch]$UseFreshTursoCheckpoint,
     [switch]$DryRun
 )
 
@@ -34,6 +35,12 @@ param(
   requirement. Combined with -WorkerOnly it also skips emdash migrate
   apply/check (Worker hotfix; no Turso mutate). Skipped for -DryRun.
 
+  -UseFreshTursoCheckpoint: do not take a new backup here; require a verified
+  production rollback metadata file newer than 24h under .release/rollback-branches/
+  (written by backup-production-emdash.ps1 earlier in the same run), then migrate +
+  deploy as normal. Used by .github/workflows/deploy-worker.yml, which takes the
+  backup in its own step so the encrypted artifact is uploaded before any deploy.
+
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1
 
@@ -54,6 +61,10 @@ if ($WorkerOnly -and -not $AllowProduction) {
     throw "Refusing production worker deploy without -AllowProduction."
 }
 
+if ($UseFreshTursoCheckpoint -and $SkipTursoBackup) {
+    throw "Cannot combine -UseFreshTursoCheckpoint and -SkipTursoBackup."
+}
+
 if ($BumpVersion -and $SkipVersionBump) {
     throw "Cannot combine -BumpVersion and -SkipVersionBump."
 }
@@ -68,7 +79,12 @@ Write-DeployStep "Starting local production $workflowLabel"
 Invoke-DeployPushSecretsPreflight
 
 if (-not $DryRun) {
-    Invoke-DeployEmDashTursoBackup -SkipTursoBackup:$SkipTursoBackup
+    if ($UseFreshTursoCheckpoint) {
+        Assert-DeployFreshEmDashTursoBackup
+    }
+    else {
+        Invoke-DeployEmDashTursoBackup -SkipTursoBackup:$SkipTursoBackup
+    }
 }
 
 try {

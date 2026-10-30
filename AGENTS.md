@@ -90,19 +90,22 @@ Full policy: **`web/docs/STAGING_ACCESS.md`**.
 
 **Canonical reference:** **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — script decision table, flags, step order, prerequisites, and failure troubleshooting. Read the [For AI agents](web/docs/DEPLOY.md#for-ai-agents) section before running any deploy command.
 
+**Standard web Worker deploy is GitHub Actions** ([DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)): a PR from a `cultpodcasts/freedomtimes` branch deploys staging via `.github/workflows/deploy-worker.yml`; after the operator merges, the same workflow takes a verified production Turso backup (encrypted 90-day artifact) and then deploys production. Agents open the PR and watch the staging job; they never merge. The local scripts below are the fallback.
+
 **Entry points only** (from repo root):
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/deploy-staging-local.ps1` | Staging deploy (full, `-WorkerOnly`, or `-WorkersOnly`) |
-| `scripts/deploy-production-local.ps1` | Local production deploy (full or `-WorkerOnly -AllowProduction`) |
-| `scripts/production-release.ps1` | CI release — dispatches GitHub Actions; not a local wrangler deploy |
+| `.github/workflows/deploy-worker.yml` | Standard: PR → staging Worker; merge to `main` → production backup + Worker deploy |
+| `scripts/deploy-staging-local.ps1` | Fallback staging deploy (full, `-WorkerOnly`, or `-WorkersOnly`) |
+| `scripts/deploy-production-local.ps1` | Fallback local production deploy (full or `-WorkerOnly -AllowProduction`) |
+| `scripts/production-release.ps1` | Legacy Terraform dispatch (refused while the `holding_page` drift exists); not the standard Worker deploy |
 
 **Do not invoke:** `Deploy-EnvironmentCommon.ps1` (helpers only); deprecated `*-rebuild-local.ps1` (use `deploy-*-local.ps1`).
 
 **Hard rules for agents:**
 
-- Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**.
+- Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**. Merging a PR to `main` triggers the production deploy job, so only the operator merges.
 - Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Staging `turso db export` uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default (do not require that env key as a Cursor secret). **Turso hosts:** process `TURSO_DATABASE_URL` on this Cloud env is often **production** EmDash and equals `TURSO_PRODUCTION_EMDASH_DB_URL`. Do not abort because process hosts match. `Select-StagingEmdashTursoUrl` skips a production process URL (hint match or `*-emdash-production-*`) and still sets `IgnoredProcessProductionShadow` when Terraform URL wins, so process JWT is not used. **Never** copy the process production pair into `.env.dev`. Resolve **throws** if the selected `.env.dev` or Terraform URL is production. Staging Turso is database name `freedomtimes-emdash-staging`. Pass `-SkipTursoBackup` only when the operator **explicitly** orders skip: the flag skips export/rollback with no 24h-file requirement, and `-WorkerOnly`/`-WorkersOnly` also skip emdash migrate. <!-- pragma: allowlist secret -->
 - Deploy scripts ship Workers and infra; they do **not** publish EmDash content (**Primary guardrails §5** for `content_publish`).
 - On deploy failure, use the canonical doc's [Quick symptom index](web/docs/DEPLOY.md#quick-symptom-index) — do not improvise alternate script names.
@@ -147,7 +150,7 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 | CA-08 / CA-15 | `EMDASH_TARGET_FINGERPRINT` unset | Local `deploy-*-local.ps1` pins process env from same-run `--status` (`print-fingerprint`) | If apply still refuses, wrong host. Do not invent Cursor secrets |
 | CA-14 | Production process URL = production hint; `.env.dev` stays staging | Production resolve uses `TURSO_PRODUCTION_EMDASH_DB_TOKEN` / paired JWT. Never write that pair into `.env.dev` | Copy process JWT into `TURSO_PRODUCTION_EMDASH_DB_TOKEN` only |
 | CA-16 | Rollback JSON mtime 1970 / old `createdAtUtc` | Skip check uses `createdAtUtc`; epoch mtime is not fresh | Omit `-SkipTursoBackup`; create a new rollback branch |
-| CA-09 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Ignore. Cause is Actions **billing lock** (`job was not started`), not empty YAML | Do not treat as this VM deploy failing. Operator unlocks Actions billing if those PR checks are needed |
+| CA-09 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Not a code failure. Cause is Actions **billing lock** (`job was not started`), not empty YAML | Do not patch those workflows. Tell the operator, who unlocks Actions billing; the standard `deploy-worker.yml` deploy (web/docs/DEPLOY.md § Standard path) also needs Actions |
 | CA-10 | Staging `/` 1–3s with `Server-Timing` | Success | A hang is **0-byte pending**, not a slow 200 |
 | CA-11 | `punycode` deprecation | Ignore | Noise. A `[patch-cloudflare-bundle] ERROR` (exit 1) is **not** noise: see [web/docs/PATCH_CLOUDFLARE_BUNDLE.md](web/docs/PATCH_CLOUDFLARE_BUNDLE.md) |
 | CA-18 | Agents unset process `TURSO_*` by hand | Scripts skip the process pair; do not unset | Only if resolve still selected production |
