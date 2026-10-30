@@ -7,7 +7,7 @@
  * slug, title, excerpt, subjects, featured image and dates.
  *
  * This module selects just those columns with the same WHERE / ORDER BY / LIMIT
- * semantics as EmDash's collection loader (emdash 1.3.x `loader.ts`):
+ * semantics as EmDash's collection loader (emdash 1.4.x `loader.ts`):
  *   WHERE deleted_at IS NULL AND status = 'published'
  *   ORDER BY published_at DESC, updated_at DESC, id DESC
  * and maps rows to the same `{ id, slug, data }` shape the loader returns

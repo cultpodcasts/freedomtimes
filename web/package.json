@@ -1,7 +1,7 @@
 {
   "name": "web",
   "type": "module",
-  "version": "0.0.48",
+  "version": "0.0.49",
   "engines": {
     "node": ">=22.22.2"
   },
@@ -9,7 +9,7 @@
     "dev": "astro dev",
     "check": "astro check",
     "build": "astro check && node scripts/patch-emdash-windows-createrequire.mjs && tsx scripts/build-service-worker.ts && tsx scripts/build-native-shell-bridge.ts && astro build && npm run test && tsx scripts/patch-cloudflare-bundle.ts",
-    "test": "tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-article-seo.mts scripts/test-sitemap-resilience.mts scripts/test-site-sitemap.mts scripts/test-weekly-list.mts scripts/test-video-caption-tracks.mts scripts/test-video-poster.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts scripts/test-lite-youtube-poster-styles.mts scripts/test-homepage-entries-map.mts scripts/test-page-cache-policy.mts scripts/test-page-cache-handler.mts scripts/test-cloudflare-bundle-patches.mts scripts/test-worker-placement-check.mts scripts/test-image-endpoint-guard.mts scripts/test-wrangler-binding-drift.mts scripts/test-not-found-routes.mts scripts/test-hero-image-alt.mts",
+    "test": "tsx --test scripts/test-emdash-oauth-metadata.mts scripts/test-emdash-oauth-routes.mts scripts/test-auth-session-lifetime.mts scripts/test-auth-roles.mts scripts/test-homepage-host-redirect.mts scripts/test-root-routes.mts scripts/test-emdash-outer-middleware.mts scripts/test-service-worker-navigation.mts scripts/test-robots-txt.mts scripts/test-article-seo.mts scripts/test-sitemap-resilience.mts scripts/test-site-sitemap.mts scripts/test-weekly-list.mts scripts/test-video-caption-tracks.mts scripts/test-video-poster.mts scripts/test-embed-video-url-transform.mts scripts/test-inline-pdf-media.mts scripts/test-lite-youtube-poster-styles.mts scripts/test-homepage-entries-map.mts scripts/test-page-cache-policy.mts scripts/test-page-cache-handler.mts scripts/test-cloudflare-bundle-patches.mts scripts/test-worker-placement-check.mts scripts/test-image-endpoint-guard.mts scripts/test-wrangler-binding-drift.mts scripts/test-not-found-routes.mts scripts/test-hero-image-alt.mts scripts/test-deploy-provenance.mts",
     "test:oauth-discovery": "tsx --test scripts/test-emdash-oauth-metadata.mts",
     "test:oauth-discovery:routes": "tsx --test scripts/test-emdash-oauth-routes.mts",
     "test:auth-session": "tsx --test scripts/test-auth-session-lifetime.mts",
@@ -72,22 +72,22 @@
     "test:prod-backup-inventory": "node --test scripts/lib/production-emdash-inventory.test.mjs"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^14.4.2",
-    "@astrojs/react": "^5.0.7",
-    "@capacitor/android": "^8.5.3",
+    "@astrojs/cloudflare": "^14.4.3",
+    "@astrojs/react": "^7.1.0",
+    "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/browser": "^8.0.5",
-    "@capacitor/core": "^8.5.3",
-    "@capacitor/ios": "^8.5.3",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
     "@capacitor/push-notifications": "^8.1.3",
-    "@emdash-cms/cloudflare": "^1.3.1",
-    "@emdash-cms/plugin-embeds": "^0.1.57",
-    "@libsql/client": "^0.17.4",
+    "@emdash-cms/cloudflare": "^1.4.0",
+    "@emdash-cms/plugin-embeds": "^0.1.58",
+    "@libsql/client": "^0.18.0",
     "@libsql/kysely-libsql": "^0.4.1",
     "astro": "^7.4.1",
     "drizzle-orm": "^0.45.4",
-    "emdash": "^1.3.1",
-    "jose": "^6.2.13",
+    "emdash": "^1.4.0",
+    "jose": "^6.2.14",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sharp": "^0.34.5"
@@ -98,11 +98,11 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.12",
-    "@capacitor/cli": "^8.5.3",
+    "@capacitor/cli": "^8.6.0",
     "@napi-rs/canvas": "^0.1.80",
     "@resvg/resvg-js": "^2.6.2",
-    "esbuild": "^0.25.3",
-    "mcp-remote": "^0.1.49",
+    "esbuild": "^0.28.2",
+    "mcp-remote": "^0.15.2",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.4.296",
     "satori": "^0.26.0",
@@ -111,11 +111,8 @@
     "webpush-webcrypto": "^1.0.5"
   },
   "allowScripts": {
-    "better-sqlite3@12.9.0": true,
+    "esbuild@0.28.2": true,
     "sharp@0.34.5": true,
-    "esbuild@0.27.7": true,
-    "esbuild@0.28.1": true,
-    "esbuild@0.25.12": true,
-    "workerd@1.20260926.1": true
+    "workerd@1.20261023.1": true
   }
 }

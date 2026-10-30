@@ -5,8 +5,12 @@
 # Usage:
 #   scripts/ci-turso-emdash-backup.sh <staging|production> <database-name> [group]
 #
-# Staging: turso db export → .release/backups/
+# Staging: turso db create --from-db (ci-staging-backup-STAMP branch). No .db file: this
+#          repo is public, so CI never exports or uploads a database file.
 # Production: turso db create --from-db (rollback branch) + metadata JSON
+#
+# The Turso CLI is the pinned, sha256-checked release from scripts/ci-install-turso-cli.sh,
+# installed with every token variable removed from its environment.
 set -euo pipefail
 
 ENVIRONMENT="${1:-}"
@@ -44,8 +48,9 @@ fi
 
 export PATH="${HOME}/.turso:${PATH}"
 if ! command -v turso >/dev/null 2>&1; then
-  echo "Installing Turso CLI..."
-  curl -sSfL https://get.tur.so/install.sh | bash
+  echo "Installing pinned Turso CLI (scripts/ci-install-turso-cli.sh)..."
+  env -u TURSO_PLATFORM_API_TOKEN -u TURSO_API_TOKEN -u TF_VAR_turso_api_token -u TURSO_TOKEN \
+    -u TOKEN bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-install-turso-cli.sh"
   export PATH="${HOME}/.turso:${PATH}"
 fi
 
@@ -66,14 +71,17 @@ cd "${REPO_ROOT}"
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 
 if [[ "$ENVIRONMENT" == "staging" ]]; then
-  mkdir -p .release/backups
-  OUT="./.release/backups/emdash-staging-${STAMP}.db"
-  echo "Exporting staging EmDash Turso '${DATABASE_NAME}' → ${OUT}"
-  turso db export "${DATABASE_NAME}" --output-file "${OUT}"
-  echo "Staging EmDash backup saved: ${OUT}"
+  BRANCH_NAME="ci-staging-backup-${STAMP}"
+  echo "Creating staging EmDash backup branch '${BRANCH_NAME}' from '${DATABASE_NAME}' (no .db export)"
+  CREATE=(turso db create "${BRANCH_NAME}" --from-db "${DATABASE_NAME}")
+  if [[ -n "$TURSO_GROUP" ]]; then
+    CREATE+=(--group "${TURSO_GROUP}")
+  fi
+  "${CREATE[@]}"
+  echo "Staging EmDash backup branch: ${BRANCH_NAME}"
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-    echo "backup_file=${OUT}" >> "${GITHUB_OUTPUT}"
-    echo "rollback_branch=" >> "${GITHUB_OUTPUT}"
+    echo "backup_file=" >> "${GITHUB_OUTPUT}"
+    echo "rollback_branch=${BRANCH_NAME}" >> "${GITHUB_OUTPUT}"
     echo "rollback_metadata=" >> "${GITHUB_OUTPUT}"
   fi
   exit 0

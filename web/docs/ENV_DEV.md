@@ -83,7 +83,7 @@ pwsh ./scripts/set-github-secrets.ps1
 pwsh ./scripts/set-github-secrets.ps1 -SyncCloudflareWorkerSecrets -Target Staging
 ```
 
-Details: [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) (teardown/redeploy, secret categories), [scripts/set-github-secrets.md](../../scripts/set-github-secrets.md). Deploy scripts: [DEPLOY.md](./DEPLOY.md).
+Details: [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md) (teardown/redeploy, secret categories), [scripts/set-github-secrets.md](../../scripts/set-github-secrets.md). Deploys: the standard path is GitHub Actions ([DEPLOY.md § Standard path](./DEPLOY.md#standard-path-github-actions-deploy-workeryml)), which reads the repo secrets synced from this file, not `.env.dev` itself. `.env.dev` is read directly only by the local fallback scripts in [DEPLOY.md](./DEPLOY.md).
 
 ---
 

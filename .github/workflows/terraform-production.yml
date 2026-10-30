@@ -24,8 +24,13 @@ on:
 permissions:
   contents: read
 
+# Only runs that can mutate production (workflow_dispatch with production_terraform_apply or
+# production_worker_deploy) share production-emdash-migrate with deploy-worker.yml. Push/PR plan runs use
+# their own group, so they can never sit in (and displace) the deploy queue: GitHub keeps one
+# pending run per group and cancels the older pending one. The PRODUCTION_TERRAFORM_APPLY /
+# PRODUCTION_WORKER_DEPLOY env flags below are "false"; if either is ever set to "true", add it here.
 concurrency:
-  group: production-emdash-migrate
+  group: ${{ (inputs.production_terraform_apply || inputs.production_worker_deploy) && 'production-emdash-migrate' || format('terraform-production-plan-{0}', github.ref) }}
   cancel-in-progress: false
 
 env:
@@ -83,7 +88,7 @@ jobs:
           echo "Run mode (production): terraform apply=$apply, worker deploy=$deploy"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v4
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
         with:
           terraform_version: "1.14.8"
           terraform_wrapper: false
@@ -623,12 +628,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: emdash-production-rollback-metadata
-          path: .release/rollback-branches/*.json
+          # Only this run's names-only metadata JSON (branch/database names, git sha). Never a
+          # glob: backups are never public (web/docs/DEPLOY.md § Backups are never public).
+          path: ${{ steps.emdash_backup.outputs.rollback_metadata }}
           if-no-files-found: error
           retention-days: 30
 
       - name: Record production EmDash rollback in job summary
         if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        env:
+          ROLLBACK_METADATA: ${{ steps.emdash_backup.outputs.rollback_metadata }}
         run: |
           set -euo pipefail
           {
@@ -642,7 +651,7 @@ jobs:
             echo "Metadata JSON:"
             echo
             echo '```json'
-            cat .release/rollback-branches/*.json
+            cat "${ROLLBACK_METADATA}"
             echo
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

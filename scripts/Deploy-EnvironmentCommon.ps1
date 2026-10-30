@@ -62,6 +62,12 @@ function Initialize-DeployEnvironment {
     Initialize-LinuxNvmNodePath
     $script:DeployTerraformLockfileWasClean = $null
     $script:DeploySkipTursoMutate = $false
+    # Set by Assert-DeployFreshEmDashTursoBackup (-UseFreshTursoCheckpoint).
+    $script:DeployFreshBackupMetadata = $null
+    # Set by deploy-staging-local.ps1 -TursoBranchBackup (deploy-worker.yml: no .db export in CI).
+    $script:DeployStagingBackupAsBranch = $false
+    # Set when the live production Worker predates /api/deploy-provenance.json (#142 bootstrap).
+    $script:DeployLiveProvenanceBootstrap = $false
 }
 
 function Set-DeploySkipTursoMutate {
@@ -813,82 +819,531 @@ function Get-DeployRollbackMetadataFreshnessUtc {
     return $mtime
 }
 
-function Assert-DeployFreshEmDashTursoBackup {
-    $cutoff = Get-DeployFreshBackupCutoffUtc
+function Select-DeployFreshVerifiedProductionBackup {
+    <#
+    .SYNOPSIS
+      Pick the newest production backup metadata that is verified, fresh and complete.
 
-    if ($script:DeployIsStaging) {
-        $backupDir = Join-Path $script:DeployRepoRoot ".release/backups"
-        $newest = Get-ChildItem -Path $backupDir -Filter "emdash-staging-*.db" -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTimeUtc -Descending |
-            Select-Object -First 1
-        if ($null -eq $newest -or $newest.LastWriteTimeUtc -lt $cutoff -or $newest.LastWriteTimeUtc -le [datetime]::UnixEpoch.AddMinutes(1)) {
-            throw @(
-                "Refusing -SkipTursoBackup: no staging EmDash export newer than 24h under .release/backups/emdash-staging-*.db.",
-                "Create one (see web/CONTENT_PROMOTION_RUNBOOK.md) or omit -SkipTursoBackup."
-            ) -join " "
-        }
-        Write-DeployStep "Using existing staging EmDash export $($newest.Name) (SkipTursoBackup)"
-        return
-    }
+    .DESCRIPTION
+      Used by deploy-production-local.ps1 -UseFreshTursoCheckpoint (deploy-worker.yml), which
+      takes the backup in an earlier step instead of here. Pure apart from reading the files,
+      so scripts/test-deploy-cloud-agent-guards.ps1 can exercise it.
 
-    $expectedDb = Get-DeployTursoDatabaseNameFromEnv `
-        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_PRODUCTION" `
-        -DefaultName ""
-    if ($expectedDb -eq "[REDACTED]-emdash-production" -or $expectedDb -match "REDACTED") {
-        $expectedDb = ""
-    }
-    $productionUrls = @(Get-DeployProductionEmdashUrlCandidates)
-    $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
-    $newestMeta = $null
-    $candidates = Get-ChildItem -Path $metaDir -Filter "*.json" -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending
+      A candidate counts only when ALL of these hold:
+        - kind = production-emdash-content-backup (written by backup-production-emdash.ps1)
+        - verificationPass = true (a name match alone is never enough)
+        - backupDatabase is a prod-backup-* Turso branch
+        - workerTursoHost is set (the migrate-target host check needs it)
+        - createdAtUtc (else file mtime) is not older than CutoffUtc
+
+      Returns [pscustomobject]@{ Metadata; File; Rejected } where Metadata/File are $null when
+      nothing qualifies, and Rejected lists "<file>: <reason>" for every candidate skipped.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$MetadataDir,
+        [Parameter(Mandatory = $true)]
+        [datetime]$CutoffUtc
+    )
+
+    $rejected = [System.Collections.Generic.List[string]]::new()
+    $candidates = @(Get-ChildItem -Path $MetadataDir -Filter "*prod-backup-*.json" -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTimeUtc -Descending)
     foreach ($candidate in $candidates) {
         try {
             $meta = Get-Content -LiteralPath $candidate.FullName -Raw -ErrorAction Stop | ConvertFrom-Json
         }
         catch {
-            Write-Warning "Ignoring malformed rollback metadata $($candidate.Name) (not valid JSON)."
+            $rejected.Add("$($candidate.Name): not valid JSON")
             continue
         }
-        $sourceDatabase = [string]$meta.sourceDatabase
-        if ([string]::IsNullOrWhiteSpace($sourceDatabase)) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (missing sourceDatabase)."
+        if ($null -eq $meta -or $meta -isnot [pscustomobject]) {
+            $rejected.Add("$($candidate.Name): not a JSON object")
             continue
         }
-        $verifiedPass = $false
-        if ($null -ne $meta.PSObject.Properties["verificationPass"]) {
-            $verifiedPass = [bool]$meta.verificationPass
+        $props = $meta.PSObject.Properties
+        $kind = if ($props["kind"]) { [string]$meta.kind } else { "" }
+        if ($kind -ne "production-emdash-content-backup") {
+            $rejected.Add("$($candidate.Name): kind '$kind' is not production-emdash-content-backup")
+            continue
         }
-        elseif ($null -ne $meta.verification -and $null -ne $meta.verification.PSObject.Properties["pass"]) {
-            $verifiedPass = [bool]$meta.verification.pass
+        $verified = $props["verificationPass"] -and ($meta.verificationPass -eq $true)
+        if (-not $verified) {
+            $rejected.Add("$($candidate.Name): verificationPass is not true")
+            continue
         }
-        $matchesNamedOrUrl = Test-DeployRollbackSourceMatchesProductionEmDash `
-            -SourceDatabase $sourceDatabase `
-            -ExpectedDatabase $expectedDb `
-            -ProductionUrls $productionUrls
-        $workerResolved = $verifiedPass -and (
-            $sourceDatabase -match '^(prod-rollback-|prod-work-|prod-recovery-|prod-backup-)' -or
-            [string]$meta.kind -eq "production-emdash-content-backup"
-        )
-        if (-not $matchesNamedOrUrl -and -not $workerResolved) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (sourceDatabase '$sourceDatabase' does not match production EmDash name/URL and is not a verified Worker-resolved backup)."
+        $backupDatabase = if ($props["backupDatabase"]) { [string]$meta.backupDatabase } else { "" }
+        if ($backupDatabase -notmatch '^prod-backup-\d{8}-\d{6}$') {
+            $rejected.Add("$($candidate.Name): backupDatabase '$backupDatabase' is not a prod-backup-YYYYMMDD-HHMMSS branch")
+            continue
+        }
+        $workerHost = if ($props["workerTursoHost"]) { [string]$meta.workerTursoHost } else { "" }
+        if ([string]::IsNullOrWhiteSpace($workerHost)) {
+            $rejected.Add("$($candidate.Name): workerTursoHost is missing")
             continue
         }
         $freshAt = Get-DeployRollbackMetadataFreshnessUtc -File $candidate -Meta $meta
-        if ($freshAt -lt $cutoff) {
-            Write-Warning "Ignoring rollback metadata $($candidate.Name) (createdAtUtc/mtime $freshAt is older than 24h; Unix-epoch snapshot mtimes do not count)."
+        if ($freshAt -lt $CutoffUtc) {
+            $rejected.Add("$($candidate.Name): created $($freshAt.ToString('o')) is older than the cutoff $($CutoffUtc.ToString('o'))")
             continue
         }
-        $newestMeta = $candidate
-        break
+        return [pscustomobject]@{ Metadata = $meta; File = $candidate; Rejected = $rejected.ToArray() }
     }
-    if ($null -eq $newestMeta) {
+
+    return [pscustomobject]@{ Metadata = $null; File = $null; Rejected = $rejected.ToArray() }
+}
+
+function Assert-DeployFreshEmDashTursoBackup {
+    <#
+    .SYNOPSIS
+      -UseFreshTursoCheckpoint gate: require a verified production backup from earlier in the run.
+
+    .DESCRIPTION
+      Throws (nothing migrated or deployed) unless Select-DeployFreshVerifiedProductionBackup finds
+      a verified, fresh prod-backup-* metadata file. Stores it in $script:DeployFreshBackupMetadata so
+      Assert-DeployMigrateTargetMatchesBackupHost can compare hosts after the build resolves the
+      migrate target.
+    #>
+    if ($script:DeployIsStaging) {
+        throw "Assert-DeployFreshEmDashTursoBackup is production-only (-UseFreshTursoCheckpoint)."
+    }
+
+    $metaDir = Join-Path $script:DeployRepoRoot ".release/rollback-branches"
+    $selection = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc (Get-DeployFreshBackupCutoffUtc)
+    foreach ($reason in @($selection.Rejected)) {
+        Write-Warning "Ignoring backup metadata $reason"
+    }
+    if ($null -eq $selection.Metadata) {
         throw @(
-            "Refusing -SkipTursoBackup: no production rollback metadata newer than 24h whose sourceDatabase matches the Worker-resolved production EmDash DB (or a verified backup log).",
-            "Run pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction or omit -SkipTursoBackup."
+            "Refusing to migrate or deploy: -UseFreshTursoCheckpoint needs a verified production backup newer than 24h",
+            "(.release/rollback-branches/*.json with kind production-emdash-content-backup, verificationPass true,",
+            "a prod-backup-* branch and workerTursoHost) and none was found.",
+            "Run pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction first, or run deploy-production-local.ps1 without -UseFreshTursoCheckpoint so it takes its own backup."
         ) -join " "
     }
-    Write-DeployStep "Using existing production rollback metadata $($newestMeta.Name) for '$expectedDb' (SkipTursoBackup)"
+
+    $script:DeployFreshBackupMetadata = $selection.Metadata
+    Write-DeployStep "Using verified production backup $($selection.Metadata.backupDatabase) ($($selection.File.Name)); no second backup taken (-UseFreshTursoCheckpoint)"
+}
+
+function Test-DeployMigrateTargetMatchesBackupHost {
+    <#
+    .SYNOPSIS
+      True when the libsql URL emdash migrate will use has the same host as the backed-up DB.
+    #>
+    param(
+        [string]$BackupHost,
+        [string]$MigrateUrl
+    )
+
+    $backup = ([string]$BackupHost).Trim().TrimEnd("/").ToLowerInvariant()
+    $target = Get-DeployLibsqlHostname -Url $MigrateUrl
+    if ([string]::IsNullOrWhiteSpace($backup) -or [string]::IsNullOrWhiteSpace($target)) {
+        return $false
+    }
+    return $backup -eq $target
+}
+
+function Assert-DeployMigrateTargetMatchesBackupHost {
+    <#
+    .SYNOPSIS
+      Fail closed before emdash migrate when the migrate target is not the DB that was backed up.
+
+    .DESCRIPTION
+      Only for -UseFreshTursoCheckpoint, where the backup ran in an earlier step with its own
+      credential resolution. Call after Invoke-DeployWorkerBuild (which sets TURSO_DATABASE_URL via
+      Set-TursoBuildEnv) and before Invoke-DeployEmdashCoreMigrate. Never prints tokens.
+    #>
+    if ($null -eq $script:DeployFreshBackupMetadata) {
+        throw "Internal: Assert-DeployMigrateTargetMatchesBackupHost called without a selected backup (Assert-DeployFreshEmDashTursoBackup first)."
+    }
+    $backupHost = [string]$script:DeployFreshBackupMetadata.workerTursoHost
+    $migrateUrl = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+    $targetHost = Get-DeployLibsqlHostname -Url $migrateUrl
+    if (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $backupHost -MigrateUrl $migrateUrl)) {
+        throw @(
+            "Refusing to migrate or deploy: the backed-up DB host '$backupHost' (backup $($script:DeployFreshBackupMetadata.backupDatabase))",
+            "is not the emdash migrate target host '$targetHost'. Fix TURSO_PRODUCTION_EMDASH_DB_URL / _TOKEN so both point at the",
+            "DB the production Worker uses (web/docs/DEPLOY.md § Standard path), then re-run. Nothing was migrated or deployed."
+        ) -join " "
+    }
+    Write-DeployStep "Migrate target host matches the backed-up DB host ($targetHost)"
+}
+# ---------------------------------------------------------------------------------------------
+# Live production Worker provenance (issue #142)
+# ---------------------------------------------------------------------------------------------
+# The production deploy backs up and migrates the DB named by TURSO_PRODUCTION_EMDASH_DB_URL.
+# These functions prove the LIVE production Worker reads that same DB, using
+# GET /api/deploy-provenance.json (web/src/lib/deploy-provenance.ts), which returns only
+# sha256("freedomtimes-turso-host-v1:" + host) and the build commit: never the host or a token.
+
+$script:DeployTursoHostHashDomain = "freedomtimes-turso-host-v1:"
+$script:DeployProvenancePath = "/api/deploy-provenance.json"
+$script:DeployVersionPath = "/api/version.json"
+# Repo path of the route. A live commit whose tree has this file ships the endpoint (#144).
+$script:DeployProvenanceRouteFile = "web/src/pages/api/deploy-provenance.json.ts"
+
+function Get-DeployTursoHostProvenanceHash {
+    <#
+    .SYNOPSIS
+      Lower-case hex SHA-256 of the domain-separated Turso host; "" for an empty host.
+      Must equal tursoHostProvenanceHash() in web/src/lib/deploy-provenance.ts (shared test vector).
+    #>
+    param([string]$TursoHost)
+
+    $normalized = ([string]$TursoHost).Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return ""
+    }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes("$($script:DeployTursoHostHashDomain)$normalized")
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha.ComputeHash($bytes)) -replace "-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
+function Get-DeployProductionSiteOrigin {
+    $origin = [Environment]::GetEnvironmentVariable("FT_PRODUCTION_SITE_ORIGIN", "Process")
+    if ([string]::IsNullOrWhiteSpace($origin)) {
+        $origin = "https://freedomtimes.news"
+    }
+    return $origin.Trim().TrimEnd("/")
+}
+
+function Resolve-DeployLiveWorkerProvenanceVerdict {
+    <#
+    .SYNOPSIS
+      Pure decision for one provenance response. Outcome is one of:
+        Match      live Worker host hash equals the backed-up host hash
+        Mismatch   live Worker reads another DB (fail closed)
+        BootstrapCandidate  PreDeploy 404. NOT a pass: Assert-DeployLiveWorkerTursoHostMatchesBackup
+                   allows a bootstrap only with positive evidence that the live Worker
+                   predates the endpoint (Resolve-DeployProvenanceBootstrapEvidence, #144)
+        Retry      transient (network, 5xx; PostDeploy also 404 or old commit still serving)
+        Fail       anything else (fail closed)
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("PreDeploy", "PostDeploy")]
+        [string]$Phase,
+        [int]$StatusCode,
+        [string]$Body,
+        [string]$ExpectedHash,
+        [string]$ExpectedCommitSha
+    )
+
+    $verdict = { param($Outcome, $Message) [pscustomobject]@{ Outcome = $Outcome; Message = $Message } }
+
+    if ([string]::IsNullOrWhiteSpace($ExpectedHash)) {
+        return (& $verdict "Fail" "The backup metadata has no workerTursoHost, so there is nothing to compare the live Worker with.")
+    }
+    if ($StatusCode -eq 404) {
+        if ($Phase -eq "PreDeploy") {
+            return (& $verdict "BootstrapCandidate" "The live production Worker returned 404 for $($script:DeployProvenancePath).")
+        }
+        return (& $verdict "Retry" "The deployed Worker still returns 404 for $($script:DeployProvenancePath).")
+    }
+    if ($StatusCode -eq 401 -or $StatusCode -eq 403) {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) refused the request ($StatusCode). If the Worker has a DEPLOY_PROVENANCE_TOKEN secret, the GitHub secret DEPLOY_PROVENANCE_TOKEN must hold the same value.")
+    }
+    if ($StatusCode -eq 0 -or $StatusCode -ge 500) {
+        return (& $verdict "Retry" "$($script:DeployProvenancePath) was unreachable or failed (status $StatusCode).")
+    }
+    if ($StatusCode -ne 200) {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) returned unexpected status $StatusCode.")
+    }
+
+    try {
+        $payload = $Body | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) returned a body that is not JSON.")
+    }
+    if ($payload -isnot [pscustomobject]) {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) returned JSON that is not an object.")
+    }
+    $props = $payload.PSObject.Properties
+
+    $liveCommit = if ($props["commitSha"]) { [string]$payload.commitSha } else { "" }
+    if ($Phase -eq "PostDeploy" -and -not [string]::IsNullOrWhiteSpace($ExpectedCommitSha) -and $liveCommit -ne $ExpectedCommitSha) {
+        return (& $verdict "Retry" "The previous Worker version (commit '$liveCommit') is still serving; waiting for $ExpectedCommitSha.")
+    }
+
+    $liveHash = if ($props["tursoHostSha256"]) { ([string]$payload.tursoHostSha256).Trim().ToLowerInvariant() } else { "" }
+    if ([string]::IsNullOrWhiteSpace($liveHash)) {
+        return (& $verdict "Fail" "The live Worker reported no Turso host hash (no TURSO_DATABASE_URL Worker secret?).")
+    }
+    if ($liveHash -ne $ExpectedHash.Trim().ToLowerInvariant()) {
+        return (& $verdict "Mismatch" "The live production Worker reads a different Turso DB host than the one backed up (host hash $($liveHash.Substring(0, [Math]::Min(12, $liveHash.Length)))… vs backed-up $($ExpectedHash.Substring(0, [Math]::Min(12, $ExpectedHash.Length)))…).")
+    }
+    return (& $verdict "Match" "The live production Worker reads the backed-up DB host (commit '$liveCommit').")
+}
+
+function Invoke-DeployProductionSiteGet {
+    <#
+    .SYNOPSIS
+      GET one production-site path once (cache-busting nonce, no-cache). Returns @{ StatusCode; Body };
+      StatusCode 0 on a network error. No redirects followed (a 3xx is returned as-is).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [string]$BearerToken = ""
+    )
+    $uri = "$(Get-DeployProductionSiteOrigin)$($Path)?ci=$([guid]::NewGuid().ToString('N'))"
+    $headers = @{ "Cache-Control" = "no-cache" }
+    if (-not [string]::IsNullOrWhiteSpace($BearerToken)) {
+        $headers["Authorization"] = "Bearer $($BearerToken.Trim())"
+    }
+    try {
+        $response = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -MaximumRedirection 0 `
+            -SkipHttpErrorCheck -TimeoutSec 20 -UseBasicParsing -ErrorAction Stop
+        $body = if ($response.Content -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($response.Content) } else { [string]$response.Content }
+        return [pscustomobject]@{ StatusCode = [int]$response.StatusCode; Body = $body }
+    }
+    catch {
+        return [pscustomobject]@{ StatusCode = 0; Body = "" }
+    }
+}
+
+function Invoke-DeployLiveWorkerProvenanceRequest {
+    <#
+    .SYNOPSIS
+      GET the production provenance endpoint once. Sends DEPLOY_PROVENANCE_TOKEN as a bearer when set.
+    #>
+    $token = [Environment]::GetEnvironmentVariable("DEPLOY_PROVENANCE_TOKEN", "Process")
+    return (Invoke-DeployProductionSiteGet -Path $script:DeployProvenancePath -BearerToken ([string]$token))
+}
+
+function Invoke-DeployLiveWorkerVersionRequest {
+    <#
+    .SYNOPSIS
+      GET the production /api/version.json once (public; build commit only).
+    #>
+    return (Invoke-DeployProductionSiteGet -Path $script:DeployVersionPath)
+}
+
+function Get-DeployGitProvenanceEvidenceOps {
+    <#
+    .SYNOPSIS
+      Git lookups used by Resolve-DeployProvenanceBootstrapEvidence, as injectable scriptblocks.
+      Every lookup returns a value or throws; callers treat a throw as "no evidence" (fail closed).
+    #>
+    param([string]$RepoRoot = $script:DeployRepoRoot)
+
+    if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
+        $RepoRoot = Split-Path $PSScriptRoot -Parent
+    }
+    $root = $RepoRoot
+    return @{
+        IsShallow          = {
+            $out = & git -C $root rev-parse --is-shallow-repository 2>$null
+            if ($LASTEXITCODE -ne 0) { throw "git rev-parse --is-shallow-repository failed." }
+            return ([string]$out).Trim() -eq "true"
+        }.GetNewClosure()
+        CommitExists       = {
+            param([string]$Sha)
+            & git -C $root cat-file -e "$Sha^{commit}" 2>$null
+            return $LASTEXITCODE -eq 0
+        }.GetNewClosure()
+        TreeHasPath        = {
+            param([string]$Sha, [string]$Path)
+            & git -C $root cat-file -e "$($Sha):$Path" 2>$null
+            return $LASTEXITCODE -eq 0
+        }.GetNewClosure()
+        IntroducingCommits = {
+            param([string]$Path)
+            $out = & git -C $root log --format=%H --diff-filter=A HEAD -- $Path 2>$null
+            if ($LASTEXITCODE -ne 0) { throw "git log for $Path failed." }
+            return @($out | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne "" })
+        }.GetNewClosure()
+        IsAncestor         = {
+            param([string]$Ancestor, [string]$Descendant)
+            & git -C $root merge-base --is-ancestor $Ancestor $Descendant 2>$null
+            switch ($LASTEXITCODE) {
+                0 { return $true }
+                1 { return $false }
+                default { throw "git merge-base --is-ancestor failed (exit $LASTEXITCODE)." }
+            }
+        }.GetNewClosure()
+    }
+}
+
+function Resolve-DeployProvenanceBootstrapEvidence {
+    <#
+    .SYNOPSIS
+      Issue #144: is a pre-deploy 404 from /api/deploy-provenance.json the legitimate
+      bootstrap (the live Worker predates the endpoint)? Returns @{ Allowed; LiveCommit; Message }.
+
+    .DESCRIPTION
+      Allowed only with positive evidence, all of:
+        - /api/version.json answered 200 with a JSON object whose commitSha is a full 40-hex SHA;
+        - this checkout has full history (not shallow) and contains that commit;
+        - the live commit's tree does NOT contain the provenance route file;
+        - no commit that added the route (git log --diff-filter=A on HEAD) is an ancestor of it
+          (git merge-base --is-ancestor).
+      Anything else (lookup failure, redirect, non-JSON, "unknown" commit, commit not in history,
+      a live commit that already ships the endpoint, any git error) is Allowed = $false: the
+      404 then fails the run closed.
+    #>
+    param(
+        [int]$VersionStatusCode,
+        [string]$VersionBody,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Git
+    )
+
+    $result = { param($Allowed, $LiveCommit, $Message) [pscustomobject]@{ Allowed = [bool]$Allowed; LiveCommit = $LiveCommit; Message = $Message } }
+    $versionPath = $script:DeployVersionPath
+    $route = $script:DeployProvenanceRouteFile
+
+    if ($VersionStatusCode -ne 200) {
+        $what = if ($VersionStatusCode -eq 0) { "was unreachable" } elseif ($VersionStatusCode -ge 300 -and $VersionStatusCode -lt 400) { "redirected ($VersionStatusCode)" } else { "returned status $VersionStatusCode" }
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: $versionPath $what.")
+    }
+    try {
+        $payload = $VersionBody | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: $versionPath is not JSON.")
+    }
+    if ($payload -isnot [pscustomobject]) {
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: $versionPath is not a JSON object.")
+    }
+    $live = if ($payload.PSObject.Properties["commitSha"]) { ([string]$payload.commitSha).Trim().ToLowerInvariant() } else { "" }
+    if ($live -notmatch '^[0-9a-f]{40}$') {
+        $shown = if ([string]::IsNullOrWhiteSpace($live)) { "missing" } else { "'$live'" }
+        return (& $result $false "" "Cannot prove the live Worker predates the endpoint: its commit is $shown (needs a full SHA).")
+    }
+
+    try {
+        if (& $Git.IsShallow) {
+            return (& $result $false $live "Cannot check live commit $live against history: this checkout is shallow (CI needs actions/checkout fetch-depth: 0).")
+        }
+        if (-not (& $Git.CommitExists $live)) {
+            return (& $result $false $live "Live commit $live is not in this checkout's history (unknown or unpushed build; run git fetch origin locally).")
+        }
+        if (& $Git.TreeHasPath $live $route) {
+            return (& $result $false $live "Live commit $live already contains $route, yet the endpoint returns 404 (route regression, a build without the page, or a misrouted origin).")
+        }
+        $introducing = @(& $Git.IntroducingCommits $route)
+        if ($introducing.Count -eq 0) {
+            return (& $result $false $live "Cannot find the commit that added $route in this checkout's history.")
+        }
+        foreach ($commit in $introducing) {
+            if (& $Git.IsAncestor $commit $live) {
+                return (& $result $false $live "Live commit $live already includes $commit, which added the endpoint, yet the endpoint returns 404.")
+            }
+        }
+        $first = $introducing[-1]
+        return (& $result $true $live "Live commit $live predates the provenance endpoint (added in $first).")
+    }
+    catch {
+        return (& $result $false $live "Cannot check live commit $live against git history: $($_.Exception.Message)")
+    }
+}
+
+function Assert-DeployLiveWorkerTursoHostMatchesBackup {
+    <#
+    .SYNOPSIS
+      Fail closed unless the live production Worker reads the backed-up (and migrated) DB host.
+
+    .DESCRIPTION
+      PreDeploy: before build/migrate/deploy. Mismatch, missing hash or any unexpected response
+      throws (nothing migrated or deployed). A 404 is a bootstrap ONLY when
+      Resolve-DeployProvenanceBootstrapEvidence proves the live Worker predates the endpoint
+      (#144: its /api/version.json commit is known and does not contain the route); then a loud
+      ::warning:: and the secret-vs-backup host assertion (Assert-DeployMigrateTargetMatchesBackupHost)
+      is the only check for this one run. Without that proof the 404 fails closed.
+      PostDeploy: right after wrangler deploy, against the NEW version (waits for its commit).
+      Here 404 is a hard failure once retries run out: there is no bootstrap after deploy.
+      -Fetch / -FetchVersion are injectable for tests; they must return @{ StatusCode; Body }.
+      -GitOps is injectable for tests (shape: Get-DeployGitProvenanceEvidenceOps).
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("PreDeploy", "PostDeploy")]
+        [string]$Phase,
+        [scriptblock]$Fetch = { Invoke-DeployLiveWorkerProvenanceRequest },
+        [scriptblock]$FetchVersion = { Invoke-DeployLiveWorkerVersionRequest },
+        [hashtable]$GitOps = $null,
+        [int]$MaxAttempts = 0,
+        [int]$DelaySeconds = 5
+    )
+
+    if ($null -eq $script:DeployFreshBackupMetadata) {
+        throw "Internal: Assert-DeployLiveWorkerTursoHostMatchesBackup called without a selected backup (Assert-DeployFreshEmDashTursoBackup first)."
+    }
+    if ($MaxAttempts -le 0) {
+        $MaxAttempts = if ($Phase -eq "PostDeploy") { 24 } else { 4 }
+    }
+    $expectedHash = Get-DeployTursoHostProvenanceHash -TursoHost ([string]$script:DeployFreshBackupMetadata.workerTursoHost)
+    $expectedCommit = [Environment]::GetEnvironmentVariable("FT_BUILD_COMMIT_SHA", "Process")
+    $backupName = [string]$script:DeployFreshBackupMetadata.backupDatabase
+    $failurePrefix = if ($Phase -eq "PreDeploy") {
+        "Refusing to migrate or deploy (live Worker provenance, #142):"
+    }
+    else {
+        "Production deploy FAILED its post-deploy provenance check (#142): the new Worker is live and EmDash was migrated. Roll back per web/docs/DEPLOY.md § If the production job fails."
+    }
+    $fixHint = "Point TURSO_PRODUCTION_EMDASH_DB_URL / _TOKEN at the DB the production Worker uses (web/docs/DEPLOY.md § Standard path), then re-run."
+
+    $summary = {
+        param([string]$Line)
+        if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $Line -ErrorAction SilentlyContinue
+        }
+    }
+
+    $last = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $response = & $Fetch
+        $last = Resolve-DeployLiveWorkerProvenanceVerdict -Phase $Phase -StatusCode ([int]$response.StatusCode) `
+            -Body ([string]$response.Body) -ExpectedHash $expectedHash -ExpectedCommitSha $expectedCommit
+        switch ($last.Outcome) {
+            "Match" {
+                Write-DeployStep "Live Worker provenance ($Phase): $($last.Message) Backup $backupName."
+                & $summary "- Live Worker provenance ($Phase, #142): match (Turso host hash = backup ``$backupName``)"
+                return "Match"
+            }
+            "BootstrapCandidate" {
+                # #144: a 404 is only the bootstrap with proof that the live Worker predates the endpoint.
+                $ops = if ($null -ne $GitOps) { $GitOps } else { Get-DeployGitProvenanceEvidenceOps }
+                $versionResponse = & $FetchVersion
+                $evidence = Resolve-DeployProvenanceBootstrapEvidence -VersionStatusCode ([int]$versionResponse.StatusCode) `
+                    -VersionBody ([string]$versionResponse.Body) -Git $ops
+                if (-not $evidence.Allowed) {
+                    throw "$failurePrefix $($last.Message) Not a provenance bootstrap (#144): $($evidence.Message) Nothing was migrated or deployed."
+                }
+                $message = "$($last.Message) $($evidence.Message) Bootstrap: this run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory."
+                if ($env:GITHUB_ACTIONS -eq "true") {
+                    Write-Host "::warning title=Live Worker provenance bootstrap (#142)::$message"
+                }
+                Write-Warning $message
+                $script:DeployLiveProvenanceBootstrap = $true
+                & $summary "- Live Worker provenance ($Phase, #142): **bootstrap** (live commit ``$($evidence.LiveCommit)`` predates the endpoint; secret-vs-backup host check only)"
+                return "Bootstrap"
+            }
+            "Mismatch" {
+                $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed. $fixHint" } else { $fixHint }
+                throw "$failurePrefix $($last.Message) $tail"
+            }
+            "Fail" {
+                $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed." } else { "" }
+                throw "$failurePrefix $($last.Message) $tail".Trim()
+            }
+            default {
+                if ($attempt -lt $MaxAttempts -and $DelaySeconds -gt 0) {
+                    Start-Sleep -Seconds $DelaySeconds
+                }
+            }
+        }
+    }
+    $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed." } else { "" }
+    throw "$failurePrefix gave up after $MaxAttempts attempts: $($last.Message) $tail".Trim()
 }
 
 function Invoke-DeployStagingTursoExport {
@@ -919,6 +1374,46 @@ function Invoke-DeployStagingTursoExport {
     Write-Host "Staging EmDash backup saved: $outputAbs" -ForegroundColor Green
 }
 
+function Invoke-DeployStagingTursoBranchBackup {
+    <#
+    .SYNOPSIS
+      Staging backup as a Turso branch (staging-backup-YYYYMMDD-HHMMSS); writes no .db file.
+
+    .DESCRIPTION
+      Used by deploy-worker.yml through deploy-staging-local.ps1 -TursoBranchBackup: the repo is
+      public, so CI never exports or uploads a database file. Restore = point the staging Worker at
+      the branch, or copy it back with turso db create --from-db (web/docs/DEPLOY.md).
+      The group is TF_VAR_TURSO_DATABASE_GROUP_STAGING when set, else the Turso org default group.
+    #>
+    Assert-DeployTursoAuth
+
+    $databaseName = Get-DeployTursoDatabaseNameFromEnv `
+        -EnvKey "TF_VAR_TURSO_DATABASE_NAME_STAGING" `
+        -DefaultName "freedomtimes-emdash-staging" # pragma: allowlist secret
+    $group = Get-DeployTursoDatabaseNameFromEnv -EnvKey "TF_VAR_TURSO_DATABASE_GROUP_STAGING" -DefaultName ""
+
+    $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
+    $branchName = "staging-backup-$stamp"
+    Write-DeployStep "Creating staging EmDash backup branch '$branchName' from '$databaseName' (no .db export)"
+
+    $createArgs = @("db", "create", $branchName, "--from-db", $databaseName)
+    if (-not [string]::IsNullOrWhiteSpace($group)) {
+        $createArgs += @("--group", $group)
+    }
+    $create = Invoke-DeployTursoCli -TursoArgs $createArgs
+    if ($create.ExitCode -ne 0) {
+        throw "Staging EmDash backup branch create failed (exit $($create.ExitCode)). Nothing migrated or deployed."
+    }
+    $script:DeployStagingBackupBranch = $branchName
+    Write-Host "Staging EmDash backup branch: $branchName" -ForegroundColor Green
+    if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+        Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value @(
+            "### Staging EmDash backup",
+            "- Turso branch: ``$branchName`` (from ``$databaseName``; no .db exported or uploaded)"
+        )
+    }
+}
+
 function Invoke-DeployEmDashTursoBackup {
     param(
         [switch]$SkipTursoBackup
@@ -930,7 +1425,12 @@ function Invoke-DeployEmDashTursoBackup {
     }
 
     if ($script:DeployIsStaging) {
-        Invoke-DeployStagingTursoExport
+        if ($script:DeployStagingBackupAsBranch) {
+            Invoke-DeployStagingTursoBranchBackup
+        }
+        else {
+            Invoke-DeployStagingTursoExport
+        }
         return
     }
 
@@ -1106,7 +1606,7 @@ function Complete-DeployTerraformLockfileRestore {
 }
 
 function Write-DeployGithubCiNoiseNote {
-    Write-Host "CA-09: Ignore GitHub Apply to Staging / Android / iOS empty-step ~3s failures (Actions billing lock, not empty YAML). Local deploy is the staging/production path." -ForegroundColor DarkGray
+    Write-Host "Standard Worker deploy path is GitHub Actions (.github/workflows/deploy-worker.yml: PR -> staging, merge to main -> production backup + deploy). This local script is the fallback (web/docs/DEPLOY.md)." -ForegroundColor DarkGray
 }
 
 function Sync-DeployProductionAuth0EnvFromTerraform {

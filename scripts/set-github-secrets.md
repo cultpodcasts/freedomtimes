@@ -141,10 +141,11 @@ Expected names:
 - Run from repo root so relative paths resolve correctly.
 - Ensure Wrangler auth is active (`npx wrangler whoami`).
 - Secret values are intentionally not printed by the sync script; only names/actions are logged.
+- The standard Worker deploy (`.github/workflows/deploy-worker.yml`, [web/docs/DEPLOY.md § Standard path](../web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)) reads secrets this script syncs (including `TURSO_PRODUCTION_EMDASH_DB_URL` / `_TOKEN`, `TURSO_TOKEN`, `TURSO_TOKEN_STAGING`, `PUSH_*`). `TURSO_PRODUCTION_EMDASH_DB_URL` is synced to the `production` **environment** (`--env production`), not the repo, because only the production job reads it ([DEPLOY.md § Production gating](../web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)); every other secret is repo-level. It needs no secret beyond those: CI keeps the production backup as a Turso branch and never uploads a `.db` or backup artifact.
 
 ## Cloudflare Token Permissions (CI)
 
-For GitHub Actions staging deploys, `TF_VAR_CLOUDFLARE_API_TOKEN` must include all permissions needed by both Terraform and Wrangler.
+For GitHub Actions Worker deploys (`deploy-worker.yml`, staging and production), `TF_VAR_CLOUDFLARE_API_TOKEN` must include all permissions needed by both Terraform and Wrangler.
 
 Minimum Worker deploy permissions:
 

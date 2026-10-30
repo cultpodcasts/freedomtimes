@@ -70,7 +70,7 @@ See **Primary guardrails §2**. Before **any** mutating operation on a database 
 1. `pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction` — snapshot of **whatever Turso DB the production Worker is using**; Turso branch is always `prod-backup-YYYYMMDD-HHMMSS` (never `prod-work-embeds-…`) + `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`. Legacy `prod-rollback-*` branches remain valid DR restore sources.
 2. After `turso db export`, **verify the file** exists and is a non-trivial size (`ls -lh`; optional `sqlite3` integrity) before any promote/content mutate. Export alone is not enough — see **Verify** in **`web/CONTENT_PROMOTION_RUNBOOK.md`**.
 3. Inventory verify must PASS (backup published count ≥ live Worker; no missing weeklies) or promote/deploy stops.
-4. Commit `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` (required operator artifact). <!-- pragma: allowlist secret -->
+4. Commit `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` (manual follow-up after every production backup; the CI deploy does not write the file, so add it from the run's job summary — [DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)). <!-- pragma: allowlist secret -->
 5. **Disaster recovery:** sibling **[freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md)** — retarget the Worker to the backup branch first; do **not** restore onto named production. Script: `pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-backup-stamp>` (legacy `prod-rollback-*` also accepted). <!-- pragma: allowlist secret -->
 
 Staging / scheduler / subscriptions file dumps: **`web/CONTENT_PROMOTION_RUNBOOK.md`**; Turso CLI in **WSL on Windows**, **native on Linux** — **`docs/CLI_PATHS_WINDOWS.md`**.
@@ -90,20 +90,23 @@ Full policy: **`web/docs/STAGING_ACCESS.md`**.
 
 **Canonical reference:** **[web/docs/DEPLOY.md](web/docs/DEPLOY.md)** — script decision table, flags, step order, prerequisites, and failure troubleshooting. Read the [For AI agents](web/docs/DEPLOY.md#for-ai-agents) section before running any deploy command.
 
+**Standard web Worker deploy is GitHub Actions** ([DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)): a PR from a `cultpodcasts/freedomtimes` branch deploys staging via `.github/workflows/deploy-worker.yml`; after the operator merges, the same workflow takes a verified production Turso backup (Turso branch `prod-backup-YYYYMMDD-HHMMSS` only; CI never exports or uploads a `.db`) and then deploys production. Agents open the PR and watch the staging job; they never merge. The local scripts below are the fallback.
+
 **Entry points only** (from repo root):
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/deploy-staging-local.ps1` | Staging deploy (full, `-WorkerOnly`, or `-WorkersOnly`) |
-| `scripts/deploy-production-local.ps1` | Local production deploy (full or `-WorkerOnly -AllowProduction`) |
-| `scripts/production-release.ps1` | CI release — dispatches GitHub Actions; not a local wrangler deploy |
+| `.github/workflows/deploy-worker.yml` | Standard: PR → staging Worker; merge to `main` → production backup + Worker deploy |
+| `scripts/deploy-staging-local.ps1` | Fallback staging deploy (full, `-WorkerOnly`, or `-WorkersOnly`) |
+| `scripts/deploy-production-local.ps1` | Fallback local production deploy (full or `-WorkerOnly -AllowProduction`) |
+| `scripts/production-release.ps1` | Legacy Terraform dispatch (refused while the `holding_page` drift exists); not the standard Worker deploy |
 
 **Do not invoke:** `Deploy-EnvironmentCommon.ps1` (helpers only); deprecated `*-rebuild-local.ps1` (use `deploy-*-local.ps1`).
 
 **Hard rules for agents:**
 
-- Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**.
-- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Staging `turso db export` uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default (do not require that env key as a Cursor secret). **Turso hosts:** process `TURSO_DATABASE_URL` on this Cloud env is often **production** EmDash and equals `TURSO_PRODUCTION_EMDASH_DB_URL`. Do not abort because process hosts match. `Select-StagingEmdashTursoUrl` skips a production process URL (hint match or `*-emdash-production-*`) and still sets `IgnoredProcessProductionShadow` when Terraform URL wins, so process JWT is not used. **Never** copy the process production pair into `.env.dev`. Resolve **throws** if the selected `.env.dev` or Terraform URL is production. Staging Turso is database name `freedomtimes-emdash-staging`. Pass `-SkipTursoBackup` only when the operator **explicitly** orders skip: the flag skips export/rollback with no 24h-file requirement, and `-WorkerOnly`/`-WorkersOnly` also skip emdash migrate. <!-- pragma: allowlist secret -->
+- Do **not** run production deploy (`deploy-production-local.ps1`, `production-release.ps1`) unless the operator **explicitly asks in this chat**. Merging a PR to `main` triggers the production deploy job, so only the operator merges.
+- Full `deploy-production-local.ps1` and `-WorkerOnly` create a Turso rollback checkpoint **before** `emdash migrate` (except `-UseFreshTursoCheckpoint`, used only by `deploy-worker.yml` after its own verified backup step) — requires authenticated Turso CLI (**Primary guardrails §7**; WSL on Windows, native on Linux). Staging `turso db export` uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default (do not require that env key as a Cursor secret). **Turso hosts:** process `TURSO_DATABASE_URL` on this Cloud env is often **production** EmDash and equals `TURSO_PRODUCTION_EMDASH_DB_URL`. Do not abort because process hosts match. `Select-StagingEmdashTursoUrl` skips a production process URL (hint match or `*-emdash-production-*`) and still sets `IgnoredProcessProductionShadow` when Terraform URL wins, so process JWT is not used. **Never** copy the process production pair into `.env.dev`. Resolve **throws** if the selected `.env.dev` or Terraform URL is production. Staging Turso is database name `freedomtimes-emdash-staging`. Pass `-SkipTursoBackup` only when the operator **explicitly** orders skip: the flag skips export/rollback with no 24h-file requirement, and `-WorkerOnly`/`-WorkersOnly` also skip emdash migrate. <!-- pragma: allowlist secret -->
 - Deploy scripts ship Workers and infra; they do **not** publish EmDash content (**Primary guardrails §5** for `content_publish`).
 - On deploy failure, use the canonical doc's [Quick symptom index](web/docs/DEPLOY.md#quick-symptom-index) — do not improvise alternate script names.
 
@@ -147,7 +150,7 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 | CA-08 / CA-15 | `EMDASH_TARGET_FINGERPRINT` unset | Local `deploy-*-local.ps1` pins process env from same-run `--status` (`print-fingerprint`) | If apply still refuses, wrong host. Do not invent Cursor secrets |
 | CA-14 | Production process URL = production hint; `.env.dev` stays staging | Production resolve uses `TURSO_PRODUCTION_EMDASH_DB_TOKEN` / paired JWT. Never write that pair into `.env.dev` | Copy process JWT into `TURSO_PRODUCTION_EMDASH_DB_TOKEN` only |
 | CA-16 | Rollback JSON mtime 1970 / old `createdAtUtc` | Skip check uses `createdAtUtc`; epoch mtime is not fresh | Omit `-SkipTursoBackup`; create a new rollback branch |
-| CA-09 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Ignore. Cause is Actions **billing lock** (`job was not started`), not empty YAML | Do not treat as this VM deploy failing. Operator unlocks Actions billing if those PR checks are needed |
+| CA-09 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Not a code failure. Cause is Actions **billing lock** (`job was not started`), not empty YAML | Do not patch those workflows. Tell the operator, who unlocks Actions billing; the standard `deploy-worker.yml` deploy (web/docs/DEPLOY.md § Standard path) also needs Actions |
 | CA-10 | Staging `/` 1–3s with `Server-Timing` | Success | A hang is **0-byte pending**, not a slow 200 |
 | CA-11 | `punycode` deprecation | Ignore | Noise. A `[patch-cloudflare-bundle] ERROR` (exit 1) is **not** noise: see [web/docs/PATCH_CLOUDFLARE_BUNDLE.md](web/docs/PATCH_CLOUDFLARE_BUNDLE.md) |
 | CA-18 | Agents unset process `TURSO_*` by hand | Scripts skip the process pair; do not unset | Only if resolve still selected production |
@@ -160,7 +163,7 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 **Full staging command**
 
 - `pwsh ./scripts/deploy-staging-local.ps1 -SkipVersionBump` with **no** `-WorkerOnly` / `-WorkersOnly`. That **does** run Terraform (init + apply recovery above).
-- Staging backup is `turso db export` of `freedomtimes-emdash-staging` → `.release/backups/emdash-staging-<stamp>.db`. Export does **not** require `TF_VAR_TURSO_DATABASE_NAME_STAGING` (Terraform default name). After a successful export, retry may use `-SkipTursoBackup` against that fresh file. <!-- pragma: allowlist secret -->
+- Staging backup: in CI (`deploy-worker.yml`, `-TursoBranchBackup`) it is a `staging-backup-YYYYMMDD-HHMMSS` Turso branch, never a file ([web/docs/DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml); backups are never public: [§ Backups are never public](web/docs/DEPLOY.md#backups-are-never-public)). Local runs like this one use `turso db export` of `freedomtimes-emdash-staging` → `.release/backups/emdash-staging-<stamp>.db` (git-ignored). Export does **not** require `TF_VAR_TURSO_DATABASE_NAME_STAGING` (Terraform default name). After a successful export, retry may use `-SkipTursoBackup` against that fresh file. <!-- pragma: allowlist secret -->
 - A successful Terraform mutate can be small (example: `0 added, 2 changed, 0 destroyed`). That is not a required delta next time. Apply delta of `0 added, 1 changed, 0 destroyed` on the holding-page Worker is expected inside this full deploy only: it replaces the live Worker with Terraform's single-module upload until the wrangler deploy later in the run ([NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift), [#116](https://github.com/cultpodcasts/freedomtimes/issues/116)). Never apply it on its own.
 - After apply: `emdash migrate` apply, wrangler staging, `emdash migrate --check`. Pending none is success.
 - Probe `https://staging.freedomtimes.news/` HTTP 200 is the **locked holding page** (title Secure Access, Log in with Google). That is success, not a worker failure. Staging stays locked (**Primary guardrails §4**). Cold `/` with `Server-Timing` in 1–3s is not a hang. <!-- pragma: allowlist secret -->

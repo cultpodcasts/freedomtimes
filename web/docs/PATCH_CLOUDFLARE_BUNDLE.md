@@ -26,7 +26,7 @@ Every patch has a `status`:
 There is no silent skip any more: a missing target or an unverified upgrade is a build failure, not a
 `patched 0 file(s)` line.
 
-### Current registry (emdash 1.3.1, `@astrojs/cloudflare` 14.4.2)
+### Current registry (emdash 1.4.0, `@astrojs/cloudflare` 14.4.3; obsolete emdash entries re-checked against 1.4.0 and verified `>=1.3.1 <1.5`)
 
 | ID | Status | Why |
 |---|---|---|

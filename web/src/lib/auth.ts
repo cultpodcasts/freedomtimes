@@ -114,6 +114,7 @@ export const PUBLIC_READER_PATHS = [
   '/api/story-tips',
   '/api/tip-source.json',
   '/api/version.json',
+  '/api/deploy-provenance.json',
   '/api/push-subscriptions',
   '/api/notification-diagnostics',
   '/api/push-test-notification',

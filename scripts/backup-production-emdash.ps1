@@ -14,14 +14,23 @@
     3) Metadata:     .release/rollback-branches/YYYYMMDD-HHMMSS-prod-backup-YYYYMMDD-HHMMSS.json
                    including workerTursoHost, sourceDatabase (whatever the Worker uses),
                    postCount, weeklySlugsSample, verification
-    4) Committed log: ../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json
-                   (canonical “where is the backup” record — commit it; no tokens)
+    4) Backup log:   ../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json
+                   (“where is the backup” record; no tokens). Committing it to
+                   freedomtimes-agents is a manual follow-up (web/docs/DEPLOY.md).
 
-  The backup is of whatever Turso DB the production Worker is using. The artifact
+  The backup is of whatever Turso DB the production Worker is using. The backup branch
   name is always prod-backup-<stamp>, never a work/scratch DB name.
 
   Then runs verify-production-emdash-backup.mjs (--from-worker --compare-staging by default).
   Non-zero exit if verify FAIL.
+
+  -SkipFileExport (used by .github/workflows/deploy-worker.yml; the repo is public, so CI
+  never writes a .db): verify reads the new prod-backup-* branch directly instead of the
+  file, with a read-only, 1-day database token created for that branch only
+  (turso db tokens create <branch> -r -e 1d). The token is passed through process env,
+  masked in GitHub Actions, never printed or written to disk, and cleared afterwards.
+  Tokens are never invalidated here: invalidation rotates keys for the whole Turso group,
+  which would break the live production token.
 
 .EXAMPLE
   pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
@@ -101,10 +110,108 @@ function Invoke-External {
     return [pscustomobject]@{ ExitCode = $exitCode; Output = @() }
 }
 
+function Register-GithubActionsSecretMask {
+    <#
+    .SYNOPSIS
+      In GitHub Actions, tell the runner to redact a value from all later log output.
+      No-op elsewhere. Never prints the value outside the ::add-mask:: command.
+    #>
+    param([string]$Value)
+    if ($env:GITHUB_ACTIONS -ne "true" -or [string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+    Write-Host "::add-mask::$($Value.Trim())"
+}
+
+function Write-BackupVerifySummaryForCi {
+    <#
+    .SYNOPSIS
+      CI replacement for echoing verify-production-emdash-backup.mjs output.
+
+    .DESCRIPTION
+      P0 rule (web/docs/DEPLOY.md § Backups are never public): this repo is public, so CI logs
+      must never carry backup content or row data. The verify report lists post slugs and
+      statuses (missingInBackup, statusMismatch, weekly samples, failure text), so in GitHub
+      Actions only counts, hashes and the pass flag are printed. The full report stays on the
+      runner's disk (never uploaded). Run the script locally to see the slugs.
+    #>
+    param(
+        [string]$ReportPath,
+        [int]$ExitCode,
+        [object[]]$Output
+    )
+    $count = { param($value) @($value | Where-Object { $null -ne $_ }).Count }
+    if (-not [string]::IsNullOrWhiteSpace($ReportPath) -and (Test-Path -LiteralPath $ReportPath)) {
+        try {
+            $report = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json -ErrorAction Stop
+            $props = $report.PSObject.Properties
+            $get = { param($name) if ($props[$name]) { $report.$name } else { $null } }
+            Write-Host "Verify (CI summary; slugs withheld from public logs): pass=$(& $get 'pass') exit=$ExitCode"
+            Write-Host "  backupCount=$(& $get 'backupCount') liveCount=$(& $get 'liveCount') missingInBackup=$(& $count (& $get 'missingInBackup')) extraInBackup=$(& $count (& $get 'extraInBackup')) statusMismatch=$(& $count (& $get 'statusMismatch')) failures=$(& $count (& $get 'failures'))"
+            Write-Host "  inventoryHash=$(& $get 'inventoryHash') liveInventoryHash=$(& $get 'liveInventoryHash')"
+            return
+        }
+        catch {
+            Write-Host "Verify report could not be summarised; output withheld from public logs (exit $ExitCode)."
+            return
+        }
+    }
+    # No report: show only the machine-readable error kind (never row data).
+    $errorKinds = @($Output | ForEach-Object { [string]$_ } | ForEach-Object {
+            $m = [regex]::Match($_, '"error"\s*:\s*"([a-z_]{1,40})"')
+            if ($m.Success) { $m.Groups[1].Value }
+        } | Select-Object -Unique)
+    $kinds = if ($errorKinds.Count -gt 0) { $errorKinds -join ", " } else { "none reported" }
+    Write-Host "Verify produced no report (exit $ExitCode; error kind: $kinds). Output withheld from public logs; re-run locally for detail."
+}
+
+function Register-GithubActionsSecretMasksFromEnvFile {
+    <#
+    .SYNOPSIS
+      Mask the Worker-resolved Turso token(s) the resolver wrote to its private env sidecar.
+      The resolved token is not always a registered GitHub secret, so GitHub would not mask it.
+    #>
+    param([string]$Path)
+    if ($env:GITHUB_ACTIONS -ne "true" -or [string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        if ($line -match '^(TURSO_AUTH_TOKEN|TURSO_PRODUCTION_EMDASH_DB_TOKEN)=(.+)$') {
+            Register-GithubActionsSecretMask -Value $Matches[2]
+        }
+    }
+}
+
+function Invoke-TursoCapture {
+    <#
+    .SYNOPSIS
+      Run turso (WSL or native) and return trimmed stdout lines. Throws without echoing output
+      when -Sensitive (token creation), so a partial token can never reach the log.
+    #>
+    param(
+        [string[]]$TursoArgs,
+        [switch]$Sensitive
+    )
+    if ($script:UseWslTursoForCapture) {
+        $quoted = foreach ($a in $TursoArgs) { Escape-BashSingleQuoted $a }
+        $lines = & wsl bash -lc ('$HOME/.turso/turso ' + ($quoted -join " ")) 2>&1
+    }
+    else {
+        $lines = & turso @TursoArgs 2>&1
+    }
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        $detail = if ($Sensitive) { "(output withheld: sensitive command)" } else { ($lines -join "`n") }
+        throw "turso $($TursoArgs[0..([Math]::Min(2, $TursoArgs.Count - 1))] -join ' ') failed with exit code $code. $detail"
+    }
+    return @($lines | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -ne "" })
+}
+
 $repoRoot = Split-Path $PSScriptRoot -Parent
 Push-Location $repoRoot
 try {
     $UseWslTurso = -not $UseNativeTurso
+    $script:UseWslTursoForCapture = $UseWslTurso
     if ($UseWslTurso) {
         if (-not (Test-CommandAvailable -CommandName "wsl")) {
             throw "wsl is required for Turso on Windows. See docs/CLI_PATHS_WINDOWS.md (or pass -UseNativeTurso on Linux)."
@@ -161,6 +268,9 @@ try {
     if (-not $resolved.ok) {
         throw "Worker Turso resolve failed. See $resolveOut"
     }
+    if ($resolved.PSObject.Properties["emitEnvFile"]) {
+        Register-GithubActionsSecretMasksFromEnvFile -Path ([string]$resolved.emitEnvFile)
+    }
 
     $sourceDatabase = if (-not [string]::IsNullOrWhiteSpace($DatabaseNameOverride)) {
         $DatabaseNameOverride.Trim()
@@ -169,6 +279,9 @@ try {
         [string]$resolved.databaseName
     }
     $workerHost = [string]$resolved.workerTursoHost
+    # Public CI logs: the provenance endpoint only ever exposes a hash of this host (#142),
+    # so keep the plain hostname out of the job log too.
+    Register-GithubActionsSecretMask -Value $workerHost
     $postCount = [int]($resolved.postCount)
     $weeklySample = @($resolved.weeklySlugsSample)
 
@@ -289,6 +402,7 @@ try {
     }
 
     $verifyReportPath = Join-Path $metaDir "$timestampUtc-verify.json"
+    $verifyAgainstBranch = $false
     $verifyArgs = [System.Collections.Generic.List[string]]::new()
     $verifyArgs.Add((Join-Path $repoRoot "web/scripts/verify-production-emdash-backup.mjs"))
     $verifyArgs.Add("--from-worker")
@@ -299,17 +413,47 @@ try {
         $verifyArgs.Add($backupFileRel)
     }
     elseif (-not [string]::IsNullOrWhiteSpace($branchName)) {
-        # Branch-only: need credentials — mint via turso tokens create is operator-side;
-        # for verify without file we fail clearly.
-        throw "Verify requires the local file export (omit -SkipFileExport) so inventory can be checked offline."
+        # Branch-only (CI: no .db on a public repo's runner). Read the new branch directly with a
+        # read-only, 1-day token scoped to that branch. Passed by env, never on the command line.
+        Write-Host "Verifying the Turso branch '$branchName' directly (no .db export)…" -ForegroundColor Cyan
+        $branchUrl = (Invoke-TursoCapture -TursoArgs @("db", "show", $branchName, "--url") | Select-Object -Last 1)
+        if ([string]::IsNullOrWhiteSpace($branchUrl) -or $branchUrl -notmatch '^libsql://') {
+            throw "Could not read the libsql URL of backup branch '$branchName'. Backup not verified; refusing to continue."
+        }
+        $branchToken = (Invoke-TursoCapture -Sensitive -TursoArgs @("db", "tokens", "create", $branchName, "--read-only", "--expiration", "1d") | Select-Object -Last 1)
+        if ([string]::IsNullOrWhiteSpace($branchToken)) {
+            throw "Could not create a read-only token for backup branch '$branchName'. Backup not verified; refusing to continue."
+        }
+        Register-GithubActionsSecretMask -Value $branchToken
+        $env:TURSO_BACKUP_DATABASE_URL = $branchUrl
+        $env:TURSO_BACKUP_AUTH_TOKEN = $branchToken
+        $branchToken = $null
+        $verifyAgainstBranch = $true
+        $verifyArgs.Add("--backup-branch")
+        $verifyArgs.Add($branchName)
+    }
+    else {
+        throw "Nothing to verify: both -SkipBranch and -SkipFileExport were passed."
     }
     if (-not $SkipStagingCompare) {
         $verifyArgs.Add("--compare-staging")
     }
 
     Write-Host "Verifying backup against live Worker inventory…" -ForegroundColor Cyan
-    $verifyRun = Invoke-External -FilePath "node" -Arguments $verifyArgs.ToArray() -CaptureOutput -AllowFailure
-    $verifyRun.Output | ForEach-Object { $_ }
+    try {
+        $verifyRun = Invoke-External -FilePath "node" -Arguments $verifyArgs.ToArray() -CaptureOutput -AllowFailure
+    }
+    finally {
+        if ($verifyAgainstBranch) {
+            Remove-Item Env:TURSO_BACKUP_DATABASE_URL, Env:TURSO_BACKUP_AUTH_TOKEN -ErrorAction SilentlyContinue
+        }
+    }
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        Write-BackupVerifySummaryForCi -ReportPath $verifyReportPath -ExitCode $verifyRun.ExitCode -Output $verifyRun.Output
+    }
+    else {
+        $verifyRun.Output | ForEach-Object { $_ }
+    }
     $verifyPass = $verifyRun.ExitCode -eq 0
     $verification = $null
     if (Test-Path -LiteralPath $verifyReportPath) {
@@ -388,21 +532,37 @@ try {
         )
         $logRun = Invoke-External -FilePath "node" -Arguments $logArgs -CaptureOutput
         $agentsLogPath = ($logRun.Output | Select-Object -Last 1).ToString().Trim()
-        Write-Host "Agents backup log (commit this): $agentsLogPath" -ForegroundColor Green
-        Write-Host "Required: git add + commit that JSON in freedomtimes-agents (no tokens, no .db)." -ForegroundColor Cyan
+        Write-Host "Agents backup log: $agentsLogPath" -ForegroundColor Green
+        Write-Host "Manual follow-up: git add + commit that JSON in freedomtimes-agents (no tokens, no .db). See web/docs/DEPLOY.md." -ForegroundColor Cyan
     }
     else {
-        Write-Warning "Skipping freedomtimes-agents backup log (-SkipAgentsLog). Operator policy is to always write and commit data/backups/prod-emdash-*.json."
+        Write-Host "Skipping the freedomtimes-agents backup log (-SkipAgentsLog). The Turso branch and .release/rollback-branches/ metadata are the record; adding a data/backups/prod-emdash-*.json entry is a manual follow-up (web/docs/DEPLOY.md)." -ForegroundColor Yellow
     }
 
     if (-not $verifyPass) {
         throw "PRODUCTION BACKUP VERIFY FAILED. Refusing to treat this checkpoint as good. See $verifyReportPath and $metadataFilePath"
     }
-    Write-Host "PASS: production EmDash backup verified (branch + file + metadata + agents log)." -ForegroundColor Green
+    $parts = @()
+    if ($branchName) { $parts += "branch" }
+    if ($backupFileRel) { $parts += "file" }
+    $parts += "metadata"
+    if (-not $SkipAgentsLog) { $parts += "agents log" }
+    Write-Host "PASS: production EmDash backup verified ($($parts -join ' + '))." -ForegroundColor Green
     Write-Host "Backup name: $branchName  (of Worker source '$sourceDatabase')" -ForegroundColor Green
-    Write-Host "Look here: freedomtimes-agents/data/backups/prod-emdash-$timestampUtc.json  (canonical record)" -ForegroundColor Cyan
-    Write-Host "Also: .release/rollback-branches/ + .release/backups/emdash-production-$timestampUtc.db" -ForegroundColor Cyan
+    if (-not $SkipAgentsLog) {
+        Write-Host "Look here: freedomtimes-agents/data/backups/prod-emdash-$timestampUtc.json" -ForegroundColor Cyan
+    }
+    Write-Host "Metadata: .release/rollback-branches/$metadataFileName" -ForegroundColor Cyan
+    if ($backupFileRel) {
+        Write-Host "File: $backupFileRel" -ForegroundColor Cyan
+    }
 }
 finally {
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        # Runner hygiene: the resolver's temp files hold published slugs (inventory) and the
+        # Worker DB token. Nothing uploads them, but remove them so no later step can.
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot ".release/backups") -Filter "_tmp-*" -File -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    }
     Pop-Location
 }

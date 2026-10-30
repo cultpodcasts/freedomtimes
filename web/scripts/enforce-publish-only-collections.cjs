@@ -21,9 +21,12 @@ async function main() {
   );
 
   const rows = await db.execute(
-    "select slug, supports from _emdash_collections order by slug"
+    "select slug from _emdash_collections where slug in ('posts', 'pages') and supports = '[\"revisions\",\"search\"]' order by slug"
   );
-  console.log(JSON.stringify(rows.rows, null, 2));
+  // Collection names only: CI logs are public, so never print table rows
+  // (web/docs/DEPLOY.md § Backups are never public).
+  const enforced = rows.rows.map((row) => String(row.slug));
+  console.log(`Publish-only supports set for ${label}: ${enforced.join(", ") || "(none found)"}`);
 }
 
 main().catch((error) => {

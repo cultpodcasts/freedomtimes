@@ -447,7 +447,7 @@ gh workflow run terraform-production.yml
 gh workflow run terraform-production.yml -f production_terraform_apply=true
 ```
 
-For a real production deploy, including any Terraform change that touches the Worker, back up production and run `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-default-path)).
+For a real production deploy, including any Terraform change that touches the Worker, back up production and run `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-fallback)).
 
 ### Workflow Steps (Production Example)
 
@@ -864,7 +864,7 @@ terraform -chdir=infra/terraform/environments/staging init
 
 ### I want to deploy production via GitHub Actions
 
-Normally you don't: deploy production with `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-default-path)). The CI wrapper is:
+Normally you don't: web Worker releases go through `deploy-worker.yml` on merge to `main` ([web/docs/DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)); the local fallback is `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-fallback)). The CI wrapper is:
 
 ```bash
 .\scripts\production-release.ps1 -TerraformMode apply -Watch -AllowProduction

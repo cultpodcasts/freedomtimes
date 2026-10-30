@@ -33,7 +33,7 @@ export const BUNDLE_PATCHES = [
 		id: 'oauth-csrf-cookie-path',
 		status: 'obsolete',
 		package: 'emdash',
-		verifiedRange: { min: '1.3.1', belowMinor: '1.4' },
+		verifiedRange: { min: '1.3.1', belowMinor: '1.5' },
 		reason:
 			'Upstream sets the CSRF cookie with Path=/_emdash/oauth/authorize (the real route); the /_emdash/api/... path bug is gone.',
 		regressionNeedle: 'Path=/_emdash/api/oauth/authorize',
@@ -42,7 +42,7 @@ export const BUNDLE_PATCHES = [
 		id: 'baseline-security-headers-writable-response',
 		status: 'obsolete',
 		package: 'emdash',
-		verifiedRange: { min: '1.3.1', belowMinor: '1.4' },
+		verifiedRange: { min: '1.3.1', belowMinor: '1.5' },
 		reason:
 			'setBaselineSecurityHeaders() no longer exists; emdash middleware finalizeResponse() clones via new Response(response.body, response) before setting headers.',
 		regressionNeedle: 'function setBaselineSecurityHeaders(response)',
@@ -51,7 +51,7 @@ export const BUNDLE_PATCHES = [
 		id: 'publish-syncdatacolumns-drift-guard',
 		status: 'obsolete',
 		package: 'emdash',
-		verifiedRange: { min: '1.3.1', belowMinor: '1.4' },
+		verifiedRange: { min: '1.3.1', belowMinor: '1.5' },
 		reason:
 			'Publish no longer calls syncDataColumns(); it filters revision data with keepKnownFields(revision.data, writableFieldSlugs), so dropped columns cannot cause "no such column".',
 		regressionNeedle: 'await this.syncDataColumns(type, id, revision.data)',
@@ -69,7 +69,7 @@ export const BUNDLE_PATCHES = [
 		id: 'create-require-import-meta-url',
 		status: 'obsolete',
 		package: 'emdash',
-		verifiedRange: { min: '1.3.1', belowMinor: '1.4' },
+		verifiedRange: { min: '1.3.1', belowMinor: '1.5' },
 		reason:
 			'No server chunk calls createRequire(import.meta.url); the only occurrence is the build-time integration (emdash/dist/astro/index.mjs), handled by scripts/patch-emdash-windows-createrequire.mjs.',
 		regressionNeedle: 'createRequire(import.meta.url)',

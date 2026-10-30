@@ -3,6 +3,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Also runs in CI (ci-guards.yml, deploy-worker.yml) as its own pwsh process. Stubs must never
+# emit real workflow commands (::warning::, ::add-mask::) or write to the job summary.
+Remove-Item Env:GITHUB_ACTIONS, Env:GITHUB_STEP_SUMMARY -ErrorAction SilentlyContinue
+
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 . "$PSScriptRoot/resolve-turso-build-credentials.ps1"
 Initialize-DeployEnvironment -Environment production
@@ -443,6 +447,239 @@ foreach ($deployScript in "deploy-staging-local.ps1", "deploy-production-local.p
     $text = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $deployScript)
     Assert-True ($text -match '(?s)try \{.*Invoke-DeployTerraformApplyWithRecovery.*finally \{\s*#[^\n]*\n\s*Write-DeployIncompleteAfterTerraformWarning') "$deployScript runs the Terraform apply inside try and warns in finally"
 }
+
+Write-Host "=== -UseFreshTursoCheckpoint: verified backup selection ==="
+$checkpointTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ft-checkpoint-" + [guid]::NewGuid().ToString("N"))
+$previousCheckpointRoot = $script:DeployRepoRoot
+$previousTursoUrl = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+try {
+    $metaDir = Join-Path $checkpointTmp ".release/rollback-branches"
+    New-Item -ItemType Directory -Force -Path $metaDir | Out-Null
+    $nowUtc = (Get-Date).ToUniversalTime()
+    function New-TestBackupMeta {
+        param([string]$Name, [hashtable]$Fields, [int]$AgeSeconds)
+        $path = Join-Path $metaDir $Name
+        ($Fields | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath $path
+        (Get-Item -LiteralPath $path).LastWriteTimeUtc = $nowUtc.AddSeconds(-$AgeSeconds)
+    }
+    $goodHost = "freedomtimes-emdash-production-org.aws-eu-west-1.turso.io"
+    $base = @{ kind = "production-emdash-content-backup"; workerTursoHost = $goodHost }
+
+    $empty = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc $nowUtc.AddHours(-24)
+    Assert-True ($null -eq $empty.Metadata) "no metadata: nothing selected"
+
+    $good = $base.Clone(); $good.backupDatabase = "prod-backup-20261030-100000"; $good.verificationPass = $true; $good.createdAtUtc = $nowUtc.AddMinutes(-5).ToString("o")
+    New-TestBackupMeta -Name "20261030-100000-prod-backup-20261030-100000.json" -Fields $good -AgeSeconds 40
+    $noHost = $good.Clone(); $noHost.backupDatabase = "prod-backup-20261030-100100"; $noHost.workerTursoHost = ""
+    New-TestBackupMeta -Name "20261030-100100-prod-backup-20261030-100100.json" -Fields $noHost -AgeSeconds 30
+    $old = $good.Clone(); $old.backupDatabase = "prod-backup-20261028-100000"; $old.createdAtUtc = $nowUtc.AddHours(-30).ToString("o")
+    New-TestBackupMeta -Name "20261030-100200-prod-backup-20261028-100000.json" -Fields $old -AgeSeconds 20
+    # Newest file: name-matched but NOT verified. The old code accepted this; it must be skipped.
+    $unverified = $good.Clone(); $unverified.backupDatabase = "prod-backup-20261030-100300"; $unverified.verificationPass = $false
+    New-TestBackupMeta -Name "20261030-100300-prod-backup-20261030-100300.json" -Fields $unverified -AgeSeconds 10
+
+    $pick = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc $nowUtc.AddHours(-24)
+    Assert-True ($null -ne $pick.Metadata -and $pick.Metadata.backupDatabase -eq "prod-backup-20261030-100000") "picks the newest verified, fresh, complete backup"
+    Assert-True (@($pick.Rejected).Count -eq 3) "rejects unverified, stale and host-less candidates"
+    Assert-True ((@($pick.Rejected) -join "`n") -match "verificationPass is not true") "unverified candidate is reported"
+
+    Remove-Item -LiteralPath (Join-Path $metaDir "20261030-100000-prod-backup-20261030-100000.json")
+    $script:DeployRepoRoot = $checkpointTmp
+    $script:DeployIsStaging = $false
+    $assertMessage = ""
+    try { Assert-DeployFreshEmDashTursoBackup 3>$null } catch { $assertMessage = $_.Exception.Message }
+    Assert-True ($assertMessage -match "Refusing to migrate or deploy" -and $assertMessage -match "-UseFreshTursoCheckpoint") "only unverified/stale backups: refuses with a -UseFreshTursoCheckpoint message"
+    Assert-True ($assertMessage -notmatch "SkipTursoBackup") "refusal does not mention -SkipTursoBackup"
+
+    Write-Host "=== -UseFreshTursoCheckpoint: migrate target must be the backed-up host ==="
+    Assert-True (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost -MigrateUrl "libsql://$goodHost") "same host matches"
+    Assert-True (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost.ToUpperInvariant() -MigrateUrl "libsql://$goodHost/?tls=1") "case and query string ignored"
+    Assert-True (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost -MigrateUrl "libsql://freedomtimes-emdash-production-dr-org.aws-eu-west-1.turso.io")) "different host does not match"
+    Assert-True (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost "" -MigrateUrl "libsql://$goodHost")) "empty backup host never matches"
+    Assert-True (-not (Test-DeployMigrateTargetMatchesBackupHost -BackupHost $goodHost -MigrateUrl "")) "empty migrate URL never matches"
+
+    $script:DeployFreshBackupMetadata = [pscustomobject]$good
+    $env:TURSO_DATABASE_URL = "libsql://freedomtimes-emdash-production-dr-org.aws-eu-west-1.turso.io"
+    $mismatchThrew = $false
+    try { Assert-DeployMigrateTargetMatchesBackupHost 6>$null } catch { $mismatchThrew = $_.Exception.Message -match "Nothing was migrated or deployed" }
+    Assert-True $mismatchThrew "migrate target on another host: refuses before migrate"
+    $env:TURSO_DATABASE_URL = "libsql://$goodHost"
+    $matchThrew = $false
+    try { Assert-DeployMigrateTargetMatchesBackupHost 6>$null } catch { $matchThrew = $true }
+    Assert-True (-not $matchThrew) "migrate target on the backed-up host: proceeds"
+}
+finally {
+    $script:DeployRepoRoot = $previousCheckpointRoot
+    $script:DeployFreshBackupMetadata = $null
+    [Environment]::SetEnvironmentVariable("TURSO_DATABASE_URL", $previousTursoUrl, "Process")
+    Remove-Item -LiteralPath $checkpointTmp -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+
+Write-Host "=== #142: live production Worker provenance (hash of the Worker's Turso host) ==="
+$provHost = "freedomtimes-emdash-production-org.aws-eu-west-1.turso.io"
+$provDrHost = "freedomtimes-emdash-production-dr-org.aws-eu-west-1.turso.io"
+# Shared vector with web/scripts/test-deploy-provenance.mts (the Worker computes the same hex).
+$provHash = "642dfdbffe3ada3de0c2611f4095b3cae12e30b36886b7619fa5251c4e2f52bb"
+Assert-True ((Get-DeployTursoHostProvenanceHash -TursoHost $provHost) -eq $provHash) "host hash matches the shared Worker test vector"
+Assert-True ((Get-DeployTursoHostProvenanceHash -TursoHost $provHost.ToUpperInvariant()) -eq $provHash) "host hash ignores case"
+Assert-True ((Get-DeployTursoHostProvenanceHash -TursoHost "") -eq "") "empty host has no hash"
+$provDrHash = Get-DeployTursoHostProvenanceHash -TursoHost $provDrHost
+Assert-True ($provDrHash -ne $provHash) "a DR host hashes differently"
+
+function New-ProvBody { param([string]$Hash, [string]$Commit = "c0ffee1") ([ordered]@{ schema = 1; commitSha = $Commit; tursoHostSha256 = $Hash } | ConvertTo-Json -Compress) }
+function Get-ProvOutcome {
+    param([string]$Phase, [int]$Status, [string]$Body, [string]$Commit = "")
+    (Resolve-DeployLiveWorkerProvenanceVerdict -Phase $Phase -StatusCode $Status -Body $Body -ExpectedHash $provHash -ExpectedCommitSha $Commit).Outcome
+}
+Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $provHash)) -eq "Match") "verdict: same host hash = Match"
+Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $provDrHash)) -eq "Mismatch") "verdict: other host hash = Mismatch"
+Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $null)) -eq "Fail") "verdict: missing host hash = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 200 "<html>not json</html>") -eq "Fail") "verdict: non-JSON body = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 404 "") -eq "BootstrapCandidate") "verdict: 404 before deploy = BootstrapCandidate (needs #144 evidence, never a pass on its own)"
+Assert-True ((Get-ProvOutcome PostDeploy 404 "") -eq "Retry") "verdict: 404 after deploy = Retry (never Bootstrap)"
+Assert-True ((Get-ProvOutcome PreDeploy 401 "") -eq "Fail") "verdict: 401 = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 302 "") -eq "Fail") "verdict: redirect = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 0 "") -eq "Retry") "verdict: network error = Retry"
+Assert-True ((Get-ProvOutcome PreDeploy 503 "") -eq "Retry") "verdict: 5xx = Retry"
+Assert-True ((Get-ProvOutcome PostDeploy 200 (New-ProvBody $provHash "old1234") "new5678") -eq "Retry") "verdict: old version still serving after deploy = Retry"
+Assert-True ((Get-ProvOutcome PostDeploy 200 (New-ProvBody $provHash "new5678") "new5678") -eq "Match") "verdict: new version, same host = Match"
+Assert-True ((Get-ProvOutcome PostDeploy 200 (New-ProvBody $provDrHash "new5678") "new5678") -eq "Mismatch") "verdict: new version, other host = Mismatch"
+Assert-True ((Resolve-DeployLiveWorkerProvenanceVerdict -Phase PreDeploy -StatusCode 200 -Body (New-ProvBody $provHash) -ExpectedHash "" -ExpectedCommitSha "").Outcome -eq "Fail") "verdict: backup without workerTursoHost = Fail"
+
+$previousBuildSha = [Environment]::GetEnvironmentVariable("FT_BUILD_COMMIT_SHA", "Process")
+try {
+    $script:DeployFreshBackupMetadata = [pscustomobject]@{ backupDatabase = "prod-backup-20261030-100000"; workerTursoHost = $provHost }
+    $env:FT_BUILD_COMMIT_SHA = "new5678"
+    $fetchOk = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provHash "old1234") } }
+    Assert-True ((Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchOk -DelaySeconds 0 6>$null) -eq "Match") "pre-deploy: live Worker on the backed-up host proceeds"
+
+    $mismatchMessage = ""
+    $fetchDr = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provDrHash "old1234") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchDr -DelaySeconds 0 6>$null | Out-Null } catch { $mismatchMessage = $_.Exception.Message }
+    Assert-True ($mismatchMessage -match "Refusing to migrate or deploy" -and $mismatchMessage -match "Nothing was migrated or deployed") "pre-deploy: live Worker on another DB fails closed before anything runs"
+    Assert-True ($mismatchMessage -notmatch [regex]::Escape($provHost) -and $mismatchMessage -notmatch [regex]::Escape($provDrHost)) "mismatch message never prints a hostname"
+
+    $missingMessage = ""
+    $fetchNoHash = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $null "old1234") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchNoHash -DelaySeconds 0 6>$null | Out-Null } catch { $missingMessage = $_.Exception.Message }
+    Assert-True ($missingMessage -match "no Turso host hash") "pre-deploy: live Worker without a host hash fails closed"
+
+    # #144: a pre-deploy 404 is the bootstrap only with proof the live Worker predates the endpoint.
+    $preSha = "1646f96749e245d9f6df44a8e8f633fb86500cdf"
+    $endpointSha = "9a71314353aacd24e18b71906358e80791ffa820"
+    $laterSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    function New-FakeGitOps {
+        param([bool]$Shallow = $false, [string[]]$Known = @(), [string[]]$HasRoute = @(), [string[]]$Introducing = @(), [string[]]$Descendants = @(), [bool]$Throw = $false)
+        $state = @{ Shallow = $Shallow; Known = $Known; HasRoute = $HasRoute; Introducing = $Introducing; Descendants = $Descendants; Throw = $Throw }
+        return @{
+            IsShallow          = { if ($state.Throw) { throw "git exploded" }; $state.Shallow }.GetNewClosure()
+            CommitExists       = { param($Sha) $state.Known -contains $Sha }.GetNewClosure()
+            TreeHasPath        = { param($Sha, $Path) $state.HasRoute -contains $Sha }.GetNewClosure()
+            IntroducingCommits = { param($Path) $state.Introducing }.GetNewClosure()
+            IsAncestor         = { param($Ancestor, $Descendant) $state.Descendants -contains $Descendant }.GetNewClosure()
+        }
+    }
+    function New-VersionBody { param([string]$Commit) ([ordered]@{ repository = "cultpodcasts/freedomtimes"; commitSha = $Commit } | ConvertTo-Json -Compress) }
+    $gitPre = New-FakeGitOps -Known @($preSha, $endpointSha, $laterSha) -HasRoute @($endpointSha, $laterSha) -Introducing @($endpointSha) -Descendants @($endpointSha, $laterSha)
+    $ev = { param($Status, $Body, $Git) Resolve-DeployProvenanceBootstrapEvidence -VersionStatusCode $Status -VersionBody $Body -Git $Git }
+
+    Assert-True ((& $ev 200 (New-VersionBody $preSha) $gitPre).Allowed) "#144 evidence: live commit predates the endpoint = bootstrap allowed"
+    Assert-True (-not (& $ev 200 (New-VersionBody $laterSha) $gitPre).Allowed) "#144 evidence: live commit already ships the endpoint = refused"
+    $gitCherry = New-FakeGitOps -Known @($preSha) -HasRoute @($preSha) -Introducing @($endpointSha)
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) $gitCherry).Allowed) "#144 evidence: route file in the live tree (not via ancestry) = refused"
+    $gitDesc = New-FakeGitOps -Known @($preSha) -Introducing @($endpointSha) -Descendants @($preSha)
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) $gitDesc).Allowed) "#144 evidence: endpoint commit is an ancestor of the live commit = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody "unknown") $gitPre).Allowed) "#144 evidence: live commit 'unknown' = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody "1646f96") $gitPre).Allowed) "#144 evidence: short/partial live commit = refused"
+    Assert-True (-not (& $ev 200 '{"repository":"x"}' $gitPre).Allowed) "#144 evidence: version.json without commitSha = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") $gitPre).Allowed) "#144 evidence: live commit not in history = refused"
+    Assert-True (-not (& $ev 0 "" $gitPre).Allowed) "#144 evidence: version.json unreachable = refused"
+    Assert-True (-not (& $ev 301 "" $gitPre).Allowed) "#144 evidence: version.json redirect = refused"
+    Assert-True (-not (& $ev 503 "" $gitPre).Allowed) "#144 evidence: version.json 5xx = refused"
+    Assert-True (-not (& $ev 200 "<html>login</html>" $gitPre).Allowed) "#144 evidence: version.json not JSON = refused"
+    Assert-True (-not (& $ev 200 '["x"]' $gitPre).Allowed) "#144 evidence: version.json not an object = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) (New-FakeGitOps -Shallow $true -Known @($preSha) -Introducing @($endpointSha))).Allowed) "#144 evidence: shallow checkout = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) (New-FakeGitOps -Known @($preSha))).Allowed) "#144 evidence: no introducing commit found = refused"
+    Assert-True (-not (& $ev 200 (New-VersionBody $preSha) (New-FakeGitOps -Throw $true)).Allowed) "#144 evidence: git error = refused"
+
+    $script:DeployLiveProvenanceBootstrap = $false
+    $fetch404 = { [pscustomobject]@{ StatusCode = 404; Body = "" } }
+    $fetchVersionPre = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody $preSha) } }
+    $bootstrap = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionPre -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null
+    Assert-True ($bootstrap -eq "Bootstrap" -and $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 with a live Worker that predates the endpoint is a bootstrap"
+
+    $script:DeployLiveProvenanceBootstrap = $false
+    $refused = ""
+    $fetchVersionLater = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody $laterSha) } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionLater -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
+    Assert-True ($refused -match "Not a provenance bootstrap \(#144\)" -and $refused -match "Nothing was migrated or deployed" -and -not $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 from a live Worker that ships the endpoint fails closed"
+
+    $refused = ""
+    $fetchVersionDown = { [pscustomobject]@{ StatusCode = 0; Body = "" } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionDown -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
+    Assert-True ($refused -match "unreachable" -and $refused -match "Nothing was migrated or deployed") "pre-deploy: 404 with version.json unreachable fails closed"
+
+    $refused = ""
+    $fetchVersionUnknown = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody "unknown") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionUnknown -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $refused = $_.Exception.Message }
+    Assert-True ($refused -match "Not a provenance bootstrap") "pre-deploy: 404 with an unknown live commit fails closed"
+
+    # Real git (temp repo): the default ops read history the way CI does (full clone).
+    $gitRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("ft144-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $gitRepo | Out-Null
+    try {
+        $g = { param([Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArgs) & git -C $gitRepo -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false @GitArgs 2>$null }
+        & $g init -q | Out-Null
+        Set-Content -LiteralPath (Join-Path $gitRepo "README.md") -Value "a"
+        & $g add -A | Out-Null; & $g commit -q -m before | Out-Null
+        $realPre = ([string](& $g rev-parse HEAD)).Trim()
+        $routeDir = Join-Path $gitRepo "web/src/pages/api"
+        New-Item -ItemType Directory -Path $routeDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $routeDir "deploy-provenance.json.ts") -Value "export {}"
+        & $g add -A | Out-Null; & $g commit -q -m endpoint | Out-Null
+        $realEndpoint = ([string](& $g rev-parse HEAD)).Trim()
+        Set-Content -LiteralPath (Join-Path $gitRepo "README.md") -Value "b"
+        & $g add -A | Out-Null; & $g commit -q -m after | Out-Null
+        $realAfter = ([string](& $g rev-parse HEAD)).Trim()
+        $realOps = Get-DeployGitProvenanceEvidenceOps -RepoRoot $gitRepo
+        Assert-True ((& $ev 200 (New-VersionBody $realPre) $realOps).Allowed) "#144 real git: commit before the endpoint = bootstrap allowed"
+        Assert-True (-not (& $ev 200 (New-VersionBody $realEndpoint) $realOps).Allowed) "#144 real git: the endpoint commit itself = refused"
+        Assert-True (-not (& $ev 200 (New-VersionBody $realAfter) $realOps).Allowed) "#144 real git: a later commit = refused"
+        Assert-True (-not (& $ev 200 (New-VersionBody ("c" * 40)) $realOps).Allowed) "#144 real git: commit not in history = refused"
+    }
+    finally {
+        Remove-Item -LiteralPath $gitRepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $post404Message = ""
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy -Fetch $fetch404 -MaxAttempts 3 -DelaySeconds 0 6>$null | Out-Null } catch { $post404Message = $_.Exception.Message }
+    Assert-True ($post404Message -match "post-deploy provenance check" -and $post404Message -match "gave up after 3 attempts") "post-deploy: 404 is a hard failure (no bootstrap after deploy)"
+
+    $script:provCalls = 0
+    $fetchRollover = {
+        $script:provCalls++
+        $commit = if ($script:provCalls -lt 3) { "old1234" } else { "new5678" }
+        [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provHash $commit) }
+    }
+    $post = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy -Fetch $fetchRollover -MaxAttempts 5 -DelaySeconds 0 6>$null
+    Assert-True ($post -eq "Match" -and $script:provCalls -eq 3) "post-deploy: waits for the new version, then matches"
+
+    $postMismatch = ""
+    $fetchNewDr = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provDrHash "new5678") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy -Fetch $fetchNewDr -DelaySeconds 0 6>$null | Out-Null } catch { $postMismatch = $_.Exception.Message }
+    Assert-True ($postMismatch -match "post-deploy provenance check" -and $postMismatch -match "Roll back") "post-deploy: new Worker on another DB fails with rollback guidance"
+}
+finally {
+    $script:DeployFreshBackupMetadata = $null
+    $script:DeployLiveProvenanceBootstrap = $false
+    [Environment]::SetEnvironmentVariable("FT_BUILD_COMMIT_SHA", $previousBuildSha, "Process")
+}
+
+$productionDeployText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "deploy-production-local.ps1")
+Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerBuild[^\n]*\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployMigrateTargetMatchesBackupHost.*?\}\s*\n\s*Invoke-DeployEmdashCoreMigrate') "deploy-production-local.ps1 checks the migrate host after build, before migrate"
+Assert-True ($productionDeployText -match '(?s)Assert-DeployFreshEmDashTursoBackup\s*\n(\s*#[^\n]*\n)*\s*Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy') "deploy-production-local.ps1 checks the live Worker right after selecting the backup (before build/migrate)"
+Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerDeploy\s*\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy') "deploy-production-local.ps1 re-checks the new Worker right after wrangler deploy"
 
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"

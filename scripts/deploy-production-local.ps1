@@ -6,6 +6,7 @@ param(
     [switch]$SyncCloudflareWorkerSecrets,
     [switch]$AllowProduction,
     [switch]$SkipTursoBackup,
+    [switch]$UseFreshTursoCheckpoint,
     [switch]$DryRun
 )
 
@@ -34,6 +35,27 @@ param(
   requirement. Combined with -WorkerOnly it also skips emdash migrate
   apply/check (Worker hotfix; no Turso mutate). Skipped for -DryRun.
 
+  -UseFreshTursoCheckpoint: do not take a new backup here. Require backup metadata
+  newer than 24h under .release/rollback-branches/ (written by
+  backup-production-emdash.ps1 earlier in the same run) that is kind
+  production-emdash-content-backup, verificationPass true, a prod-backup-* branch and
+  has workerTursoHost; a name match alone is not accepted. After the build resolves
+  the emdash migrate target, refuse to migrate or deploy unless its host equals the
+  backed-up workerTursoHost. Used by .github/workflows/deploy-worker.yml, which takes
+  the verified prod-backup-* Turso branch in its own step before this one.
+  It also proves the LIVE production Worker reads that host (#142): before build it
+  compares GET https://freedomtimes.news/api/deploy-provenance.json (a hash of the
+  Worker's Turso host, never the host) with the backed-up host, and again right after
+  wrangler deploy against the new version. Mismatch fails closed. A 404 before deploy is
+  a bootstrap only if the live commit (/api/version.json) is in this clone's history and
+  predates the endpoint (#144; run from a full, fetched clone); then a loud warning, the
+  secret-vs-backup host check above still applies, and the post-deploy check is
+  mandatory. Any other 404 fails closed. Bootstrap recurs only when the live Worker really
+  runs a pre-endpoint build (e.g. after a wrangler rollback past the endpoint's first
+  deploy, or a deploy of an older commit).
+  Set FT_PRODUCTION_SITE_ORIGIN to override the origin; DEPLOY_PROVENANCE_TOKEN is sent
+  as a bearer when set (only needed if the Worker has that secret).
+
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1
 
@@ -54,6 +76,10 @@ if ($WorkerOnly -and -not $AllowProduction) {
     throw "Refusing production worker deploy without -AllowProduction."
 }
 
+if ($UseFreshTursoCheckpoint -and $SkipTursoBackup) {
+    throw "Cannot combine -UseFreshTursoCheckpoint and -SkipTursoBackup."
+}
+
 if ($BumpVersion -and $SkipVersionBump) {
     throw "Cannot combine -BumpVersion and -SkipVersionBump."
 }
@@ -68,7 +94,16 @@ Write-DeployStep "Starting local production $workflowLabel"
 Invoke-DeployPushSecretsPreflight
 
 if (-not $DryRun) {
-    Invoke-DeployEmDashTursoBackup -SkipTursoBackup:$SkipTursoBackup
+    if ($UseFreshTursoCheckpoint) {
+        Assert-DeployFreshEmDashTursoBackup
+        # #142: the LIVE production Worker must read the backed-up DB before anything is built,
+        # migrated or deployed (404 = bootstrap only with proof the live Worker predates
+        # the endpoint, #144; otherwise fail closed).
+        Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy | Out-Null
+    }
+    else {
+        Invoke-DeployEmDashTursoBackup -SkipTursoBackup:$SkipTursoBackup
+    }
 }
 
 try {
@@ -91,8 +126,18 @@ try {
     }
 
     Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
+    if ($UseFreshTursoCheckpoint) {
+        # The backup ran in an earlier step with its own credential resolution: fail closed
+        # if the build's migrate target is a different DB from the one that was backed up.
+        Assert-DeployMigrateTargetMatchesBackupHost
+    }
     Invoke-DeployEmdashCoreMigrate
     Invoke-DeployWorkerDeploy
+    if ($UseFreshTursoCheckpoint) {
+        # #142: the NEW Worker version must read the same DB that was backed up and migrated.
+        # No bootstrap here: a 404 after deploy is a failure.
+        Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy | Out-Null
+    }
     Invoke-DeployEmdashCoreMigrateCheck
     Invoke-DeployWorkerSecretVerification
 
