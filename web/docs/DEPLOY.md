@@ -31,7 +31,7 @@ Read **`AGENTS.md`** first, then this section, then run **one** script from the 
 |--------|------|
 | `scripts/deploy-staging-local.ps1` | Staging infra + web, or flags below |
 | `scripts/deploy-production-local.ps1` | Local full production deploy or `-WorkerOnly` hotfix |
-| `scripts/production-release.ps1` | **CI path only** — dispatches `terraform-production.yml` (not a local wrangler deploy) |
+| `scripts/production-release.ps1` | **CI path only** — dispatches `terraform-production.yml` (not a local wrangler deploy). `-TerraformMode apply` is refused at the Worker script upload guard while the `holding_page` drift exists ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)) |
 
 **Not entry points — do not invoke directly:**
 
@@ -71,7 +71,7 @@ Need to deploy?
 | Full production local (Terraform + web; auto Turso checkpoint) | `pwsh ./scripts/deploy-production-local.ps1` |
 | Production web worker only | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction` |
 | Dry-run production worker deploy (live secret names, no build) | `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -DryRun` |
-| CI production release (not local wrangler) | `pwsh ./scripts/production-release.ps1 -TerraformMode apply -Watch -AllowProduction` |
+| CI production release (not local wrangler; refused while the `holding_page` drift exists) | `pwsh ./scripts/production-release.ps1 -TerraformMode apply -Watch -AllowProduction` |
 
 When a deploy **fails**, use the [Quick symptom index](#quick-symptom-index) and sections below — do not switch scripts unless the decision table says a different entry point fits the goal.
 
@@ -97,7 +97,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 **Production Turso rollback:** full deploy **and** `-WorkerOnly` create a **verified Worker-resolved** backup **before** migrate (`scripts/backup-production-emdash.ps1` — WSL Turso on Windows; native `turso` on Linux). Do **not** assume named `freedomtimes-emdash-production`. Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h from a matching or **verified** Worker-resolved backup. Commit `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. Disaster recovery (canonical): sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 
-**CI / release path (not local deploy):** `production-release.ps1 -TerraformMode apply` dispatches `terraform-production.yml` with `production_worker_deploy=true` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). That apply dispatch creates a recoverable Turso rollback branch (metadata uploaded as a workflow artifact + job summary), applies tips/subscriptions/scheduler SQL, applies core migrate, deploys, then `--check`. Push to `main` and `-TerraformMode plan` are **check-only** (Terraform plan + `emdash migrate --check`; no SQL, no EmDash apply, no wrangler). Section 1 remains the operator-facing record for content promotion and for local schema work that is not going through this dispatch.
+**CI / release path (not local deploy):** `production-release.ps1 -TerraformMode apply` dispatches `terraform-production.yml` with `production_worker_deploy=true` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). That apply dispatch creates a recoverable Turso rollback branch (metadata uploaded as a workflow artifact + job summary), applies tips/subscriptions/scheduler SQL, applies core migrate, deploys, then `--check`. Push to `main` and `-TerraformMode plan` are **check-only** (Terraform plan + `emdash migrate --check`; no SQL, no EmDash apply, no wrangler). CI never applies a plan that re-uploads the Worker script: while the `holding_page` drift exists (after every local deploy), the apply dispatch stops at `Guard Worker Script Upload Plan` before anything changes, so use the local scripts above. Section 1 remains the operator-facing record for content promotion and for local schema work that is not going through this dispatch.
 
 ### Prerequisites (all local deploy scripts)
 

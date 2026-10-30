@@ -12,10 +12,10 @@ This runbook is the single path for promoting all production-facing changes:
 
 | Change type | Deployment path | Notes |
 |---|---|---|
-| Layout/UI changes (`web/src/**`) | `terraform-production.yml` via `production-release.ps1 -TerraformMode apply` (`production_worker_deploy=true`) | Push to `main` is plan + EmDash `--check` only. Worker wrangler/secrets ship only on apply dispatch (or manual `production_worker_deploy=true`). |
-| EmDash runtime updates (`web` dependencies/config) | Same apply dispatch | Same gate: merge does not wrangler production. |
-| Terraform/IaC changes (`infra/terraform/**`) | `terraform-production.yml` workflow (plan/apply) | Applies managed infrastructure and captures outputs |
-| EmDash **core** schema (`emdash migrate` / `.emdash/migrations.json`) | Deploy pipeline: local `deploy-*-local.ps1` or CI `production-release.ps1` (`production_worker_deploy=true`) | Backup first, then apply, wrangler, `--check`. Runtime stays `check` (no first-request auto-migrate). |
+| Layout/UI changes (`web/src/**`) | Local `deploy-production-local.ps1` ([§2b](#2b-local-production-deploy-default-path)). CI `production-release.ps1 -TerraformMode apply` is refused while the `holding_page` drift exists (see §2) | Push to `main` is plan + EmDash `--check` only. Worker wrangler/secrets ship only on a deploy, never on a push. |
+| EmDash runtime updates (`web` dependencies/config) | Local `deploy-production-local.ps1` ([§2b](#2b-local-production-deploy-default-path)), as for layout/UI | Same gate: merge does not wrangler production. |
+| Terraform/IaC changes (`infra/terraform/**`) | `terraform-production.yml` plans on push. Apply with `deploy-production-local.ps1`; a CI apply dispatch is for non-Worker changes only and is refused while the `holding_page` drift exists | Applies managed infrastructure and captures outputs |
+| EmDash **core** schema (`emdash migrate` / `.emdash/migrations.json`) | Deploy pipeline: local `deploy-*-local.ps1` ([§2b](#2b-local-production-deploy-default-path)). CI `production-release.ps1` (`production_worker_deploy=true`) is refused while the `holding_page` drift exists (see §2) | Backup first, then apply, wrangler, `--check`. Runtime stays `check` (no first-request auto-migrate). |
 | EmDash collection/field model | Cursor EmDash MCP (`schema_*` / content tools) against staging, then production | Not `npx emdash schema` for agents. Apply the same collection/field operations to production after staging validation. |
 | EmDash content changes | Staging-to-production promotion | Use [web/CONTENT_PROMOTION_RUNBOOK.md](web/CONTENT_PROMOTION_RUNBOOK.md) |
 
@@ -110,6 +110,8 @@ What this does:
 3. The workflow creates a recoverable Turso rollback branch (metadata artifact + job summary), applies tips/subscriptions/scheduler SQL, builds `web/` (writes `.emdash/migrations.json`), runs `npx emdash migrate` with `EMDASH_TARGET_FINGERPRINT_PRODUCTION`, deploys that same Worker build, then `npx emdash migrate --check`. Staging/production EmDash runtime stays on `check` (no first-request auto-migrate). A push to `main` or `-TerraformMode plan` does **not** mutate EmDash, SQL, or wrangler (Terraform plan + `emdash migrate --check` only).
 4. Watches run completion and exits non-zero on failure.
 
+**Refused while the Worker script drift exists.** Every plan after a local `wrangler deploy` shows the `holding_page` drift (`1 to change`, [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)). The workflow's `Guard Worker Script Upload Plan` refuses any CI apply that would re-upload the Worker script, so this dispatch fails at the guard before anything is applied, migrated or deployed. The workflow has no recovery or placement check for the gap before wrangler ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)). In practice, deploy with §2b.
+
 **Web version:** CI builds from committed `main` — no automatic bump. Local staging/production version behavior: [DEPLOY.md § Web version bump](web/docs/DEPLOY.md#web-version-bump-on-deploy). Bump and commit manually before dispatch if you want a new semver on the release build.
 
 Plan-only dry path (Terraform plan + `emdash migrate --check` only — **no** Turso rollback branch, SQL `*:db:deploy`, EmDash apply, or wrangler):
@@ -118,9 +120,9 @@ Plan-only dry path (Terraform plan + `emdash migrate --check` only — **no** Tu
 .\scripts\production-release.ps1 -TerraformMode plan -Watch -AllowProduction
 ```
 
-### 2b. Local production deploy (operator bypass)
+### 2b. Local production deploy (default path)
 
-When CI is unavailable or the operator needs a local full production deploy, use **`scripts/deploy-production-local.ps1`**. **Script matrix, flags, step order, prerequisites, and troubleshooting:** [web/docs/DEPLOY.md — Local deploy scripts](web/docs/DEPLOY.md#local-deploy-scripts).
+This is the normal way to deploy production while the `holding_page` drift exists, because the CI apply in §2 is refused at the guard. Use **`scripts/deploy-production-local.ps1`**. **Script matrix, flags, step order, prerequisites, and troubleshooting:** [web/docs/DEPLOY.md — Local deploy scripts](web/docs/DEPLOY.md#local-deploy-scripts).
 
 ```powershell
 pwsh ./scripts/deploy-production-local.ps1
@@ -128,7 +130,7 @@ pwsh ./scripts/deploy-production-local.ps1
 
 **Release-specific notes (not duplicated in deploy guide):**
 
-- Prefer the CI path (§2 above) for routine releases on `main`.
+- Routine releases on `main` use this local path. The CI path (§2) is refused while the `holding_page` drift exists; use it with `-TerraformMode plan` as a dry run.
 - Local full deploy **and** `-WorkerOnly` auto-create a Turso rollback checkpoint, then `emdash migrate`, wrangler, `--check` (same sequence as CI).
 - After deploy, post-deploy secret verify runs on the production web Worker (`AUTH0_*`, `EMDASH_*`) — see canonical doc if verify fails.
 

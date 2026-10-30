@@ -153,7 +153,7 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 | CA-18 | Agents unset process `TURSO_*` by hand | Scripts skip the process pair; do not unset | Only if resolve still selected production |
 | CA-19 | Process `TURSO_DATABASE_URL` equals `TURSO_PRODUCTION_EMDASH_DB_URL` | Run `deploy-*-local.ps1`. Do not abort because process hosts match | STOP only if resolve throws |
 | CA-20 | `wsl` / `where.exe` on this Linux VM | Native `turso` (`$HOME/.turso/turso`) and `terraform` on PATH | Interactive `turso auth login` only if platform token missing |
-| CA-21 | Terraform `turso_database_auth_token` 404 | Staging: Terraform URL + `.env.dev` token. Production: `TURSO_PRODUCTION_EMDASH_DB_TOKEN` | Mint JWT with `turso db tokens create` after platform CLI login |
+| CA-21 | Terraform `turso_database_auth_token` 404 | Staging: Terraform URL + `.env.dev` token. Production: `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (standing preference, locally and in `terraform-production.yml`; the dead Terraform fallback is [#137](https://github.com/cultpodcasts/freedomtimes/issues/137)) | Mint JWT with `turso db tokens create` after platform CLI login |
 | CA-22 | Child `pwsh` missing TF remap / nvm PATH | Do not skip `-LoadEnvFiles` / preflight; use `deploy-*-local.ps1` | Direct `terraform` without `terraform-run.ps1` misses the remap |
 | CA-25 | `Missing EMDASH_AUTH_SECRET_PRODUCTION` on secret sync | Skip sync when `.env.production` is missing | Finish `-WorkerOnly -AllowProduction` without `-SyncCloudflareWorkerSecrets` |
 
