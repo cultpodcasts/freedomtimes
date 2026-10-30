@@ -222,6 +222,7 @@ function Main {
             # resolve-turso-build-credentials.ps1 (Terraform no longer mints it, #137).
             "TURSO_PRODUCTION_EMDASH_DB_TOKEN",
             # Production EmDash DB URL for the deploy-worker.yml production build/migrate (no Terraform init there).
+            # Synced to the `production` ENVIRONMENT, not the repo (only the production deploy job reads it; #141 thread 412).
             "TURSO_PRODUCTION_EMDASH_DB_URL",
             "EMDASH_AUTH_SECRET_STAGING",
             "EMDASH_PREVIEW_SECRET_STAGING",
@@ -255,6 +256,10 @@ function Main {
             "PUSH_PRODUCTION_IOS_APNS_PRIVATE_KEY",
             "PUSH_PRODUCTION_IOS_APNS_BUNDLE_ID"
         )
+        # Secrets used only by the production deploy job (environment `production`, deploys from main only,
+        # Jon approves). Never sync these as repo secrets: an environment secret shadows a repo secret with
+        # the same name, so a repo copy would silently go stale (web/docs/DEPLOY.md § Production gating).
+        $productionEnvironmentSecrets = @("TURSO_PRODUCTION_EMDASH_DB_URL")
         Write-Host "  Syncing secrets..." -ForegroundColor Gray
         foreach ($name in $secrets) {
             $keys = @($name)
@@ -274,7 +279,8 @@ function Main {
             if ($name -eq "TURSO_TOKEN_STAGING" -or $name -eq "TURSO_TOKEN") {
                 Test-TursoPlatformTokenBeforeSync -Name $name -Value $value
             }
-            Set-GhSecret -Name $name -Value $value -Repository $ghRepo -WhatIfOnly:$DryRun
+            $secretEnvironment = if ($productionEnvironmentSecrets -contains $name) { "production" } else { "" }
+            Set-GhSecret -Name $name -Value $value -Repository $ghRepo -Environment $secretEnvironment -WhatIfOnly:$DryRun
         }
 
         # Hardcoded list of non-sensitive configuration synced as GitHub Actions variables.
@@ -506,6 +512,7 @@ function Set-GhSecret {
         [string]$Name,
         [string]$Value,
         [string]$Repository,
+        [string]$Environment = "",
         [switch]$WhatIfOnly
     )
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -515,12 +522,14 @@ function Set-GhSecret {
     if (Test-IsPlaceholderValue -Value $Value) {
         throw "Refusing to sync placeholder value for GitHub secret $Name. Resolve the value in .env.dev first."
     }
+    $envArgs = if ($Environment) { @("--env", $Environment) } else { @() }
+    $scope = if ($Environment) { " --env $Environment" } else { "" }
     if ($WhatIfOnly) {
-        Write-Host "  [dry-run] gh secret set $Name --repo $Repository" -ForegroundColor Yellow
+        Write-Host "  [dry-run] gh secret set $Name --repo $Repository$scope" -ForegroundColor Yellow
         return
     }
-    gh secret set $Name --repo $Repository --body $Value
-    Write-Host "  [ok] $Name" -ForegroundColor Green
+    gh secret set $Name --repo $Repository @envArgs --body $Value
+    Write-Host "  [ok] $Name$scope" -ForegroundColor Green
 }
 
 function Set-GhVariable {
