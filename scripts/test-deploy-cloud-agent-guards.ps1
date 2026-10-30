@@ -3,6 +3,10 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Also runs in CI (ci-guards.yml, deploy-worker.yml) as its own pwsh process. Stubs must never
+# emit real workflow commands (::warning::, ::add-mask::) or write to the job summary.
+Remove-Item Env:GITHUB_ACTIONS, Env:GITHUB_STEP_SUMMARY -ErrorAction SilentlyContinue
+
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 . "$PSScriptRoot/resolve-turso-build-credentials.ps1"
 Initialize-DeployEnvironment -Environment production
@@ -511,8 +515,89 @@ finally {
     Remove-Item -LiteralPath $checkpointTmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+
+Write-Host "=== #142: live production Worker provenance (hash of the Worker's Turso host) ==="
+$provHost = "freedomtimes-emdash-production-org.aws-eu-west-1.turso.io"
+$provDrHost = "freedomtimes-emdash-production-dr-org.aws-eu-west-1.turso.io"
+# Shared vector with web/scripts/test-deploy-provenance.mts (the Worker computes the same hex).
+$provHash = "642dfdbffe3ada3de0c2611f4095b3cae12e30b36886b7619fa5251c4e2f52bb"
+Assert-True ((Get-DeployTursoHostProvenanceHash -TursoHost $provHost) -eq $provHash) "host hash matches the shared Worker test vector"
+Assert-True ((Get-DeployTursoHostProvenanceHash -TursoHost $provHost.ToUpperInvariant()) -eq $provHash) "host hash ignores case"
+Assert-True ((Get-DeployTursoHostProvenanceHash -TursoHost "") -eq "") "empty host has no hash"
+$provDrHash = Get-DeployTursoHostProvenanceHash -TursoHost $provDrHost
+Assert-True ($provDrHash -ne $provHash) "a DR host hashes differently"
+
+function New-ProvBody { param([string]$Hash, [string]$Commit = "c0ffee1") ([ordered]@{ schema = 1; commitSha = $Commit; tursoHostSha256 = $Hash } | ConvertTo-Json -Compress) }
+function Get-ProvOutcome {
+    param([string]$Phase, [int]$Status, [string]$Body, [string]$Commit = "")
+    (Resolve-DeployLiveWorkerProvenanceVerdict -Phase $Phase -StatusCode $Status -Body $Body -ExpectedHash $provHash -ExpectedCommitSha $Commit).Outcome
+}
+Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $provHash)) -eq "Match") "verdict: same host hash = Match"
+Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $provDrHash)) -eq "Mismatch") "verdict: other host hash = Mismatch"
+Assert-True ((Get-ProvOutcome PreDeploy 200 (New-ProvBody $null)) -eq "Fail") "verdict: missing host hash = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 200 "<html>not json</html>") -eq "Fail") "verdict: non-JSON body = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 404 "") -eq "Bootstrap") "verdict: 404 before deploy = Bootstrap (Worker predates endpoint)"
+Assert-True ((Get-ProvOutcome PostDeploy 404 "") -eq "Retry") "verdict: 404 after deploy = Retry (never Bootstrap)"
+Assert-True ((Get-ProvOutcome PreDeploy 401 "") -eq "Fail") "verdict: 401 = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 302 "") -eq "Fail") "verdict: redirect = Fail"
+Assert-True ((Get-ProvOutcome PreDeploy 0 "") -eq "Retry") "verdict: network error = Retry"
+Assert-True ((Get-ProvOutcome PreDeploy 503 "") -eq "Retry") "verdict: 5xx = Retry"
+Assert-True ((Get-ProvOutcome PostDeploy 200 (New-ProvBody $provHash "old1234") "new5678") -eq "Retry") "verdict: old version still serving after deploy = Retry"
+Assert-True ((Get-ProvOutcome PostDeploy 200 (New-ProvBody $provHash "new5678") "new5678") -eq "Match") "verdict: new version, same host = Match"
+Assert-True ((Get-ProvOutcome PostDeploy 200 (New-ProvBody $provDrHash "new5678") "new5678") -eq "Mismatch") "verdict: new version, other host = Mismatch"
+Assert-True ((Resolve-DeployLiveWorkerProvenanceVerdict -Phase PreDeploy -StatusCode 200 -Body (New-ProvBody $provHash) -ExpectedHash "" -ExpectedCommitSha "").Outcome -eq "Fail") "verdict: backup without workerTursoHost = Fail"
+
+$previousBuildSha = [Environment]::GetEnvironmentVariable("FT_BUILD_COMMIT_SHA", "Process")
+try {
+    $script:DeployFreshBackupMetadata = [pscustomobject]@{ backupDatabase = "prod-backup-20261030-100000"; workerTursoHost = $provHost }
+    $env:FT_BUILD_COMMIT_SHA = "new5678"
+    $fetchOk = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provHash "old1234") } }
+    Assert-True ((Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchOk -DelaySeconds 0 6>$null) -eq "Match") "pre-deploy: live Worker on the backed-up host proceeds"
+
+    $mismatchMessage = ""
+    $fetchDr = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provDrHash "old1234") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchDr -DelaySeconds 0 6>$null | Out-Null } catch { $mismatchMessage = $_.Exception.Message }
+    Assert-True ($mismatchMessage -match "Refusing to migrate or deploy" -and $mismatchMessage -match "Nothing was migrated or deployed") "pre-deploy: live Worker on another DB fails closed before anything runs"
+    Assert-True ($mismatchMessage -notmatch [regex]::Escape($provHost) -and $mismatchMessage -notmatch [regex]::Escape($provDrHost)) "mismatch message never prints a hostname"
+
+    $missingMessage = ""
+    $fetchNoHash = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $null "old1234") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchNoHash -DelaySeconds 0 6>$null | Out-Null } catch { $missingMessage = $_.Exception.Message }
+    Assert-True ($missingMessage -match "no Turso host hash") "pre-deploy: live Worker without a host hash fails closed"
+
+    $script:DeployLiveProvenanceBootstrap = $false
+    $fetch404 = { [pscustomobject]@{ StatusCode = 404; Body = "" } }
+    $bootstrap = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -DelaySeconds 0 3>$null 6>$null
+    Assert-True ($bootstrap -eq "Bootstrap" -and $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 (Worker predates endpoint) is the one-off bootstrap"
+
+    $post404Message = ""
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy -Fetch $fetch404 -MaxAttempts 3 -DelaySeconds 0 6>$null | Out-Null } catch { $post404Message = $_.Exception.Message }
+    Assert-True ($post404Message -match "post-deploy provenance check" -and $post404Message -match "gave up after 3 attempts") "post-deploy: 404 is a hard failure (no bootstrap after deploy)"
+
+    $script:provCalls = 0
+    $fetchRollover = {
+        $script:provCalls++
+        $commit = if ($script:provCalls -lt 3) { "old1234" } else { "new5678" }
+        [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provHash $commit) }
+    }
+    $post = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy -Fetch $fetchRollover -MaxAttempts 5 -DelaySeconds 0 6>$null
+    Assert-True ($post -eq "Match" -and $script:provCalls -eq 3) "post-deploy: waits for the new version, then matches"
+
+    $postMismatch = ""
+    $fetchNewDr = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provDrHash "new5678") } }
+    try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy -Fetch $fetchNewDr -DelaySeconds 0 6>$null | Out-Null } catch { $postMismatch = $_.Exception.Message }
+    Assert-True ($postMismatch -match "post-deploy provenance check" -and $postMismatch -match "Roll back") "post-deploy: new Worker on another DB fails with rollback guidance"
+}
+finally {
+    $script:DeployFreshBackupMetadata = $null
+    $script:DeployLiveProvenanceBootstrap = $false
+    [Environment]::SetEnvironmentVariable("FT_BUILD_COMMIT_SHA", $previousBuildSha, "Process")
+}
+
 $productionDeployText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "deploy-production-local.ps1")
 Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerBuild[^\n]*\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployMigrateTargetMatchesBackupHost.*?\}\s*\n\s*Invoke-DeployEmdashCoreMigrate') "deploy-production-local.ps1 checks the migrate host after build, before migrate"
+Assert-True ($productionDeployText -match '(?s)Assert-DeployFreshEmDashTursoBackup\s*\n(\s*#[^\n]*\n)*\s*Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy') "deploy-production-local.ps1 checks the live Worker right after selecting the backup (before build/migrate)"
+Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerDeploy\s*\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy') "deploy-production-local.ps1 re-checks the new Worker right after wrangler deploy"
 
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"

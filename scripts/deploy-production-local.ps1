@@ -43,6 +43,14 @@ param(
   the emdash migrate target, refuse to migrate or deploy unless its host equals the
   backed-up workerTursoHost. Used by .github/workflows/deploy-worker.yml, which takes
   the verified prod-backup-* Turso branch in its own step before this one.
+  It also proves the LIVE production Worker reads that host (#142): before build it
+  compares GET https://freedomtimes.news/api/deploy-provenance.json (a hash of the
+  Worker's Turso host, never the host) with the backed-up host, and again right after
+  wrangler deploy against the new version. Mismatch fails closed. A 404 before deploy
+  (the live Worker predates the endpoint) is a one-off bootstrap: loud warning, the
+  secret-vs-backup host check above still applies, and the post-deploy check is mandatory.
+  Set FT_PRODUCTION_SITE_ORIGIN to override the origin; DEPLOY_PROVENANCE_TOKEN is sent
+  as a bearer when set (only needed if the Worker has that secret).
 
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1
@@ -84,6 +92,9 @@ Invoke-DeployPushSecretsPreflight
 if (-not $DryRun) {
     if ($UseFreshTursoCheckpoint) {
         Assert-DeployFreshEmDashTursoBackup
+        # #142: the LIVE production Worker must read the backed-up DB before anything is built,
+        # migrated or deployed (404 = Worker predates the endpoint: loud bootstrap warning).
+        Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy | Out-Null
     }
     else {
         Invoke-DeployEmDashTursoBackup -SkipTursoBackup:$SkipTursoBackup
@@ -117,6 +128,11 @@ try {
     }
     Invoke-DeployEmdashCoreMigrate
     Invoke-DeployWorkerDeploy
+    if ($UseFreshTursoCheckpoint) {
+        # #142: the NEW Worker version must read the same DB that was backed up and migrated.
+        # No bootstrap here: a 404 after deploy is a failure.
+        Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy | Out-Null
+    }
     Invoke-DeployEmdashCoreMigrateCheck
     Invoke-DeployWorkerSecretVerification
 

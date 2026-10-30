@@ -8,7 +8,13 @@ name: Deploy Worker
 #     in its own step, THEN the production Worker deploy (same steps as
 #     `deploy-production-local.ps1 -WorkerOnly -AllowProduction`). The deploy step only runs if the
 #     backup step passed, and refuses to migrate if its target host is not the backed-up host.
-# This repo is public: CI never exports, uploads or stores a database file or artifact.
+#     It also fails closed (#142) unless the LIVE production Worker's DB host hash
+#     (/api/deploy-provenance.json) matches the backed-up host, before migrate and again
+#     against the new version after deploy. One-off bootstrap: a pre-deploy 404 (Worker older
+#     than the endpoint) is a loud ::warning:: and falls back to the secret-vs-backup check.
+# This repo is public: backups are never public (web/docs/DEPLOY.md § Backups are never public).
+# CI never exports, uploads, caches or prints a database file, dump or row data;
+# scripts/ci-check-no-public-backups.mjs enforces the workflow side.
 # Secrets are scoped to the steps that use them; installs and npm ci run with none.
 # No Terraform apply here: Terraform stays plan-only in terraform-*.yml (holding_page guard there).
 # The local deploy scripts stay as the fallback.
@@ -67,6 +73,16 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: web/package-lock.json
+
+      - name: No-secrets guards (backups never public; deploy guard tests)
+        # Before any secret-bearing step. Same checks as ci-guards.yml, repeated here so a
+        # deploy never starts from a tree that fails them.
+        shell: pwsh
+        run: |
+          node ./scripts/ci-check-no-public-backups.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Backup-exposure guard failed." }
+          pwsh -NoProfile -File ./scripts/test-deploy-cloud-agent-guards.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Deploy guard tests failed." }
 
       - name: Install web dependencies
         working-directory: web
@@ -149,6 +165,16 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: No-secrets guards (backups never public; deploy guard tests)
+        # Before any secret-bearing step. Same checks as ci-guards.yml, repeated here so a
+        # deploy never starts from a tree that fails them.
+        shell: pwsh
+        run: |
+          node ./scripts/ci-check-no-public-backups.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Backup-exposure guard failed." }
+          pwsh -NoProfile -File ./scripts/test-deploy-cloud-agent-guards.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Deploy guard tests failed." }
+
       - name: Install web dependencies
         working-directory: web
         run: npm ci
@@ -181,7 +207,9 @@ jobs:
           $m = Get-Content -Raw -LiteralPath $meta.FullName | ConvertFrom-Json
           if ($m.verificationPass -ne $true) { throw "Backup $($m.backupDatabase) is not verified. Nothing deployed." }
           if ($m.resolveSource -ne "wrangler-getPlatformProxy-production") {
-            Write-Host "::warning::Backup source came from env fallback $($m.resolveSource) (the TURSO_PRODUCTION_EMDASH_DB_URL secret), not the live Worker binding. After any DR retarget, update that secret first (web/docs/DEPLOY.md)."
+            # Routine on CI (no wrangler login). Not a warning: the deploy step's live Worker
+            # provenance check (#142) fails closed if the live Worker is on another DB host.
+            Write-Host "::notice::Backup source came from env fallback $($m.resolveSource) (the TURSO_PRODUCTION_EMDASH_DB_URL secret), not the live Worker binding. The deploy step checks the live Worker's DB host hash against this backup before migrating (#142)."
           }
           @(
             "### Production EmDash backup",
@@ -205,6 +233,9 @@ jobs:
           # Build-time EmDash migrate credentials (runtime uses the Worker's own TURSO_* secrets).
           TURSO_PRODUCTION_EMDASH_DB_URL: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_URL }}
           TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
+          # Optional bearer for /api/deploy-provenance.json (#142). Empty = endpoint is open
+          # (it only ever returns a hash of the Worker's Turso host, never the host or a token).
+          DEPLOY_PROVENANCE_TOKEN: ${{ secrets.DEPLOY_PROVENANCE_TOKEN }}
           PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY: ${{ secrets.PUSH_PRODUCTION_SUBSCRIBE_PUBLIC_KEY }}
           PUSH_PRODUCTION_VAPID_PRIVATE_KEY: ${{ secrets.PUSH_PRODUCTION_VAPID_PRIVATE_KEY }}
           PUSH_PRODUCTION_VAPID_SUBJECT: ${{ secrets.PUSH_PRODUCTION_VAPID_SUBJECT }}

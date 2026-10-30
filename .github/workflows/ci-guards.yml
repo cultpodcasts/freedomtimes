@@ -1,0 +1,44 @@
+name: CI Guards
+
+# No-secrets checks that run on every PR and every push to main (no paths filter):
+#   - scripts/ci-check-no-public-backups.mjs: backups are never public (web/docs/DEPLOY.md
+#     § Backups are never public): no workflow uploads/caches a .db/.sql/dump/backup path or
+#     dumps/prints a database, and git tracks no database or dump file.
+#   - scripts/test-deploy-cloud-agent-guards.ps1: deploy/backup guard unit tests (incl. #142).
+# deploy-worker.yml repeats both before its first secret-bearing step.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  guards:
+    name: No-secrets guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.22.2"
+
+      - name: Backups are never public (workflow + tracked-file guard)
+        run: |
+          node --test scripts/ci-check-no-public-backups.test.mjs
+          node scripts/ci-check-no-public-backups.mjs
+
+      - name: Deploy guard tests
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File ./scripts/test-deploy-cloud-agent-guards.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Deploy guard tests failed." }

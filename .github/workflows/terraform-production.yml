@@ -628,12 +628,16 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: emdash-production-rollback-metadata
-          path: .release/rollback-branches/*.json
+          # Only this run's names-only metadata JSON (branch/database names, git sha). Never a
+          # glob: backups are never public (web/docs/DEPLOY.md § Backups are never public).
+          path: ${{ steps.emdash_backup.outputs.rollback_metadata }}
           if-no-files-found: error
           retention-days: 30
 
       - name: Record production EmDash rollback in job summary
         if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        env:
+          ROLLBACK_METADATA: ${{ steps.emdash_backup.outputs.rollback_metadata }}
         run: |
           set -euo pipefail
           {
@@ -647,7 +651,7 @@ jobs:
             echo "Metadata JSON:"
             echo
             echo '```json'
-            cat .release/rollback-branches/*.json
+            cat "${ROLLBACK_METADATA}"
             echo
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

@@ -51,6 +51,7 @@ These paths are anonymous on production only. They are listed in `PUBLIC_READER_
 | `/api/story-tips` | Tip submission API |
 | `/api/tip-source.json` | Provenance JSON |
 | `/api/version.json` | Deploy version JSON |
+| `/api/deploy-provenance.json` | Hash of the Worker's Turso host for the production deploy check (#142); no hostname or token |
 | `/api/push-subscriptions` | Reader push subscribe |
 | `/api/notification-diagnostics` | Push troubleshooting reports |
 | `/api/push-test-notification` | Reader test push |

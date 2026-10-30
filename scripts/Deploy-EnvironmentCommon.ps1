@@ -66,6 +66,8 @@ function Initialize-DeployEnvironment {
     $script:DeployFreshBackupMetadata = $null
     # Set by deploy-staging-local.ps1 -TursoBranchBackup (deploy-worker.yml: no .db export in CI).
     $script:DeployStagingBackupAsBranch = $false
+    # Set when the live production Worker predates /api/deploy-provenance.json (#142 bootstrap).
+    $script:DeployLiveProvenanceBootstrap = $false
 }
 
 function Set-DeploySkipTursoMutate {
@@ -967,6 +969,224 @@ function Assert-DeployMigrateTargetMatchesBackupHost {
     }
     Write-DeployStep "Migrate target host matches the backed-up DB host ($targetHost)"
 }
+# ---------------------------------------------------------------------------------------------
+# Live production Worker provenance (issue #142)
+# ---------------------------------------------------------------------------------------------
+# The production deploy backs up and migrates the DB named by TURSO_PRODUCTION_EMDASH_DB_URL.
+# These functions prove the LIVE production Worker reads that same DB, using
+# GET /api/deploy-provenance.json (web/src/lib/deploy-provenance.ts), which returns only
+# sha256("freedomtimes-turso-host-v1:" + host) and the build commit: never the host or a token.
+
+$script:DeployTursoHostHashDomain = "freedomtimes-turso-host-v1:"
+$script:DeployProvenancePath = "/api/deploy-provenance.json"
+
+function Get-DeployTursoHostProvenanceHash {
+    <#
+    .SYNOPSIS
+      Lower-case hex SHA-256 of the domain-separated Turso host; "" for an empty host.
+      Must equal tursoHostProvenanceHash() in web/src/lib/deploy-provenance.ts (shared test vector).
+    #>
+    param([string]$TursoHost)
+
+    $normalized = ([string]$TursoHost).Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return ""
+    }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes("$($script:DeployTursoHostHashDomain)$normalized")
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha.ComputeHash($bytes)) -replace "-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
+function Get-DeployProductionSiteOrigin {
+    $origin = [Environment]::GetEnvironmentVariable("FT_PRODUCTION_SITE_ORIGIN", "Process")
+    if ([string]::IsNullOrWhiteSpace($origin)) {
+        $origin = "https://freedomtimes.news"
+    }
+    return $origin.Trim().TrimEnd("/")
+}
+
+function Resolve-DeployLiveWorkerProvenanceVerdict {
+    <#
+    .SYNOPSIS
+      Pure decision for one provenance response. Outcome is one of:
+        Match      live Worker host hash equals the backed-up host hash
+        Mismatch   live Worker reads another DB (fail closed)
+        Bootstrap  PreDeploy only: the live Worker predates the endpoint (404)
+        Retry      transient (network, 5xx; PostDeploy also 404 or old commit still serving)
+        Fail       anything else (fail closed)
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("PreDeploy", "PostDeploy")]
+        [string]$Phase,
+        [int]$StatusCode,
+        [string]$Body,
+        [string]$ExpectedHash,
+        [string]$ExpectedCommitSha
+    )
+
+    $verdict = { param($Outcome, $Message) [pscustomobject]@{ Outcome = $Outcome; Message = $Message } }
+
+    if ([string]::IsNullOrWhiteSpace($ExpectedHash)) {
+        return (& $verdict "Fail" "The backup metadata has no workerTursoHost, so there is nothing to compare the live Worker with.")
+    }
+    if ($StatusCode -eq 404) {
+        if ($Phase -eq "PreDeploy") {
+            return (& $verdict "Bootstrap" "The live production Worker returned 404 for $($script:DeployProvenancePath): it predates the provenance endpoint.")
+        }
+        return (& $verdict "Retry" "The deployed Worker still returns 404 for $($script:DeployProvenancePath).")
+    }
+    if ($StatusCode -eq 401 -or $StatusCode -eq 403) {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) refused the request ($StatusCode). If the Worker has a DEPLOY_PROVENANCE_TOKEN secret, the GitHub secret DEPLOY_PROVENANCE_TOKEN must hold the same value.")
+    }
+    if ($StatusCode -eq 0 -or $StatusCode -ge 500) {
+        return (& $verdict "Retry" "$($script:DeployProvenancePath) was unreachable or failed (status $StatusCode).")
+    }
+    if ($StatusCode -ne 200) {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) returned unexpected status $StatusCode.")
+    }
+
+    try {
+        $payload = $Body | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) returned a body that is not JSON.")
+    }
+    if ($payload -isnot [pscustomobject]) {
+        return (& $verdict "Fail" "$($script:DeployProvenancePath) returned JSON that is not an object.")
+    }
+    $props = $payload.PSObject.Properties
+
+    $liveCommit = if ($props["commitSha"]) { [string]$payload.commitSha } else { "" }
+    if ($Phase -eq "PostDeploy" -and -not [string]::IsNullOrWhiteSpace($ExpectedCommitSha) -and $liveCommit -ne $ExpectedCommitSha) {
+        return (& $verdict "Retry" "The previous Worker version (commit '$liveCommit') is still serving; waiting for $ExpectedCommitSha.")
+    }
+
+    $liveHash = if ($props["tursoHostSha256"]) { ([string]$payload.tursoHostSha256).Trim().ToLowerInvariant() } else { "" }
+    if ([string]::IsNullOrWhiteSpace($liveHash)) {
+        return (& $verdict "Fail" "The live Worker reported no Turso host hash (no TURSO_DATABASE_URL Worker secret?).")
+    }
+    if ($liveHash -ne $ExpectedHash.Trim().ToLowerInvariant()) {
+        return (& $verdict "Mismatch" "The live production Worker reads a different Turso DB host than the one backed up (host hash $($liveHash.Substring(0, [Math]::Min(12, $liveHash.Length)))… vs backed-up $($ExpectedHash.Substring(0, [Math]::Min(12, $ExpectedHash.Length)))…).")
+    }
+    return (& $verdict "Match" "The live production Worker reads the backed-up DB host (commit '$liveCommit').")
+}
+
+function Invoke-DeployLiveWorkerProvenanceRequest {
+    <#
+    .SYNOPSIS
+      GET the production provenance endpoint once. Returns @{ StatusCode; Body }; StatusCode 0 on
+      a network error. No redirects followed. Sends DEPLOY_PROVENANCE_TOKEN as a bearer when set.
+    #>
+    $uri = "$(Get-DeployProductionSiteOrigin)$($script:DeployProvenancePath)?ci=$([guid]::NewGuid().ToString('N'))"
+    $headers = @{ "Cache-Control" = "no-cache" }
+    $token = [Environment]::GetEnvironmentVariable("DEPLOY_PROVENANCE_TOKEN", "Process")
+    if (-not [string]::IsNullOrWhiteSpace($token)) {
+        $headers["Authorization"] = "Bearer $($token.Trim())"
+    }
+    try {
+        $response = Invoke-WebRequest -Uri $uri -Headers $headers -Method Get -MaximumRedirection 0 `
+            -SkipHttpErrorCheck -TimeoutSec 20 -UseBasicParsing -ErrorAction Stop
+        $body = if ($response.Content -is [byte[]]) { [System.Text.Encoding]::UTF8.GetString($response.Content) } else { [string]$response.Content }
+        return [pscustomobject]@{ StatusCode = [int]$response.StatusCode; Body = $body }
+    }
+    catch {
+        return [pscustomobject]@{ StatusCode = 0; Body = "" }
+    }
+}
+
+function Assert-DeployLiveWorkerTursoHostMatchesBackup {
+    <#
+    .SYNOPSIS
+      Fail closed unless the live production Worker reads the backed-up (and migrated) DB host.
+
+    .DESCRIPTION
+      PreDeploy: before build/migrate/deploy. Mismatch, missing hash or any unexpected response
+      throws (nothing migrated or deployed). A 404 means the live Worker predates the endpoint
+      (first deploy that ships it): loud ::warning::, and the secret-vs-backup host assertion
+      (Assert-DeployMigrateTargetMatchesBackupHost) is the only check for this one run.
+      PostDeploy: right after wrangler deploy, against the NEW version (waits for its commit).
+      Here 404 is a hard failure once retries run out: the bootstrap cannot repeat.
+      -Fetch is injectable for tests; it must return @{ StatusCode; Body }.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("PreDeploy", "PostDeploy")]
+        [string]$Phase,
+        [scriptblock]$Fetch = { Invoke-DeployLiveWorkerProvenanceRequest },
+        [int]$MaxAttempts = 0,
+        [int]$DelaySeconds = 5
+    )
+
+    if ($null -eq $script:DeployFreshBackupMetadata) {
+        throw "Internal: Assert-DeployLiveWorkerTursoHostMatchesBackup called without a selected backup (Assert-DeployFreshEmDashTursoBackup first)."
+    }
+    if ($MaxAttempts -le 0) {
+        $MaxAttempts = if ($Phase -eq "PostDeploy") { 24 } else { 4 }
+    }
+    $expectedHash = Get-DeployTursoHostProvenanceHash -TursoHost ([string]$script:DeployFreshBackupMetadata.workerTursoHost)
+    $expectedCommit = [Environment]::GetEnvironmentVariable("FT_BUILD_COMMIT_SHA", "Process")
+    $backupName = [string]$script:DeployFreshBackupMetadata.backupDatabase
+    $failurePrefix = if ($Phase -eq "PreDeploy") {
+        "Refusing to migrate or deploy (live Worker provenance, #142):"
+    }
+    else {
+        "Production deploy FAILED its post-deploy provenance check (#142): the new Worker is live and EmDash was migrated. Roll back per web/docs/DEPLOY.md § If the production job fails."
+    }
+    $fixHint = "Point TURSO_PRODUCTION_EMDASH_DB_URL / _TOKEN at the DB the production Worker uses (web/docs/DEPLOY.md § Standard path), then re-run."
+
+    $summary = {
+        param([string]$Line)
+        if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $Line -ErrorAction SilentlyContinue
+        }
+    }
+
+    $last = $null
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        $response = & $Fetch
+        $last = Resolve-DeployLiveWorkerProvenanceVerdict -Phase $Phase -StatusCode ([int]$response.StatusCode) `
+            -Body ([string]$response.Body) -ExpectedHash $expectedHash -ExpectedCommitSha $expectedCommit
+        switch ($last.Outcome) {
+            "Match" {
+                Write-DeployStep "Live Worker provenance ($Phase): $($last.Message) Backup $backupName."
+                & $summary "- Live Worker provenance ($Phase, #142): match (Turso host hash = backup ``$backupName``)"
+                return "Match"
+            }
+            "Bootstrap" {
+                $message = "$($last.Message) This run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory. If this appears again after the endpoint has shipped, stop and investigate."
+                if ($env:GITHUB_ACTIONS -eq "true") {
+                    Write-Host "::warning title=Live Worker provenance bootstrap (#142)::$message"
+                }
+                Write-Warning $message
+                $script:DeployLiveProvenanceBootstrap = $true
+                & $summary "- Live Worker provenance ($Phase, #142): **bootstrap** (live Worker predates the endpoint; secret-vs-backup host check only)"
+                return "Bootstrap"
+            }
+            "Mismatch" {
+                $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed. $fixHint" } else { $fixHint }
+                throw "$failurePrefix $($last.Message) $tail"
+            }
+            "Fail" {
+                $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed." } else { "" }
+                throw "$failurePrefix $($last.Message) $tail".Trim()
+            }
+            default {
+                if ($attempt -lt $MaxAttempts -and $DelaySeconds -gt 0) {
+                    Start-Sleep -Seconds $DelaySeconds
+                }
+            }
+        }
+    }
+    $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed." } else { "" }
+    throw "$failurePrefix gave up after $MaxAttempts attempts: $($last.Message) $tail".Trim()
+}
+
 function Invoke-DeployStagingTursoExport {
     Assert-DeployTursoAuth
 

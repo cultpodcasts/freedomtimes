@@ -84,6 +84,7 @@ describe('page cache: request bypass rules', () => {
 			'/_emdash/api/mcp',
 			'/admin/analytics',
 			'/api/version.json',
+			'/api/deploy-provenance.json',
 			'/auth/login',
 			'/authorize',
 			'/.well-known/assetlinks.json',

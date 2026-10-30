@@ -123,6 +123,48 @@ function Register-GithubActionsSecretMask {
     Write-Host "::add-mask::$($Value.Trim())"
 }
 
+function Write-BackupVerifySummaryForCi {
+    <#
+    .SYNOPSIS
+      CI replacement for echoing verify-production-emdash-backup.mjs output.
+
+    .DESCRIPTION
+      P0 rule (web/docs/DEPLOY.md § Backups are never public): this repo is public, so CI logs
+      must never carry backup content or row data. The verify report lists post slugs and
+      statuses (missingInBackup, statusMismatch, weekly samples, failure text), so in GitHub
+      Actions only counts, hashes and the pass flag are printed. The full report stays on the
+      runner's disk (never uploaded). Run the script locally to see the slugs.
+    #>
+    param(
+        [string]$ReportPath,
+        [int]$ExitCode,
+        [object[]]$Output
+    )
+    $count = { param($value) @($value | Where-Object { $null -ne $_ }).Count }
+    if (-not [string]::IsNullOrWhiteSpace($ReportPath) -and (Test-Path -LiteralPath $ReportPath)) {
+        try {
+            $report = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json -ErrorAction Stop
+            $props = $report.PSObject.Properties
+            $get = { param($name) if ($props[$name]) { $report.$name } else { $null } }
+            Write-Host "Verify (CI summary; slugs withheld from public logs): pass=$(& $get 'pass') exit=$ExitCode"
+            Write-Host "  backupCount=$(& $get 'backupCount') liveCount=$(& $get 'liveCount') missingInBackup=$(& $count (& $get 'missingInBackup')) extraInBackup=$(& $count (& $get 'extraInBackup')) statusMismatch=$(& $count (& $get 'statusMismatch')) failures=$(& $count (& $get 'failures'))"
+            Write-Host "  inventoryHash=$(& $get 'inventoryHash') liveInventoryHash=$(& $get 'liveInventoryHash')"
+            return
+        }
+        catch {
+            Write-Host "Verify report could not be summarised; output withheld from public logs (exit $ExitCode)."
+            return
+        }
+    }
+    # No report: show only the machine-readable error kind (never row data).
+    $errorKinds = @($Output | ForEach-Object { [string]$_ } | ForEach-Object {
+            $m = [regex]::Match($_, '"error"\s*:\s*"([a-z_]{1,40})"')
+            if ($m.Success) { $m.Groups[1].Value }
+        } | Select-Object -Unique)
+    $kinds = if ($errorKinds.Count -gt 0) { $errorKinds -join ", " } else { "none reported" }
+    Write-Host "Verify produced no report (exit $ExitCode; error kind: $kinds). Output withheld from public logs; re-run locally for detail."
+}
+
 function Register-GithubActionsSecretMasksFromEnvFile {
     <#
     .SYNOPSIS
@@ -237,6 +279,9 @@ try {
         [string]$resolved.databaseName
     }
     $workerHost = [string]$resolved.workerTursoHost
+    # Public CI logs: the provenance endpoint only ever exposes a hash of this host (#142),
+    # so keep the plain hostname out of the job log too.
+    Register-GithubActionsSecretMask -Value $workerHost
     $postCount = [int]($resolved.postCount)
     $weeklySample = @($resolved.weeklySlugsSample)
 
@@ -403,7 +448,12 @@ try {
             Remove-Item Env:TURSO_BACKUP_DATABASE_URL, Env:TURSO_BACKUP_AUTH_TOKEN -ErrorAction SilentlyContinue
         }
     }
-    $verifyRun.Output | ForEach-Object { $_ }
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        Write-BackupVerifySummaryForCi -ReportPath $verifyReportPath -ExitCode $verifyRun.ExitCode -Output $verifyRun.Output
+    }
+    else {
+        $verifyRun.Output | ForEach-Object { $_ }
+    }
     $verifyPass = $verifyRun.ExitCode -eq 0
     $verification = $null
     if (Test-Path -LiteralPath $verifyReportPath) {
@@ -508,5 +558,11 @@ try {
     }
 }
 finally {
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        # Runner hygiene: the resolver's temp files hold published slugs (inventory) and the
+        # Worker DB token. Nothing uploads them, but remove them so no later step can.
+        Get-ChildItem -LiteralPath (Join-Path $repoRoot ".release/backups") -Filter "_tmp-*" -File -ErrorAction SilentlyContinue |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+    }
     Pop-Location
 }
