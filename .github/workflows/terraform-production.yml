@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.14.8"
           terraform_wrapper: false
@@ -78,6 +78,7 @@ jobs:
           required=(
             TF_TOKEN_app_terraform_io
             TF_VAR_cloudflare_api_token
+            TF_VAR_cloudflare_analytics_api_token
             TF_VAR_cloudflare_account_id
             TF_VAR_cloudflare_zone_id
             TF_VAR_auth0_domain
@@ -138,53 +139,6 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      - name: Prune Legacy Azure State Entries
-        run: |
-          set -euo pipefail
-
-          # Some legacy Azure resources were removed out-of-band and can no longer be refreshed.
-          # Remove them from state so plan/apply can converge on the new non-Azure topology.
-          mapfile -t legacy_addrs < <(terraform state list | grep -E '^(module\.azure_editorial_api\.|cloudflare_record\.api_custom_hostname\[0\]|time_sleep\.wait_for_api_custom_hostname_dns\[0\])' || true)
-
-          if [ "${#legacy_addrs[@]}" -eq 0 ]; then
-            echo "No legacy Azure/APIM state entries found."
-            exit 0
-          fi
-
-          echo "Removing legacy state entries:"
-          printf '  - %s\n' "${legacy_addrs[@]}"
-
-          terraform state rm "${legacy_addrs[@]}"
-
-      - name: Import Existing Worker Route If Needed
-        run: |
-          set -euo pipefail
-
-          route_addr='module.cloudflare_holding_page.cloudflare_workers_route.holding_page[0]'
-
-          if terraform state show "$route_addr" >/dev/null 2>&1; then
-            echo "Worker route already tracked in state."
-            exit 0
-          fi
-
-          routes_json=$(curl -fsS \
-            -H "Authorization: Bearer ${TF_VAR_cloudflare_api_token}" \
-            -H "Content-Type: application/json" \
-            "https://api.cloudflare.com/client/v4/zones/${TF_VAR_cloudflare_zone_id}/workers/routes")
-
-          route_id=$(echo "$routes_json" | jq -r \
-            --arg pattern "$TF_VAR_route_pattern" \
-            --arg script "$TF_VAR_worker_name" \
-            '.result[] | select(.pattern == $pattern and .script == $script) | .id' | head -n1)
-
-          if [ -z "$route_id" ] || [ "$route_id" = "null" ]; then
-            echo "No pre-existing worker route found for pattern ${TF_VAR_route_pattern} and script ${TF_VAR_worker_name}."
-            exit 0
-          fi
-
-          echo "Importing existing worker route ${route_id} into Terraform state."
-          terraform import "$route_addr" "${TF_VAR_cloudflare_zone_id}/${route_id}"
-
       - name: Terraform Plan
         id: plan
         timeout-minutes: 20
@@ -235,6 +189,17 @@ jobs:
         run: |
           set -euo pipefail
           pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-secrets.ps1" -Environment production -PlanFile tfplan
+
+      - name: Guard Worker Script Upload Plan
+        # Apply only. A plan-only run expects the documented holding_page drift (1 to change)
+        # after every local wrangler deploy; applying it alone would re-upload the Worker script
+        # (issue #116). Allowed only when this run deploys the Worker with wrangler afterwards.
+        if: (env.PRODUCTION_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.production_terraform_apply == 'true')
+        env:
+          FT_WRANGLER_DEPLOY_FOLLOWS: ${{ ((env.PRODUCTION_WORKER_DEPLOY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.production_worker_deploy == 'true')) && '1' || '' }}
+        run: |
+          set -euo pipefail
+          pwsh "$GITHUB_WORKSPACE/scripts/terraform-plan-guard-worker-script-upload.ps1" -Environment production -PlanFile tfplan
 
       - name: Terraform Apply
         if: (env.PRODUCTION_TERRAFORM_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && github.event.inputs.production_terraform_apply == 'true')
@@ -592,7 +557,7 @@ jobs:
 
       - name: Upload production EmDash rollback metadata
         if: steps.emdash_mutate.outputs.deploy_worker == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emdash-production-rollback-metadata
           path: .release/rollback-branches/*.json
