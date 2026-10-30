@@ -128,7 +128,9 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   the **page** frontmatter, before rendering starts, so a failure there renders
   `src/pages/500.astro` (500, `no-store`, noindex, no canonical) instead of a cut-off
   200. That is the entry lookup (`[slug].astro`, `posts/[slug].astro` and
-  `archives/[slug].astro` rethrow a lookup failure; only `[slug].astro`'s empty-slug branch, which is the error-render
+  `archives/[slug].astro` rethrow a lookup failure, which is any error other than a typed
+  not-found whatever its message says, see #121 and `isExpectedLookupMiss` in
+  `src/lib/not-found.ts`; only `[slug].astro`'s empty-slug branch, which is the error-render
   path itself, answers plain text) and the homepage list (`loadHomepageEntries()` in
   `index.astro` / `homepage.astro` / `[slug].astro`, passed to `HomepageView` as a
   prop). **Component** frontmatter runs after the 200 headers are sent, so a database
