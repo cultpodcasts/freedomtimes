@@ -291,24 +291,24 @@ jobs:
       - name: Capture Terraform Outputs
         id: tf_outputs
         env:
-          # Standing preference, same as scripts/resolve-turso-build-credentials.ps1
-          # (Resolve-ProductionEmdashTursoToken) and AGENTS.md CA-21: when set, this production EmDash
-          # JWT wins over the Terraform-minted turso_database_token.emdash. That fallback is currently
-          # dead (Turso 404 "auth role not found", Oct 2026); re-minting or retiring it is #137.
+          # Single source for the production EmDash JWT, same as Resolve-ProductionEmdashTursoToken in
+          # scripts/resolve-turso-build-credentials.ps1 and AGENTS.md CA-21. Terraform no longer mints this
+          # token: turso_database_token.emdash and its turso_database_auth_token output were retired (#137)
+          # after Turso rejected the minted JWT ("auth role not found", Oct 2026).
           TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
         run: |
           set -euo pipefail
 
+          if [ -z "${TURSO_PRODUCTION_EMDASH_DB_TOKEN:-}" ]; then
+            echo "::error title=Missing TURSO_PRODUCTION_EMDASH_DB_TOKEN::Set the TURSO_PRODUCTION_EMDASH_DB_TOKEN repo secret (pwsh scripts/set-github-secrets.ps1 from .env.dev). Terraform no longer mints the production EmDash token (#137, AGENTS.md CA-21)."
+            exit 1
+          fi
+
           AUTH0_APP_CLIENT_ID=$(terraform output -raw auth0_app_client_id 2>/dev/null || echo "")
           TURSO_DATABASE_NAME=$(terraform output -raw turso_database_name 2>/dev/null || echo "")
           TURSO_DATABASE_URL=$(terraform output -raw turso_database_url 2>/dev/null || echo "")
-          TURSO_AUTH_TOKEN=$(terraform output -raw turso_database_auth_token 2>/dev/null || echo "")
-          if [ -n "${TURSO_PRODUCTION_EMDASH_DB_TOKEN:-}" ]; then
-            echo "EmDash Turso token source: TURSO_PRODUCTION_EMDASH_DB_TOKEN secret"
-            TURSO_AUTH_TOKEN="$TURSO_PRODUCTION_EMDASH_DB_TOKEN"
-          else
-            echo "EmDash Turso token source: terraform output turso_database_auth_token"
-          fi
+          echo "EmDash Turso token source: TURSO_PRODUCTION_EMDASH_DB_TOKEN secret"
+          TURSO_AUTH_TOKEN="$TURSO_PRODUCTION_EMDASH_DB_TOKEN"
           SCHEDULER_TURSO_DATABASE_URL=$(terraform output -raw scheduler_turso_database_url 2>/dev/null || echo "")
           SCHEDULER_TURSO_AUTH_TOKEN=$(terraform output -raw scheduler_turso_database_auth_token 2>/dev/null || echo "")
           SUBSCRIPTIONS_TURSO_DATABASE_URL=$(terraform output -raw subscriptions_turso_database_url 2>/dev/null || echo "")
@@ -664,7 +664,7 @@ jobs:
           fi
 
           if [ -z "${TURSO_AUTH_TOKEN}" ]; then
-            echo "ERROR: TURSO_AUTH_TOKEN is required but empty from Terraform outputs"
+            echo "ERROR: TURSO_AUTH_TOKEN is required but empty (it comes from the TURSO_PRODUCTION_EMDASH_DB_TOKEN secret, #137)"
             exit 1
           fi
 

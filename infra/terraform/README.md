@@ -170,7 +170,7 @@ The guard script exits non-zero if the saved plan contains any `turso_database` 
 |--------|--------|
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | Wrangler deploy / local deploy scripts (`deploy-staging-local.ps1`, `deploy-production-local.ps1`) / `switch-production-turso-secrets.ps1` / `set-github-secrets.ps1` / CI workflows — see [web/docs/DEPLOY.md](../../web/docs/DEPLOY.md) |
 | `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | Terraform (`secret_text` bindings on `cloudflare_workers_script`) |
-| Turso DBs + `turso_database_token` outputs | Terraform (for build/CI outputs only — not pushed to Worker by TF) |
+| Turso DBs + `turso_database_token` outputs | Terraform (for build/CI outputs only — not pushed to Worker by TF). Production EmDash is the exception: Terraform no longer mints that token; use `TURSO_PRODUCTION_EMDASH_DB_TOKEN` (#137, AGENTS.md CA-21) |
 
 **One-time migration** (after config removed TURSO from `worker_secrets`):
 

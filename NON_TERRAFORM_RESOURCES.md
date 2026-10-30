@@ -95,6 +95,10 @@ provider 5.22 adds every live non-secret binding that is not already in state to
 `SITE_ACCESS_MODE`, …) and the `ASSETS` binding (`assets.binding` in `wrangler.jsonc`); the Terraform config lists only `PAGE_VIEWS`, `EMAIL` and `secret_text`.
 The drift is expected. It is **not** safe to apply on its own.
 
+Production plans also show "1 to forget" for `turso_database_token.emdash` until a local apply records it.
+That is the retired production EmDash token (`removed` block with `destroy = false`, [#137](https://github.com/cultpodcasts/freedomtimes/issues/137)):
+Terraform drops it from state without calling Turso, and it is unrelated to the Worker script drift.
+
 **Why applying it is not safe (confirmed facts).**
 
 1. Any update to this resource is a full script upload (`PUT .../workers/scripts/<name>`, multipart), not a
