@@ -97,7 +97,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 **Production Turso rollback:** full deploy **and** `-WorkerOnly` create a **verified Worker-resolved** backup **before** migrate (`scripts/backup-production-emdash.ps1` — WSL Turso on Windows; native `turso` on Linux). Do **not** assume named `freedomtimes-emdash-production`. Skipped for `-DryRun`. `-SkipTursoBackup` is allowed only when `.release/rollback-branches/` has metadata newer than 24h from a matching or **verified** Worker-resolved backup. Commit `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. Disaster recovery (canonical): sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../../../freedomtimes-agents/docs/DISASTER_RECOVERY.md).
 
-**CI / release path (not local deploy):** `production-release.ps1 -TerraformMode apply` dispatches `terraform-production.yml` with `production_worker_deploy=true` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). That apply dispatch creates a recoverable Turso rollback branch (metadata uploaded as a workflow artifact + job summary), applies tips/subscriptions/scheduler SQL, applies core migrate, deploys, then `--check`. Push to `main` and `-TerraformMode plan` are **check-only** (Terraform plan + `emdash migrate --check`; no SQL, no EmDash apply, no wrangler). CI never applies a plan that re-uploads the Worker script: while the `holding_page` drift exists (after every local deploy), the apply dispatch stops at `Guard Worker Script Upload Plan` before anything changes, so use the local scripts above. Section 1 remains the operator-facing record for content promotion and for local schema work that is not going through this dispatch.
+**CI / release path (not local deploy):** `production-release.ps1 -TerraformMode apply` dispatches `terraform-production.yml` with `production_worker_deploy=true` — see [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). When it is allowed to run, that apply dispatch creates a recoverable Turso rollback branch (metadata uploaded as a workflow artifact + job summary), applies tips/subscriptions/scheduler SQL, applies core migrate, deploys, then `--check`; it is refused while the `holding_page` drift exists (see the end of this paragraph). Push to `main` and `-TerraformMode plan` are **check-only** (Terraform plan + `emdash migrate --check`; no SQL, no EmDash apply, no wrangler). CI never applies a plan that re-uploads the Worker script: while the `holding_page` drift exists (after every local deploy), the apply dispatch stops at `Guard Worker Script Upload Plan` before anything changes ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift), #116), so use `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](../../PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-default-path)) instead. Section 1 remains the operator-facing record for content promotion and for local schema work that is not going through this dispatch.
 
 ### Prerequisites (all local deploy scripts)
 
@@ -336,10 +336,10 @@ Expect `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. If missing:
 
 1. Production: `pwsh scripts/switch-production-turso-secrets.ps1 -AllowProduction` with verified `.env.dev` URLs/tokens, **or**
 2. Staging/production sync: `pwsh scripts/set-github-secrets.ps1 -Target Staging|Production -SyncCloudflareWorkerSecrets`, **or**
-3. Upload manually from Terraform **outputs** (build only — do not re-add TURSO to Terraform `worker_secrets`):
+3. Upload manually from Terraform **outputs** (build only — do not re-add TURSO to Terraform `worker_secrets`). Staging only for the token: Terraform no longer mints the production EmDash token, so for production take `TURSO_PRODUCTION_EMDASH_DB_TOKEN` from `.env.dev` instead (#137, AGENTS.md CA-21):
 
    ```powershell
-   cd infra/terraform/environments/staging   # or production
+   cd infra/terraform/environments/staging
    $url = terraform output -raw turso_database_url
    $token = terraform output -raw turso_database_auth_token
    cd ../../../web
@@ -359,7 +359,7 @@ Expect `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. If missing:
 
 ### What happened
 
-`deploy-production-local.ps1 -WorkerOnly` now **does** resolve Turso URL/token (Terraform outputs or `.env.dev` via `resolve-turso-build-credentials.ps1`) so `.emdash/migrations.json` and `npx emdash migrate` target the real EmDash database. The libsql Worker shim still prefers Cloudflare `TURSO_*` secrets at runtime.
+`deploy-production-local.ps1 -WorkerOnly` now **does** resolve Turso URL/token (URL from Terraform outputs or `.env.dev`, token from `TURSO_PRODUCTION_EMDASH_DB_TOKEN` in `.env.dev`, via `resolve-turso-build-credentials.ps1`) so `.emdash/migrations.json` and `npx emdash migrate` target the real EmDash database. The libsql Worker shim still prefers Cloudflare `TURSO_*` secrets at runtime.
 
 Keep `.env.dev` Turso values for full deploys, `-WorkerOnly`, `astro dev`, `-WorkersOnly`, secret sync, and core migrate. Refresh them when outputs exist:
 
@@ -562,7 +562,7 @@ Database name: **Worker-resolved** via `web/scripts/resolve-production-worker-tu
 
 Staging export uses `TF_VAR_TURSO_DATABASE_NAME_STAGING` when set; otherwise the Terraform staging `turso_database_name` default. Do not require `TF_VAR_TURSO_DATABASE_NAME_STAGING` as a Cursor secret. Staging migrate skips a production process URL (hint match or `*-emdash-production-*`) and still flags `IgnoredProcessProductionShadow` when Terraform URL wins. It **throws** if the selected Terraform or `.env.dev` URL is production. Never write the process production pair into `.env.dev` (Cloud Agents: **`AGENTS.md`**).
 
-**GitHub Actions mutate path** (`production-release.ps1 -TerraformMode apply` / `workflow_dispatch` with `production_worker_deploy=true`) **does** create a recoverable checkpoint: a Turso rollback branch plus metadata JSON uploaded as artifact `emdash-production-rollback-metadata` and echoed on the job summary. Push to `main`, pull requests, and `-TerraformMode plan` are check-only and do **not** create a checkpoint. For content promotion or schema work outside that dispatch, still run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). Staging mutate uploads `emdash-staging-backup` (14-day retention) from `turso db export`.
+**GitHub Actions mutate path** (`production-release.ps1 -TerraformMode apply` / `workflow_dispatch` with `production_worker_deploy=true`) **does** create a recoverable checkpoint when it runs: a Turso rollback branch plus metadata JSON uploaded as artifact `emdash-production-rollback-metadata` and echoed on the job summary. While the `holding_page` drift exists (#116) that dispatch is refused at `Guard Worker Script Upload Plan` before the checkpoint or any other change ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)); deploy with `pwsh ./scripts/deploy-production-local.ps1` ([PRODUCTION_RELEASE_RUNBOOK.md §2b](../../PRODUCTION_RELEASE_RUNBOOK.md#2b-local-production-deploy-default-path)), which takes its own Turso rollback checkpoint. Push to `main`, pull requests, and `-TerraformMode plan` are check-only and do **not** create a checkpoint. For content promotion or schema work outside that dispatch, still run Section 1 of [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md). Staging mutate uploads `emdash-staging-backup` (14-day retention) from `turso db export`.
 
 ### Turso auth failure
 
