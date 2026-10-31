@@ -9,6 +9,7 @@ This runbook documents the repeatable process for getting verified staging conte
 - [Production backup verify (promote gate)](#production-backup-verify-promote-gate)
 - [Step 0 before content promote](#0-step-0-verified-production-backup-mandatory)
 - [HARD RULE — weekly promote: keep prior weeklies published](#hard-rule-14-sep-2026--weekly-promote-keep-prior-weeklies-published)
+- [Archive entry operations](#41-archive-entry-operations-add-take-down-remove-backfill) — add, take down, remove, backfill, missing PDF
 - [Disaster recovery](#disaster-recovery) — **canonical:** sibling `freedomtimes-agents/docs/DISASTER_RECOVERY.md` (retarget Worker; do not overwrite named production)
 
 ## Scope
@@ -369,6 +370,15 @@ Operational rule:
 
 - Do not mark an archives release complete until all referenced media records resolve in production and the corresponding archive pages render with working image/file links.
 - Do not mark an archives release complete until rendered archive text also matches staging for the promoted fields and contains no mojibake.
+
+### 4.1 Archive entry operations (add, take down, remove, backfill)
+
+Every production write below follows [Step 0](#0-step-0-verified-production-backup-mandatory) (verified backup first) and the [images HARD RULE](#hard-rule--never-break-production-images-21-september-2026). Do the same on staging first.
+
+- **Add / backfill an issue:** upload the PDF (and any page images) to the target environment with `emdash media upload`, create the `archives` entry with `pdf_file` pointing at that environment's media (staging media IDs and R2 keys do not exist in production), then publish. Backfilling older PDFs is the same per issue. Run the §4 preflight before publishing, then open `/archives/<slug>` and check that **Open original PDF** downloads.
+- **Take down (reversible):** `npx --prefix web emdash content unpublish archives <id-or-slug> -u <url> -t <token>`. The page then returns **404** ("Archive not found") and drops out of `/archives` and the sitemap. A 410 for withdrawn issues is not implemented ([#151](https://github.com/cultpodcasts/freedomtimes/issues/151)). Republish with `emdash content publish`.
+- **Remove:** `emdash content delete archives <id-or-slug>` moves the entry to trash (`emdash content restore` brings it back). Delete the PDF with `emdash media delete <media-id>` only when no other entry uses it.
+- **Missing PDF:** if a published entry's PDF is gone from the `MEDIA` R2 bucket, `/archives/<slug>` still renders but shows "The original PDF for this issue is currently unavailable" instead of the link, and the Worker logs `ft.archives.pdf_missing` with the slug and storage key. A failed R2 lookup logs `ft.archives.pdf_check_failed` and keeps the link. To find them, search Workers Logs (observability is enabled in `wrangler.jsonc`) for those tags, or run `npx wrangler tail --env <env> --search ft.archives` from `web/` (read-only). To fix one, re-upload the file per §4 and save the entry with the new `pdf_file`. Archive pages can be page-cached, and the content save clears the page cache, so re-uploading media alone does not refresh a cached "unavailable" page. No alerting is wired to these logs yet ([#151](https://github.com/cultpodcasts/freedomtimes/issues/151)).
 
 ## 5. Recover From "Collection not found" Admin Issues
 

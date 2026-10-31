@@ -9,6 +9,7 @@ const {
 	volumeNumber,
 	regionalVariant,
 	pdfLink,
+	pdfStatus = 'unknown',
 	featuredImageSrc,
 	featuredImageAlt,
 	featuredImageCaption,
@@ -20,6 +21,7 @@ const {
 	volumeNumber: number | null;
 	regionalVariant: 'Lancaster' | 'Newcastle' | 'Nottingham' | null;
 	pdfLink: string | null;
+	pdfStatus?: 'available' | 'missing' | 'unknown';
 	featuredImageSrc: string | null;
 	featuredImageAlt: string;
 	featuredImageCaption: string | null;
@@ -55,7 +57,11 @@ const {
 			<span> / </span>
 			<span>{slidePageTotal}</span>
 		</p>
-		{pdfLink && (
+		{pdfLink && pdfStatus === 'missing' ? (
+			<p class="pdf-link-wrap pdf-unavailable" role="status" data-pdf-status="missing">
+				The original PDF for this issue is currently unavailable. The page images above are unaffected.
+			</p>
+		) : pdfLink && (
 			<p class="pdf-link-wrap">
 				<a href={pdfLink} target="_blank" rel="noopener noreferrer">Open original PDF</a>
 			</p>
