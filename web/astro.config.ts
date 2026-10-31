@@ -25,7 +25,7 @@ const libsqlShimPath = fileURLToPath(new URL('./src/shims/kysely-libsql.ts', imp
 const pageCachePurgePluginPath = fileURLToPath(
   new URL('./src/plugins/page-cache-purge.ts', import.meta.url),
 ).replace(/\\/g, '/');
-// Site-local native plugin: admin-only "Post to Bluesky" panel in the post editor (#21).
+// Site-local native plugin: admin-only "Post to Bluesky" (#21) and "Post to X" (#20) panels in the post editor.
 const socialSharePluginPath = fileURLToPath(
   new URL('./src/plugins/social-share.ts', import.meta.url),
 ).replace(/\\/g, '/');
@@ -211,7 +211,7 @@ export default defineConfig({
           options: {},
           capabilities: ['content:read'],
         },
-        // Admin-only "Post to Bluesky" editor panel (web/docs/SOCIAL_SHARING.md).
+        // Admin-only "Post to Bluesky" / "Post to X" editor panels (web/docs/SOCIAL_SHARING.md).
         // Private route (Admin + CSRF header); production only; posts only on confirm.
         {
           id: 'ft-social-share',
@@ -220,7 +220,7 @@ export default defineConfig({
           format: 'native',
           options: {},
           capabilities: ['content:read', 'network:request'],
-          allowedHosts: ['bsky.social'],
+          allowedHosts: ['bsky.social', 'api.x.com'],
         },
       ] as PluginDescriptor[],
     }),
