@@ -146,11 +146,15 @@ Assert-True ($selected.Value -eq $stagingUrl) "uses .env.dev staging URL when pr
 Assert-True ($selected.IgnoredProcessProductionShadow -eq $true) "flags process production shadow"
 Assert-True ($selected.Source -match "\.env\.dev") "source is .env.dev"
 
-$tfSelected = (Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl $stagingUrl -ProcessUrl $prodUrl -FileUrl $prodUrl -ProductionHint $prodUrl }).Output
+$capture = Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl $stagingUrl -ProcessUrl $prodUrl -FileUrl $prodUrl -ProductionHint $prodUrl }
+$tfSelected = $capture.Output
+Assert-True (Test-GuardWarned -Warnings $capture.Warnings -Pattern $shadowWarning) "warns about the process production shadow when the terraform URL wins"
 Assert-True ($tfSelected.Value -eq $stagingUrl) "prefers terraform staging URL over process production"
 Assert-True ($tfSelected.IgnoredProcessProductionShadow -eq $true) "flags process production shadow even when terraform URL wins"
 
-$noHint = (Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint "" }).Output
+$capture = Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint "" }
+$noHint = $capture.Output
+Assert-True (Test-GuardWarned -Warnings $capture.Warnings -Pattern $shadowWarning) "warns about the process production shadow without a production hint"
 Assert-True ($noHint.Value -eq $stagingUrl) "skips process production URL when TURSO_PRODUCTION_EMDASH_DB_URL is unset"
 Assert-True ($noHint.IgnoredProcessProductionShadow -eq $true) "flags process production shadow without a production hint"
 
