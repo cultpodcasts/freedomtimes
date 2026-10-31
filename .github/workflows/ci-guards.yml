@@ -5,6 +5,7 @@ name: CI Guards
 #     § Backups are never public): no workflow uploads/caches a .db/.sql/dump/backup path or
 #     dumps/prints a database, and git tracks no database or dump file.
 #   - scripts/test-deploy-cloud-agent-guards.ps1: deploy/backup guard unit tests (incl. #142).
+#   - scripts/test-path-entry.ps1: native-Turso ~/.turso fallback sets $env:PATH on Linux (#114).
 # deploy-worker.yml repeats both before its first secret-bearing step.
 
 on:
@@ -44,3 +45,5 @@ jobs:
         run: |
           pwsh -NoProfile -File ./scripts/test-deploy-cloud-agent-guards.ps1
           if ($LASTEXITCODE -ne 0) { throw "Deploy guard tests failed." }
+          pwsh -NoProfile -File ./scripts/test-path-entry.ps1
+          if ($LASTEXITCODE -ne 0) { throw "PATH entry tests (#114) failed." }

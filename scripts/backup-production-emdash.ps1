@@ -81,6 +81,8 @@ $ErrorActionPreference = "Stop"
 . "$PSScriptRoot/lib/TursoSourcePreflight.ps1"
 # #161: verification record + failure messages that name the cause.
 . "$PSScriptRoot/lib/BackupVerifyReport.ps1"
+# #114: native-Turso fallback to ~/.turso/turso via $env:PATH (Linux env names are case-sensitive).
+. "$PSScriptRoot/lib/PathEntry.ps1"
 # Live Worker provenance helpers (#142/#144/#148): Assert-DeployLiveWorkerTursoHostMatchesBackup
 # -Phase PreBackup and Write-DeployBackupSourceCaveats.
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
@@ -252,14 +254,9 @@ try {
             throw "wsl is required for Turso on Windows. See docs/CLI_PATHS_WINDOWS.md (or pass -UseNativeTurso on Linux)."
         }
     }
-    elseif (-not (Test-CommandAvailable -CommandName "turso")) {
-        $homeTurso = Join-Path $HOME ".turso/turso"
-        if (Test-Path $homeTurso) {
-            $env:Path = "$(Split-Path $homeTurso -Parent)$([IO.Path]::PathSeparator)$env:Path"
-        }
-        else {
-            throw "Turso CLI not on PATH. See docs/CLI_PATHS_WINDOWS.md"
-        }
+    else {
+        # $env:PATH, never $env:Path: Linux env names are case-sensitive (#114).
+        $null = Initialize-NativeTursoCli -MissingMessage "Turso CLI not on PATH and `$HOME/.turso/turso is missing. See docs/CLI_PATHS_WINDOWS.md"
     }
 
     if (-not (Test-CommandAvailable -CommandName "node")) {
