@@ -18,6 +18,7 @@ Astro SSR app on Cloudflare Workers with EmDash CMS, Auth0 editorial auth, and o
 | Push notifications (local testing, scripts, `.env.dev`) | [docs/PUSH_NOTIFICATIONS_TEST_PLAN.md](docs/PUSH_NOTIFICATIONS_TEST_PLAN.md) — also [docs/PUSH_NOTIFICATIONS_OPERATOR.md](docs/PUSH_NOTIFICATIONS_OPERATOR.md), [docs/MULTI_BROWSER_PRODUCTION_PUSH_TEST.md](docs/MULTI_BROWSER_PRODUCTION_PUSH_TEST.md) |
 | Auth routes, cookies, staging login tests | [docs/AUTH.md](docs/AUTH.md) |
 | Social images and favicons | [docs/SOCIAL_IMAGES_AND_FAVICONS.md](docs/SOCIAL_IMAGES_AND_FAVICONS.md) |
+| Admin-only "Post to Bluesky" panel (secrets, double-post lock) | [docs/SOCIAL_SHARING.md](docs/SOCIAL_SHARING.md) |
 | Android builds | [docs/ANDROID_CAPACITOR_BUILD.md](docs/ANDROID_CAPACITOR_BUILD.md) |
 | Worker secrets after deploy | [../scripts/set-github-secrets.md](../scripts/set-github-secrets.md) |
 
