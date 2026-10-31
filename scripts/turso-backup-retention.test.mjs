@@ -12,6 +12,7 @@ import {
 	protectedFromBackupRecords,
 	summarisePlan,
 	tursoHostHash,
+	unmatchedProtectNames,
 } from "./turso-backup-retention.mjs";
 
 const NOW = new Date("2026-10-31T12:00:00Z");
@@ -168,4 +169,27 @@ test("--help runs without credentials and the CLI never deletes by default", asy
 	const out = execFileSync(process.execPath, [script, "--help"], { encoding: "utf8" });
 	assert.match(out, /Dry-run by default/);
 	assert.match(out, /--expect-count/);
+});
+
+test("--allow-unverified-staging only lifts the staging provenance gate", () => {
+	const plan = [
+		{ name: "staging-backup-20200101-000000", environment: "staging", action: "delete" },
+		{ name: "prod-backup-20200101-000000", environment: "production", action: "delete" },
+	];
+	const base = { plan, expectCount: 2, env: {}, liveStaging: { identified: false } };
+	assert.deepEqual(deleteRefusals({ ...base, liveProduction: { identified: true }, allowUnverifiedStaging: true }), []);
+	assert.equal(deleteRefusals({ ...base, liveProduction: { identified: true } }).length, 1);
+	assert.match(deleteRefusals({ ...base, liveProduction: { identified: true } })[0], /--allow-unverified-staging/);
+	// production stays strict
+	assert.equal(deleteRefusals({ ...base, liveProduction: { identified: false }, allowUnverifiedStaging: true }).length, 1);
+});
+
+test("unmatched --protect names are reported and block --delete", () => {
+	const dbs = [db("prod-backup-20260901-000000"), db("freedomtimes-emdash-production")];
+	assert.deepEqual(unmatchedProtectNames(["prod-backup-20260901-000000", "prod-bakup-20260901-000000", "prod-bakup-20260901-000000"], dbs), ["prod-bakup-20260901-000000"]);
+	assert.deepEqual(unmatchedProtectNames([], dbs), []);
+	const ok = { identified: true };
+	const refusals = deleteRefusals({ plan: [], expectCount: 0, env: {}, liveProduction: ok, liveStaging: ok, unmatchedProtect: ["prod-bakup-20260901-000000"] });
+	assert.equal(refusals.length, 1);
+	assert.match(refusals[0], /not a database/);
 });

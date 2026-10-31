@@ -30,7 +30,9 @@
  *
  * --delete refuses to run on GitHub Actions, refuses unless the live production Worker's DB was
  * identified among the organisation's databases (and the staging one, if any staging branch would
- * be deleted), and refuses unless --expect-count equals the number of branches the plan deletes.
+ * be deleted, unless --allow-unverified-staging: staging is behind the Auth0 lock), refuses while a
+ * --protect name is not a database in the organisation, and refuses unless --expect-count equals
+ * the number of branches the plan deletes.
  *
  * Output lists branch names, prefixes, ages and reasons only: never hostnames, URLs, the
  * organisation slug or tokens. Needs a Turso Platform API token (TURSO_PLATFORM_API_TOKEN,
@@ -287,8 +289,22 @@ export function summarisePlan(entries, rules) {
 	});
 }
 
+/** --protect names that are not databases in the organisation. */
+export function unmatchedProtectNames(protectNames, databases) {
+	const names = new Set(databases.map((db) => String(db.Name || db.name || "")));
+	return [...new Set(protectNames)].filter((n) => !names.has(n));
+}
+
 /** Checks --delete must pass. Returns a list of refusal reasons (empty = allowed). */
-export function deleteRefusals({ plan, expectCount, env = process.env, liveProduction, liveStaging }) {
+export function deleteRefusals({
+	plan,
+	expectCount,
+	env = process.env,
+	liveProduction,
+	liveStaging,
+	allowUnverifiedStaging = false,
+	unmatchedProtect = [],
+}) {
 	const out = [];
 	const toDelete = plan.filter((e) => e.action === "delete");
 	if (String(env.GITHUB_ACTIONS || "").toLowerCase() === "true") {
@@ -302,8 +318,14 @@ export function deleteRefusals({ plan, expectCount, env = process.env, liveProdu
 	if (!liveProduction?.identified) {
 		out.push("the live production Worker's database was not identified among the organisation's databases");
 	}
-	if (toDelete.some((e) => e.environment === "staging") && !liveStaging?.identified) {
-		out.push("the live staging Worker's database was not identified (needed before deleting staging branches)");
+	if (toDelete.some((e) => e.environment === "staging") && !liveStaging?.identified && !allowUnverifiedStaging) {
+		out.push(
+			"the live staging Worker's database was not identified (needed before deleting staging branches; " +
+				"staging is behind the Auth0 lock, so pass --allow-unverified-staging to accept that)",
+		);
+	}
+	for (const name of unmatchedProtect) {
+		out.push(`--protect ${name} is not a database in the organisation (typo?)`);
 	}
 	return out;
 }
@@ -312,6 +334,7 @@ function parseArgs(argv) {
 	const out = {
 		json: false,
 		delete: false,
+		allowUnverifiedStaging: false,
 		expectCount: undefined,
 		protect: [],
 		agentsDir: path.resolve(repoRoot, "..", "freedomtimes-agents"),
@@ -333,6 +356,7 @@ function parseArgs(argv) {
 		};
 		if (a === "--json") out.json = true;
 		else if (a === "--delete") out.delete = true;
+		else if (a === "--allow-unverified-staging") out.allowUnverifiedStaging = true;
 		else if (a === "--expect-count") out.expectCount = num(next(), a);
 		else if (a === "--protect") out.protect.push(next());
 		else if (a === "--agents-dir") out.agentsDir = path.resolve(next());
@@ -363,7 +387,10 @@ Dry-run by default: lists CI backup branches with ages and what the policy would
   --agents-dir PATH          freedomtimes-agents checkout (default ../freedomtimes-agents)
   --metadata-dir PATH        Default .release/rollback-branches
   --delete --expect-count N  Operator only: delete exactly the N branches the dry-run listed.
-                             Refused on GitHub Actions and when the live Worker DBs are not identified.`;
+                             Refused on GitHub Actions, when the live Worker DBs are not identified,
+                             and while a --protect name is not a database in the organisation.
+  --allow-unverified-staging With --delete: allow staging branches to go when the staging Worker's
+                             provenance cannot be read (Auth0 lock). Production has no such switch.`;
 
 function platformToken(env) {
 	for (const k of ["TURSO_PLATFORM_API_TOKEN", "TURSO_API_TOKEN", "TF_VAR_turso_api_token"]) {
@@ -446,6 +473,7 @@ async function main(argv) {
 	const protect = new Map();
 
 	for (const name of opts.protect) addProtect(protect, name, "--protect");
+	const unmatchedProtect = unmatchedProtectNames(opts.protect, databases);
 
 	const prodLive = await liveHostHash(opts.productionSite, env);
 	const stagingLive = await liveHostHash(opts.stagingSite, env);
@@ -481,6 +509,7 @@ async function main(argv) {
 			liveProduction,
 			liveStaging,
 			localBackupRecords: records.length,
+			unmatchedProtect,
 			summary,
 			plan,
 		}, null, 2));
@@ -490,6 +519,7 @@ async function main(argv) {
 		console.log(`Live production Worker DB identified: ${liveProduction.identified ? "yes" : "no"} (${liveProduction.note})`);
 		console.log(`Live staging Worker DB identified: ${liveStaging.identified ? "yes" : "no"} (${liveStaging.note})`);
 		console.log(`Local backup records read: ${records.length}`);
+		for (const n of unmatchedProtect) console.log(`WARNING: --protect ${n} is not a database in the organisation (typo?)`);
 		for (const s of summary) {
 			console.log(`\n${s.prefix}* [${s.environment}] ${s.policy}`);
 			console.log(`  total ${s.total}, keep ${s.keep}, would delete ${s.wouldDelete}; ages ${fmtAge(s.newestAgeDays)} .. ${fmtAge(s.oldestAgeDays)}`);
@@ -504,10 +534,21 @@ async function main(argv) {
 		console.error(`\nDry-run: ${toDelete.length} branch(es) would be deleted. Nothing was deleted.`);
 		return 0;
 	}
-	const refusals = deleteRefusals({ plan, expectCount: opts.expectCount, env, liveProduction, liveStaging });
+	const refusals = deleteRefusals({
+		plan,
+		expectCount: opts.expectCount,
+		env,
+		liveProduction,
+		liveStaging,
+		allowUnverifiedStaging: opts.allowUnverifiedStaging,
+		unmatchedProtect,
+	});
 	if (refusals.length) {
 		for (const r of refusals) console.error(`Refusing to delete: ${r}`);
 		return 2;
+	}
+	if (opts.allowUnverifiedStaging && !liveStaging.identified && toDelete.some((e) => e.environment === "staging")) {
+		console.error("WARNING: deleting staging branches without the staging Worker's provenance (--allow-unverified-staging).");
 	}
 	for (const e of toDelete) {
 		await deleteDatabase(org, token, e.name);
