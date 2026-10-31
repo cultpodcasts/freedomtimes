@@ -191,6 +191,91 @@ Assert-True ($tokenSkip.Value -eq "file-staging-jwt") "skips process TURSO_AUTH_
 $tokenKeep = Select-StagingEmdashTursoToken -TerraformToken "" -ProcessToken "process-staging-jwt" -FileToken "file-staging-jwt" -IgnoredProcessProductionShadow $false
 Assert-True ($tokenKeep.Value -eq "process-staging-jwt") "keeps process TURSO_AUTH_TOKEN when URL was not a production shadow"
 
+Write-Host "=== Staging EmDash token: Terraform first, fallback only on a Turso auth rejection (#140) ==="
+$tfWins = Select-StagingEmdashTursoToken -TerraformToken "tf-staging-jwt-0001" -ProcessToken "file-staging-jwt-0002" -FileToken "file-staging-jwt-0002" -IgnoredProcessProductionShadow $false
+Assert-True ($tfWins.Value -eq "tf-staging-jwt-0001" -and $tfWins.Source -eq "terraform output turso_database_auth_token") "#140: the Terraform output still wins (CI parity)"
+Assert-True ($null -ne $tfWins.Fallback -and $tfWins.Fallback.Value -eq "file-staging-jwt-0002") "#140: the next distinct candidate is kept as the fallback"
+$tfShadow = Select-StagingEmdashTursoToken -TerraformToken "tf-staging-jwt-0001" -ProcessToken "process-prod-jwt-0003" -FileToken "file-staging-jwt-0002" -IgnoredProcessProductionShadow $true
+Assert-True ($tfShadow.Fallback.Value -eq "file-staging-jwt-0002" -and $tfShadow.Fallback.Source -match '\.env\.dev') "#140: a production-shadow process JWT is never the fallback"
+$tfSame = Select-StagingEmdashTursoToken -TerraformToken "same-staging-jwt-0004" -ProcessToken "" -FileToken " same-staging-jwt-0004 " -IgnoredProcessProductionShadow $false
+Assert-True ($null -eq $tfSame.Fallback) "#140: no fallback when the other candidate is the same token"
+$fileOnly = Select-StagingEmdashTursoToken -TerraformToken "" -ProcessToken "" -FileToken "file-staging-jwt-0002" -IgnoredProcessProductionShadow $false
+Assert-True ($fileOnly.Value -eq "file-staging-jwt-0002" -and $null -eq $fileOnly.Fallback) "#140: .env.dev only has no fallback"
+
+Assert-True ((Get-DeployTursoAuthErrorClass -Text "SERVER_ERROR: Server returned HTTP status 401") -eq "unauthorized") "#140: 401 is an auth rejection"
+Assert-True ((Get-DeployTursoAuthErrorClass -Text "HTTP status 404 auth role not found") -eq "auth-role-not-found") "#140: 'auth role not found' (the #137 production error) is an auth rejection"
+Assert-True ((Get-DeployTursoAuthErrorClass -Text "getaddrinfo ENOTFOUND example.turso.io") -eq "") "#140: a DNS / network error is not an auth rejection"
+Assert-True ((Get-DeployTursoAuthErrorClass -Text "HTTP status 404 Not Found") -eq "not-found") "#140: a bare 404 is classed not-found (no fallback on it)"
+
+$savedStaging = $script:DeployIsStaging
+$savedBinding = $script:DeployTursoTokenBinding
+$savedToken = [Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")
+try {
+    $script:DeployIsStaging = $true
+    $tfBinding = @{ Value = "tf-staging-jwt-0001"; Source = "terraform output turso_database_auth_token"; Fallback = @{ Value = "file-staging-jwt-0002"; Source = "TURSO_AUTH_TOKEN (.env.dev)" } }
+    $rejectTf = { if ($env:TURSO_AUTH_TOKEN -eq "tf-staging-jwt-0001") { [pscustomobject]@{ Ok = $false; Output = "HTTP status 401 Unauthorized tf-staging-jwt-0001" } } else { [pscustomobject]@{ Ok = $true; Output = "" } } }
+
+    $script:DeployTursoTokenBinding = $tfBinding; $env:TURSO_AUTH_TOKEN = "tf-staging-jwt-0001"
+    $capture = Invoke-GuardCapturingWarnings { Confirm-DeployStagingEmdashTursoToken -Probe { [pscustomobject]@{ Ok = $true; Output = "" } } }
+    Assert-True ($env:TURSO_AUTH_TOKEN -eq "tf-staging-jwt-0001" -and @($capture.Warnings).Count -eq 0) "#140: an accepted Terraform token is kept, no warning"
+
+    $script:DeployTursoTokenBinding = $tfBinding; $env:TURSO_AUTH_TOKEN = "tf-staging-jwt-0001"
+    $capture = Invoke-GuardCapturingWarnings { Confirm-DeployStagingEmdashTursoToken -Probe $rejectTf }
+    Assert-True ($env:TURSO_AUTH_TOKEN -eq "file-staging-jwt-0002") "#140: a rejected Terraform token falls back to the .env.dev token"
+    Assert-True (Test-GuardWarned -Warnings $capture.Warnings -Pattern 'Turso rejected the Terraform output turso_database_auth_token \(unauthorized\)') "#140: the fallback warns once with the error class"
+    Assert-True (-not (@($capture.Warnings) -join "`n").Contains("jwt-000")) "#140: the warning never contains a token value"
+    Assert-True ($script:DeployTursoTokenBinding.Source -match '\.env\.dev') "#140: the binding now names the fallback source"
+
+    foreach ($case in @(
+            @{ Name = "a non-auth error"; Binding = $tfBinding; Probe = { [pscustomobject]@{ Ok = $false; Output = "getaddrinfo ENOTFOUND tf-staging-jwt-0001" } } },
+            @{ Name = "a bare 404 (wrong URL / deleted database)"; Binding = $tfBinding; Probe = { [pscustomobject]@{ Ok = $false; Output = "HTTP status 404 Not Found" } } },
+            @{ Name = "a rejected .env.dev token (no Terraform token)"; Binding = @{ Value = "tf-staging-jwt-0001"; Source = "TURSO_AUTH_TOKEN (.env.dev)"; Fallback = $null }; Probe = $rejectTf },
+            @{ Name = "no fallback candidate"; Binding = @{ Value = "tf-staging-jwt-0001"; Source = "terraform output turso_database_auth_token"; Fallback = $null }; Probe = $rejectTf },
+            @{ Name = "both tokens rejected"; Binding = $tfBinding; Probe = { [pscustomobject]@{ Ok = $false; Output = "HTTP status 401 file-staging-jwt-0002 tf-staging-jwt-0001" } } }
+        )) {
+        $script:DeployTursoTokenBinding = $case.Binding; $env:TURSO_AUTH_TOKEN = "tf-staging-jwt-0001"
+        $msg = ""
+        try { Invoke-GuardCapturingWarnings { Confirm-DeployStagingEmdashTursoToken -Probe $case.Probe } | Out-Null } catch { $msg = $_.Exception.Message }
+        Assert-True ($msg -match 'Nothing was migrated') "#140: $($case.Name) fails closed before migrate"
+        Assert-True (-not $msg.Contains("jwt-000")) "#140: $($case.Name) error never echoes a token value"
+        Assert-True ($env:TURSO_AUTH_TOKEN -eq "tf-staging-jwt-0001") "#140: $($case.Name) leaves the selected token in place"
+    }
+
+    $script:DeployIsStaging = $false
+    $script:DeployTursoTokenBinding = $tfBinding; $env:TURSO_AUTH_TOKEN = "tf-staging-jwt-0001"
+    $probeRan = $false
+    Confirm-DeployStagingEmdashTursoToken -Probe { $script:probeRan = $true; [pscustomobject]@{ Ok = $false; Output = "401" } }
+    Assert-True (-not $probeRan -and $env:TURSO_AUTH_TOKEN -eq "tf-staging-jwt-0001") "#140: production never probes or swaps the token"
+
+    # Real node, non-zero exit, PSNativeCommandUseErrorActionPreference = $true: classified, not thrown.
+    $savedRoot = $script:DeployRepoRoot
+    $probeRoot = Join-Path ([IO.Path]::GetTempPath()) ("probe140-{0}" -f [guid]::NewGuid())
+    New-Item -ItemType Directory -Path (Join-Path $probeRoot "web/scripts") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $probeRoot "web/scripts/emdash-core-migrate.mjs") -Value 'console.error("SERVER_ERROR: Server returned HTTP status 401"); process.exit(1);'
+    $PSNativeCommandUseErrorActionPreference = $true
+    try {
+        $script:DeployRepoRoot = $probeRoot
+        $nativeThrew = $false
+        try { $real = Invoke-DeployEmdashTokenProbe } catch { $nativeThrew = $true }
+        Assert-True (-not $nativeThrew -and -not $real.Ok -and (Get-DeployTursoAuthErrorClass -Text $real.Output) -eq "unauthorized") "#140: real-node probe exit 1 is classified, not thrown, under PSNativeCommandUseErrorActionPreference = `$true"
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $false
+        $script:DeployRepoRoot = $savedRoot
+        Remove-Item -LiteralPath $probeRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+finally {
+    $script:DeployIsStaging = $savedStaging
+    $script:DeployTursoTokenBinding = $savedBinding
+    if ($null -eq $savedToken) { Remove-Item Env:TURSO_AUTH_TOKEN -ErrorAction SilentlyContinue } else { $env:TURSO_AUTH_TOKEN = $savedToken }
+}
+
+$commonForTokenCheck = (Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "Deploy-EnvironmentCommon.ps1")) -replace "`r`n", "`n"
+$migrateBody = [regex]::Match($commonForTokenCheck, '(?s)function Invoke-DeployEmdashCoreMigrate \{.*?\n\}').Value
+Assert-True ($migrateBody -match '(?s)Missing \$manifest.*?Confirm-DeployStagingEmdashTursoToken.*?Ensure-DeployEmdashTargetFingerprintFromStatus') "#140: migrate checks the staging token after the manifest check and before pinning / apply"
+Assert-True (([regex]::Matches($commonForTokenCheck, '\$null = Set-TursoBuildEnv')).Count -eq 0 -and ([regex]::Matches($commonForTokenCheck, '\$script:DeployTursoTokenBinding = \(Set-TursoBuildEnv')).Count -eq 3) "#140: every deploy Set-TursoBuildEnv call keeps the token binding"
+
 Write-Host "=== Resolve-ProductionEmdashTursoToken: TURSO_PRODUCTION_EMDASH_DB_TOKEN only, no Terraform output (#137) ==="
 $tokenCmd = Get-Command Resolve-ProductionEmdashTursoToken
 Assert-True (-not $tokenCmd.Parameters.ContainsKey("TerraformExe")) "production token resolver no longer takes a Terraform executable"
@@ -926,7 +1011,7 @@ if ($null -ne $drHintAst) {
     Assert-True ((Get-DrSafetyBackupHint -Message "verify FAIL") -notmatch "SkipLiveProvenanceCheck") "DR hint: other backup failures get the generic advice"
 }
 
-$deployWorkflowText = Get-Content -Raw -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) ".github/workflows/deploy-worker.yml")
+$deployWorkflowText = (Get-Content -Raw -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) ".github/workflows/deploy-worker.yml")) -replace "`r`n", "`n" # CRLF checkouts (Windows autocrlf)
 $backupStep = [regex]::Match($deployWorkflowText, '(?s)backup-production-emdash\.ps1 -AllowProduction[^\n]*')
 Assert-True ($backupStep.Success -and $backupStep.Value -notmatch 'SkipLiveProvenanceCheck') "deploy-worker.yml never skips the pre-backup live check"
 Assert-True ($deployWorkflowText -match '(?s)DEPLOY_PROVENANCE_TOKEN: \$\{\{ secrets\.DEPLOY_PROVENANCE_TOKEN \}\}\s*\n\s*run: \|\s*\n\s*\$group =') "deploy-worker.yml passes DEPLOY_PROVENANCE_TOKEN to the backup step"

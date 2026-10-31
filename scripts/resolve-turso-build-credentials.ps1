@@ -204,19 +204,39 @@ function Select-StagingEmdashTursoToken {
         [bool]$IgnoredProcessProductionShadow
     )
 
+    # Precedence matches terraform-staging.yml, which builds, migrates and sets the staging Worker's
+    # TURSO_AUTH_TOKEN from the Terraform output: Terraform output, then the process token (unless
+    # the process URL was a production shadow, CA-01/CA-02), then .env.dev. Fallback is the next
+    # candidate with a different value. The deploy switches to it only when Turso rejects the
+    # Terraform token (Confirm-DeployStagingEmdashTursoToken, #140), so a stale Terraform JWT in
+    # state cannot block a good .env.dev token. Never prints token values.
+    $candidates = [System.Collections.Generic.List[hashtable]]::new()
     if (-not [string]::IsNullOrWhiteSpace($TerraformToken)) {
-        return @{ Value = $TerraformToken; Source = "terraform output turso_database_auth_token" }
+        $candidates.Add(@{ Value = $TerraformToken; Source = "terraform output turso_database_auth_token" })
     }
 
     if (-not $IgnoredProcessProductionShadow -and -not [string]::IsNullOrWhiteSpace($ProcessToken)) {
-        return @{ Value = $ProcessToken; Source = "TURSO_AUTH_TOKEN (process)" }
+        $candidates.Add(@{ Value = $ProcessToken; Source = "TURSO_AUTH_TOKEN (process)" })
     }
 
     if (-not [string]::IsNullOrWhiteSpace($FileToken)) {
-        return @{ Value = $FileToken; Source = "TURSO_AUTH_TOKEN (.env.dev)" }
+        $candidates.Add(@{ Value = $FileToken; Source = "TURSO_AUTH_TOKEN (.env.dev)" })
     }
 
-    throw "Missing staging EmDash Turso token. Set TURSO_AUTH_TOKEN in .env.dev or run terraform apply."
+    if ($candidates.Count -eq 0) {
+        throw "Missing staging EmDash Turso token. Set TURSO_AUTH_TOKEN in .env.dev or run terraform apply."
+    }
+
+    $selected = $candidates[0]
+    $fallback = $null
+    for ($i = 1; $i -lt $candidates.Count; $i++) {
+        if ($candidates[$i].Value.Trim() -ne $selected.Value.Trim()) {
+            $fallback = @{ Value = $candidates[$i].Value; Source = $candidates[$i].Source }
+            break
+        }
+    }
+
+    return @{ Value = $selected.Value; Source = $selected.Source; Fallback = $fallback }
 }
 
 function Get-TursoHostSuffixFromLibsqlUrl {
