@@ -12,13 +12,19 @@
  *   node web/scripts/verify-production-emdash-backup.mjs --backup-db .release/backups/emdash-production-YYYYMMDD-HHMMSS.db --from-worker
  *   node web/scripts/verify-production-emdash-backup.mjs --backup-branch prod-rollback-YYYYMMDD-HHMMSS --live-url ... --live-token ...
  *   node web/scripts/verify-production-emdash-backup.mjs --check-metadata .release/rollback-branches/<stamp>-<branch>.json --max-age-hours 24
+ *   node web/scripts/verify-production-emdash-backup.mjs --check-staging-auth   (#161: staging token preflight only)
+ *
+ * Staging token (--compare-staging / --check-staging-auth): EMDASH_STAGING_PAT, then
+ * EMDASH_STAGING_TOKEN, then ~/.config/emdash/auth.json (web/scripts/lib/staging-emdash-auth.mjs).
+ * A missing or rejected token fails with error staging_token_missing / staging_token_rejected,
+ * naming the variable (never its value). With --metadata-out, every failure (including those)
+ * still writes a report { pass: false, error, message } so the backup metadata says why.
  *
  * Exit 0 = PASS, 1 = FAIL, 2 = usage/config error.
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
 import {
 	compareInventories,
 	databaseNameFromUrl,
@@ -30,30 +36,19 @@ import {
 	openSqliteReadonly,
 	weeklySlugsSample,
 } from "./lib/production-emdash-inventory.mjs";
+import {
+	STAGING_DEFAULT_URL,
+	StagingAuthError,
+	checkStagingAuth,
+	isAuthRejectionStatus,
+	resolveStagingToken,
+	stagingTokenMissingError,
+	stagingTokenRejectedError,
+} from "./lib/staging-emdash-auth.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(webDir, "..");
-
-function loadAuthToken(baseUrl) {
-	const isStaging = /staging\./i.test(baseUrl);
-	const envToken = (
-		isStaging
-			? process.env.EMDASH_STAGING_PAT ?? process.env.EMDASH_STAGING_TOKEN
-			: process.env.EMDASH_PRODUCTION_PAT ??
-				process.env.EMDASH_PRODUCTION_TOKEN ??
-				process.env.FREEDOMTIMES_PRODUCTION_EMDASH_PAT
-	)?.trim();
-	if (envToken) return envToken;
-	try {
-		const auth = JSON.parse(readFileSync(path.join(homedir(), ".config", "emdash", "auth.json"), "utf8"));
-		const t = auth[baseUrl]?.accessToken;
-		if (t) return t;
-	} catch {
-		/* ignore */
-	}
-	return "";
-}
 
 function parseArgs(argv) {
 	const out = {
@@ -65,7 +60,8 @@ function parseArgs(argv) {
 		liveToken: "",
 		fromWorker: false,
 		compareStaging: false,
-		stagingUrl: process.env.EMDASH_STAGING_URL || "https://staging.freedomtimes.news",
+		checkStagingAuth: false,
+		stagingUrl: process.env.EMDASH_STAGING_URL || STAGING_DEFAULT_URL,
 		metadataOut: "",
 		checkMetadata: "",
 		maxAgeHours: 24,
@@ -82,6 +78,7 @@ function parseArgs(argv) {
 		else if (a === "--live-token") out.liveToken = next();
 		else if (a === "--from-worker") out.fromWorker = true;
 		else if (a === "--compare-staging") out.compareStaging = true;
+		else if (a === "--check-staging-auth") out.checkStagingAuth = true;
 		else if (a === "--staging-url") out.stagingUrl = next();
 		else if (a === "--metadata-out") out.metadataOut = next();
 		else if (a === "--check-metadata") out.checkMetadata = next();
@@ -94,6 +91,9 @@ function parseArgs(argv) {
   --from-worker                 resolve live inventory via wrangler production bindings
   --live-url / --live-token     live compare target
   --compare-staging             also require live weeklies present on staging to be in backup
+                                (token: EMDASH_STAGING_PAT, EMDASH_STAGING_TOKEN or auth.json)
+  --check-staging-auth          only check the staging token works (read-only GET); exit 0 / 2
+  --staging-url <origin>        staging EmDash (default EMDASH_STAGING_URL or ${STAGING_DEFAULT_URL})
   --check-metadata <json>       gate: require verification.pass and freshness
   --max-age-hours <n>           with --check-metadata (default 24)
   --metadata-out <json>         write verification report`);
@@ -198,8 +198,32 @@ async function loadBackupPosts(args) {
 	}
 }
 
+/** Set by main() so the top-level catch can still write --metadata-out on failure (#161). */
+let parsedArgs = null;
+
+function writeReport(metadataOut, report) {
+	const out = path.resolve(repoRoot, metadataOut);
+	writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+	console.error(`Wrote verification report: ${out}`);
+}
+
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
+	parsedArgs = args;
+
+	if (args.checkStagingAuth) {
+		const r = await checkStagingAuth(args.stagingUrl);
+		console.log(
+			JSON.stringify({
+				pass: true,
+				mode: "check-staging-auth",
+				stagingUrl: args.stagingUrl,
+				stagingTokenSource: r.tokenSource,
+				stagingStatus: r.status,
+			}),
+		);
+		process.exit(0);
+	}
 
 	if (args.checkMetadata) {
 		const metaPath = path.resolve(repoRoot, args.checkMetadata);
@@ -320,13 +344,18 @@ async function main() {
 
 	const backup = await loadBackupPosts(args);
 	let stagingPublishedSlugs = [];
+	let stagingTokenSource = null;
 	if (args.compareStaging) {
-		const tok = loadAuthToken(args.stagingUrl);
-		if (!tok) {
-			console.error(`--compare-staging requires EmDash token for ${args.stagingUrl}`);
-			process.exit(2);
+		const { token: tok, source } = resolveStagingToken(args.stagingUrl);
+		if (!tok) throw stagingTokenMissingError(args.stagingUrl);
+		stagingTokenSource = source;
+		let stagingPosts;
+		try {
+			stagingPosts = await listPublishedPostSlugsViaApi(args.stagingUrl, tok);
+		} catch (e) {
+			if (isAuthRejectionStatus(e?.status)) throw stagingTokenRejectedError(args.stagingUrl, e.status, source);
+			throw e;
 		}
-		const stagingPosts = await listPublishedPostSlugsViaApi(args.stagingUrl, tok);
 		stagingPublishedSlugs = stagingPosts.map((p) => p.slug);
 	}
 
@@ -353,6 +382,7 @@ async function main() {
 		stagingCompare: args.compareStaging
 			? {
 					stagingPublishedCount: stagingPublishedSlugs.length,
+					stagingTokenSource,
 					missingRecentWeekliesVsStaging: comparison.missingRecentWeekliesVsStaging,
 				}
 			: null,
@@ -365,16 +395,25 @@ async function main() {
 		for (const f of report.failures) console.error(`  - ${f}`);
 	}
 
-	if (args.metadataOut) {
-		const out = path.resolve(repoRoot, args.metadataOut);
-		writeFileSync(out, `${text}\n`, "utf8");
-		console.error(`Wrote verification report: ${out}`);
-	}
+	if (args.metadataOut) writeReport(args.metadataOut, report);
 
 	process.exit(report.pass ? 0 : 1);
 }
 
 main().catch((e) => {
-	console.error(JSON.stringify({ pass: false, error: String(e?.message ?? e) }));
+	// error is a short machine-readable kind (the CI summary prints only that); message has detail.
+	const report =
+		e instanceof StagingAuthError
+			? e.toReport()
+			: { pass: false, error: "verify_error", message: String(e?.message ?? e) };
+	report.verifiedAtUtc = new Date().toISOString();
+	console.error(JSON.stringify(report));
+	if (parsedArgs?.metadataOut && !parsedArgs.checkMetadata && !parsedArgs.checkStagingAuth) {
+		try {
+			writeReport(parsedArgs.metadataOut, report);
+		} catch (w) {
+			console.error(`Could not write the failure report: ${w?.message ?? w}`);
+		}
+	}
 	process.exit(2);
 });

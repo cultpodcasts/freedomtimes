@@ -36,6 +36,16 @@
   Then runs verify-production-emdash-backup.mjs (--from-worker --compare-staging by default).
   Non-zero exit if verify FAIL.
 
+  Staging compare (#161): required by default (Jon, 31 Oct 2026: a machine with the production
+  keys has the staging token too). It needs a staging EmDash API token, EMDASH_STAGING_PAT (or
+  EMDASH_STAGING_TOKEN), filled from .env.dev like the production keys; failing both,
+  ~/.config/emdash/auth.json. Before any branch or export (and before the -DryRun return) the
+  token is checked read-only (verify-production-emdash-backup.mjs --check-staging-auth); if it is
+  missing or rejected (401/403) the script stops, naming the variable and the fix, and nothing is
+  backed up. -SkipStagingCompare skips the check and the compare (deploy-worker.yml and
+  deploy-production-local.ps1 pass it). The metadata verification field always holds the verify
+  report or, when verify wrote none, its error kind and message.
+
   -SkipFileExport (used by .github/workflows/deploy-worker.yml; the repo is public, so CI
   never writes a .db): verify reads the new prod-rollback-* branch directly instead of the
   file, with a read-only, 1-day database token created for that branch only
@@ -69,6 +79,8 @@ $ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot/lib/EnvFile.ps1"
 . "$PSScriptRoot/lib/TursoSourcePreflight.ps1"
+# #161: verification record + failure messages that name the cause.
+. "$PSScriptRoot/lib/BackupVerifyReport.ps1"
 # Live Worker provenance helpers (#142/#144/#148): Assert-DeployLiveWorkerTursoHostMatchesBackup
 # -Phase PreBackup and Write-DeployBackupSourceCaveats.
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
@@ -80,13 +92,17 @@ $ErrorActionPreference = "Stop"
 # resolve silently back up whatever static DB .env.dev names (2026-09-07 stale-DB
 # incident, CONTENT_PROMOTION_RUNBOOK.md). Operators who want it must export it on
 # purpose. CLOUDFLARE_* and other file keys are not passed to the node/wrangler children.
+# EMDASH_STAGING_PAT / EMDASH_STAGING_TOKEN (#161): the staging EmDash API token for the default
+# staging compare (read-only GET of staging's published posts; never a database token).
 $script:ProductionBackupEnvDevKeys = @(
     "TURSO_PRODUCTION_EMDASH_DB_URL",
     "TURSO_PRODUCTION_EMDASH_DB_TOKEN",
     "TURSO_PRODUCTION_EMDASH_DB_NAME",
     "TF_VAR_TURSO_ORGANIZATION",
     "TURSO_ORGANIZATION",
-    "TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION"
+    "TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION",
+    "EMDASH_STAGING_PAT",
+    "EMDASH_STAGING_TOKEN"
 )
 
 if (-not $AllowProduction) {
@@ -165,7 +181,7 @@ function Write-BackupVerifySummaryForCi {
             $report = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json -ErrorAction Stop
             $props = $report.PSObject.Properties
             $get = { param($name) if ($props[$name]) { $report.$name } else { $null } }
-            Write-Host "Verify (CI summary; slugs withheld from public logs): pass=$(& $get 'pass') exit=$ExitCode"
+            Write-Host "Verify (CI summary; slugs withheld from public logs): pass=$(& $get 'pass') exit=$ExitCode error=$(& $get 'error')"
             Write-Host "  backupCount=$(& $get 'backupCount') liveCount=$(& $get 'liveCount') missingInBackup=$(& $count (& $get 'missingInBackup')) extraInBackup=$(& $count (& $get 'extraInBackup')) statusMismatch=$(& $count (& $get 'statusMismatch')) failures=$(& $count (& $get 'failures'))"
             Write-Host "  inventoryHash=$(& $get 'inventoryHash') liveInventoryHash=$(& $get 'liveInventoryHash')"
             return
@@ -255,6 +271,7 @@ try {
     # file is not an error: explicit exports (Linux / -UseNativeTurso) work without it, and
     # the resolver reports missing values precisely (resolve_failed / org_suffix_unresolved).
     $envDev = Join-Path $repoRoot ".env.dev"
+    $filledKeys = [string[]]@()
     if (Test-Path -LiteralPath $envDev -PathType Leaf) {
         $filledKeys = Import-EnvFileFillMissing -Path $envDev -Keys $script:ProductionBackupEnvDevKeys
         $filledText = if ($filledKeys.Count -gt 0) { $filledKeys -join ", " } else { "none (all preset or absent)" }
@@ -343,6 +360,25 @@ try {
                     -WorkerHost $workerHost -Organization $resolverOrg -Output $shown.Output -UseWsl:$UseWslTurso)
         }
         Write-Host "Source DB confirmed: $sourceDatabase" -ForegroundColor Green
+    }
+
+    # #161: the staging compare is required by default, so prove the staging token works before
+    # any branch or export. Before this, a missing/expired token surfaced only after the Turso
+    # branch existed, as a bare "VERIFY FAILED" with no reason in the metadata.
+    if ($SkipStagingCompare) {
+        Write-Host "Staging compare skipped (-SkipStagingCompare)." -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "Checking the staging EmDash token for the staging compare…" -ForegroundColor Cyan
+        $stagingCheck = Invoke-External -FilePath "node" -Arguments @(
+            (Join-Path $repoRoot "web/scripts/verify-production-emdash-backup.mjs"), "--check-staging-auth"
+        ) -CaptureOutput -AllowFailure
+        if ($stagingCheck.ExitCode -ne 0) {
+            $stagingFailure = Get-BackupVerifyFailureFromOutput -Output $stagingCheck.Output
+            throw (Format-StagingAuthPreflightFailure -Failure $stagingFailure -ExitCode $stagingCheck.ExitCode -FilledFromEnvDev $filledKeys)
+        }
+        $stagingOk = Get-BackupVerifyProperty (Get-LastJsonObjectFromOutput -Output $stagingCheck.Output) "stagingTokenSource"
+        Write-Host "Staging token OK ($stagingOk)." -ForegroundColor Green
     }
 
     if ($DryRun) {
@@ -480,10 +516,8 @@ try {
         $verifyRun.Output | ForEach-Object { $_ }
     }
     $verifyPass = $verifyRun.ExitCode -eq 0
-    $verification = $null
-    if (Test-Path -LiteralPath $verifyReportPath) {
-        $verification = Get-Content -LiteralPath $verifyReportPath -Raw | ConvertFrom-Json
-    }
+    # #161: never null. The report, or the error kind and message when verify wrote none.
+    $verification = New-BackupVerificationRecord -ReportPath $verifyReportPath -ExitCode $verifyRun.ExitCode -Output $verifyRun.Output
 
     $metadataFileName = if ($branchName) {
         "$timestampUtc-$branchName.json"
@@ -576,7 +610,7 @@ try {
     }
 
     if (-not $verifyPass) {
-        throw "PRODUCTION BACKUP VERIFY FAILED. Refusing to treat this checkpoint as good. See $verifyReportPath and $metadataFilePath"
+        throw (Format-BackupVerifyFailedMessage -Verification $verification -VerifyReportPath $verifyReportPath -MetadataPath $metadataFilePath -FilledFromEnvDev $filledKeys -PublicLog:($env:GITHUB_ACTIONS -eq "true"))
     }
     $parts = @()
     if ($branchName) { $parts += "branch" }

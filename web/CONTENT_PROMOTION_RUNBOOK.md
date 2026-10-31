@@ -142,6 +142,8 @@ node web/scripts/verify-production-emdash-backup.mjs --backup-db .release/backup
 node web/scripts/verify-production-emdash-backup.mjs --check-metadata auto
 ```
 
+`--compare-staging` (on by default in `backup-production-emdash.ps1`) needs a staging EmDash token: `EMDASH_STAGING_PAT` or `EMDASH_STAGING_TOKEN`, the same variables as below; the backup script also reads them from `.env.dev`. The full list of `.env.dev` keys a local backup needs is in `web/docs/DEPLOY.md` “Local backup credentials” ([#161](https://github.com/cultpodcasts/freedomtimes/issues/161)).
+
 **FAIL (non-zero)** when:
 
 - Any live published slug (`ec_posts` where `deleted_at IS NULL` and `status = published`) is missing from the backup.
