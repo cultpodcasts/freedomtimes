@@ -527,6 +527,24 @@ Assert-True ((Get-DeployTursoHostProvenanceHash -TursoHost "") -eq "") "empty ho
 $provDrHash = Get-DeployTursoHostProvenanceHash -TursoHost $provDrHost
 Assert-True ($provDrHash -ne $provHash) "a DR host hashes differently"
 
+# Runs a provenance call as on GitHub Actions; returns its host output and job-summary text.
+function Invoke-WithGitHubStepSummary {
+    param([scriptblock]$Body)
+    $prevGha = $env:GITHUB_ACTIONS
+    $prevSummary = $env:GITHUB_STEP_SUMMARY
+    $summaryFile = [System.IO.Path]::GetTempFileName()
+    try {
+        $env:GITHUB_ACTIONS = "true"
+        $env:GITHUB_STEP_SUMMARY = $summaryFile
+        $hostLines = @(& $Body 3>$null 6>&1 | ForEach-Object { "$_" })
+        [pscustomobject]@{ Host = ($hostLines -join "`n"); Summary = [string](Get-Content -Raw -LiteralPath $summaryFile) }
+    }
+    finally {
+        $env:GITHUB_ACTIONS = $prevGha
+        $env:GITHUB_STEP_SUMMARY = $prevSummary
+        Remove-Item -LiteralPath $summaryFile -ErrorAction SilentlyContinue
+    }
+}
 function New-ProvBody { param([string]$Hash, [string]$Commit = "c0ffee1") ([ordered]@{ schema = 1; commitSha = $Commit; tursoHostSha256 = $Hash } | ConvertTo-Json -Compress) }
 function Get-ProvOutcome {
     param([string]$Phase, [int]$Status, [string]$Body, [string]$Commit = "")
@@ -608,6 +626,8 @@ try {
     $fetchVersionPre = { [pscustomobject]@{ StatusCode = 200; Body = (New-VersionBody $preSha) } }
     $bootstrap = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionPre -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null
     Assert-True ($bootstrap -eq "Bootstrap" -and $script:DeployLiveProvenanceBootstrap) "pre-deploy: 404 with a live Worker that predates the endpoint is a bootstrap"
+    $ci = Invoke-WithGitHubStepSummary { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetch404 -FetchVersion $fetchVersionPre -GitOps $gitPre -DelaySeconds 0 }
+    Assert-True ($ci.Host -match '::warning title=Live Worker provenance bootstrap \(#142\)::' -and $ci.Summary -match '\(PreDeploy, #142\): \*\*bootstrap\*\*' -and $ci.Summary -match 'secret-vs-backup host check only') "pre-deploy bootstrap: #142 warning title and job-summary line"
 
     $script:DeployLiveProvenanceBootstrap = $false
     $refused = ""
@@ -733,6 +753,10 @@ try {
 
     $bootstrap = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreBackup -ExpectedTursoHost $provHost -Fetch $fetch404 -FetchVersion $fetchVersionPre -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null
     Assert-True ($bootstrap -eq "Bootstrap" -and -not $script:DeployLiveProvenanceBootstrap) "pre-backup: 404 from a Worker that predates the endpoint = bootstrap (#144), deploy flag untouched"
+    $ci = Invoke-WithGitHubStepSummary { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreBackup -ExpectedTursoHost $provHost -Fetch $fetch404 -FetchVersion $fetchVersionPre -GitOps $gitPre -DelaySeconds 0 }
+    Assert-True ($ci.Host -match '::warning title=Live Worker provenance bootstrap \(#148\)::' -and $ci.Host -notmatch '\(#142\)::') "pre-backup bootstrap: warning title names #148, not the deploy check"
+    Assert-True ($ci.Summary -match '\(PreBackup, #148\): \*\*bootstrap\*\*' -and $ci.Summary -match 'backup source not proven' -and $ci.Summary -notmatch 'secret-vs-backup') "pre-backup bootstrap: job summary says the backup source is unproven (no deploy wording)"
+    Assert-True ($ci.Host -notmatch [regex]::Escape($provHost) -and $ci.Summary -notmatch [regex]::Escape($provHost)) "pre-backup bootstrap output never prints the hostname"
 
     $msg = ""
     try { Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreBackup -ExpectedTursoHost $provHost -Fetch $fetch404 -FetchVersion $fetchVersionLater -GitOps $gitPre -DelaySeconds 0 3>$null 6>$null | Out-Null } catch { $msg = $_.Exception.Message }
@@ -779,6 +803,29 @@ Assert-True ($preBackupIdx -gt 0 -and $preBackupIdx -lt $caveatIdx -and $caveatI
 Assert-True ($backupScriptText -notmatch '(?m)^\s*Write-Warning \$w\s*$' -and $backupScriptText -notmatch 'Write-Warning "Source is the named production DB') "backup-production-emdash.ps1 has no unconditional resolver-caveat warnings left"
 Assert-True ($backupScriptText -match 'SkipLiveProvenanceCheck -and \$env:GITHUB_ACTIONS -eq "true"\)\s*\{\s*throw') "backup-production-emdash.ps1 refuses -SkipLiveProvenanceCheck on GitHub Actions"
 Assert-True ($backupScriptText -match 'liveProvenanceCheck\s*=\s*\$liveProvenance') "backup metadata records liveProvenanceCheck"
+
+# #148 / DR: the disaster-recovery safety backup can forward the explicit opt-in.
+$drScriptPath = Join-Path $PSScriptRoot "disaster-recover-production-emdash.ps1"
+$drScriptText = Get-Content -Raw -LiteralPath $drScriptPath
+$drAst = [System.Management.Automation.Language.Parser]::ParseFile($drScriptPath, [ref]$null, [ref]$null)
+$drParams = @($drAst.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
+Assert-True ($drParams -contains "SkipLiveProvenanceCheck") "disaster-recover-production-emdash.ps1 has an explicit -SkipLiveProvenanceCheck switch"
+Assert-True ($drScriptText -match '& \$backupScript -AllowProduction [^\n]*-SkipLiveProvenanceCheck:\$SkipLiveProvenanceCheck') "DR safety backup forwards -SkipLiveProvenanceCheck to backup-production-emdash.ps1"
+Assert-True ($drScriptText -match '\[dry-run\] backup-production-emdash\.ps1 -AllowProduction\$skipLiveArg') "DR -DryRun shows whether the live check is skipped"
+Assert-True ($drScriptText -match 'catch \{\s*throw "Safety backup failed: \$\(\$_\.Exception\.Message\) \$\(Get-DrSafetyBackupHint -Message \$_\.Exception\.Message') "DR safety-backup failure message carries the #148 hint"
+$drHintAst = $drAst.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq "Get-DrSafetyBackupHint" }, $true)
+Assert-True ($null -ne $drHintAst) "DR script defines Get-DrSafetyBackupHint"
+if ($null -ne $drHintAst) {
+    . ([scriptblock]::Create($drHintAst.Extent.Text))
+    $downMsg = "Refusing to back up (live Worker provenance, #148): gave up after 4 attempts: unreachable. Nothing was backed up, migrated or deployed."
+    $mismatchMsg = "Refusing to back up (live Worker provenance, #148): The live production Worker reads a different Turso DB host than the backup source. Nothing was backed up, migrated or deployed."
+    $downHint = Get-DrSafetyBackupHint -Message $downMsg
+    Assert-True ($downHint -match "-SkipLiveProvenanceCheck" -and $downHint -match "Do not use -SkipSafetyBackup") "DR hint: site down points to -SkipLiveProvenanceCheck, not -SkipSafetyBackup"
+    $mismatchHint = Get-DrSafetyBackupHint -Message $mismatchMsg
+    Assert-True ($mismatchHint -notmatch "re-run with -SkipLiveProvenanceCheck" -and $mismatchHint -match "do not skip the check") "DR hint: a host mismatch is never told to skip the check"
+    Assert-True ((Get-DrSafetyBackupHint -Message $downMsg -SkipLiveProvenanceCheck) -notmatch "SkipLiveProvenanceCheck") "DR hint: already skipping, no repeat advice"
+    Assert-True ((Get-DrSafetyBackupHint -Message "verify FAIL") -notmatch "SkipLiveProvenanceCheck") "DR hint: other backup failures get the generic advice"
+}
 
 $deployWorkflowText = Get-Content -Raw -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) ".github/workflows/deploy-worker.yml")
 $backupStep = [regex]::Match($deployWorkflowText, '(?s)backup-production-emdash\.ps1 -AllowProduction[^\n]*')

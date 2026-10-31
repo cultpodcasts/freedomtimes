@@ -28,7 +28,9 @@
   the script: nothing is backed up. A 404 passes only as the #144 bootstrap (live commit predates
   the endpoint). On a match the resolver caveats (env fallback, "named DB stale/thin") collapse
   into one notice. -SkipLiveProvenanceCheck (local only, refused on GitHub Actions) is for when
-  the site is down, e.g. a disaster-recovery backup; the caveats then stay warnings.
+  the site is down, e.g. the disaster-recovery safety backup
+  (disaster-recover-production-emdash.ps1 -SkipLiveProvenanceCheck forwards it); the caveats
+  then stay warnings and the metadata records liveProvenanceCheck: skipped.
 
   Then runs verify-production-emdash-backup.mjs (--from-worker --compare-staging by default).
   Non-zero exit if verify FAIL.

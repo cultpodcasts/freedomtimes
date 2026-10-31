@@ -14,6 +14,13 @@
     3) Retarget production Worker TURSO_* secrets to -FromBranch (or a fresh --from-db clone)
     4) Print verification probes (apex + sample posts)
 
+  Step 2 runs backup-production-emdash.ps1, which first proves the source is the DB the
+  LIVE production Worker reads (/api/deploy-provenance.json, #148) and refuses otherwise.
+  If the production site is down, that check cannot answer: pass -SkipLiveProvenanceCheck
+  (explicit opt-in, forwarded to the backup) to take the safety backup without it. Never
+  use it while the site is up and reports a different DB host; that refusal is the point.
+  -SkipSafetyBackup takes no backup at all and is not the fix for a down site.
+
   Named production DB is left intact unless -OverwriteNamedProduction (dangerous).
   NEW backups are always prod-backup-*. Legacy prod-rollback-* branches remain valid
   restore sources. Never treat a work/scratch name (prod-work-embeds-…) as the
@@ -41,6 +48,9 @@ param(
     [switch]$OverwriteNamedProduction,
     [string]$NamedProductionDatabase = "freedomtimes-emdash-production",
     [switch]$SkipSafetyBackup,
+    # #148: forwarded to backup-production-emdash.ps1 for the safety backup. Only when the
+    # production site is down; the backup script refuses it on GitHub Actions.
+    [switch]$SkipLiveProvenanceCheck,
     [switch]$DryRun,
     [switch]$UseNativeTurso,
     [string[]]$ProbePaths = @("/", "/posts/weekly-summary-1-september-2026", "/posts/weekly-summary-10-august-2026")
@@ -100,6 +110,27 @@ function Invoke-Turso {
     return Invoke-External -FilePath "turso" -Arguments $TursoArgs -CaptureOutput
 }
 
+function Get-DrSafetyBackupHint {
+    <#
+    .SYNOPSIS
+      #148: what to tell the operator when the safety backup throws. A live-provenance refusal
+      that is not a host mismatch (site down, 5xx, unreachable, unproven 404) points to
+      -SkipLiveProvenanceCheck; a mismatch means the site is up and reading another DB, so it
+      must be fixed, never skipped.
+    #>
+    param(
+        [string]$Message,
+        [switch]$SkipLiveProvenanceCheck
+    )
+    if ($SkipLiveProvenanceCheck -or $Message -notmatch 'live Worker provenance, #148') {
+        return "Fix backup/verify before retargeting Worker."
+    }
+    if ($Message -match 'different Turso DB host') {
+        return "The live Worker is up and reads a different DB than the backup source: fix TURSO_PRODUCTION_EMDASH_DB_* (do not skip the check), then re-run."
+    }
+    return "If the production site is down (so it cannot prove its DB), re-run with -SkipLiveProvenanceCheck to take the safety backup without that check. Do not use -SkipSafetyBackup: it takes no backup."
+}
+
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $script:UseWslTurso = -not $UseNativeTurso
 
@@ -132,12 +163,21 @@ try {
 
     if (-not $SkipSafetyBackup) {
         Write-Host "Step 0: safety backup of current Worker DB…" -ForegroundColor Cyan
+        if ($SkipLiveProvenanceCheck) {
+            Write-Warning "-SkipLiveProvenanceCheck: the safety backup will NOT prove its source is the live Worker's DB (#148). Use only while the production site is down."
+        }
+        $skipLiveArg = if ($SkipLiveProvenanceCheck) { " -SkipLiveProvenanceCheck" } else { "" }
         if ($DryRun) {
-            Write-Host "[dry-run] backup-production-emdash.ps1 -AllowProduction" -ForegroundColor Yellow
+            Write-Host "[dry-run] backup-production-emdash.ps1 -AllowProduction$skipLiveArg" -ForegroundColor Yellow
         }
         else {
             $backupScript = Join-Path $PSScriptRoot "backup-production-emdash.ps1"
-            & $backupScript -AllowProduction -Notes "DR pre-retarget safety backup" -UseNativeTurso:$UseNativeTurso
+            try {
+                & $backupScript -AllowProduction -Notes "DR pre-retarget safety backup" -UseNativeTurso:$UseNativeTurso -SkipLiveProvenanceCheck:$SkipLiveProvenanceCheck
+            }
+            catch {
+                throw "Safety backup failed: $($_.Exception.Message) $(Get-DrSafetyBackupHint -Message $_.Exception.Message -SkipLiveProvenanceCheck:$SkipLiveProvenanceCheck)".Trim()
+            }
             if ($LASTEXITCODE -ne 0) {
                 throw "Safety backup failed (exit $LASTEXITCODE). Fix backup/verify before retargeting Worker."
             }

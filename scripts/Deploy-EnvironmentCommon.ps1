@@ -1353,14 +1353,21 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
                 else {
                     "$($last.Message) $($evidence.Message) Bootstrap: this run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory."
                 }
+                $issue = if ($preBackup) { "#148" } else { "#142" }
                 if ($env:GITHUB_ACTIONS -eq "true") {
-                    Write-Host "::warning title=Live Worker provenance bootstrap (#142)::$message"
+                    Write-Host "::warning title=Live Worker provenance bootstrap ($issue)::$message"
                 }
                 Write-Warning $message
                 if (-not $preBackup) {
                     $script:DeployLiveProvenanceBootstrap = $true
                 }
-                & $summary "- Live Worker provenance ($Phase, #142): **bootstrap** (live commit ``$($evidence.LiveCommit)`` predates the endpoint; secret-vs-backup host check only)"
+                $summaryTail = if ($preBackup) {
+                    "backup source not proven; the deploy step re-checks the live Worker before migrating"
+                }
+                else {
+                    "secret-vs-backup host check only"
+                }
+                & $summary "- Live Worker provenance ($Phase, $issue): **bootstrap** (live commit ``$($evidence.LiveCommit)`` predates the endpoint; $summaryTail)"
                 return "Bootstrap"
             }
             "Mismatch" {
