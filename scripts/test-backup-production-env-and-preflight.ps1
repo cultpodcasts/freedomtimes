@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot/lib/EnvFile.ps1"
 . "$PSScriptRoot/lib/TursoSourcePreflight.ps1"
+. "$PSScriptRoot/lib/BackupVerifyReport.ps1"
 
 $script:Failed = 0
 $script:Passed = 0
@@ -41,7 +42,9 @@ $savedPath = $env:PATH
 
 try {
     Write-Host "=== allowlist ==="
-    Assert-True ($allowlist.Count -eq 6) "backup allowlist has 6 keys"
+    Assert-True ($allowlist.Count -eq 8) "backup allowlist has 8 keys"
+    Assert-True ($allowlist -contains "EMDASH_STAGING_PAT") "allowlist includes EMDASH_STAGING_PAT (#161 staging compare)"
+    Assert-True ($allowlist -contains "EMDASH_STAGING_TOKEN") "allowlist includes EMDASH_STAGING_TOKEN (#161 staging compare)"
     Assert-True ($allowlist -contains "TURSO_PRODUCTION_EMDASH_DB_URL") "allowlist includes TURSO_PRODUCTION_EMDASH_DB_URL"
     Assert-True ($allowlist -contains "TF_VAR_TURSO_ORGANIZATION") "allowlist includes TF_VAR_TURSO_ORGANIZATION"
     Assert-True (-not ($allowlist -contains "TURSO_DATABASE_URL")) "allowlist excludes TURSO_DATABASE_URL"
@@ -130,6 +133,49 @@ echo "Error: database $3 not found" >&2; exit 1
         Assert-True ((-not $bad.Ok) -and $bad.ExitCode -eq 1) "non-zero exit reported, no throw"
         Assert-True ((@($bad.Output) -join "`n") -match "missing-db not found") "stderr captured"
     }
+
+    Write-Host "=== BackupVerifyReport (#161) ==="
+    $out = @(
+        "Resolving…",
+        '{"pass":false,"error":"staging_token_missing","message":"none of EMDASH_STAGING_PAT, EMDASH_STAGING_TOKEN is set","stagingStatus":null,"stagingTokenSource":null}'
+    )
+    $f = Get-BackupVerifyFailureFromOutput -Output $out
+    Assert-True ($null -ne $f -and $f.error -eq "staging_token_missing") "failure line parsed from verify output"
+    Assert-True ($null -eq (Get-BackupVerifyFailureFromOutput -Output @("{", '"pass": true', "}", "PASS"))) "pretty-printed PASS report is not a failure"
+    Assert-True ((Get-LastJsonObjectFromOutput -Output @("x", '{"pass":true,"stagingTokenSource":"EMDASH_STAGING_PAT"}')).stagingTokenSource -eq "EMDASH_STAGING_PAT") "last JSON object line read"
+    Assert-True ($null -eq (Get-LastJsonObjectFromOutput -Output @("no json here"))) "no JSON line gives null"
+
+    $rec = New-BackupVerificationRecord -ReportPath (Join-Path $tmp "absent.json") -ExitCode 2 -Output $out
+    Assert-True ($rec.pass -eq $false -and $rec.error -eq "staging_token_missing" -and $rec.exitCode -eq 2) "no report: record built from the JSON error line"
+    $rec = New-BackupVerificationRecord -ReportPath "" -ExitCode 3 -Output @("boom")
+    Assert-True ($rec.pass -eq $false -and $rec.error -eq "verify_no_report" -and $rec.message -match "exited 3") "no report, no JSON: verify_no_report with the exit code"
+    $reportPath = Join-Path $tmp "verify.json"
+    Set-Content -LiteralPath $reportPath -Value '{"pass":true,"backupCount":3,"liveCount":3,"failures":[]}'
+    $rec = New-BackupVerificationRecord -ReportPath $reportPath -ExitCode 0 -Output @()
+    Assert-True ($rec.pass -eq $true -and $rec.backupCount -eq 3) "report file wins when present"
+    Set-Content -LiteralPath $reportPath -Value 'not json'
+    $rec = New-BackupVerificationRecord -ReportPath $reportPath -ExitCode 1 -Output @()
+    Assert-True ($rec.pass -eq $false -and $rec.error -eq "verify_report_unreadable") "unreadable report recorded, not thrown"
+
+    $rejected = [pscustomobject]@{ pass = $false; error = "staging_token_rejected"; message = "Staging EmDash rejected the token from EMDASH_STAGING_PAT (HTTP 401)."; stagingTokenSource = "EMDASH_STAGING_PAT" }
+    $msg = Format-StagingAuthPreflightFailure -Failure $rejected -ExitCode 2 -FilledFromEnvDev @("EMDASH_STAGING_PAT")
+    Assert-True ($msg -match "^STAGING COMPARE CANNOT RUN \(staging_token_rejected\)") "preflight failure names the error kind"
+    Assert-True ($msg -match "EMDASH_STAGING_PAT was loaded from \.env\.dev") "preflight failure says the token came from .env.dev"
+    Assert-True ($msg -match "Nothing was backed up") "preflight failure says nothing was backed up"
+    $msg = Format-StagingAuthPreflightFailure -Failure $rejected -ExitCode 2 -FilledFromEnvDev @()
+    Assert-True ($msg -match "overrides \.env\.dev") "preset env token: says it overrides .env.dev"
+    $msg = Format-StagingAuthPreflightFailure -Failure $null -ExitCode 2
+    Assert-True ($msg -match "staging_check_failed" -and $msg -match "exited 2") "no JSON line: generic kind and exit code"
+
+    $mismatch = [pscustomobject]@{ pass = $false; failures = @("missing in backup: secret-slug") }
+    $local = Format-BackupVerifyFailedMessage -Verification $mismatch -VerifyReportPath "v.json" -MetadataPath "m.json"
+    Assert-True ($local -match "VERIFY FAILED \(inventory_mismatch\): missing in backup: secret-slug") "local verify failure lists the failures"
+    $public = Format-BackupVerifyFailedMessage -Verification $mismatch -VerifyReportPath "v.json" -MetadataPath "m.json" -PublicLog
+    Assert-True ($public -match "inventory_mismatch" -and $public -notmatch "secret-slug" -and $public -match "1 failure") "public log: kind and count, no slug"
+    $public = Format-BackupVerifyFailedMessage -Verification $rejected -VerifyReportPath "v.json" -MetadataPath "m.json" -PublicLog
+    Assert-True ($public -match "\(staging_token_rejected\)" -and $public -notmatch "HTTP 401") "public log: error kind only"
+    $local = Format-BackupVerifyFailedMessage -Verification $rejected -VerifyReportPath "v.json" -MetadataPath "m.json" -FilledFromEnvDev @("EMDASH_STAGING_PAT")
+    Assert-True ($local -match "staging_token_rejected" -and $local -match "HTTP 401" -and $local -match "verification field") "local: kind, message and where to look"
 }
 finally {
     $env:PATH = $savedPath

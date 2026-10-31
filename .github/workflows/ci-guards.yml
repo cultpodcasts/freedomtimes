@@ -36,6 +36,7 @@ jobs:
         run: |
           node --test scripts/ci-check-no-public-backups.test.mjs
           node --test scripts/turso-backup-retention.test.mjs
+          node --test web/scripts/lib/staging-emdash-auth.test.mjs
           node scripts/ci-check-no-public-backups.mjs
 
       - name: Deploy guard tests

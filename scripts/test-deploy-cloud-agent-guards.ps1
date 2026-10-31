@@ -890,6 +890,11 @@ $preflightIdx = $backupScriptText.IndexOf("Test-TursoSourceDatabase -")
 $dryRunIdx = $backupScriptText.IndexOf("if (`$DryRun)")
 $branchIdx = $backupScriptText.IndexOf("db create")
 Assert-True ($preBackupIdx -gt 0 -and $preBackupIdx -lt $caveatIdx -and $caveatIdx -lt $preflightIdx -and $preflightIdx -lt $branchIdx -and $preBackupIdx -lt $dryRunIdx) "backup-production-emdash.ps1 proves the live Worker host before caveats, preflight, -DryRun and any branch"
+$stagingCheckIdx = $backupScriptText.IndexOf('"--check-staging-auth"')
+Assert-True ($stagingCheckIdx -gt $preflightIdx -and $stagingCheckIdx -lt $dryRunIdx -and $stagingCheckIdx -lt $branchIdx) "backup-production-emdash.ps1 checks the staging token (#161) before -DryRun and any branch"
+Assert-True ($backupScriptText -match 'if \(\$SkipStagingCompare\) \{' -and $backupScriptText -match 'if \(-not \$SkipStagingCompare\) \{\s*\$verifyArgs\.Add\("--compare-staging"\)') "backup-production-emdash.ps1 keeps the staging compare on unless -SkipStagingCompare (#161)"
+Assert-True ($backupScriptText -notmatch '\$verification = \$null') "backup-production-emdash.ps1 never writes a null verification (#161)"
+Assert-True ($backupScriptText -notmatch [regex]::Escape('throw "PRODUCTION BACKUP VERIFY FAILED.')) "backup-production-emdash.ps1 verify failure names its cause (#161)"
 Assert-True ($backupScriptText -notmatch '(?m)^\s*Write-Warning \$w\s*$' -and $backupScriptText -notmatch 'Write-Warning "Source is the named production DB') "backup-production-emdash.ps1 has no unconditional resolver-caveat warnings left"
 Assert-True ($backupScriptText -match 'SkipLiveProvenanceCheck -and \$env:GITHUB_ACTIONS -eq "true"\)\s*\{\s*throw') "backup-production-emdash.ps1 refuses -SkipLiveProvenanceCheck on GitHub Actions"
 Assert-True ($backupScriptText -match 'liveProvenanceCheck\s*=\s*\$liveProvenance') "backup metadata records liveProvenanceCheck"

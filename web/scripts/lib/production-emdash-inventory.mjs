@@ -278,10 +278,14 @@ export async function listPublishedPostSlugsViaApi(baseUrl, token) {
 	try {
 		j = JSON.parse(txt);
 	} catch {
-		throw new Error(`Non-JSON ${r.status} ${url}: ${txt.slice(0, 200)}`);
+		const err = new Error(`Non-JSON ${r.status} ${url}: ${txt.slice(0, 200)}`);
+		err.status = r.status;
+		throw err;
 	}
 	if (!r.ok) {
-		throw new Error(`${r.status} GET ${url}: ${j?.error?.message ?? txt}`);
+		const err = new Error(`${r.status} GET ${url}: ${j?.error?.message ?? txt}`);
+		err.status = r.status;
+		throw err;
 	}
 	const items = j?.data?.items ?? j?.items ?? [];
 	return items

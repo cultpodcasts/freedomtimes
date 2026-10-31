@@ -70,7 +70,7 @@
     "emdash:prod-turso:resolve": "node scripts/resolve-production-worker-turso.mjs --inventory",
     "emdash:prod-backup:verify": "node scripts/verify-production-emdash-backup.mjs --check-metadata auto",
     "verify:placement": "node scripts/verify-worker-placement.mjs",
-    "test:prod-backup-inventory": "node --test scripts/lib/production-emdash-inventory.test.mjs"
+    "test:prod-backup-inventory": "node --test scripts/lib/production-emdash-inventory.test.mjs scripts/lib/staging-emdash-auth.test.mjs scripts/verify-production-emdash-backup.test.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.4.3",
