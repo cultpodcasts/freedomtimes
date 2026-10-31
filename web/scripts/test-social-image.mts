@@ -156,11 +156,10 @@ describe('resolveSocialImageSrcWith: a throwing query never breaks rendering (#1
 
 describe('resolveSocialImageSrcWith: healthy lookups are unchanged', () => {
 	it('a bare seo.image media id resolves through the media table', async () => {
-		const seen: string[] = [];
+		const seen: { sql: string; args: string[] }[] = [];
 		const src = await resolveSocialImageSrcWith(
-			clientWith(async ({ sql, args }) => {
-				seen.push(sql);
-				assert.deepEqual(args, [SEO_MEDIA_ID]);
+			clientWith(async (statement) => {
+				seen.push(statement);
 				return { rows: [{ storage_key: 'og-card.png' }] };
 			}),
 			data,
@@ -168,8 +167,10 @@ describe('resolveSocialImageSrcWith: healthy lookups are unchanged', () => {
 			lookup,
 		);
 		assert.equal(src, '/_emdash/api/media/file/og-card.png');
+		// Asserted after the resolve: inside execute a failure would be swallowed by the guard under test.
 		assert.equal(seen.length, 1);
-		assert.match(seen[0], /from media where id = \?/);
+		assert.match(seen[0].sql, /from media where id = \?/);
+		assert.deepEqual(seen[0].args, [SEO_MEDIA_ID]);
 	});
 
 	it('_emdash_seo.seo_image is used when the entry has no seo.image', async () => {

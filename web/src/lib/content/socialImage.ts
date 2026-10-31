@@ -18,7 +18,7 @@
  * make the factory or its queries throw.
  */
 import { normalizeToPublicMediaFilePath } from './mediaFileUrl';
-import { asMediaRecord, readMediaValueSrc as readFeaturedImageSrc } from './mediaValue';
+import { asMediaRecord, readMediaValueSrc as readFeaturedImageSrc, readNonBlankString } from './mediaValue';
 
 const LOG_PREFIX = '[contentEntry] resolveSocialImageSrc';
 
@@ -41,10 +41,6 @@ export type ResolveSocialImageSrcOptions = {
 };
 
 const MEDIA_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{20,36}$/i;
-
-function readNonBlankString(value: unknown): string | null {
-	return typeof value === 'string' && value.trim().length > 0 ? value : null;
-}
 
 /**
  * When an image field is only a media row id (no `meta.storageKey`), resolve R2 `storage_key` from Turso.

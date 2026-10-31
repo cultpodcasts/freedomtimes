@@ -11,7 +11,7 @@ export function readTrimmedString(value: unknown): string | null {
 }
 
 /** Non-blank string returned as stored (not trimmed). Used where existing src output must not change. */
-function readNonBlankString(value: unknown): string | null {
+export function readNonBlankString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
