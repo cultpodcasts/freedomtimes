@@ -15,8 +15,8 @@ $script:WorkerSettingsExitUnverified = 5
 
 function Get-WorkerSettingsRedeployHint {
     param([Parameter(Mandatory)][ValidateSet("staging", "production")][string]$Environment)
-    if ($Environment -eq "production") { return "pwsh scripts/deploy-production-local.ps1 -WorkerOnly -SkipVersionBump" }
-    return "pwsh scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump"
+    if ($Environment -eq "production") { return "pwsh scripts/deploy-production-local.ps1 -WorkerOnly" }
+    return "pwsh scripts/deploy-staging-local.ps1 -WorkerOnly"
 }
 
 function Invoke-WorkerSettingsVerifier {

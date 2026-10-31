@@ -931,6 +931,90 @@ $backupStep = [regex]::Match($deployWorkflowText, '(?s)backup-production-emdash\
 Assert-True ($backupStep.Success -and $backupStep.Value -notmatch 'SkipLiveProvenanceCheck') "deploy-worker.yml never skips the pre-backup live check"
 Assert-True ($deployWorkflowText -match '(?s)DEPLOY_PROVENANCE_TOKEN: \$\{\{ secrets\.DEPLOY_PROVENANCE_TOKEN \}\}\s*\n\s*run: \|\s*\n\s*\$group =') "deploy-worker.yml passes DEPLOY_PROVENANCE_TOKEN to the backup step"
 
+
+Write-Host "=== #168 build version stamped at deploy time ==="
+. "$PSScriptRoot/build-provenance-env.ps1"
+Assert-True ((Get-BuildVersion -BaseVersion "0.0.57" -Environment production -RunNumber "60" -IsCi $true) -eq "0.0.117") "production CI: base patch + run number"
+Assert-True ((Get-BuildVersion -BaseVersion "0.0.57" -Environment production -RunNumber "61" -IsCi $true) -eq "0.0.118") "production CI: next run is higher"
+Assert-True ((Get-BuildVersion -BaseVersion "0.1.0" -Environment production -RunNumber "70" -IsCi $true) -eq "0.1.70") "production CI: a new minor base restarts the patch above it"
+Assert-True ((Get-BuildVersion -BaseVersion "0.0.57" -Environment staging -RunNumber "60" -PullRequestNumber "168" -IsCi $true) -eq "0.0.117-staging.pr.168") "staging CI: run number plus PR"
+Assert-True ((Get-BuildVersion -BaseVersion "0.0.57" -Environment staging -RunNumber "60" -IsCi $true) -eq "0.0.117-staging") "staging CI without a PR number is still marked staging"
+Assert-True ((Get-BuildVersion -BaseVersion "0.0.57" -Environment production -CommitSha ("ABCDEF1" + ("0" * 33)) -IsCi $false) -eq "0.0.57-local.abcdef1") "local deploy: base + short sha, never a release number"
+Assert-True ((Get-BuildVersion -BaseVersion "0.0.57" -Environment staging -CommitSha "" -Dirty $true -IsCi $false) -eq "0.0.57-local.unknown.dirty") "local deploy: dirty tree and unknown sha are visible"
+foreach ($badRun in @("", "0", "abc", "-3")) {
+    $msg = ""
+    try { Get-BuildVersion -BaseVersion "0.0.57" -Environment production -RunNumber $badRun -IsCi $true | Out-Null } catch { $msg = $_.Exception.Message }
+    Assert-True ($msg -match "GITHUB_RUN_NUMBER") "production CI refuses run number '$badRun'"
+}
+$msg = ""
+try { Get-BuildVersion -BaseVersion "0.0.57-beta" -Environment production -RunNumber "5" -IsCi $true | Out-Null } catch { $msg = $_.Exception.Message }
+Assert-True ($msg -match "not a plain major\.minor\.patch") "a prerelease base version is refused"
+
+# Set-BuildProvenanceEnv end to end in a scratch repo: env, job summary, package.json untouched.
+$verRepo = Join-Path ([System.IO.Path]::GetTempPath()) ("ft-ver-" + [guid]::NewGuid().ToString("N"))
+$verEnvNames = @("GITHUB_ACTIONS", "GITHUB_RUN_NUMBER", "GITHUB_STEP_SUMMARY", "FT_DEPLOY_PR_NUMBER", "FT_BUILD_VERSION", "FT_BUILD_COMMIT_SHA", "FT_BUILD_TREE_DIRTY", "GITHUB_REPOSITORY")
+$verEnvSaved = @{}
+$verSummary = $null
+foreach ($n in $verEnvNames) { $verEnvSaved[$n] = [Environment]::GetEnvironmentVariable($n, "Process") }
+try {
+    New-Item -ItemType Directory -Path (Join-Path $verRepo "web") -Force | Out-Null
+    $pkgText = '{ "name": "web", "version": "0.0.57" }'
+    Set-Content -LiteralPath (Join-Path $verRepo "web/package.json") -Value $pkgText -NoNewline
+    & git -C $verRepo init -q 2>$null
+    & git -C $verRepo -c user.email=t@example.invalid -c user.name=t add -A 2>$null
+    & git -C $verRepo -c user.email=t@example.invalid -c user.name=t commit -q -m init 2>$null
+    $verSummary = [System.IO.Path]::GetTempFileName()
+    $env:GITHUB_ACTIONS = "true"; $env:GITHUB_RUN_NUMBER = "60"; $env:FT_DEPLOY_PR_NUMBER = "168"; $env:GITHUB_STEP_SUMMARY = $verSummary
+    $v = Set-BuildProvenanceEnv -RepoRoot $verRepo -Environment staging 6>$null
+    Assert-True ($v -eq "0.0.117-staging.pr.168" -and $env:FT_BUILD_VERSION -eq $v) "Set-BuildProvenanceEnv sets FT_BUILD_VERSION for a staging CI build"
+    Assert-True ((Get-Content -Raw -LiteralPath $verSummary) -match '(?s)### Build version \(staging\).*0\.0\.117-staging\.pr\.168') "Set-BuildProvenanceEnv writes the version to the job summary"
+    Remove-Item Env:FT_DEPLOY_PR_NUMBER
+    $v = Set-BuildProvenanceEnv -RepoRoot $verRepo -Environment production 6>$null
+    Assert-True ($v -eq "0.0.117" -and $env:FT_BUILD_VERSION -eq "0.0.117") "Set-BuildProvenanceEnv stamps the production CI version"
+    Remove-Item Env:GITHUB_ACTIONS, Env:GITHUB_STEP_SUMMARY
+    $v = Set-BuildProvenanceEnv -RepoRoot $verRepo -Environment production 6>$null
+    Assert-True ($v -match '^0\.0\.57-local\.[0-9a-f]{7}$') "Set-BuildProvenanceEnv stamps a local build as <base>-local.<sha7>"
+    Assert-True ((Get-Content -Raw -LiteralPath (Join-Path $verRepo "web/package.json")) -eq $pkgText) "Set-BuildProvenanceEnv never edits web/package.json"
+    Assert-True ([string]::IsNullOrEmpty((& git -C $verRepo status --porcelain 2>$null))) "stamping leaves the git tree clean (nothing to commit back)"
+}
+finally {
+    foreach ($n in $verEnvNames) { [Environment]::SetEnvironmentVariable($n, $verEnvSaved[$n], "Process") }
+    Remove-Item -LiteralPath $verRepo -Recurse -Force -ErrorAction SilentlyContinue
+    if ($verSummary) { Remove-Item -LiteralPath $verSummary -ErrorAction SilentlyContinue }
+}
+
+# The per-PR / per-deploy bump is gone everywhere (#168).
+$repoRootForVer = Split-Path $PSScriptRoot -Parent
+Assert-True (-not (Test-Path (Join-Path $PSScriptRoot "bump-web-version.ps1"))) "scripts/bump-web-version.ps1 is removed"
+$bumpHits = @(Get-ChildItem -LiteralPath $PSScriptRoot -Recurse -File -Include *.ps1, *.mjs, *.sh |
+    Where-Object { $_.Name -ne "test-deploy-cloud-agent-guards.ps1" } |
+    Select-String -Pattern 'npm version (patch|minor|major)|Invoke-WebVersionBump|SkipVersionBump|BumpVersion' -List)
+Assert-True ($bumpHits.Count -eq 0) "no deploy script bumps the web version or takes -SkipVersionBump/-BumpVersion ($(@($bumpHits | ForEach-Object { $_.Path | Split-Path -Leaf }) -join ', '))"
+$commonText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "Deploy-EnvironmentCommon.ps1")
+Assert-True ($commonText -match 'Set-BuildProvenanceEnv -RepoRoot \$script:DeployRepoRoot -Environment \$script:DeployEnvironment') "the Worker build stamps the version for its own environment"
+$provTs = Get-Content -Raw -LiteralPath (Join-Path $repoRootForVer "web/src/lib/build-provenance.ts")
+Assert-True ($provTs -match "readOptionalEnv\('FT_BUILD_VERSION'\)" -and $provTs -match '(?s)buildVersionPayload\(\) \{.*?version: BUILD_VERSION,.*?commitSha: BUILD_COMMIT_SHA') "/api/version.json serves version next to commitSha"
+
+# #144 bootstrap still reads commitSha from a version.json body that also carries version.
+$verBody = ([ordered]@{ repository = "cultpodcasts/freedomtimes"; version = "0.0.117"; commitSha = ("a" * 40); shortSha = "aaaaaaa"; commitUrl = $null } | ConvertTo-Json -Compress)
+$verEvidence = Resolve-DeployProvenanceBootstrapEvidence -VersionStatusCode 200 -VersionBody $verBody -Git @{ IsShallow = { $true } }
+Assert-True ($verEvidence.LiveCommit -eq ("a" * 40) -and $verEvidence.Message -match "shallow") "#144: version.json with a version field still yields its commitSha"
+
+# deploy-worker.yml paths (#168): production only for Worker changes; PRs still deploy staging for scripts.
+$onBlock = [regex]::Match($deployWorkflowText, '(?s)\non:\n(.*?)\npermissions:').Groups[1].Value
+$prPaths = @([regex]::Matches([regex]::Match($onBlock, '(?s)pull_request:.*?paths:\n(.*?)\n  push:').Groups[1].Value, '- "([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+$pushPaths = @([regex]::Matches([regex]::Match($onBlock, '(?s)  push:.*?paths:\n(.*)$').Groups[1].Value, '- "([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+Assert-True ($pushPaths -contains "web/**" -and $pushPaths -contains "!**/*.md" -and $pushPaths -contains "!web/docs/**" -and $pushPaths -contains "!web/scripts/test-*.mts") "push paths: web/** minus docs and web tests"
+Assert-True (-not ($pushPaths -contains "scripts/**") -and -not ($pushPaths -contains ".github/workflows/deploy-worker.yml")) "push paths: deploy tooling alone never runs the production backup + deploy"
+Assert-True ($prPaths -contains "scripts/**" -and $prPaths -contains ".github/workflows/deploy-worker.yml" -and $prPaths -contains "!**/*.md" -and $prPaths -contains "!web/docs/**") "PR paths: script/workflow changes still deploy staging; docs do not"
+foreach ($list in @(@{ Name = "push"; Paths = $pushPaths }, @{ Name = "pull_request"; Paths = $prPaths })) {
+    $firstNeg = [array]::FindIndex([string[]]$list.Paths, [Predicate[string]] { param($p) $p.StartsWith("!") })
+    $lastPos = [array]::FindLastIndex([string[]]$list.Paths, [Predicate[string]] { param($p) -not $p.StartsWith("!") })
+    Assert-True ($firstNeg -gt $lastPos) "$($list.Name) paths: every negation comes after the patterns it narrows"
+}
+Assert-True ($deployWorkflowText -match 'FT_DEPLOY_PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}') "staging step passes the PR number for its version stamp"
+Assert-True ($deployWorkflowText -notmatch 'contents: write') "deploy-worker.yml never gets contents: write (no version commit back to main)"
+
 Write-Host ""
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {

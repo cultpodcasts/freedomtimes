@@ -6,6 +6,14 @@ export const GITHUB_REPOSITORY = readOptionalEnv('GITHUB_REPOSITORY').trim() || 
 /** Full commit SHA baked in at deploy time (GitHub Actions `github.sha` or local `git rev-parse HEAD`). */
 export const BUILD_COMMIT_SHA = readOptionalEnv('FT_BUILD_COMMIT_SHA').trim() || 'unknown';
 
+/**
+ * Deploy-time version stamp (#168), e.g. `0.0.117` (production CI), `0.0.117-staging.pr.168`
+ * (staging CI) or `0.0.57-local.1a2b3c4` (local deploy script). Set by
+ * scripts/build-provenance-env.ps1; never committed. `unknown` for builds that skip that script
+ * (e.g. `npm run build` by hand or the legacy terraform-*.yml dispatch).
+ */
+export const BUILD_VERSION = readOptionalEnv('FT_BUILD_VERSION').trim() || 'unknown';
+
 /** True when the build ran from a dirty working tree (local deploys only). */
 export const BUILD_TREE_DIRTY = readOptionalEnv('FT_BUILD_TREE_DIRTY').trim() === '1';
 
@@ -95,6 +103,7 @@ function mapSourceFiles(paths: readonly string[]) {
 export function buildVersionPayload() {
   return {
     repository: GITHUB_REPOSITORY,
+    version: BUILD_VERSION,
     commitSha: BUILD_COMMIT_SHA,
     shortSha: formatShortCommitSha(),
     commitUrl: githubCommitUrl(),

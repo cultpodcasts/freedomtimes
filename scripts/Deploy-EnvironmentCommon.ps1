@@ -9,7 +9,7 @@
 # | Publish-only collections     | Yes (EmDash SQL)           | No                            | No                                  | No                                  |
 # | Secret sync                  | Always                     | Always                        | Only with -SyncCloudflareWorkerSecrets | Only with -SyncCloudflareWorkerSecrets |
 # | CLOUDFLARE_ACCOUNT_ID bootstrap | Yes                     | No                            | When syncing secrets                | Load .env.dev; when syncing secrets |
-# | Version bump default         | Bump unless -SkipVersionBump | No bump unless -BumpVersion | Same as full deploy                 | Same as full deploy                 |
+# | Build version (#168)         | Stamped, never committed   | Stamped, never committed      | Same as full deploy                 | Same as full deploy                 |
 # | Turso build creds            | Terraform outputs          | Terraform outputs             | resolve-turso-build-credentials     | .env.dev / resolve-turso            |
 # | EmDash core migrate          | After backup + build       | After backup + build          | After backup + build                | After backup + build                |
 # | wrangler deploy              | --env staging              | --env production              | Web only                            | Web (+ staging vars) + scheduler    |
@@ -1919,31 +1919,11 @@ function Assert-DeployInstalledPackagesMatchLockfile {
 function Invoke-DeployWorkerBuild {
     param(
         [switch]$WorkerOnly,
-        [switch]$WorkersOnly,
-        [switch]$SkipVersionBump,
-        [switch]$BumpVersion
+        [switch]$WorkersOnly
     )
 
-    if ($script:DeployIsStaging) {
-        if ($SkipVersionBump) {
-            Write-DeployStep "Skipping web version bump (-SkipVersionBump)"
-        }
-        else {
-            . "$script:DeployCommonScriptRoot/bump-web-version.ps1"
-            Invoke-WebVersionBump -RepoRoot $script:DeployRepoRoot | Out-Null
-        }
-    }
-    else {
-        if ($BumpVersion) {
-            Write-DeployStep "Bumping web version (-BumpVersion)"
-            . "$script:DeployCommonScriptRoot/bump-web-version.ps1"
-            Invoke-WebVersionBump -RepoRoot $script:DeployRepoRoot | Out-Null
-        }
-        else {
-            Write-DeployStep "Using current web/package.json version (production default: no bump; staging already bumped this release). Pass -BumpVersion to bump anyway."
-        }
-    }
-
+    # #168: no version bump here. Set-BuildProvenanceEnv stamps FT_BUILD_VERSION from the
+    # web/package.json base (scripts/build-provenance-env.ps1); nothing is written back.
     Write-DeployStep "Checking web/node_modules against package-lock.json before build"
     Assert-DeployInstalledPackagesMatchLockfile -WebDir (Join-Path $script:DeployRepoRoot "web")
 
@@ -1959,7 +1939,7 @@ function Invoke-DeployWorkerBuild {
     $script:DeployWebBuildTursoUrl = $env:TURSO_DATABASE_URL
 
     . "$script:DeployCommonScriptRoot/build-provenance-env.ps1"
-    Set-BuildProvenanceEnv -RepoRoot $script:DeployRepoRoot
+    $null = Set-BuildProvenanceEnv -RepoRoot $script:DeployRepoRoot -Environment $script:DeployEnvironment
 
     $script:DeployWebBuildStartedAt = Get-Date
 

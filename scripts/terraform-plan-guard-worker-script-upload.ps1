@@ -70,7 +70,7 @@ if ($env:FT_WRANGLER_DEPLOY_FOLLOWS -eq "1") {
 }
 
 if ($AllowWorkerScriptUpload) {
-    Write-Host "BREAK-GLASS: applying a plan that re-uploads the $Environment Worker script ($($changes -join '; ')). Redeploy with Wrangler afterwards: $(if ($Environment -eq 'production') { 'pwsh scripts/deploy-production-local.ps1 -WorkerOnly -SkipVersionBump' } else { 'pwsh scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump' })" -ForegroundColor Yellow
+    Write-Host "BREAK-GLASS: applying a plan that re-uploads the $Environment Worker script ($($changes -join '; ')). Redeploy with Wrangler afterwards: $(if ($Environment -eq 'production') { 'pwsh scripts/deploy-production-local.ps1 -WorkerOnly' } else { 'pwsh scripts/deploy-staging-local.ps1 -WorkerOnly' })" -ForegroundColor Yellow
     exit 0
 }
 

@@ -2,7 +2,6 @@
 param(
     [switch]$WorkerOnly,
     [switch]$WorkersOnly,
-    [switch]$SkipVersionBump,
     [switch]$SyncCloudflareWorkerSecrets,
     [switch]$SkipTursoBackup,
     [switch]$TursoBranchBackup
@@ -40,7 +39,7 @@ param(
   pwsh ./scripts/deploy-staging-local.ps1
 
 .EXAMPLE
-  pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump -SkipTursoBackup
+  pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipTursoBackup
 
 .EXAMPLE
   pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecrets
@@ -80,7 +79,7 @@ try {
     # #116: build (and its checks) BEFORE the Terraform apply. The apply re-uploads Terraform's
     # single-module Worker script, which stays live until wrangler deploy below; building first
     # keeps that window to Auth0 checks, publish-only enforcement, secret sync and migrate.
-    Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly -SkipVersionBump:$SkipVersionBump
+    Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly
 
     if (-not $skipTerraform) {
         Invoke-DeployTerraformApplyWithRecovery
