@@ -92,6 +92,8 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Pull-to-refresh (#150): skip the reload and say "offline" instead of showing an error page. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Required on Android 13+ (API 33) to display notifications at runtime. -->
     <!-- On Android 12 and below this declaration is ignored and permission is auto-granted. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

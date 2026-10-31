@@ -56,6 +56,24 @@ adb install -r .\web\android\app\build\outputs\apk\debug\app-debug.apk
 
 `-Target` only sets `CAPACITOR_SERVER_URL` (which origin the WebView loads). App Links verification for a `https://freedomtimes.news/...` VIEW always checks **production** `/.well-known/assetlinks.json`, regardless of `-Target`.
 
+## Pull-to-refresh (#150)
+
+In the Android app, pulling down at the very top of any page reloads it and shows the standard Material spinner. This works on the homepage, articles and EmDash admin/editor pages.
+
+- **How:** `MainActivity` calls `WebViewPullToRefresh.install`. That wraps Capacitor's WebView in a native `SwipeRefreshLayout`, and `webView.reload()` reloads the **current URL on its own origin**. So the reload follows whichever host the app is on (staging or production, #149) and gets fresh HTML within the site's normal HTTP cache rules. The Android app doesn't register the service worker.
+- **When a pull is allowed:** the page guard `android/app/src/main/res/raw/ft_pull_to_refresh_guard.js` is injected into the top frame. On each `touchstart` it reports, without blocking the touch, whether the pull may start. It must be a single finger and the page must be at the top. The touch must not be inside:
+  - an inner scroller that isn't at its own top;
+  - an iframe, video, canvas, textarea, select, range slider or contenteditable;
+  - an element with `touch-action` that doesn't allow vertical panning;
+  - full screen, a text selection, or an element marked `data-ft-no-pull-refresh`.
+
+  A pull is also blocked while an editor or form field has focus (text inputs, textarea, select, contenteditable, a focused iframe), so a reload can't throw away unsaved work.
+
+  With no report (for example a touch inside a cross-origin embed), the WebView keeps the gesture. A gesture that starts mid-page never turns into a refresh.
+- **Offline:** if Android reports no network, the page stays as it is and a short "You're offline" message appears (needs `ACCESS_NETWORK_STATE`, a normal permission with no prompt). If a reload never reports loaded, the spinner stops after 15 s.
+- **Opt out:** add `data-ft-no-pull-refresh` to an element whose own vertical drag should never refresh (for example a future drag-to-reorder list).
+- **Tests:** `npx tsx --test scripts/test-android-pull-to-refresh.mts` (guard behaviour and native wiring) and `./gradlew testDebugUnitTest` (`PullToRefreshPolicyTest`), both run by `capacitor-android.yml`. The touch feel still needs a check on a real device.
+
 ## Signing notes
 
 - **Debug:** uses **`ANDROID_STAGING_SIGNING_*`** from repo-root `.env.dev` when all four are set; otherwise the default debug keystore (`%USERPROFILE%\.android\debug.keystore`).
