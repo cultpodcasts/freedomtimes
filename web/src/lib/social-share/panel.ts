@@ -276,9 +276,13 @@ function readyBlocks<TConfig, TDraft extends ShareDraftBase>(
 	provider: ShareProvider<TConfig, TDraft>,
 ): PanelBlock[] {
 	const account = provider.accountLabel(state.config);
+	const extra = provider.previewFields(state.draft);
 	return [
 		{ type: 'context', text: `Preview. Nothing is posted until you press the button and confirm. Posts as ${account}.` },
-		{ type: 'fields', fields: [{ label: 'Post text', value: state.draft.text }, ...provider.previewFields(state.draft)] },
+		// A code block keeps line breaks and never truncates (a fields value is one truncated line).
+		{ type: 'context', text: 'Post text, exactly as it will be posted:' },
+		{ type: 'code', code: state.draft.text },
+		...(extra.length > 0 ? [{ type: 'fields', fields: extra }] : []),
 		{
 			type: 'actions',
 			elements: [

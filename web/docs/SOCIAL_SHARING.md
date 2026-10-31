@@ -23,6 +23,9 @@ opens the post, checks the preview and presses the button, then confirms.
 - The handler checks the Admin role again. It also requires the context EmDash attaches when the request
   comes from the post editor panel, so a direct call to the route is refused (403).
 - Responses are `Cache-Control: private, no-store`, and the reader page cache never stores `/_emdash/` paths.
+- Editors and Authors still see the **Post to Bluesky** box in the post editor sidebar, because EmDash lists editor
+  panels for everyone who can edit the post. For them it fails to load with EmDash's permission error (403).
+  That is expected: only an Admin can load it or post.
 
 ## What the panel shows
 
@@ -49,6 +52,9 @@ opens the post, checks the preview and presses the button, then confirms.
 - AT Protocol calls, both to `https://bsky.social` (the plugin can't reach any other host):
   1. `com.atproto.server.createSession` with the handle and app password;
   2. `com.atproto.repo.createRecord` (`app.bsky.feed.post`).
+- The account must be hosted by Bluesky. A custom-domain handle such as `freedomtimes.news` is fine.
+  `bsky.social` forwards the calls to the account's Bluesky server. An account on a self-hosted PDS isn't
+  supported, because the plugin can only reach `bsky.social`.
 - If the post text changed after the panel loaded, the click is refused and the panel shows the new preview.
 
 ## No double posting

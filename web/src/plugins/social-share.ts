@@ -18,7 +18,8 @@ import { env as cfEnv } from 'cloudflare:workers';
 import type { ResolvedPlugin } from 'emdash';
 import { definePlugin, PluginRouteError } from 'emdash';
 
-import { BLUESKY_HOST, blueskyProvider } from '../lib/social-share/bluesky';
+import { blueskyProvider } from '../lib/social-share/bluesky';
+import { SOCIAL_SHARE_ALLOWED_HOSTS, SOCIAL_SHARE_CAPABILITIES } from '../lib/social-share/manifest';
 import { handleSharePanel, ShareAccessError, type ShareKv } from '../lib/social-share/panel';
 import { snapshotFromContentItem } from '../lib/social-share/policy';
 
@@ -28,8 +29,8 @@ export function createPlugin(): ResolvedPlugin {
 	return definePlugin({
 		id: SOCIAL_SHARE_PLUGIN_ID,
 		version: '1.0.0',
-		capabilities: ['content:read', 'network:request'],
-		allowedHosts: [BLUESKY_HOST],
+		capabilities: [...SOCIAL_SHARE_CAPABILITIES],
+		allowedHosts: [...SOCIAL_SHARE_ALLOWED_HOSTS],
 		routes: {
 			// Private (no `public`), default permission plugins:manage = Admin.
 			'editor/bluesky': {

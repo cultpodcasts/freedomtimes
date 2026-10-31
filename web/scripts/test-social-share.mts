@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import { isCacheablePath } from '../src/lib/page-cache-policy.ts';
+import { SOCIAL_SHARE_ALLOWED_HOSTS, SOCIAL_SHARE_CAPABILITIES } from '../src/lib/social-share/manifest.ts';
 import {
 	BLUESKY_MAX_GRAPHEMES,
 	blueskyProvider,
@@ -268,6 +269,18 @@ describe('admin-only access', () => {
 		assert.match(config, /id: 'ft-social-share'[\s\S]*?entrypoint: socialSharePluginPath/);
 	});
 
+	it('astro.config descriptor grants exactly the capabilities and hosts the plugin declares', () => {
+		const src = readFileSync(new URL('../src/plugins/social-share.ts', import.meta.url), 'utf8');
+		assert.match(src, /capabilities: \[\.\.\.SOCIAL_SHARE_CAPABILITIES\]/);
+		assert.match(src, /allowedHosts: \[\.\.\.SOCIAL_SHARE_ALLOWED_HOSTS\]/);
+		const config = readFileSync(new URL('../astro.config.ts', import.meta.url), 'utf8');
+		const descriptor = /id: 'ft-social-share',[\s\S]*?allowedHosts: \[[^\]]*\]/.exec(config)?.[0] ?? '';
+		const list = (name: string) =>
+			[...(new RegExp(`${name}: \\[([^\\]]*)\\]`).exec(descriptor)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
+		assert.deepEqual(list('capabilities'), [...SOCIAL_SHARE_CAPABILITIES]);
+		assert.deepEqual(list('allowedHosts'), [...SOCIAL_SHARE_ALLOWED_HOSTS]);
+	});
+
 	it('no public page, layout, component, script or static file renders the button or the route', () => {
 		const root = fileURLToPath(new URL('..', import.meta.url));
 		const allowed = new Set(['src/plugins/social-share.ts']);
@@ -336,13 +349,16 @@ describe('Post to Bluesky panel', () => {
 	it('shows the exact text and link, posts nothing on load, and confirms before posting', async () => {
 		const { deps, bsky } = harness();
 		const res = await load(deps);
+		const code = res.blocks.find((b) => b.type === 'code');
+		assert.equal(code?.code, 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly');
+		assert.equal('language' in (code ?? {}), false, 'plain text, no syntax highlighting');
 		const fields = (res.blocks.find((b) => b.type === 'fields')?.fields ?? []) as Array<{ label: string; value: string }>;
-		assert.equal(fields[0].value, 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly');
+		assert.deepEqual(fields.map((f) => f.label), ['Link card title', 'Link card description']);
 		const button = findButton(res.blocks, 'bluesky_post');
 		assert.ok(button);
 		const confirm = button.confirm as { title: string; text: string };
 		assert.equal(confirm.title, 'Post to Bluesky as @freedomtimes.news?');
-		assert.ok(confirm.text.includes(fields[0].value));
+		assert.ok(confirm.text.includes(String(code?.code)));
 		assert.equal(bsky.calls.length, 0);
 	});
 
