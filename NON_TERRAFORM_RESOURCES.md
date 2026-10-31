@@ -119,16 +119,18 @@ Terraform drops it from state without calling Turso, and it is unrelated to the 
 [`web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md`](web/docs/CLOUD_AGENT_DEPLOY_ISSUES.md)). So after the apply the live
 Worker is Terraform's single-module upload, and it stays that way until `wrangler deploy` re-uploads the real
 bundle. **Not measured:** whether that script serves errors in the meantime (it imports modules it does not
-send). Inside the full deploy that window covers secret sync, Auth0 sync, `npm run build` (minutes) and migrate;
-reordering the deploy or measuring the window is tracked in
-[#116](https://github.com/cultpodcasts/freedomtimes/issues/116). Outside the deploy nothing re-uploads the real
-bundle, so the tooling blocks it:
+send). Since [#116](https://github.com/cultpodcasts/freedomtimes/issues/116) the full deploy builds the Worker
+**before** the apply, so the window is Auth0 sync, secret sync and migrate (seconds), not `npm run build`
+(minutes). After the apply the deploy resolves the Turso build credentials again and stops before migrate if the
+apply changed the EmDash DB URL the build used. Outside the deploy nothing re-uploads the real bundle, so the
+tooling blocks it:
 
 - **Before apply:** `scripts/terraform-run.ps1 -Operation apply` (staging/production) plans to a file and runs
   `scripts/terraform-plan-guard-worker-script-upload.ps1`. Any planned create/update/replace/delete of
   `cloudflare_workers_script.holding_page` blocks the apply (exit 1) **unless** the run is part of a deploy that
-  runs `wrangler deploy` later in the same run, after secret sync, Auth0 sync, build and migrate
-  (`FT_WRANGLER_DEPLOY_FOLLOWS=1`, set by `deploy-*-local.ps1`; the window is [#116](https://github.com/cultpodcasts/freedomtimes/issues/116)),
+  runs `wrangler deploy` later in the same run, after Auth0 sync, secret sync and migrate (the build already
+  ran before the apply, [#116](https://github.com/cultpodcasts/freedomtimes/issues/116))
+  (`FT_WRANGLER_DEPLOY_FOLLOWS=1`, set by `deploy-*-local.ps1`),
   or the operator passes the break-glass switch `-AllowWorkerScriptUpload`. For a non-Worker change, apply with
   `-Target` (for example `-Target 'cloudflare_dns_record.api_custom_hostname'`), or run the full
   `deploy-<env>-local.ps1`, which re-uploads the real bundle with Wrangler later in the same run. The saved-plan

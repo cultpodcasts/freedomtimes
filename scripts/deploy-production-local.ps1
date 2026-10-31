@@ -15,8 +15,8 @@ param(
   Full production deploy (Terraform + secrets + worker) or worker-only build/deploy.
 
 .DESCRIPTION
-  Full deploy (default): Turso rollback checkpoint, Terraform apply, Auth0
-  .env.dev sync, secret sync, build, emdash migrate, wrangler deploy,
+  Full deploy (default): Turso rollback checkpoint, build, Terraform apply, Auth0
+  .env.dev sync, secret sync, emdash migrate, wrangler deploy,
   emdash migrate --check, post-deploy secret verify.
 
   -WorkerOnly: skip Terraform; still backup + migrate + deploy the web worker
@@ -107,8 +107,18 @@ if (-not $DryRun) {
 }
 
 try {
+    if (-not $DryRun) {
+        # #116: build (and its checks) BEFORE the Terraform apply. The apply re-uploads Terraform's
+        # single-module Worker script, which stays live until wrangler deploy below; building first
+        # keeps that window to Auth0 sync, secret sync and migrate.
+        Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
+    }
+
     if (-not $WorkerOnly) {
         Invoke-DeployTerraformApplyWithRecovery
+        if (-not $DryRun) {
+            Sync-DeployTursoBuildEnvAfterTerraform
+        }
         Sync-DeployProductionAuth0EnvFromTerraform
         Assert-DeployAuth0SyncToEnv
         Invoke-DeploySecretSync
@@ -125,7 +135,6 @@ try {
         exit 0
     }
 
-    Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
     if ($UseFreshTursoCheckpoint) {
         # The backup ran in an earlier step with its own credential resolution: fail closed
         # if the build's migrate target is a different DB from the one that was backed up.

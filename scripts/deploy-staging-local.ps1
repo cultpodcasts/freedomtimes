@@ -13,8 +13,8 @@ param(
   Full staging deploy (Terraform + secrets + worker), web-only, or web + scheduler without Terraform.
 
 .DESCRIPTION
-  Full deploy (default): Terraform apply, Auth0 verify, publish-only collections,
-  secret sync, Turso EmDash export, build, emdash migrate, wrangler deploy,
+  Full deploy (default): Turso EmDash export, build, Terraform apply, Auth0 verify,
+  publish-only collections, secret sync, emdash migrate, wrangler deploy,
   emdash migrate --check, post-deploy secret verify.
 
   -WorkerOnly: skip Terraform and infra steps; still backup + migrate + deploy
@@ -77,8 +77,14 @@ if ($WorkersOnly) {
 }
 
 try {
+    # #116: build (and its checks) BEFORE the Terraform apply. The apply re-uploads Terraform's
+    # single-module Worker script, which stays live until wrangler deploy below; building first
+    # keeps that window to Auth0 checks, publish-only enforcement, secret sync and migrate.
+    Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly -SkipVersionBump:$SkipVersionBump
+
     if (-not $skipTerraform) {
         Invoke-DeployTerraformApplyWithRecovery
+        Sync-DeployTursoBuildEnvAfterTerraform
         Assert-DeployAuth0SyncToEnv
         Invoke-DeployEnforceStagingPublishOnlyCollections
         Invoke-DeploySecretSync
@@ -89,8 +95,6 @@ try {
         }
         Invoke-DeploySecretSync
     }
-
-    Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly -SkipVersionBump:$SkipVersionBump
 
     if ($WorkersOnly) {
         $webDistDir = Join-Path $script:DeployRepoRoot "web" "dist"

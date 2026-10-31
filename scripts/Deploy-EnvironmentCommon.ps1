@@ -42,6 +42,8 @@ $script:DeployWorkerDeployCompleted = $false
 # (production -WorkerOnly then failed on the post-deploy Get-DeployWorkerName print).
 . "$PSScriptRoot/ensure-windows-cli-path.ps1"
 $script:DeployWebBuildStartedAt = $null
+# #116: the EmDash Turso URL the Worker was built with (Sync-DeployTursoBuildEnvAfterTerraform).
+$script:DeployWebBuildTursoUrl = $null
 
 function Initialize-DeployEnvironment {
     param(
@@ -1647,7 +1649,8 @@ function Invoke-DeployTerraformApplyWithRecovery {
     )
 
     # terraform-run.ps1 defers its post-apply Worker settings check: this pipeline always runs
-    # wrangler deploy later in the same run (after secret sync, build and migrate; issue #116),
+    # wrangler deploy later in the same run (after secret sync and migrate; the build already ran
+    # before the apply, issue #116),
     # restoring the real bundle, placement and vars from wrangler.jsonc, and verifies after it.
     $previousWranglerFollows = $env:FT_WRANGLER_DEPLOY_FOLLOWS
     $env:FT_WRANGLER_DEPLOY_FOLLOWS = "1"
@@ -1951,6 +1954,9 @@ function Invoke-DeployWorkerBuild {
     . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
     $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
     Assert-DeployRequiredBuildEnv
+    # #116: the build runs before the Terraform apply; Sync-DeployTursoBuildEnvAfterTerraform
+    # compares this URL with the one resolved after the apply.
+    $script:DeployWebBuildTursoUrl = $env:TURSO_DATABASE_URL
 
     . "$script:DeployCommonScriptRoot/build-provenance-env.ps1"
     Set-BuildProvenanceEnv -RepoRoot $script:DeployRepoRoot
@@ -1981,6 +1987,37 @@ function Invoke-DeployWorkerBuild {
     finally {
         Pop-Location
     }
+}
+
+# Issue #116: deploy-*-local.ps1 build the Worker BEFORE the Terraform apply, so the live Worker
+# runs Terraform's single-module re-upload only for Auth0 sync, secret sync and migrate, not the
+# minutes of npm run build. Call right after Invoke-DeployTerraformApplyWithRecovery. It resolves
+# the Turso build credentials again (a token Terraform rotated reaches emdash migrate) and fails
+# closed if the EmDash DB URL changed, because the bundle and .emdash/migrations.json were built
+# against the old one. Never prints tokens. -Resolve is for tests (sets TURSO_* in the process).
+function Sync-DeployTursoBuildEnvAfterTerraform {
+    param([scriptblock]$Resolve)
+    $builtUrl = [string]$script:DeployWebBuildTursoUrl
+    if ([string]::IsNullOrWhiteSpace($builtUrl)) {
+        throw "Internal: Sync-DeployTursoBuildEnvAfterTerraform called before Invoke-DeployWorkerBuild."
+    }
+    if ($null -eq $Resolve) {
+        . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
+        $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
+    }
+    else {
+        $null = & $Resolve
+    }
+    Assert-DeployRequiredBuildEnv
+    $currentUrl = [string]$env:TURSO_DATABASE_URL
+    if (-not (Test-TursoLibsqlUrlsEqual -Left $builtUrl -Right $currentUrl)) {
+        throw @(
+            "The Terraform apply changed the $($script:DeployEnvironment) EmDash Turso DB URL after the Worker was built",
+            "(built for host '$(Get-DeployLibsqlHostname -Url $builtUrl)', now '$(Get-DeployLibsqlHostname -Url $currentUrl)').",
+            "Nothing was migrated or deployed. Re-run the deploy so the build uses the new URL (issue #116)."
+        ) -join " "
+    }
+    Write-DeployStep "Turso build credentials re-resolved after Terraform apply; the EmDash DB URL is unchanged"
 }
 
 function Invoke-DeployWorkerDeploy {
