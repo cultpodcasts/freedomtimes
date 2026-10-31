@@ -486,6 +486,47 @@ foreach ($deployScript in "deploy-staging-local.ps1", "deploy-production-local.p
     Assert-True ($text -match '(?s)try \{.*Invoke-DeployTerraformApplyWithRecovery.*finally \{\s*#[^\n]*\n\s*Write-DeployIncompleteAfterTerraformWarning') "$deployScript runs the Terraform apply inside try and warns in finally"
 }
 
+Write-Host "=== #116: build before the Terraform apply ==="
+foreach ($deployScript in "deploy-staging-local.ps1", "deploy-production-local.ps1") {
+    $text = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $deployScript)
+    $buildCount = ([regex]::Matches($text, '(?m)^\s*Invoke-DeployWorkerBuild\b')).Count
+    $buildAt = $text.IndexOf("Invoke-DeployWorkerBuild")
+    $applyAt = $text.IndexOf("Invoke-DeployTerraformApplyWithRecovery")
+    $tryAt = $text.IndexOf("try {")
+    Assert-True ($buildCount -eq 1 -and $tryAt -ge 0 -and $buildAt -gt $tryAt -and $applyAt -gt $buildAt) "$deployScript builds once, inside try, before the Terraform apply (#116)"
+    Assert-True ($text -match 'Invoke-DeployTerraformApplyWithRecovery\s*\n(\s*if \(-not \$DryRun\) \{\s*\n)?\s*Sync-DeployTursoBuildEnvAfterTerraform') "$deployScript re-resolves Turso build credentials right after the apply (#116)"
+    $migrateAt = $text.IndexOf("Invoke-DeployEmdashCoreMigrate")
+    $deployAt = $text.IndexOf("Invoke-DeployWorkerDeploy")
+    Assert-True ($applyAt -lt $migrateAt -and $migrateAt -lt $deployAt -and $text.Substring($applyAt, $deployAt - $applyAt) -notmatch 'npm run build|Invoke-DeployWorkerBuild') "$deployScript has no build between the apply and wrangler deploy (#116)"
+}
+$previousBuiltUrl = $script:DeployWebBuildTursoUrl
+$previous116Url = [Environment]::GetEnvironmentVariable("TURSO_DATABASE_URL", "Process")
+$previous116Token = [Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")
+try {
+    $script:DeployWebBuildTursoUrl = $null
+    $noBuild = ""
+    try { Sync-DeployTursoBuildEnvAfterTerraform -Resolve { } 6>$null } catch { $noBuild = $_.Exception.Message }
+    Assert-True ($noBuild -match "before Invoke-DeployWorkerBuild") "#116 sync refuses to run before the build"
+
+    $script:DeployWebBuildTursoUrl = "libsql://ft-116-a-org.aws-eu-west-1.turso.io"
+    $sameOk = $true
+    try {
+        Sync-DeployTursoBuildEnvAfterTerraform -Resolve { $env:TURSO_DATABASE_URL = "libsql://FT-116-A-org.aws-eu-west-1.turso.io/"; $env:TURSO_AUTH_TOKEN = "rotated-test-token" } 6>$null
+    } catch { $sameOk = $false }
+    Assert-True ($sameOk -and $env:TURSO_AUTH_TOKEN -eq "rotated-test-token") "#116 same DB after apply: continues with the re-resolved (rotated) token"
+
+    $changed = ""
+    try {
+        Sync-DeployTursoBuildEnvAfterTerraform -Resolve { $env:TURSO_DATABASE_URL = "libsql://ft-116-b-org.aws-eu-west-1.turso.io"; $env:TURSO_AUTH_TOKEN = "secret-test-token" } 6>$null
+    } catch { $changed = $_.Exception.Message }
+    Assert-True ($changed -match "changed the .* EmDash Turso DB URL after the Worker was built" -and $changed -match "Nothing was migrated or deployed" -and $changed -notmatch "secret-test-token") "#116 DB URL changed by the apply: fails closed before migrate, no token in the message"
+}
+finally {
+    $script:DeployWebBuildTursoUrl = $previousBuiltUrl
+    [Environment]::SetEnvironmentVariable("TURSO_DATABASE_URL", $previous116Url, "Process")
+    [Environment]::SetEnvironmentVariable("TURSO_AUTH_TOKEN", $previous116Token, "Process")
+}
+
 Write-Host "=== -UseFreshTursoCheckpoint: verified backup selection ==="
 $checkpointTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ft-checkpoint-" + [guid]::NewGuid().ToString("N"))
 $previousCheckpointRoot = $script:DeployRepoRoot
@@ -735,7 +776,7 @@ finally {
 }
 
 $productionDeployText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "deploy-production-local.ps1")
-Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerBuild[^\n]*\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployMigrateTargetMatchesBackupHost.*?\}\s*\n\s*Invoke-DeployEmdashCoreMigrate') "deploy-production-local.ps1 checks the migrate host after build, before migrate"
+Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerBuild.*?Sync-DeployTursoBuildEnvAfterTerraform.*?\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployMigrateTargetMatchesBackupHost.*?\}\s*\n\s*Invoke-DeployEmdashCoreMigrate') "deploy-production-local.ps1 checks the migrate host after build, before migrate"
 Assert-True ($productionDeployText -match '(?s)Assert-DeployFreshEmDashTursoBackup\s*\n(\s*#[^\n]*\n)*\s*Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy') "deploy-production-local.ps1 checks the live Worker right after selecting the backup (before build/migrate)"
 Assert-True ($productionDeployText -match '(?s)Invoke-DeployWorkerDeploy\s*\n\s*if \(\$UseFreshTursoCheckpoint\) \{.*?Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PostDeploy') "deploy-production-local.ps1 re-checks the new Worker right after wrangler deploy"
 

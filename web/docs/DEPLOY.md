@@ -170,16 +170,17 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 1. Push secrets preflight (`Assert-StagingPushSecretsReady`)
 2. Turso EmDash export (`turso db export` via WSL on Windows / native `turso` on Linux → `.release/backups/`)
-3. Terraform apply (`terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove`)
-4. Verify Auth0 staging credentials in `.env.dev` match Terraform output
-5. Enforce publish-only collection `supports` for `posts` / `pages` (EmDash SQL)
-6. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`)
-7. Bump `web/package.json` patch version (unless `-SkipVersionBump`)
-8. Build (`npm run build` in `web/`; writes `.emdash/migrations.json`; Turso creds from Terraform / `.env.dev`)
-9. `npx emdash migrate` (core schema; fingerprint from `--status --json`)
-10. Deploy web worker (`npx wrangler deploy --config .\web\wrangler.jsonc --env staging` from repo root)
-11. `npx emdash migrate --check`
-12. Post-deploy secret verify (required Auth0 + EmDash secrets on worker)
+3. Bump `web/package.json` patch version (unless `-SkipVersionBump`)
+4. Build (`npm run build` in `web/`; writes `.emdash/migrations.json`; Turso creds from Terraform / `.env.dev`). It runs **before** the apply ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)): a build failure stops the deploy before anything is applied
+5. Terraform apply (`terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove`). From here until step 10 the live Worker may be Terraform's single-module re-upload ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
+6. Resolve the Turso build credentials again; stop (nothing migrated or deployed) if the apply changed the EmDash DB URL the build used
+7. Verify Auth0 staging credentials in `.env.dev` match Terraform output
+8. Enforce publish-only collection `supports` for `posts` / `pages` (EmDash SQL)
+9. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`)
+10. `npx emdash migrate` (core schema; fingerprint from `--status --json`)
+11. Deploy web worker (`npx wrangler deploy --config .\web\wrangler.jsonc --env staging` from repo root)
+12. `npx emdash migrate --check`
+13. Post-deploy secret verify (required Auth0 + EmDash secrets on worker)
 
 **`-WorkerOnly`:** skips Terraform and infra steps unless `-SyncCloudflareWorkerSecrets`. Default still runs Turso export, then build → migrate → wrangler → `--check`. `-SkipTursoBackup` skips the export with no 24h-file requirement and also skips emdash migrate apply/check (Worker hotfix). Runtime still uses Cloudflare `TURSO_*` secrets. Does **not** deploy the scheduler worker or Azure Function App.
 
@@ -204,14 +205,15 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 
 1. Push secrets preflight (`Assert-ProductionPushSecretsReady`)
 2. Turso production rollback checkpoint (`backup-production-emdash.ps1` — Worker-resolved; WSL Turso on Windows / native `turso` on Linux; skipped entirely when `-SkipTursoBackup`)
-3. Terraform apply
-4. Write Auth0 production credentials from Terraform output into `.env.dev`, then verify
-5. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction`)
-6. Build (no version bump unless `-BumpVersion`; writes `.emdash/migrations.json`)
-7. `npx emdash migrate` (core schema)
-8. Deploy web worker (`--env production`)
-9. `npx emdash migrate --check`
-10. Post-deploy secret verify
+3. Build (no version bump unless `-BumpVersion`; writes `.emdash/migrations.json`). It runs **before** the apply ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)): a build failure stops the deploy before anything is applied
+4. Terraform apply. From here until step 9 the live Worker may be Terraform's single-module re-upload ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
+5. Resolve the Turso build credentials again; stop (nothing migrated or deployed) if the apply changed the EmDash DB URL the build used
+6. Write Auth0 production credentials from Terraform output into `.env.dev`, then verify
+7. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction`)
+8. `npx emdash migrate` (core schema)
+9. Deploy web worker (`--env production`)
+10. `npx emdash migrate --check`
+11. Post-deploy secret verify
 
 **`-WorkerOnly`:** requires `-AllowProduction`. Default still runs the Turso rollback checkpoint. `-SkipTursoBackup` skips the checkpoint with no 24h-file requirement and also skips emdash migrate apply/check (Worker hotfix). Resolves Turso creds for build; the worker keeps existing Cloudflare `TURSO_*` secrets at runtime. `-DryRun` skips backup, migrate, build, and deploy after listing live Worker secret **names**.
 
