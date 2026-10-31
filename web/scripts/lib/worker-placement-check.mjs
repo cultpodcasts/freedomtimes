@@ -234,7 +234,8 @@ export function classifyAssetProbe(probe) {
 	if ('error' in probe) return { outcome: 'unverified', message: probe.error };
 	if (!probe.ok) return { outcome: 'mismatch', message: probe.failure ?? `probe failed (HTTP ${probe.status})` };
 	const cache = probe.cfCacheStatus ? `, cf-cache-status ${probe.cfCacheStatus}` : '';
-	return { outcome: 'ok', message: `HTTP ${probe.status} ${probe.contentType || '(no content-type)'} (logged out${cache})` };
+	const to = probe.location ? ` -> ${probe.location}` : '';
+	return { outcome: 'ok', message: `HTTP ${probe.status}${to} ${probe.contentType || '(no content-type)'} (logged out${cache})` };
 }
 
 /** Live probes retry this many times, this far apart, before a 5xx / non-200 / network error counts. */
@@ -303,15 +304,17 @@ export const DEFAULT_UNMATCHED_PROBE_PATH = '/__ft-verify/no-such-route/a/b';
 export const LOCKED_SITE_REDIRECT_STATUSES = Object.freeze([301, 302, 303, 307, 308]);
 
 /**
- * What the unmatched-route probe must see for a given SITE_ACCESS_MODE (from wrangler.jsonc):
- * "locked" → a redirect with a Location (the login wall); anything else (public) → exactly 404.
+ * What the unmatched-route probe must see for a given SITE_ACCESS_MODE (from wrangler.jsonc). Same rule as
+ * the Worker (`siteAccessFromMode` in src/lib/auth.ts): the site is public only when the trimmed, lower-cased
+ * value is "public"; anything else, including unset, is locked.
+ * public → exactly HTTP 404; locked → a redirect with a Location (the login wall).
  * @param {string | undefined} siteAccessMode
  * @returns {{ mode: 'locked' | 'public', describe: string }}
  */
 export function unmatchedRouteExpectation(siteAccessMode) {
-	return siteAccessMode === 'locked'
-		? { mode: 'locked', describe: 'a 3xx redirect to sign-in (SITE_ACCESS_MODE=locked)' }
-		: { mode: 'public', describe: 'HTTP 404 (the not-found page)' };
+	return String(siteAccessMode ?? '').trim().toLowerCase() === 'public'
+		? { mode: 'public', describe: 'HTTP 404 (the not-found page)' }
+		: { mode: 'locked', describe: 'a 3xx redirect to sign-in (SITE_ACCESS_MODE is not public)' };
 }
 
 /**
@@ -324,7 +327,7 @@ export function unmatchedRouteExpectation(siteAccessMode) {
  * - other 5xx: a 500 here usually means env.ASSETS is unbound (the @astrojs/cloudflare entry sends
  *   unmatched routes to env.ASSETS.fetch() before rendering the 404).
  * @param {{ url: string, fetchImpl?: typeof fetch, siteAccessMode?: string }} opts
- * @returns {Promise<{ ok: boolean, status: number, contentType: string, failure?: string } | { error: string }>}
+ * @returns {Promise<{ ok: boolean, status: number, contentType: string, location?: string, failure?: string } | { error: string }>}
  */
 export async function probeUnmatchedRoute({ url, fetchImpl = fetch, siteAccessMode }) {
 	let res;
@@ -341,15 +344,17 @@ export async function probeUnmatchedRoute({ url, fetchImpl = fetch, siteAccessMo
 		expectation.mode === 'locked'
 			? LOCKED_SITE_REDIRECT_STATUSES.includes(res.status) && Boolean(location)
 			: res.status === 404;
-	if (ok) return { ok: true, status: res.status, contentType };
-	let where = '';
+	let redactedLocation;
 	if (location) {
 		try {
-			where = ` (location ${redactUrl(new URL(location, url).href)})`;
+			redactedLocation = redactUrl(new URL(location, url).href);
 		} catch {
-			where = ' (unparseable location)';
+			redactedLocation = '(unparseable)';
 		}
 	}
+	// A passing locked probe also reports where the wall sends logged-out readers (query dropped).
+	if (ok) return { ok: true, status: res.status, contentType, ...(redactedLocation ? { location: redactedLocation } : {}) };
+	const where = redactedLocation ? ` (location ${redactedLocation})` : '';
 	let cause = '';
 	if (res.status === 503) {
 		const retryAfter = res.headers.get('retry-after');

@@ -354,10 +354,9 @@ describe('verify-worker-placement: static assets', () => {
 
 	it('unmatched route 500 (env.ASSETS unbound, as on 27 Oct): mismatch; public 404: ok; network error: unverified', async () => {
 		const url = `https://freedomtimes.news${DEFAULT_UNMATCHED_PROBE_PATH}`;
-		const c500 = classifyAssetProbe(await probeUnmatchedRoute({ url, fetchImpl: fakeFetch(500, { 'content-type': 'text/plain; charset=UTF-8' }) }));
+		const c500 = classifyAssetProbe(await probeUnmatchedRoute({ url, siteAccessMode: 'public', fetchImpl: fakeFetch(500, { 'content-type': 'text/plain; charset=UTF-8' }) }));
 		assert.equal(c500.outcome, 'mismatch');
 		assert.match(c500.message, /returned HTTP 500, expected HTTP 404.*env\.ASSETS is unbound/);
-		assert.equal(classifyAssetProbe(await probeUnmatchedRoute({ url, fetchImpl: fakeFetch(404, { 'content-type': 'text/html' }) })).outcome, 'ok');
 		assert.equal(
 			classifyAssetProbe(await probeUnmatchedRoute({ url, siteAccessMode: 'public', fetchImpl: fakeFetch(404, { 'content-type': 'text/html' }) })).outcome,
 			'ok',
@@ -414,7 +413,7 @@ describe('verify-worker-placement: static assets', () => {
 		}
 		const c404 = classifyAssetProbe(await probeUnmatchedRoute({ url, siteAccessMode: 'locked', fetchImpl: fakeFetch(404, { 'content-type': 'text/html' }) }));
 		assert.equal(c404.outcome, 'mismatch');
-		assert.match(c404.message, /returned HTTP 404, expected a 3xx redirect to sign-in \(SITE_ACCESS_MODE=locked\).*login wall did not run/);
+		assert.match(c404.message, /returned HTTP 404, expected a 3xx redirect to sign-in \(SITE_ACCESS_MODE is not public\).*login wall did not run/);
 		for (const status of [200, 400]) {
 			assert.equal(
 				classifyAssetProbe(await probeUnmatchedRoute({ url, siteAccessMode: 'locked', fetchImpl: fakeFetch(status, { 'content-type': 'text/html' }) })).outcome,
@@ -429,9 +428,21 @@ describe('verify-worker-placement: static assets', () => {
 		);
 	});
 
-	it('unmatchedRouteExpectation: only "locked" expects the login redirect; public / unset / anything else expects 404', () => {
-		assert.equal(unmatchedRouteExpectation('locked').mode, 'locked');
-		for (const m of ['public', undefined, '', 'Locked']) assert.equal(unmatchedRouteExpectation(m).mode, 'public', String(m));
+	it('unmatchedRouteExpectation mirrors src/lib/auth.ts: public only for "public" (trimmed, any case); unset or anything else is locked', () => {
+		for (const m of ['public', ' Public ', 'PUBLIC']) assert.equal(unmatchedRouteExpectation(m).mode, 'public', String(m));
+		for (const m of ['locked', 'Locked', undefined, '', 'private']) assert.equal(unmatchedRouteExpectation(m).mode, 'locked', String(m));
+		const auth = readFileSync(fileURLToPath(new URL('../src/lib/auth.ts', import.meta.url)), 'utf8');
+		assert.match(auth, /readOptionalEnv\('SITE_ACCESS_MODE'\)\.trim\(\)\.toLowerCase\(\) !== 'public'/, 'Worker rule this mirrors is unchanged');
+	});
+
+	it('a passing locked probe logs the redirect target, query dropped', async () => {
+		const url = `https://staging.freedomtimes.news${DEFAULT_UNMATCHED_PROBE_PATH}`;
+		const c = classifyAssetProbe(
+			await probeUnmatchedRoute({ url, siteAccessMode: 'locked', fetchImpl: fakeFetch(302, { location: '/?returnTo=SECRET' }, '') }),
+		);
+		assert.equal(c.outcome, 'ok');
+		assert.match(c.message, /^HTTP 302 -> https:\/\/staging\.freedomtimes\.news\/ /);
+		assert.ok(!c.message.includes('SECRET'));
 	});
 
 	it("verifier passes wrangler.jsonc SITE_ACCESS_MODE to the unmatched-route probe", () => {
@@ -481,7 +492,7 @@ describe('verify-worker-placement: live probe retries', () => {
 		const lines: string[] = [];
 		const sleeps: number[] = [];
 		const result = await probeWithRetry({
-			probe: probeUnmatchedRoute,
+			probe: (o: { url: string; fetchImpl?: typeof fetch }) => probeUnmatchedRoute({ ...o, siteAccessMode: 'public' }),
 			makeUrl: () => url,
 			fetchImpl: sequence(steps),
 			sleep: async (ms: number) => {
