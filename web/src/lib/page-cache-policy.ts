@@ -33,6 +33,8 @@ const NON_SESSION_COOKIE_PATTERNS: readonly RegExp[] = [
  */
 export const DENY_TOP_LEVEL: ReadonlySet<string> = new Set([
   'admin',
+  // #149: editor-only, session-gated Android environment switcher.
+  'app-environment',
   'api',
   'auth',
   'authorize',

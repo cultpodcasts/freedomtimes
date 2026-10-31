@@ -50,8 +50,8 @@ jobs:
       - name: Install Web Dependencies
         run: npm ci
 
-      - name: Pull-to-refresh guard tests (#150)
-        run: npx tsx --test scripts/test-android-pull-to-refresh.mts
+      - name: Android shell tests (#150 pull-to-refresh, #149 environment switch)
+        run: npx tsx --test scripts/test-android-pull-to-refresh.mts scripts/test-android-app-environment.mts
 
       - name: Materialize Firebase Android Config
         run: |

@@ -5,5 +5,15 @@
     <string name="package_name">news.freedomtimes.app</string>
     <string name="custom_url_scheme">news.freedomtimes.app</string>
     <string name="default_notification_channel_id">reader-alerts</string>
+    <string name="staging_indicator_label">STAGING</string>
+    <string name="staging_indicator_description">Staging site. Not the live site. Double tap for the option to switch to production.</string>
+    <string name="app_environment_to_staging_title">Switch to staging?</string>
+    <string name="app_environment_to_staging_message">The app will restart on staging.freedomtimes.news. You\'ll sign in through Secure Access. This device\'s notifications move to staging: production notifications stop until you switch back.</string>
+    <string name="app_environment_to_staging_confirm">Switch to staging</string>
+    <string name="app_environment_to_production_title">Switch to production?</string>
+    <string name="app_environment_to_production_message">The app will restart on freedomtimes.news. This device\'s notifications move back to production.</string>
+    <string name="app_environment_to_production_confirm">Switch to production</string>
+    <string name="app_environment_push_reset_failed">Couldn\'t reset notifications for the switch. Check your connection and try again.</string>
+    <string name="app_environment_save_failed">Couldn\'t save the environment choice. Try again.</string>
     <string name="pull_to_refresh_offline">You\'re offline. Check your connection, then pull down to try again.</string>
 </resources>

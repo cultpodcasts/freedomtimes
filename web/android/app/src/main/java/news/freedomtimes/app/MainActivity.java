@@ -20,13 +20,23 @@ public class MainActivity extends BridgeActivity {
 	private static final String TAG = "FTAndroidApp";
 	private static final String APP_UA_MARKER = "FreedomTimesCapacitorApp/Android";
 
+	private AppEnvironment activeEnvironment;
+	private boolean environmentSwitchable;
+
 	@Override
 	public void onCreate(Bundle savedInstanceState) {
 		registerPlugin(NativeAppConfigPlugin.class);
+		// #149: create the bridge for the editor's chosen site (default production).
+		AppEnvironmentConfig.Resolution environment = AppEnvironmentConfig.resolve(this);
+		config = environment.config;
+		activeEnvironment = environment.active;
+		environmentSwitchable = environment.switchable;
 		super.onCreate(savedInstanceState);
 		appendUserAgentMarker();
 		// #150: native pull-to-refresh around the WebView (reloads the current origin).
 		WebViewPullToRefresh.install(this, getBridge());
+		// #149: native STAGING strip over the WebView whenever staging is on screen.
+		StagingIndicator.install(this, getBridge(), activeEnvironment, environmentSwitchable);
 		// Cold-start VIEW intent: JS may not be ready yet → HTTPS loadUrl fallback.
 		deliverViewIntent(getIntent());
 	}
@@ -36,6 +46,15 @@ public class MainActivity extends BridgeActivity {
 		super.onNewIntent(intent);
 		setIntent(intent);
 		deliverViewIntent(intent);
+	}
+
+	/** #149: the site this bridge was created for; null on a custom (local dev) build. */
+	AppEnvironment getActiveEnvironment() {
+		return activeEnvironment;
+	}
+
+	boolean isEnvironmentSwitchable() {
+		return environmentSwitchable;
 	}
 
 	private void deliverViewIntent(Intent intent) {
