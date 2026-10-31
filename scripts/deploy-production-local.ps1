@@ -1,8 +1,6 @@
 [CmdletBinding()]
 param(
     [switch]$WorkerOnly,
-    [switch]$BumpVersion,
-    [switch]$SkipVersionBump,
     [switch]$SyncCloudflareWorkerSecrets,
     [switch]$AllowProduction,
     [switch]$SkipTursoBackup,
@@ -27,7 +25,8 @@ param(
   -DryRun: skip backup, migrate, build, and deploy. Verifies the live Worker
   has the required secret *names* (including TURSO_*) via wrangler secret list.
 
-  Version bump default: no bump unless -BumpVersion (production ships the version staging already bumped).
+  Build version (#168): stamped at build time by scripts/build-provenance-env.ps1 (local runs:
+  <base>-local.<sha7>); this script never edits web/package.json.
 
   Turso rollback checkpoint runs before migrate for full deploy and -WorkerOnly
   (WSL Turso on Windows; native turso on Linux) unless -SkipTursoBackup.
@@ -80,10 +79,6 @@ if ($UseFreshTursoCheckpoint -and $SkipTursoBackup) {
     throw "Cannot combine -UseFreshTursoCheckpoint and -SkipTursoBackup."
 }
 
-if ($BumpVersion -and $SkipVersionBump) {
-    throw "Cannot combine -BumpVersion and -SkipVersionBump."
-}
-
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 Initialize-DeployEnvironment -Environment production
 Set-DeploySkipTursoMutate -SkipTursoBackup:$SkipTursoBackup -WorkerOnly:$WorkerOnly
@@ -111,7 +106,7 @@ try {
         # #116: build (and its checks) BEFORE the Terraform apply. The apply re-uploads Terraform's
         # single-module Worker script, which stays live until wrangler deploy below; building first
         # keeps that window to Auth0 sync, secret sync and migrate.
-        Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly -BumpVersion:$BumpVersion -SkipVersionBump:$SkipVersionBump
+        Invoke-DeployWorkerBuild -WorkerOnly:$WorkerOnly
     }
 
     if (-not $WorkerOnly) {

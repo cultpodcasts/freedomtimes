@@ -23,14 +23,14 @@
 
 **This is the one place that defines the standard web Worker deploy.** Other docs link here.
 
-1. Push a branch to `cultpodcasts/freedomtimes` and open a PR to `main`. The PR must bump `web/package.json` + `web/package-lock.json` (patch) itself, because CI runs with `-SkipVersionBump` and never commits.
-2. Job **Deploy Worker to Staging** (`.github/workflows/deploy-worker.yml`, GitHub environment `staging`) runs on every PR push from a branch of this repo (forks and Dependabot never deploy). Before any secret-bearing step it runs the no-secrets guards (`scripts/ci-check-no-public-backups.mjs` and `scripts/test-deploy-cloud-agent-guards.ps1`, also run on every PR and push by `.github/workflows/ci-guards.yml`). A passing guard run prints no `WARNING:` lines: the warnings its fixtures trigger on purpose (a 31-char stub `CLOUDFLARE_API_TOKEN`, a production-looking process `TURSO_DATABASE_URL`) are captured and asserted, and `[guard test env]` lines are notes about the runner (for example no nvm Node 22.22.2), not deploy problems ([#147](https://github.com/cultpodcasts/freedomtimes/issues/147)). It then runs the same script as local: `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump -TursoBranchBackup` (push-secrets preflight, staging backup as Turso branch `staging-rollback-YYYYMMDD-HHMMSS`, build with Turso creds from `terraform output` of the staging workspace, `emdash migrate`, `wrangler deploy`, `--check`, secret-name verify). The job summary lists the backup branch and `wrangler deployments` (the new version id). Check https://staging.freedomtimes.news (still behind the Auth0 lock).
+1. Push a branch to `cultpodcasts/freedomtimes` and open a PR to `main`. The PR does **not** edit the version: each deploy stamps its own ([§ Build version](#build-version-stamped-at-deploy-time), [#168](https://github.com/cultpodcasts/freedomtimes/issues/168)). Docs-only changes (`*.md`, `web/docs/**`) and native-shell changes (`web/android/**`, `web/ios/**`) do not run this workflow; script and workflow changes still deploy staging on the PR.
+2. Job **Deploy Worker to Staging** (`.github/workflows/deploy-worker.yml`, GitHub environment `staging`) runs on every PR push from a branch of this repo (forks and Dependabot never deploy). Before any secret-bearing step it runs the no-secrets guards (`scripts/ci-check-no-public-backups.mjs` and `scripts/test-deploy-cloud-agent-guards.ps1`, also run on every PR and push by `.github/workflows/ci-guards.yml`). A passing guard run prints no `WARNING:` lines: the warnings its fixtures trigger on purpose (a 31-char stub `CLOUDFLARE_API_TOKEN`, a production-looking process `TURSO_DATABASE_URL`) are captured and asserted, and `[guard test env]` lines are notes about the runner (for example no nvm Node 22.22.2), not deploy problems ([#147](https://github.com/cultpodcasts/freedomtimes/issues/147)). It then runs the same script as local: `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -TursoBranchBackup` (push-secrets preflight, staging backup as Turso branch `staging-rollback-YYYYMMDD-HHMMSS`, build with Turso creds from `terraform output` of the staging workspace, `emdash migrate`, `wrangler deploy`, `--check`, secret-name verify). The job summary lists the backup branch and `wrangler deployments` (the new version id). Check https://staging.freedomtimes.news (still behind the Auth0 lock).
 3. The operator (Jon) merges the PR. Agents never merge.
-4. Job **Backup + Deploy Worker to Production** (environment `production`) runs on the push to `main`, in this order. Each step runs only if the one before it passed, so nothing is migrated or deployed unless the backup is verified:
+4. Job **Backup + Deploy Worker to Production** (environment `production`) runs on the push to `main` **when the merge changes something that ships in the Worker**: `web/**` except docs (`*.md`, `web/docs/**`), web tests (`web/scripts/test-*.mts`, `web/scripts/**/*.test.mjs`, `web/scripts/fixtures/**`), native shells (`web/android/**`, `web/ios/**`) and `web/.vscode/**`. A merge that only changes those, deploy tooling (`scripts/**`) or the workflow itself runs no production backup or deploy; it ships with the next Worker change (#168). It runs in this order. Each step runs only if the one before it passed, so nothing is migrated or deployed unless the backup is verified:
    1. Checkout, Node, the no-secrets guards (as for staging), `npm ci`, and the pinned Turso CLI (`scripts/ci-install-turso-cli.sh`: fixed release, sha256-checked). None of these steps gets a secret.
    2. **Backup:** `scripts/backup-production-emdash.ps1 -AllowProduction -SkipStagingCompare -UseNativeTurso -SkipFileExport -SkipAgentsLog`: Worker-resolved DB, then the **pre-backup live Worker provenance check** ([#148](https://github.com/cultpodcasts/freedomtimes/issues/148)): before any Turso branch is created it **refuses to back up** unless the live Worker's `tursoHostSha256` (same endpoint and rules as step 3 below, including the #144 bootstrap) equals the hash of the resolved source host. Then Turso branch `prod-rollback-YYYYMMDD-HHMMSS`, inventory verify **read from that branch** (read-only token for that branch only, expires in 1 day, masked in the log), rollback metadata on the runner. The step fails unless verify passes. **CI never exports, uploads or stores a `.db` file or backup artifact** ([§ Backups are never public](#backups-are-never-public)): the Turso branch is the backup. In CI the verify output is reduced to counts and hashes (no slugs) and the Worker's Turso host is masked.
    3. **Deploy:** `pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -UseFreshTursoCheckpoint`: same build, migrate, deploy, `--check` and secret verify as local. `-UseFreshTursoCheckpoint` takes no second backup; it requires the metadata from step 2 to be verified (`verificationPass`), fresh (24h) and a `prod-rollback-*` branch (an older `prod-backup-*` name is also accepted). Then the **live Worker provenance check** ([#142](https://github.com/cultpodcasts/freedomtimes/issues/142)): it fetches `https://freedomtimes.news/api/deploy-provenance.json` (`FT_PRODUCTION_SITE_ORIGIN` overrides the origin) and **refuses to build, migrate or deploy** unless the live Worker's `tursoHostSha256` equals the hash of the backed-up `workerTursoHost`. After the build it also **refuses to migrate** unless the emdash migrate target host equals that `workerTursoHost`. Right after `wrangler deploy` it polls the same endpoint until the **new** version answers (its `commitSha` is this commit) and fails the job unless the hash still matches.
-5. Check https://freedomtimes.news and the job summary (backup branch, deployments list).
+5. Check https://freedomtimes.news and the job summary (build version, backup branch, deployments list). `https://freedomtimes.news/api/version.json` reports the same `version` and `commitSha`.
 
 **Production gating (GitHub environment `production`, #141 thread 412).** The production job declares `environment: production`, which is configured in the repo settings as follows:
 - **Deployment branches:** custom policy, `main` only. A run from any other branch cannot use the environment or its secrets.
@@ -140,13 +140,13 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 ### Quick reference
 
-| Script | Use when | Terraform | Workers deployed | Default version bump |
-|--------|----------|-----------|------------------|----------------------|
-| `deploy-staging-local.ps1` | Full staging (infra + web) | Yes | Web (`freedomtimes-staging`) | Patch bump |
-| `deploy-staging-local.ps1 -WorkerOnly` | Web worker only; infra already applied | No | Web | Patch bump |
-| `deploy-staging-local.ps1 -WorkersOnly` | App code; web + scheduler | No | Web + scheduler | Patch bump |
-| `deploy-production-local.ps1` | Full production (infra + web) | Yes | Web (`freedomtimes`) | No bump |
-| `deploy-production-local.ps1 -WorkerOnly` | Production web only | No | Web | No bump |
+| Script | Use when | Terraform | Workers deployed | Build version |
+|--------|----------|-----------|------------------|---------------|
+| `deploy-staging-local.ps1` | Full staging (infra + web) | Yes | Web (`freedomtimes-staging`) | `<base>-local.<sha7>` |
+| `deploy-staging-local.ps1 -WorkerOnly` | Web worker only; infra already applied | No | Web | `<base>-local.<sha7>` |
+| `deploy-staging-local.ps1 -WorkersOnly` | App code; web + scheduler | No | Web + scheduler | `<base>-local.<sha7>` |
+| `deploy-production-local.ps1` | Full production (infra + web) | Yes | Web (`freedomtimes`) | `<base>-local.<sha7>` |
+| `deploy-production-local.ps1 -WorkerOnly` | Production web only | No | Web | `<base>-local.<sha7>` |
 
 **EmDash 0.38 → 1.0.1:** required code changes, release notes that need an operator action, and the staging-first migrate order are in **[EMDASH_1_0_UPGRADE.md](EMDASH_1_0_UPGRADE.md)**. Web Worker deploys go through [`deploy-worker.yml`](#standard-path-github-actions-deploy-workeryml), with the local scripts as fallback. Do not connect Cloudflare Workers Builds to GitHub for `freedomtimes` or `freedomtimes-staging`.
 
@@ -164,23 +164,22 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 ### `deploy-staging-local.ps1`
 
-**Flags:** `-WorkerOnly`, `-WorkersOnly`, `-SkipVersionBump`, `-SyncCloudflareWorkerSecrets`
+**Flags:** `-WorkerOnly`, `-WorkersOnly`, `-SyncCloudflareWorkerSecrets`, `-SkipTursoBackup`, `-TursoBranchBackup`
 
 **Full deploy (default) — step order:**
 
 1. Push secrets preflight (`Assert-StagingPushSecretsReady`)
 2. Turso EmDash export (`turso db export` via WSL on Windows / native `turso` on Linux → `.release/backups/`)
-3. Bump `web/package.json` patch version (unless `-SkipVersionBump`). The bump happens before the apply, so if a later step fails, re-run with `-SkipVersionBump` (or revert `web/package.json` first); otherwise one release gets two patch versions
-4. Build (`npm run build` in `web/`; writes `.emdash/migrations.json`; Turso creds from Terraform / `.env.dev`). It runs **before** the apply ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)): a build failure stops the deploy before anything is applied
-5. Terraform apply (`terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove`). From here until step 10 the live Worker may be Terraform's single-module re-upload ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
-6. Resolve the Turso build credentials again; stop (nothing migrated or deployed) if the apply changed the EmDash DB URL the build used
-7. Verify Auth0 staging credentials in `.env.dev` match Terraform output
-8. Enforce publish-only collection `supports` for `posts` / `pages` (EmDash SQL)
-9. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`)
-10. `npx emdash migrate` (core schema; fingerprint from `--status --json`)
-11. Deploy web worker (`npx wrangler deploy --config .\web\wrangler.jsonc --env staging` from repo root)
-12. `npx emdash migrate --check`
-13. Post-deploy secret verify (required Auth0 + EmDash secrets on worker)
+3. Build (`npm run build` in `web/`; stamps the [build version](#build-version-stamped-at-deploy-time), never edits `web/package.json`; writes `.emdash/migrations.json`; Turso creds from Terraform / `.env.dev`). It runs **before** the apply ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)): a build failure stops the deploy before anything is applied
+4. Terraform apply (`terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove`). From here until step 9 the live Worker may be Terraform's single-module re-upload ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
+5. Resolve the Turso build credentials again; stop (nothing migrated or deployed) if the apply changed the EmDash DB URL the build used
+6. Verify Auth0 staging credentials in `.env.dev` match Terraform output
+7. Enforce publish-only collection `supports` for `posts` / `pages` (EmDash SQL)
+8. Sync Cloudflare Worker secrets (`set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets`)
+9. `npx emdash migrate` (core schema; fingerprint from `--status --json`)
+10. Deploy web worker (`npx wrangler deploy --config .\web\wrangler.jsonc --env staging` from repo root)
+11. `npx emdash migrate --check`
+12. Post-deploy secret verify (required Auth0 + EmDash secrets on worker)
 
 **`-WorkerOnly`:** skips Terraform and infra steps unless `-SyncCloudflareWorkerSecrets`. Default still runs Turso export, then build → migrate → wrangler → `--check`. `-SkipTursoBackup` skips the export with no 24h-file requirement and also skips emdash migrate apply/check (Worker hotfix). Runtime still uses Cloudflare `TURSO_*` secrets. Does **not** deploy the scheduler worker or Azure Function App.
 
@@ -190,8 +189,8 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 ```powershell
 pwsh ./scripts/deploy-staging-local.ps1
-pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump
-pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump -SkipTursoBackup
+pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly
+pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipTursoBackup
 pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SyncCloudflareWorkerSecrets
 pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly
 pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecrets
@@ -199,13 +198,13 @@ pwsh ./scripts/deploy-staging-local.ps1 -WorkersOnly -SyncCloudflareWorkerSecret
 
 ### `deploy-production-local.ps1`
 
-**Flags:** `-WorkerOnly`, `-AllowProduction` (required with `-WorkerOnly`), `-BumpVersion`, `-SkipVersionBump`, `-SyncCloudflareWorkerSecrets`, `-SkipTursoBackup`, `-DryRun`
+**Flags:** `-WorkerOnly`, `-AllowProduction` (required with `-WorkerOnly`), `-SyncCloudflareWorkerSecrets`, `-SkipTursoBackup`, `-DryRun`
 
 **Full deploy (default) — step order:**
 
 1. Push secrets preflight (`Assert-ProductionPushSecretsReady`)
 2. Turso production rollback checkpoint (`backup-production-emdash.ps1` — Worker-resolved; WSL Turso on Windows / native `turso` on Linux; skipped entirely when `-SkipTursoBackup`)
-3. Build (no version bump unless `-BumpVersion`; writes `.emdash/migrations.json`). It runs **before** the apply ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)): a build failure stops the deploy before anything is applied
+3. Build (stamps the [build version](#build-version-stamped-at-deploy-time), never edits `web/package.json`; writes `.emdash/migrations.json`). It runs **before** the apply ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)): a build failure stops the deploy before anything is applied
 4. Terraform apply. From here until step 9 the live Worker may be Terraform's single-module re-upload ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
 5. Resolve the Turso build credentials again; stop (nothing migrated or deployed) if the apply changed the EmDash DB URL the build used
 6. Write Auth0 production credentials from Terraform output into `.env.dev`, then verify
@@ -259,7 +258,7 @@ Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only
 - [Wrangler deploy working directory](#wrangler-deploy-working-directory)
 - [Terraform worker script lifecycle](#terraform-worker-script-lifecycle)
 - [Cloudflare API token vs Wrangler OAuth](#cloudflare-api-token-vs-wrangler-oauth)
-- [Web version bump on deploy](#web-version-bump-on-deploy)
+- [Build version (stamped at deploy time)](#build-version-stamped-at-deploy-time)
 - [Turso rollback checkpoint (production deploy)](#turso-rollback-checkpoint-production-deploy)
 - [Quick symptom index](#quick-symptom-index)
 
@@ -529,51 +528,23 @@ If verify fails after a successful deploy, re-run `pwsh ./scripts/set-github-sec
 
 ---
 
-## Web version bump on deploy
+## Build version (stamped at deploy time)
 
-### What this is
+[#168](https://github.com/cultpodcasts/freedomtimes/issues/168): **PRs never edit the version, and nothing commits a version back to `main`.** Each deploy build stamps its own version in `scripts/build-provenance-env.ps1` (`Get-BuildVersion`, called by `Set-BuildProvenanceEnv` before `npm run build`) and bakes it in as `FT_BUILD_VERSION`, next to `FT_BUILD_COMMIT_SHA`:
 
-`web/package.json` has a `version` field that was never bumped in this repo (stuck at `0.0.1` since the file was created). It is **not** currently read anywhere in the app, build, or service worker — the deployed-build identity that actually gets exposed (`/api/version.json`, `ReaderDataProvenance.astro`, `tip-source.astro`) is the **git commit SHA** baked in via `FT_BUILD_COMMIT_SHA` (`scripts/build-provenance-env.ps1` → `web/src/lib/build-provenance.ts`), not semver.
+| Build | `version` | Example |
+|---|---|---|
+| `deploy-worker.yml` production job | `<major>.<minor>.<base patch + github.run_number>` | base `0.0.57`, run 60 → `0.0.117` |
+| `deploy-worker.yml` staging job (PR) | same number + `-staging.pr.<PR>` | `0.0.117-staging.pr.168` |
+| Local `deploy-staging-local.ps1` / `deploy-production-local.ps1` | `<base>-local.<sha7>` (`.dirty` when the tree is dirty) | `0.0.57-local.1a2b3c4` |
+| Anything that skips that script (`npm run build` by hand, the legacy `terraform-*.yml` dispatch) | `unknown` | |
 
-Local deploy scripts bump the `web/package.json` (and `web/package-lock.json`) **patch** version immediately before their `npm run build` step, via `scripts/bump-web-version.ps1` (`Invoke-WebVersionBump`):
+- **Base:** the `version` in `web/package.json` (+ `web/package-lock.json`). Change it only to start a new minor/major line, and never lower it. Ordinary PRs leave it alone.
+- **Monotonic:** `github.run_number` only goes up (re-running a run keeps its number, so a re-run ships the same version). Staging PR runs and production runs share the one deploy-worker.yml counter, so production numbers skip the values used by staging runs. That is expected.
+- **Where to read it:** `GET /api/version.json` returns `{ repository, version, commitSha, shortSha, commitUrl }` (`web/src/lib/build-provenance.ts`), and each CI deploy job summary has a **Build version** section. The production provenance checks (#142, #144, #148) read only `commitSha` from that endpoint, so the extra field changes nothing for them.
+- **No tokens, no secrets, no commits:** the stamp uses only the default `GITHUB_RUN_NUMBER` / `GITHUB_ACTIONS` variables and the PR number from the event (`FT_DEPLOY_PR_NUMBER` in the staging step).
 
-- `deploy-staging-local.ps1` (full deploy, `-WorkerOnly`, and `-WorkersOnly`)
-
-**Staging bumps by default on every run** (patch: e.g. `0.0.1` → `0.0.2`). Pass `-SkipVersionBump` to opt out for a given staging run.
-
-**Production defaults the other way — no bump.** `deploy-production-local.ps1 -WorkerOnly` and `deploy-production-local.ps1` ship the **same version staging already bumped** for this release unless you explicitly ask for a new one:
-
-| Script | Default | To bump anyway | To force no bump (same as default) |
-|---|---|---|---|
-| `deploy-staging-local.ps1`, `deploy-staging-local.ps1 -WorkerOnly`, `deploy-staging-local.ps1 -WorkersOnly` | bump patch | *(default)* | `-SkipVersionBump` |
-| `deploy-production-local.ps1 -WorkerOnly`, `deploy-production-local.ps1` | **no bump** (uses current `web/package.json` version) | `-BumpVersion` | `-SkipVersionBump` (no-op given the new default; kept for backward compatibility) |
-
-`-BumpVersion` and `-SkipVersionBump` are mutually exclusive on the production scripts (combining them throws).
-
-**Typical release flow:** deploy staging (bumps `0.0.1` → `0.0.2`), validate, then deploy production — production ships `0.0.2` too (no further bump), instead of the old behavior where production would bump again to `0.0.3` for the *same* release. If you need production to carry a version staging never had (e.g. a production-only hotfix), pass `-BumpVersion` on the production script.
-
-### Why patch, why before build, why the production default flipped
-
-- **Patch bump**: no existing semver convention in this repo to diverge from; patch is the least disruptive default for "a new build went out."
-- **Before build**: mirrors the existing commit-SHA provenance pattern — the artifact that gets deployed should reflect the version bump, not a build that predates it.
-- **Staging bumps, production doesn't (by default)**: a release is staged once (one patch bump) and promoted to production unchanged — bumping again on the production deploy of the *same* release made staging and production carry different versions for identical code, which was confusing. Production keeping the version staging already set matches "one version per release."
-
-### Uncommitted by design
-
-The bump is **not** committed or pushed automatically. It lands in the working tree the same way any other local build output does. Commit it yourself if you want it to persist:
-
-```powershell
-git add web/package.json web/package-lock.json
-git commit -m "chore: bump web version"
-```
-
-If you run a local deploy script repeatedly without committing in between, the version keeps incrementing from whatever is currently in the working tree (e.g. `0.0.1` → `0.0.2` → `0.0.3` across consecutive staging test deploys). That is expected — `git checkout -- web/package.json web/package-lock.json` resets it if you want a clean baseline.
-
-### GitHub Actions: the PR carries the bump
-
-`deploy-worker.yml` (the [standard path](#standard-path-github-actions-deploy-workeryml)) runs `deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump` and the production script with its no-bump default, so CI never bumps or commits. Bump `web/package.json` + `web/package-lock.json` (patch) in the PR itself; staging and production then ship the same version.
-
-The legacy Terraform dispatch (`scripts/production-release.ps1 -AllowProduction`, per [PRODUCTION_RELEASE_RUNBOOK.md](../../PRODUCTION_RELEASE_RUNBOOK.md)) dispatches `terraform-production.yml`, which builds `web/` from whatever is committed on `main` — it does not bump or commit anything. Doing so automatically would require the workflow to commit-and-push a version bump back to `main` (a `contents: write` permission change plus a bot-authored commit on every apply), which was judged out of scope for this change given the version field has no current runtime consumer. `production-release.ps1` prints a reminder to bump-and-commit `web/package.json` manually before dispatch if you want the deployed build to carry a new version. Revisit this if/when the version field is wired into `build-provenance.ts` for display.
+The deploy scripts no longer take `-SkipVersionBump` or `-BumpVersion` (removed with `scripts/bump-web-version.ps1`); passing either is a parameter error. `scripts/test-deploy-cloud-agent-guards.ps1` checks the stamping rules and that no deploy script bumps or commits the version.
 
 ---
 

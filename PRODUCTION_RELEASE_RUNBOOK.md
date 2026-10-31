@@ -118,7 +118,7 @@ What this does:
 
 **Refused while the Worker script drift exists.** Every plan after a local `wrangler deploy` shows the `holding_page` drift (`1 to change`, [NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)). The workflow's `Guard Worker Script Upload Plan` refuses any CI apply that would re-upload the Worker script, so this dispatch fails at the guard before anything is applied, migrated or deployed. The workflow has no recovery or placement check for the gap before wrangler ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)). In practice, deploy with §2a (or the §2b fallback).
 
-**Web version:** CI builds from committed `main` — no automatic bump. Local staging/production version behavior: [DEPLOY.md § Web version bump](web/docs/DEPLOY.md#web-version-bump-on-deploy). Bump and commit manually before dispatch if you want a new semver on the release build.
+**Web version:** this legacy dispatch builds committed `main` without the deploy-time stamp, so `/api/version.json` reports `version: "unknown"` for its build (commit provenance is unchanged). The standard path stamps the version: [DEPLOY.md § Build version](web/docs/DEPLOY.md#build-version-stamped-at-deploy-time). Do not bump or commit `web/package.json` for a release.
 
 Plan-only dry path (Terraform plan + `emdash migrate --check` only — **no** Turso rollback branch, SQL `*:db:deploy`, EmDash apply, or wrangler):
 

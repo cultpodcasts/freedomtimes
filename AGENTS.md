@@ -30,7 +30,7 @@ Numbered items **1–9** apply to **every** Cursor agent session. When one of th
 
 **Dependency bumps (EmDash):** `web/src/lib/content/homepage-entries.ts` mirrors EmDash's collection loader query. When bumping `emdash` past the range in `web/scripts/test-homepage-entries-map.mts` (currently `>=1.3.1 <1.4.0`), re-diff the EmDash loader against that file and widen the range in the same PR; the test fails until you do.
 
-**PR packaging (not a STOP guardrail):** every PR must bump `web/package.json`. If the bump is missing, **add it and continue** — do not halt. Canonical checklist: **[docs/CLOUD_AGENT_GITHUB_PR.md](docs/CLOUD_AGENT_GITHUB_PR.md)** § *What agents must do*.
+**PR packaging (not a STOP guardrail):** PRs do **not** bump `web/package.json` / `web/package-lock.json`. The deploy stamps the version at deploy time ([web/docs/DEPLOY.md § Build version](web/docs/DEPLOY.md#build-version-stamped-at-deploy-time), [#168](https://github.com/cultpodcasts/freedomtimes/issues/168)). Canonical checklist: **[docs/CLOUD_AGENT_GITHUB_PR.md](docs/CLOUD_AGENT_GITHUB_PR.md)** § *What agents must do*.
 
 ## CLI paths (Windows vs WSL)
 
@@ -162,7 +162,7 @@ When the operator asks for a **full staging or production stack** (Terraform + w
 
 **Full staging command**
 
-- `pwsh ./scripts/deploy-staging-local.ps1 -SkipVersionBump` with **no** `-WorkerOnly` / `-WorkersOnly`. That **does** run Terraform (init + apply recovery above).
+- `pwsh ./scripts/deploy-staging-local.ps1` with **no** `-WorkerOnly` / `-WorkersOnly`. That **does** run Terraform (init + apply recovery above).
 - Staging backup: in CI (`deploy-worker.yml`, `-TursoBranchBackup`) it is a `staging-rollback-YYYYMMDD-HHMMSS` Turso branch, never a file ([web/docs/DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml); backups are never public: [§ Backups are never public](web/docs/DEPLOY.md#backups-are-never-public)). Local runs like this one use `turso db export` of `freedomtimes-emdash-staging` → `.release/backups/emdash-staging-<stamp>.db` (git-ignored). Export does **not** require `TF_VAR_TURSO_DATABASE_NAME_STAGING` (Terraform default name). After a successful export, retry may use `-SkipTursoBackup` against that fresh file. <!-- pragma: allowlist secret -->
 - A successful Terraform mutate can be small (example: `0 added, 2 changed, 0 destroyed`). That is not a required delta next time. Apply delta of `0 added, 1 changed, 0 destroyed` on the holding-page Worker is expected inside this full deploy only: it replaces the live Worker with Terraform's single-module upload until the wrangler deploy later in the run ([NON_TERRAFORM_RESOURCES.md](NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift), [#116](https://github.com/cultpodcasts/freedomtimes/issues/116)). Never apply it on its own.
 - After apply: `emdash migrate` apply, wrangler staging, `emdash migrate --check`. Pending none is success.

@@ -164,7 +164,7 @@ tooling blocks it:
   `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`, or a static-asset / unmatched-route probe failed; exit **5** = could not verify (no token, API or
   network error, or a probe could not run: network error on every attempt, probe path not in the build); both print the redeploy command. The deploy scripts defer this check until after their
   `wrangler deploy`, and warn loudly if Terraform applied but `wrangler deploy` did not complete.
-- **Recovery:** `pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly -SkipVersionBump` (Wrangler redeploy), or roll
+- **Recovery:** `pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly` (Wrangler redeploy), or roll
   back to the last Wrangler version in the Cloudflare dashboard.
 - **Tests (no network, fake `terraform` / `node`):**
   `pwsh -NoProfile -File ./scripts/test-terraform-worker-script-guards.ps1` (local only) and

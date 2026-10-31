@@ -2,7 +2,7 @@ name: Deploy Worker
 
 # Standard Freedom Times web Worker deploy path (web/docs/DEPLOY.md):
 #   - pull_request to main from a cultpodcasts branch (not a fork) -> staging Worker
-#     (same steps as `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump`,
+#     (same steps as `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly`,
 #     with the pre-migrate staging backup taken as a Turso branch).
 #   - push/merge to main -> verified production Turso backup branch `prod-rollback-YYYYMMDD-HHMMSS`
 #     in its own step, THEN the production Worker deploy (same steps as
@@ -20,6 +20,14 @@ name: Deploy Worker
 # Secrets are scoped to the steps that use them; installs and npm ci run with none.
 # No Terraform apply here: Terraform stays plan-only in terraform-*.yml (holding_page guard there).
 # The local deploy scripts stay as the fallback.
+# Version (#168): each build is stamped at deploy time by scripts/build-provenance-env.ps1 from the
+# web/package.json base + github.run_number (production) or + run number and PR (staging). It is
+# served at /api/version.json and written to the job summary. Nothing commits back to main.
+# Paths (#168): a push to main runs the production backup + deploy only when something that ships
+# in the Worker changed. Docs (*.md, web/docs/**), web tests, native shells (web/android, web/ios)
+# and deploy tooling (scripts/**, this workflow) do not; they ship with the next Worker change.
+# PRs still deploy staging for script and workflow changes, so deploy tooling is exercised there
+# before it reaches production. Negated patterns must stay AFTER the pattern they narrow.
 
 on:
   pull_request:
@@ -28,12 +36,22 @@ on:
       - "web/**"
       - "scripts/**"
       - ".github/workflows/deploy-worker.yml"
+      - "!**/*.md"
+      - "!web/docs/**"
+      - "!web/android/**"
+      - "!web/ios/**"
   push:
     branches: [main]
     paths:
       - "web/**"
-      - "scripts/**"
-      - ".github/workflows/deploy-worker.yml"
+      - "!**/*.md"
+      - "!web/docs/**"
+      - "!web/android/**"
+      - "!web/ios/**"
+      - "!web/.vscode/**"
+      - "!web/scripts/test-*.mts"
+      - "!web/scripts/**/*.test.mjs"
+      - "!web/scripts/fixtures/**"
 
 permissions:
   contents: read
@@ -108,6 +126,8 @@ jobs:
       - name: Deploy staging Worker (backup branch, build, migrate, deploy, verify)
         shell: pwsh
         env:
+          # #168: staging version stamp <base + run>-staging.pr.<PR> (scripts/build-provenance-env.ps1).
+          FT_DEPLOY_PR_NUMBER: ${{ github.event.pull_request.number }}
           TF_TOKEN_app_terraform_io: ${{ secrets.TF_TOKEN_APP_TERRAFORM_IO }}
           TF_VAR_CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.TF_VAR_CLOUDFLARE_API_TOKEN }}
@@ -124,7 +144,7 @@ jobs:
           PUSH_STAGING_ANDROID_FCM_PROJECT_ID: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PROJECT_ID }}
           PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL: ${{ secrets.PUSH_STAGING_ANDROID_FCM_CLIENT_EMAIL }}
           PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY: ${{ secrets.PUSH_STAGING_ANDROID_FCM_PRIVATE_KEY }}
-        run: ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump -TursoBranchBackup
+        run: ./scripts/deploy-staging-local.ps1 -WorkerOnly -TursoBranchBackup
 
       - name: Record staging Worker deployments
         if: always()
