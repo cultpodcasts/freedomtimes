@@ -53,6 +53,12 @@ final class AppEnvironmentSwitcher {
 
 	private static void switchNow(Activity activity, AppEnvironment target, Listener listener) {
 		resetPushToken(activity.getApplicationContext(), ok -> {
+			// deleteToken() can take up to the timeout; if the user left meanwhile, change nothing.
+			if (activity.isFinishing() || activity.isDestroyed()) {
+				Log.w(TAG, "App environment: activity gone before the switch finished; not switching");
+				listener.onDone(false, "unavailable");
+				return;
+			}
 			if (!ok) {
 				Toast.makeText(activity, R.string.app_environment_push_reset_failed, Toast.LENGTH_LONG).show();
 				listener.onDone(false, "push_reset_failed");

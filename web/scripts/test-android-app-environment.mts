@@ -4,7 +4,7 @@
  * Run: npx tsx --test scripts/test-android-app-environment.mts
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -67,7 +67,25 @@ test('the switcher page is server-gated to admin/editor and the header link is s
 	const signedInBranch = header.slice(header.indexOf('{isSignedIn ? ('), header.indexOf(') : ('));
 	assert.match(signedInBranch, /href="\/app-environment"[^>]*hidden/, 'rendered only for signed-in staff, hidden until revealed');
 	assert.equal(header.split('href="/app-environment"').length, 2, 'one link, inside the signed-in branch');
+	assert.match(signedInBranch, /\{isEditor && <a class="nav-app-environment"/, 'admin/editor only, not staging-reader');
+	assert.match(header, /isEditor = false/, 'defaults to hidden');
 	assert.match(header, /shouldRevealAppEnvironmentLink\(Capacitor\.isNativePlatform\(\), Capacitor\.getPlatform\(\)\)/);
+});
+
+test('every page that renders the header chrome passes the editorial flag', () => {
+	const files = readdirSync(new URL('src/pages/', web), { recursive: true, encoding: 'utf8' })
+		.map((f) => f.replaceAll('\\', '/'))
+		.filter((f) => f.endsWith('.astro'));
+	assert.ok(files.length > 10);
+	const offenders = files.filter((f) => {
+		const src = read(`src/pages/${f}`);
+		const tags = src.match(/<(Header|HomepageView|EmDashContentView)\b[^>]*isSignedIn=[^>]*>/g) ?? [];
+		return tags.some((tag) => !/isEditor=/.test(tag));
+	});
+	assert.deepEqual(offenders, []);
+	for (const view of ['HomepageView', 'EmDashContentView']) {
+		assert.match(read(`src/components/${view}.astro`), /isEditor=\{isEditor\}/, `${view} passes isEditor to Header`);
+	}
 });
 
 test('native switch accepts requests only from the same switcher path', () => {
@@ -99,6 +117,8 @@ test('push never crosses environments: the FCM token is deleted before the switc
 	const reset = switcher.indexOf('resetPushToken(activity.getApplicationContext()');
 	const store = switcher.indexOf('AppEnvironmentStore.set(activity, target)');
 	assert.ok(reset > 0 && reset < store, 'token reset comes before the choice is saved');
+	const gone = switcher.indexOf('activity.isFinishing() || activity.isDestroyed()', reset);
+	assert.ok(gone > reset && gone < store, 'nothing is saved if the activity went away during the reset');
 	assert.match(switcher, /if \(!ok\) \{[\s\S]*?push_reset_failed[\s\S]*?return;/, 'a failed reset cancels the switch');
 	assert.match(read('android/app/build.gradle'), /com\.google\.firebase:firebase-messaging:\$firebaseMessagingVersion/);
 });

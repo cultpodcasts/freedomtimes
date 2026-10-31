@@ -51,14 +51,17 @@ if (session instanceof Response) {
 }
 
 let isAdmin = false;
+let isEditor = false;
 let isSignedIn = false;
 if (session) {
 	isAdmin = session.isAdmin;
+	isEditor = session.isEditor;
 	isSignedIn = true;
 } else {
 	const optional = await getOptionalEditorialSession(sessionContext);
 	if (optional) {
 		isAdmin = optional.isAdmin;
+		isEditor = optional.isEditor;
 		isSignedIn = true;
 	}
 }
@@ -71,7 +74,7 @@ const turnstileSiteKey = readTurnstileSiteKey();
 	description="Send an anonymous or identified story tip to the freedom times editorial team."
 	canonicalUrl={Astro.url.href}
 >
-	<Header section="Submit a tip" isAdmin={isAdmin} isSignedIn={isSignedIn} />
+	<Header section="Submit a tip" isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} />
 	<article class="tip-page">
 		<h1>Submit a tip</h1>
 		<p class="lede">

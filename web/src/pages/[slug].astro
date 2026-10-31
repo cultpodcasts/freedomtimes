@@ -49,6 +49,7 @@ const isLocked = isLockedSiteAccess();
 
 let displayName = 'Reader';
 let isAdmin = false;
+let isEditor = false;
 let isSignedIn = false;
 let resolvedEntry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let resolvedIsPreview = false;
@@ -81,6 +82,7 @@ if (isHomepage) {
 		}
 
 		isAdmin = session.isAdmin;
+		isEditor = session.isEditor;
 		isSignedIn = true;
 	}
 } else if (isLocked) {
@@ -92,12 +94,14 @@ if (isHomepage) {
 
 	displayName = session.displayName;
 	isAdmin = session.isAdmin;
+	isEditor = session.isEditor;
 	isSignedIn = true;
 } else {
 	const session = await getOptionalEditorialSession(sessionContext);
 	if (session) {
 		displayName = session.displayName;
 		isAdmin = session.isAdmin;
+		isEditor = session.isEditor;
 		isSignedIn = true;
 	}
 }
@@ -157,7 +161,7 @@ const homepageEntries: HomepageEntry[] = isHomepage ? await loadHomepageEntries(
 {notFound ? (
 	<NotFoundView />
 ) : isHomepage ? (
-	<HomepageView entries={homepageEntries} isAdmin={isAdmin} isSignedIn={isSignedIn} />
+	<HomepageView entries={homepageEntries} isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} />
 ) : (
 	<EmDashContentView
 		entry={resolvedEntry!}
@@ -167,5 +171,6 @@ const homepageEntries: HomepageEntry[] = isHomepage ? await loadHomepageEntries(
 		isPreview={resolvedIsPreview}
 		isAdmin={isAdmin}
 		isSignedIn={isSignedIn}
+		isEditor={isEditor}
 	/>
 )}

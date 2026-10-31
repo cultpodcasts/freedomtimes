@@ -8,6 +8,8 @@ interface Props {
 	/** Auth0 `admin` role — shows the Freedom Times `/admin` hub link. */
 	isAdmin?: boolean;
 	isSignedIn?: boolean;
+	/** Auth0 `admin` or `editor` - may see the Android app environment link (#149). */
+	isEditor?: boolean;
 	/**
 	 * Render the site name as the page's single `<h1>`. Only for pages with no
 	 * headline of their own (homepage, archives index). Article / hub pages keep
@@ -16,7 +18,7 @@ interface Props {
 	brandAsHeading?: boolean;
 }
 
-const { section, sectionUrl, isAdmin, isSignedIn, brandAsHeading = false } = Astro.props;
+const { section, sectionUrl, isAdmin, isSignedIn, isEditor = false, brandAsHeading = false } = Astro.props;
 const BrandTag = brandAsHeading ? 'h1' : 'p';
 const homePath = getHomePath();
 ---
@@ -54,8 +56,8 @@ const homePath = getHomePath();
 			{/* Sign in: Capacitor native only (hidden until client reveals). Sign out / Admin stay on web. */}
 			{isSignedIn ? (
 				<>
-					{/* #149: Android app only (revealed below). The page itself is gated to admin/editor. */}
-					<a class="nav-app-environment" href="/app-environment" hidden>App environment</a>
+					{/* #149: admin/editor only, Android app only (revealed below). The page itself is also server-gated. */}
+					{isEditor && <a class="nav-app-environment" href="/app-environment" hidden>App environment</a>}
 					<a href="/auth/logout">Sign out</a>
 				</>
 			) : (

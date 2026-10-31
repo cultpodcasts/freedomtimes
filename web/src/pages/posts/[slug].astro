@@ -29,6 +29,7 @@ function logPostSsr(event: string, extra: Record<string, string | number | boole
 
 let displayName = 'Reader';
 let isAdmin = false;
+let isEditor = false;
 let isSignedIn = false;
 
 const sessionContext = {
@@ -51,12 +52,14 @@ if (isLocked) {
 
 	displayName = session.displayName;
 	isAdmin = session.isAdmin;
+	isEditor = session.isEditor;
 	isSignedIn = true;
 } else {
 	const session = await getOptionalEditorialSession(sessionContext);
 	if (session) {
 		displayName = session.displayName;
 		isAdmin = session.isAdmin;
+		isEditor = session.isEditor;
 		isSignedIn = true;
 	}
 }
@@ -107,6 +110,7 @@ if (!slug) {
 		isPreview={isPreview}
 		isAdmin={isAdmin}
 		isSignedIn={isSignedIn}
+		isEditor={isEditor}
 	/>
 )}
 

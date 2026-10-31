@@ -30,6 +30,7 @@ const sessionContext = {
 // session verification already redirects to `/` or `/?denied=1`. Do not render
 // the wall here and do not rewrite to `/` to compose two templates.
 let isAdmin = false;
+let isEditor = false;
 let isSignedIn = false;
 
 if (homepageAction.kind === 'require-session') {
@@ -40,11 +41,13 @@ if (homepageAction.kind === 'require-session') {
   }
 
   isAdmin = session.isAdmin;
+  isEditor = session.isEditor;
   isSignedIn = true;
 } else {
   const session = await getOptionalEditorialSession(sessionContext);
   if (session) {
     isAdmin = session.isAdmin;
+    isEditor = session.isEditor;
     isSignedIn = true;
   }
 }
@@ -53,4 +56,4 @@ if (homepageAction.kind === 'require-session') {
 const entries = await loadHomepageEntries();
 ---
 
-<HomepageView entries={entries} isAdmin={isAdmin} isSignedIn={isSignedIn} />
+<HomepageView entries={entries} isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} />
