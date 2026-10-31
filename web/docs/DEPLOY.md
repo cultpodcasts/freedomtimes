@@ -170,7 +170,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 
 1. Push secrets preflight (`Assert-StagingPushSecretsReady`)
 2. Turso EmDash export (`turso db export` via WSL on Windows / native `turso` on Linux → `.release/backups/`)
-3. Bump `web/package.json` patch version (unless `-SkipVersionBump`)
+3. Bump `web/package.json` patch version (unless `-SkipVersionBump`). The bump happens before the apply, so if a later step fails, re-run with `-SkipVersionBump` (or revert `web/package.json` first); otherwise one release gets two patch versions
 4. Build (`npm run build` in `web/`; writes `.emdash/migrations.json`; Turso creds from Terraform / `.env.dev`). It runs **before** the apply ([#116](https://github.com/cultpodcasts/freedomtimes/issues/116)): a build failure stops the deploy before anything is applied
 5. Terraform apply (`terraform-run.ps1 -Environment staging -Operation apply -LoadEnvFiles -AutoApprove`). From here until step 10 the live Worker may be Terraform's single-module re-upload ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift))
 6. Resolve the Turso build credentials again; stop (nothing migrated or deployed) if the apply changed the EmDash DB URL the build used
