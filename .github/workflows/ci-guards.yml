@@ -35,6 +35,7 @@ jobs:
       - name: Backups are never public (workflow + tracked-file guard)
         run: |
           node --test scripts/ci-check-no-public-backups.test.mjs
+          node --test scripts/turso-backup-retention.test.mjs
           node scripts/ci-check-no-public-backups.mjs
 
       - name: Deploy guard tests
