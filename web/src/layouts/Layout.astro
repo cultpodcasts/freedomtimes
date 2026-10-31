@@ -22,6 +22,11 @@ interface Props {
 	modifiedTime?: string | null;
 	author?: string | null;
 	noindex?: boolean;
+	/**
+	 * Omit `<meta name="robots">` entirely. Only for 503s (`500.astro`, #128): crawlers ignore a
+	 * 5xx body, and a transient error page must carry neither noindex nor index.
+	 */
+	omitRobotsMeta?: boolean;
 	/** schema.org objects, each emitted as its own `application/ld+json` script. */
 	jsonLd?: Record<string, unknown>[];
 }
@@ -45,6 +50,7 @@ const {
 	modifiedTime,
 	author,
 	noindex = false,
+	omitRobotsMeta = false,
 	jsonLd = [],
 } = Astro.props as Props;
 
@@ -77,7 +83,7 @@ const resolvedOgImageAlt = ogImageAlt?.trim().length ? ogImageAlt.trim() : `${si
 		<meta name="apple-mobile-web-app-title" content={SITE_DISPLAY_NAME} />
 		<meta name="generator" content={Astro.generator} />
 		<meta name="description" content={resolvedDescription} />
-		<meta name="robots" content={noindex ? 'noindex,nofollow' : 'index,follow,max-image-preview:large'} />
+		{!omitRobotsMeta && <meta name="robots" content={noindex ? 'noindex,nofollow' : 'index,follow,max-image-preview:large'} />}
 		{absoluteCanonical && <link rel="canonical" href={absoluteCanonical} />}
 		<meta property="og:site_name" content={siteName} />
 		<meta property="og:type" content={ogType} />

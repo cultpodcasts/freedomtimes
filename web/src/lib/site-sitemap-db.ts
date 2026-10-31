@@ -10,7 +10,8 @@
  * deleted, noindex posts included), so it moves when what `/` renders changes.
  *
  * Any query error throws, so the resilient wrapper serves the last-known-good copy (else 503)
- * instead of caching a sitemap with URLs missing.
+ * instead of caching a sitemap with URLs missing. So does an unmigrated or empty content store
+ * (`content-store-guard.ts`, #128).
  *
  * Runs in `src/middleware.ts`, after EmDash's runtime middleware, so `getDb()` is the
  * request-scoped client. Never call it from `middleware.outer`.
@@ -18,6 +19,7 @@
 import { getDb } from 'emdash/runtime';
 import { sql } from 'kysely';
 
+import { assertContentStoreReady } from './content-store-guard-db';
 import { SITEMAP_PAGE_SLUGS, buildSiteSitemapUrls, renderUrlset, type SitemapContentRow } from './site-sitemap';
 
 type Collection = 'posts' | 'pages' | 'archives';
@@ -63,6 +65,8 @@ function toRows(rows: Record<string, unknown>[]): SitemapContentRow[] {
 }
 
 export async function generateSiteSitemapXml(origin: string): Promise<string> {
+	// An unmigrated / empty database must not become a thin "last-known-good" sitemap (#128).
+	await assertContentStoreReady();
 	const db = await getDb();
 	const posts = await sql<{ updated_at: unknown }>`
 		SELECT MAX(c.updated_at) AS updated_at ${publishedFrom('posts')}

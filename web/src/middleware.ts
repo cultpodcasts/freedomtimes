@@ -1,4 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
+import type { APIContext, MiddlewareNext } from 'astro';
 import { env as cfEnv, waitUntil } from 'cloudflare:workers';
 import { GET as serveImagePassthrough } from '@astrojs/cloudflare/image-passthrough-endpoint';
 import { matchInternalMediaKey } from 'emdash/media/image-endpoint';
@@ -28,6 +29,8 @@ import {
 } from './lib/sitemap-resilience';
 import { SITE_SITEMAP_PATH } from './lib/site-sitemap';
 import { generateSiteSitemapResponse } from './lib/site-sitemap-db';
+import { promoteContentStoreUnavailable } from './lib/content-store-guard';
+import { assertContentStoreReady } from './lib/content-store-guard-db';
 
 enum PathMode {
   Exact = 'exact',
@@ -169,7 +172,13 @@ async function maybeInjectNativeShellBridge(path: string, response: Response): P
   });
 }
 
+// #128: a 500.astro render marked "content store unavailable" leaves as a 503 + Retry-After (Astro
+// pins 500.astro to status 500). Wraps every return path, including the error-page render.
 export const onRequest = defineMiddleware(async (context, next) => {
+  return promoteContentStoreUnavailable(await handleSiteRequest(context, next));
+});
+
+async function handleSiteRequest(context: APIContext, next: MiddlewareNext): Promise<Response> {
   const path = context.url.pathname;
   const normalizedPath = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path;
   const env = cfEnv as Record<string, string | undefined>;
@@ -252,7 +261,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
       head: context.request.method === 'HEAD',
       origin: context.url.origin,
       pathname: path,
-      generate: () => next(),
+      // Public: an unmigrated / empty database must not be cached as an empty sitemap (#128).
+      generate: sitemapLocked ? () => next() : async () => {
+        await assertContentStoreReady();
+        return next();
+      },
       extraIndexSitemaps: sitemapLocked ? [] : [SITE_SITEMAP_PATH],
       cache: defaultSitemapCache(),
       waitUntil: sitemapWaitUntil,
@@ -394,4 +407,4 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // No IPs, UA, or cookies stored. Analytics Engine writes are non-blocking.
   recordPageView(context.request, response);
   return maybeInlinePdfMediaDisposition(path, response);
-});
+}

@@ -8,6 +8,8 @@ import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../../lib/editorial-session';
+import { rethrowLookupFailure } from '../../lib/content-store-guard';
+import { assertContentStoreReady } from '../../lib/content-store-guard-db';
 import { errorMessage, isExpectedLookupMiss } from '../../lib/not-found';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
@@ -79,12 +81,15 @@ if (!slug) {
 		const message = errorMessage(result.error);
 		logPostSsr('entry-error', { slug, error: message });
 		if (!isExpectedLookupMiss(result.error)) {
-			throw result.error;
+			// 500 page, or 503 when the content store itself is down (#128).
+			await rethrowLookupFailure(result.error, assertContentStoreReady);
 		}
 		entry = null;
 	}
 
 	if (!entry) {
+		// A 404 only on a live database: an unmigrated / empty one is a 503 (#128).
+		await assertContentStoreReady();
 		notFound = true;
 		Astro.response.status = 404;
 	}

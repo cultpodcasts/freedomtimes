@@ -5,19 +5,45 @@
  * throw) on the homepage or a real article would have rendered through the reader route.
  *
  * Must never touch the database or EmDash (that is usually what just failed), must stay a 5xx
- * (Google treats 5xx as temporary; a 404 would drop the URL), noindex, no canonical, no-store.
+ * (Google treats 5xx as temporary; a 404 would drop the URL), no canonical, no-store.
  * Deliberately no session gate: it shows no content, and a gate would need the failing runtime.
+ *
+ * Two answers:
+ * - any server error: 500, robots noindex.
+ * - `ContentStoreUnavailableError` (#128: unmigrated, empty or unreachable EmDash database, see
+ *   src/lib/content-store-guard.ts): 503 + `Retry-After` and NO robots meta, so crawlers treat it
+ *   as "try again later" and nothing in the body can ever read as a noindex for a live URL.
+ *   Astro forces this page's status to 500, so it sets the `CONTENT_STORE_UNAVAILABLE_HEADER`
+ *   marker and src/middleware.ts turns the response into the 503 (and strips the marker). If
+ *   Astro had to render this page without middleware (middleware itself threw), the answer stays
+ *   a 500 with `Retry-After`: still a temporary 5xx, never a 404.
  */
 import Layout from '../layouts/Layout.astro';
+import {
+	CONTENT_STORE_RETRY_AFTER_SECONDS,
+	CONTENT_STORE_UNAVAILABLE_HEADER,
+	isContentStoreUnavailable,
+} from '../lib/content-store-guard';
 
 export const prerender = false;
 
+const storeUnavailable = isContentStoreUnavailable((Astro.props as { error?: unknown }).error);
 Astro.response.status = 500;
 Astro.response.headers.set('Cache-Control', 'no-store');
+if (storeUnavailable) {
+	Astro.response.headers.set('Retry-After', String(CONTENT_STORE_RETRY_AFTER_SECONDS));
+	Astro.response.headers.set(CONTENT_STORE_UNAVAILABLE_HEADER, '1');
+}
 ---
 
-<Layout title="Temporarily unavailable" description="This page is temporarily unavailable." canonicalUrl={null} noindex>
-	<article class="error-wrap" data-ft-server-error>
+<Layout
+	title="Temporarily unavailable"
+	description="This page is temporarily unavailable."
+	canonicalUrl={null}
+	noindex={!storeUnavailable}
+	omitRobotsMeta={storeUnavailable}
+>
+	<article class="error-wrap" data-ft-server-error data-ft-content-store-unavailable={storeUnavailable ? '' : undefined}>
 		<h1>Temporarily unavailable</h1>
 		<p>Something went wrong on our side. Please try again in a minute.</p>
 		<p><a href="/">Back to homepage</a></p>

@@ -126,7 +126,9 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   check is the backstop; `scripts/test-page-cache-policy.mts` pins both rules.
 - **Where database calls may run (#123):** anything that can fail the page loads in
   the **page** frontmatter, before rendering starts, so a failure there renders
-  `src/pages/500.astro` (500, `no-store`, noindex, no canonical) instead of a cut-off
+  `src/pages/500.astro` (500, `no-store`, noindex, no canonical; or, when the content
+  store itself is unmigrated, empty or unreachable, 503 + `Retry-After` with no robots
+  meta, #128, `src/lib/content-store-guard.ts`) instead of a cut-off
   200. That is the entry lookup (`[slug].astro`, `posts/[slug].astro` and
   `archives/[slug].astro` rethrow a lookup failure, which is any error other than a typed
   not-found whatever its message says, see #121 and `isExpectedLookupMiss` in

@@ -116,9 +116,13 @@ describe('src/lib/not-found.ts', () => {
 		}
 	});
 
-	it('posts/[slug] and archives/[slug]: every non-miss error is rethrown (500.astro), not a 404', () => {
+	it('posts/[slug] and archives/[slug]: every non-miss error is rethrown (500.astro, or 503 if the store is down), not a 404', () => {
 		for (const file of ['src/pages/posts/[slug].astro', 'src/pages/archives/[slug].astro']) {
-			assert.match(read(file), /if \(!isExpectedLookupMiss\(result\.error\)\) \{\s*throw result\.error;/, file);
+			assert.match(
+				read(file),
+				/if \(!isExpectedLookupMiss\(result\.error\)\) \{\s*(\/\/[^\n]*\n\s*)*await rethrowLookupFailure\(result\.error, assertContentStoreReady\);/,
+				file,
+			);
 		}
 		for (const file of ['src/pages/[slug].astro', 'src/pages/posts/[slug].astro', 'src/pages/archives/[slug].astro', 'src/lib/not-found.ts']) {
 			assert.doesNotMatch(read(file), /\.toLowerCase\(\)\.includes\(|message\.includes\(/, `${file}: no message-text classification (#121)`);
@@ -151,7 +155,7 @@ describe('src/lib/not-found.ts', () => {
 
 	it('[slug].astro: a lookup server-error rethrows (500.astro); only the empty-slug branch is plain text', () => {
 		const page = read('src/pages/[slug].astro');
-		assert.match(page, /if \(outcome\.kind === 'server-error'\) \{[\s\S]*?throw outcome\.error;[\s\S]*?\}/);
+		assert.match(page, /if \(outcome\.kind === 'server-error'\) \{[\s\S]*?await rethrowLookupFailure\(outcome\.error, assertContentStoreReady\);[\s\S]*?\}/);
 		assert.equal([...page.matchAll(/Unable to load page right now/g)].length, 1, 'plain-text 500 only on the decideSlugParam error-render path');
 	});
 
@@ -178,14 +182,21 @@ describe('error routes', () => {
 		assert.doesNotMatch(page, /Astro\.redirect\(|Astro\.rewrite|Response\.redirect/);
 	});
 
-	it('500.astro: status 500, no-store, noindex, no canonical, and no DB / EmDash imports', () => {
+	it('500.astro: 500 + noindex (marked for the 503 + Retry-After, no robots meta for a down content store), no-store, no canonical, no DB / EmDash imports', () => {
 		const page = read('src/pages/500.astro');
 		assert.match(page, /export const prerender = false;/);
+		// Astro pins 500.astro to 500; src/middleware.ts promotes the marked variant to 503.
 		assert.match(page, /Astro\.response\.status = 500;/);
 		assert.match(page, /Cache-Control', 'no-store'/);
-		assert.match(page, /<Layout [^>]*canonicalUrl=\{null\}[^>]*noindex/);
-		const imports = [...page.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
-		assert.deepEqual(imports, ['../layouts/Layout.astro']);
+		assert.match(page, /if \(storeUnavailable\) \{\s*Astro\.response\.headers\.set\('Retry-After', String\(CONTENT_STORE_RETRY_AFTER_SECONDS\)\);\s*Astro\.response\.headers\.set\(CONTENT_STORE_UNAVAILABLE_HEADER, '1'\);/);
+		assert.match(page, /<Layout\s[^>]*canonicalUrl=\{null\}[^>]*noindex=\{!storeUnavailable\}[^>]*omitRobotsMeta=\{storeUnavailable\}/);
+		const imports = [...page.matchAll(/^import [^;]*? from '([^']+)';$/gm)].map((m) => m[1]);
+		assert.deepEqual(imports, ['../layouts/Layout.astro', '../lib/content-store-guard']);
+		// The guard module 500.astro imports is pure: no EmDash, database or session imports.
+		const guardImports = [...read('src/lib/content-store-guard.ts').matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
+		assert.deepEqual(guardImports, ['./not-found']);
+		const notFoundImports = [...read('src/lib/not-found.ts').matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
+		assert.deepEqual(notFoundImports, []);
 		const layoutImports = [...read('src/layouts/Layout.astro').matchAll(/^import .*'([^']+)';$/gm)].map((m) => m[1]);
 		assert.ok(layoutImports.every((i) => !/emdash|editorial-session|auth/.test(i)), layoutImports.join(', '));
 	});
