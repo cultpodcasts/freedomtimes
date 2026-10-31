@@ -10,7 +10,7 @@ import {
 	checkArchivePdf,
 } from '../src/lib/content/archive-pdf.ts';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8').replace(/\r\n/g, '\n'); // CRLF checkouts (Windows autocrlf)
 const key = '01M2DW4H4PB5X0AEC83M40GN7R.pdf';
 const link = `/_emdash/api/media/file/${key}`;
 

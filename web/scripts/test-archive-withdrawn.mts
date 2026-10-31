@@ -11,7 +11,7 @@ import {
 } from '../src/lib/content/archive-withdrawn.ts';
 import { isStorableResponse } from '../src/lib/page-cache-policy.ts';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8').replace(/\r\n/g, '\n'); // CRLF checkouts (Windows autocrlf)
 const when = '2026-09-06T10:00:00.000Z';
 
 describe('isWithdrawnArchive (#151)', () => {
