@@ -19,6 +19,7 @@ $ErrorActionPreference = "Stop"
 
 # #114: native-Turso fallback to ~/.turso/turso via $env:PATH (Linux env names are case-sensitive).
 . "$PSScriptRoot/lib/PathEntry.ps1"
+. "$PSScriptRoot/lib/TursoHeadroom.ps1"
 
 if (-not $AllowProduction) {
     throw "Refusing to create production EmDash backup checkpoint without -AllowProduction."
@@ -93,6 +94,7 @@ try {
         Write-Host "[dry-run] turso db create $BranchName --from-db $ProductionDatabaseName$dryExtra" -ForegroundColor Yellow
     }
     else {
+        Assert-TursoDatabaseHeadroom -RepoRoot $repoRoot
         Write-Host "Creating Turso backup branch '$BranchName' from '$ProductionDatabaseName' (always prod-rollback-<stamp> unless overridden)" -ForegroundColor Cyan
         if ($UseWslTurso) {
             function Escape-BashSingleQuoted {

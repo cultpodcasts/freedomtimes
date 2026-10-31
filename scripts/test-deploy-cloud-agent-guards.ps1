@@ -1101,6 +1101,43 @@ Assert-True ($deployWorkflowText -match 'FT_DEPLOY_PR_NUMBER: \$\{\{ github\.eve
 Assert-True ($deployWorkflowText -notmatch 'contents: write') "deploy-worker.yml never gets contents: write (no version commit back to main)"
 
 Write-Host ""
+# #limit: database-count guard before every backup db-create.
+. (Join-Path $PSScriptRoot "lib/TursoHeadroom.ps1")
+$headroomTmp = Join-Path ([System.IO.Path]::GetTempPath()) ("ft-headroom-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path (Join-Path $headroomTmp "scripts") -Force | Out-Null
+try {
+    foreach ($case in @(@{ Code = 0; Throws = $false }, @{ Code = 4; Throws = $true }, @{ Code = 1; Throws = $true })) {
+        Set-Content -LiteralPath (Join-Path $headroomTmp "scripts/turso-backup-retention.mjs") -Value @"
+if (!process.argv.includes("--check-limit") || process.argv[process.argv.indexOf("--limit-threshold") + 1] !== "95") process.exit(9);
+if ($($case.Code) === 4) console.error("Turso database count 96 is at or above 95 (plan limit 100): run node scripts/turso-backup-retention.mjs --delete --expect-count N");
+process.exit($($case.Code));
+"@
+        $threw = $false; $msg = ""
+        try { $null = Assert-TursoDatabaseHeadroom -RepoRoot $headroomTmp 6>$null } catch { $threw = $true; $msg = "$_" }
+        Assert-True ($threw -eq $case.Throws) "Assert-TursoDatabaseHeadroom exit $($case.Code) -> throws=$($case.Throws)"
+        if ($case.Code -eq 4) { Assert-True ($msg -match 'TURSO DATABASE LIMIT' -and $msg -match '--delete --expect-count N') "limit failure names the MSI retention command" }
+    }
+}
+finally {
+    Remove-Item -LiteralPath $headroomTmp -Recurse -Force -ErrorAction SilentlyContinue
+}
+foreach ($pair in @(
+    @{ File = "backup-production-emdash.ps1"; Create = "db create" },
+    @{ File = "turso-create-rollback-branch.ps1"; Create = "turso db create ' +" },
+    @{ File = "Deploy-EnvironmentCommon.ps1"; Create = '$createArgs = @("db", "create"' }
+)) {
+    $t = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $pair.File)
+    $guardIdx = $t.IndexOf("Assert-TursoDatabaseHeadroom -RepoRoot")
+    $createIdx = $t.IndexOf($pair.Create, [Math]::Max($guardIdx, 0))
+    Assert-True ($guardIdx -gt 0 -and $createIdx -gt $guardIdx) "$($pair.File) checks Turso database headroom before db create"
+}
+$wfText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "../.github/workflows/deploy-worker.yml")
+$pruneIdx = $wfText.IndexOf("turso-backup-retention.mjs --ci-staging-only --delete")
+$stagingDeployIdx = $wfText.IndexOf("deploy-staging-local.ps1 -WorkerOnly -TursoBranchBackup")
+# The workflow step lands separately (needs a token with workflow scope); once present it must precede the staging backup.
+Assert-True ($pruneIdx -lt 0 -or $pruneIdx -lt $stagingDeployIdx) "deploy-worker.yml prunes staging-rollback branches (if wired) before the staging backup"
+Assert-True (([regex]::Matches($wfText, 'turso-backup-retention\.mjs[^\n]*--delete')).Count -eq ([regex]::Matches($wfText, 'turso-backup-retention\.mjs --ci-staging-only --delete')).Count) "deploy-worker.yml runs retention --delete only in --ci-staging-only mode"
+
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {
     exit 1

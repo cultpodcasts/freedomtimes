@@ -58,6 +58,22 @@
  *   node scripts/turso-backup-retention.mjs                 # dry-run report
  *   node scripts/turso-backup-retention.mjs --json          # dry-run, JSON plan
  *   node scripts/turso-backup-retention.mjs --delete --expect-count 12   # operator only
+ *   node scripts/turso-backup-retention.mjs --ci-staging-only --delete   # deploy-worker.yml staging job
+ *   node scripts/turso-backup-retention.mjs --check-limit                # fail at >= 95 databases
+ *
+ * --ci-staging-only (#limit, 31 Oct 2026): the one mode allowed to delete on GitHub Actions. It only
+ * ever considers staging-rollback-YYYYMMDD-HHMMSS branches (never prod-*, ci-*, staging-backup-*,
+ * named or unstamped DBs), keeps the newest 10 whatever their age, deletes only branches older than
+ * 7 days, skips the MSI export (staging copies are disposable; the repo is public, so CI never
+ * writes a .db), and refuses to delete more than --max-delete (default 20) in one run.
+ *
+ * --check-limit: counts the organisation's databases and exits 4 at or above --limit-threshold
+ * (default 95; the starter plan allows 100) with the operator command to free space. Used before
+ * every Turso db-create in the backup scripts so the failure is clear instead of Turso's
+ * "maximum database count" error mid-deploy.
+ *
+ * Old-style production checkpoints named prod-rollback-YYYYMMDD-HHMM (Apr-May 2026, no seconds)
+ * are also matched, under every keep rule above.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -81,7 +97,13 @@ export const STAGING_MIN_KEEP_NEWEST = 1;
 /** Jon's policy (31 Oct 2026): no CI backup branch older than a month, above the count floors. */
 export const DEFAULT_MAX_AGE_DAYS = 30;
 
-/** @typedef {{ prefix: string, family: string, environment: "staging" | "production", keepNewest: number, keepDays: number, maxAgeDays: number, floorNewest: number }} RetentionRule */
+/** Database-count guard (#limit): the Turso starter plan allows 100 databases. */
+export const DEFAULT_DATABASE_LIMIT_THRESHOLD = 95;
+/** --ci-staging-only: most branches one CI run may delete. */
+export const DEFAULT_CI_MAX_DELETE = 20;
+export const CI_STAGING_PREFIX = "staging-rollback-";
+
+/** @typedef {{ prefix: string, family: string, environment: "staging" | "production", keepNewest: number, keepDays: number, maxAgeDays: number, floorNewest: number, legacyMinuteStamp?: boolean }} RetentionRule */
 
 /** @returns {RetentionRule[]} */
 export function defaultRules({
@@ -117,13 +139,48 @@ export function defaultRules({
 		{ prefix: "staging-rollback-", family: stagingFamily, ...staging },
 		{ prefix: "staging-backup-", family: stagingFamily, ...staging },
 		{ prefix: "ci-staging-backup-", family: "ci-staging-backup-*", ...staging },
-		{ prefix: "prod-rollback-", family: prodFamily, ...production },
+		{ prefix: "prod-rollback-", family: prodFamily, ...production, legacyMinuteStamp: true },
 		{ prefix: "prod-backup-", family: prodFamily, ...production },
 		{ prefix: "ci-rollback-", family: "ci-rollback-*", ...production },
 	];
 }
 
+/**
+ * Rules for --ci-staging-only: staging-rollback-<stamp> only, newest 10 always kept (no maximum
+ * age), delete only when older than 7 days. Nothing else is ever in scope.
+ * @returns {RetentionRule[]}
+ */
+export function ciStagingOnlyRules({ stagingKeepNewest = 10, stagingKeepDays = 7 } = {}) {
+	if (!Number.isInteger(stagingKeepNewest) || stagingKeepNewest < 10) {
+		throw new Error("--ci-staging-only keeps at least the newest 10 staging-rollback branches.");
+	}
+	if (!Number.isInteger(stagingKeepDays) || stagingKeepDays < 7) {
+		throw new Error("--ci-staging-only deletes nothing younger than 7 days.");
+	}
+	return [{
+		prefix: CI_STAGING_PREFIX,
+		family: "staging-rollback-*",
+		environment: "staging",
+		keepNewest: stagingKeepNewest,
+		keepDays: stagingKeepDays,
+		maxAgeDays: Infinity,
+		floorNewest: stagingKeepNewest,
+	}];
+}
+
 const STAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/;
+/** Old-style prod-rollback-YYYYMMDD-HHMM (no seconds), only for rules with legacyMinuteStamp. */
+const LEGACY_MINUTE_STAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/;
+
+function stampMatch(rest, rule) {
+	const m = STAMP_RE.exec(rest);
+	if (m) return m.slice(1).map(Number);
+	if (rule.legacyMinuteStamp) {
+		const l = LEGACY_MINUTE_STAMP_RE.exec(rest);
+		if (l) return [...l.slice(1).map(Number), 0];
+	}
+	return null;
+}
 
 /**
  * The rule a database name belongs to, or null. The rest of the name after the prefix must be
@@ -134,7 +191,7 @@ const STAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/;
 export function matchRule(name, rules) {
 	const n = String(name || "");
 	for (const rule of rules) {
-		if (n.startsWith(rule.prefix) && STAMP_RE.test(n.slice(rule.prefix.length))) {
+		if (n.startsWith(rule.prefix) && stampMatch(n.slice(rule.prefix.length), rule)) {
 			return rule;
 		}
 	}
@@ -143,9 +200,9 @@ export function matchRule(name, rules) {
 
 /** UTC Date from a name's YYYYMMDD-HHMMSS stamp, or null when invalid. */
 export function parseNameStamp(name, rule) {
-	const m = STAMP_RE.exec(String(name).slice(rule.prefix.length));
+	const m = stampMatch(String(name).slice(rule.prefix.length), rule);
 	if (!m) return null;
-	const [y, mo, d, h, mi, s] = m.slice(1).map(Number);
+	const [y, mo, d, h, mi, s] = m;
 	const date = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
 	if (
 		date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d ||
@@ -348,9 +405,14 @@ export function deleteRefusals({
 	liveStaging,
 	allowUnverifiedStaging = false,
 	unmatchedProtect = [],
+	ciStagingOnly = false,
+	maxDelete = DEFAULT_CI_MAX_DELETE,
 }) {
 	const out = [];
 	const toDelete = plan.filter((e) => e.action === "delete");
+	if (ciStagingOnly) {
+		return ciStagingDeleteRefusals({ plan, maxDelete, unmatchedProtect });
+	}
 	if (String(env.GITHUB_ACTIONS || "").toLowerCase() === "true") {
 		out.push("deletion is never run on GitHub Actions (report only in CI)");
 	}
@@ -374,12 +436,63 @@ export function deleteRefusals({
 	return out;
 }
 
+/** True only for a name --ci-staging-only may ever delete: staging-rollback-YYYYMMDD-HHMMSS. */
+export function isCiStagingCandidate(name) {
+	const n = String(name || "");
+	return n.startsWith(CI_STAGING_PREFIX) && STAMP_RE.test(n.slice(CI_STAGING_PREFIX.length));
+}
+
+/** Checks --ci-staging-only --delete must pass (allowed on GitHub Actions). */
+export function ciStagingDeleteRefusals({ plan, maxDelete = DEFAULT_CI_MAX_DELETE, unmatchedProtect = [] }) {
+	const out = [];
+	const toDelete = plan.filter((e) => e.action === "delete");
+	for (const e of toDelete) {
+		if (!isCiStagingCandidate(e.name) || e.environment !== "staging" || e.prefix !== CI_STAGING_PREFIX) {
+			out.push(`${e.name} is not a staging-rollback-<stamp> branch; --ci-staging-only never deletes it`);
+		}
+	}
+	if (!Number.isInteger(maxDelete) || maxDelete < 0) {
+		out.push("--max-delete needs a non-negative integer");
+	} else if (toDelete.length > maxDelete) {
+		out.push(`plan deletes ${toDelete.length} branches, above --max-delete ${maxDelete}; run the operator mode on the MSI`);
+	}
+	for (const name of unmatchedProtect) {
+		out.push(`--protect ${name} is not a database in the organisation (typo?)`);
+	}
+	return out;
+}
+
+/**
+ * Database-count guard before a Turso db-create.
+ * @returns {{ ok: boolean, count: number, threshold: number, message: string }}
+ */
+export function databaseLimitCheck(count, threshold = DEFAULT_DATABASE_LIMIT_THRESHOLD) {
+	if (!Number.isInteger(count) || count < 0) throw new Error("database count must be a non-negative integer");
+	if (!Number.isInteger(threshold) || threshold < 1) throw new Error("--limit-threshold needs a positive integer");
+	if (count < threshold) {
+		return { ok: true, count, threshold, message: `Turso databases: ${count} (limit check threshold ${threshold}); OK to create a backup branch.` };
+	}
+	return {
+		ok: false,
+		count,
+		threshold,
+		message:
+			`Turso database count ${count} is at or above ${threshold} (plan limit 100): a new backup branch would fail. ` +
+			"Jon: on the MSI run `node scripts/turso-backup-retention.mjs` (dry-run), then " +
+			"`node scripts/turso-backup-retention.mjs --delete --expect-count N` with N from the dry-run. Nothing was created.",
+	};
+}
+
 function parseArgs(argv) {
 	const out = {
 		json: false,
 		delete: false,
 		allowUnverifiedStaging: false,
 		expectCount: undefined,
+		ciStagingOnly: false,
+		maxDelete: DEFAULT_CI_MAX_DELETE,
+		checkLimit: false,
+		limitThreshold: DEFAULT_DATABASE_LIMIT_THRESHOLD,
 		protect: [],
 		agentsDir: path.resolve(repoRoot, "..", "freedomtimes-agents"),
 		metadataDir: path.join(repoRoot, ".release", "rollback-branches"),
@@ -403,6 +516,10 @@ function parseArgs(argv) {
 		else if (a === "--delete") out.delete = true;
 		else if (a === "--allow-unverified-staging") out.allowUnverifiedStaging = true;
 		else if (a === "--expect-count") out.expectCount = num(next(), a);
+		else if (a === "--ci-staging-only") out.ciStagingOnly = true;
+		else if (a === "--max-delete") out.maxDelete = num(next(), a);
+		else if (a === "--check-limit") out.checkLimit = true;
+		else if (a === "--limit-threshold") out.limitThreshold = num(next(), a);
 		else if (a === "--protect") out.protect.push(next());
 		else if (a === "--agents-dir") out.agentsDir = path.resolve(next());
 		else if (a === "--metadata-dir") out.metadataDir = path.resolve(next());
@@ -443,12 +560,17 @@ Dry-run by default: lists CI backup branches with ages and what the policy would
                              a branch whose copy fails is kept (exit 3). Needs the Turso CLI
                              (WSL on Windows) and web/node_modules.
   --allow-unverified-staging With --delete: allow staging branches to go when the staging Worker's
-                             provenance cannot be read (Auth0 lock). Production has no such switch.`;
+                             provenance cannot be read (Auth0 lock). Production has no such switch.
+  --ci-staging-only          Only staging-rollback-<stamp>: keep newest 10, delete only those older than
+                             7 days, no local export. With --delete this is the one mode allowed on
+                             GitHub Actions; refused above --max-delete N (default ${DEFAULT_CI_MAX_DELETE}).
+  --check-limit              Count the organisation's databases; exit 4 at or above --limit-threshold N
+                             (default ${DEFAULT_DATABASE_LIMIT_THRESHOLD}). Deletes nothing.`;
 
 /** Local .db path for a branch: .release/backups/emdash-<production|staging>-<stamp>.db */
 export function localBackupPath(entry, backupsDir) {
 	const stamp = entry.name.slice(entry.prefix.length);
-	if (!/^\d{8}-\d{6}$/.test(stamp)) throw new Error(`unexpected backup branch name ${entry.name}`);
+	if (!/^\d{8}-\d{4}(\d{2})?$/.test(stamp)) throw new Error(`unexpected backup branch name ${entry.name}`);
 	return path.join(backupsDir, `emdash-${entry.environment}-${stamp}.db`);
 }
 
@@ -668,9 +790,21 @@ async function main(argv) {
 		loadEnvDev(path.join(repoRoot, ".env.dev"));
 	}
 	const env = process.env;
-	const rules = defaultRules(opts.rules);
 	const token = platformToken(env);
 	const org = organization(env);
+	if (opts.checkLimit) {
+		if (!token || !org) {
+			console.error("turso-backup-retention --check-limit: no Turso Platform API token or organisation in the environment; database count not checked.");
+			return 0;
+		}
+		const r = databaseLimitCheck((await listDatabases(org, token)).length, opts.limitThreshold);
+		(r.ok ? console.log : console.error)(r.message);
+		return r.ok ? 0 : 4;
+	}
+	if (opts.ciStagingOnly && Object.keys(opts.rules).some((k) => !["stagingKeepNewest", "stagingKeepDays"].includes(k))) {
+		throw new Error("--ci-staging-only takes only --staging-keep-newest / --staging-keep-days rule options.");
+	}
+	const rules = opts.ciStagingOnly ? ciStagingOnlyRules(opts.rules) : defaultRules(opts.rules);
 	if (!token) throw new Error("No Turso Platform API token (TURSO_PLATFORM_API_TOKEN / TURSO_API_TOKEN / TF_VAR_turso_api_token).");
 	if (!org) throw new Error("No Turso organisation (TURSO_ORGANIZATION / TF_VAR_TURSO_ORGANIZATION).");
 
@@ -708,7 +842,7 @@ async function main(argv) {
 
 	if (opts.json) {
 		console.log(JSON.stringify({
-			mode: opts.delete ? "delete" : "dry-run",
+			mode: `${opts.ciStagingOnly ? "ci-staging-only " : ""}${opts.delete ? "delete" : "dry-run"}`,
 			databasesInOrganisation: databases.length,
 			notInScope: otherCount,
 			liveProduction,
@@ -753,10 +887,24 @@ async function main(argv) {
 		liveStaging,
 		allowUnverifiedStaging: opts.allowUnverifiedStaging,
 		unmatchedProtect,
+		ciStagingOnly: opts.ciStagingOnly,
+		maxDelete: opts.maxDelete,
 	});
 	if (refusals.length) {
 		for (const r of refusals) console.error(`Refusing to delete: ${r}`);
 		return 2;
+	}
+	if (opts.ciStagingOnly) {
+		// Staging copies are disposable and CI never writes a .db (public repo): no export.
+		let n = 0;
+		for (const e of toDelete) {
+			if (!isCiStagingCandidate(e.name)) throw new Error(`refusing ${e.name}`);
+			await deleteDatabase(org, token, e.name);
+			n++;
+			console.error(`Deleted ${e.name} (${fmtAge(e.ageDays)}): ${e.reasons.join("; ")}`);
+		}
+		console.error(`--ci-staging-only: deleted ${n} staging-rollback branch(es).`);
+		return 0;
 	}
 	if (opts.allowUnverifiedStaging && !liveStaging.identified && toDelete.some((e) => e.environment === "staging")) {
 		console.error("WARNING: deleting staging branches without the staging Worker's provenance (--allow-unverified-staging).");

@@ -3,12 +3,16 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import {
+	ciStagingDeleteRefusals,
+	ciStagingOnlyRules,
+	databaseLimitCheck,
 	databasesMatchingHostHash,
 	databasesMatchingUrls,
 	defaultRules,
 	deleteRefusals,
 	deleteWithLocalCopies,
 	ensureLocalCopy,
+	isCiStagingCandidate,
 	localBackupPath,
 	matchRule,
 	parseNameStamp,
@@ -413,4 +417,104 @@ test("localBackupPath: new names map to the same emdash-<env>-<stamp>.db files",
 		localBackupPath({ name: "staging-rollback-20261031-090000", prefix: "staging-rollback-", environment: "staging" }, DIR),
 		path.join(DIR, "emdash-staging-20261031-090000.db"),
 	);
+});
+
+// --- #limit: CI staging-only pruning, old-style names, database-count guard ---
+
+test("old-style prod-rollback-YYYYMMDD-HHMM names match and parse (production rules only)", () => {
+	const r = matchRule("prod-rollback-20260430-2115", rules);
+	assert.equal(r?.prefix, "prod-rollback-");
+	assert.equal(parseNameStamp("prod-rollback-20260430-2115", r).toISOString(), "2026-04-30T21:15:00.000Z");
+	for (const n of ["staging-rollback-20260430-2115", "prod-backup-20260430-2115", "ci-rollback-20260430-2115", "prod-rollback-20260430-211", "prod-rollback-20261332-2115", "prod-rollback-20260430-2575"]) {
+		const m = matchRule(n, rules);
+		assert.ok(m === null || parseNameStamp(n, m) === null, n);
+	}
+	assert.equal(
+		localBackupPath({ name: "prod-rollback-20260430-2115", prefix: "prod-rollback-", environment: "production" }, DIR),
+		path.join(DIR, "emdash-production-20260430-2115.db"),
+	);
+});
+
+test("old-style prod-rollback names stay under the production keep rules", () => {
+	const dbs = [
+		db("prod-rollback-20260430-2115"),
+		db("prod-rollback-20260507-1645"),
+		db(`prod-rollback-${stamp(1)}`),
+		db(`prod-rollback-${stamp(2)}`),
+		db(`prod-rollback-${stamp(3)}`),
+	];
+	const plan = byName(planRetention({ databases: dbs, rules, now: NOW }));
+	// 5 in the family; the two April/May ones are > 30d and above the floor of 3.
+	assert.equal(plan["prod-rollback-20260430-2115"].action, "delete");
+	assert.equal(plan["prod-rollback-20260507-1645"].action, "delete");
+	assert.equal(plan[`prod-rollback-${stamp(1)}`].action, "keep");
+	// Alone, an old-style one is the newest prod backup and is kept.
+	const solo = planRetention({ databases: [db("prod-rollback-20260430-2115")], rules, now: NOW });
+	assert.equal(solo[0].action, "keep");
+});
+
+test("--ci-staging-only rules never select prod-*, ci-*, staging-backup-* or named DBs", () => {
+	const ci = ciStagingOnlyRules();
+	const dbs = [
+		"freedomtimes-emdash-production",
+		"freedomtimes-emdash-staging",
+		"prod-work-embeds",
+		"staging-prerollback",
+		"prod-rollback-20250101-000000",
+		"prod-rollback-20250101-0000",
+		"prod-backup-20250101-000000",
+		"ci-rollback-20250101-000000",
+		"ci-staging-backup-20250101-000000",
+		"staging-backup-20250101-000000",
+		"staging-backup-20250101-000000-pre-x",
+		"staging-rollback-manual",
+		"staging-rollback-20250101-0000",
+	].map((n) => db(n));
+	assert.deepEqual(planRetention({ databases: dbs, rules: ci, now: NOW }), []);
+	for (const d of dbs) assert.equal(isCiStagingCandidate(d.Name), false, d.Name);
+	assert.equal(isCiStagingCandidate("staging-rollback-20250101-000000"), true);
+});
+
+test("--ci-staging-only keeps the newest 10 whatever their age and deletes only > 7 days", () => {
+	const ci = ciStagingOnlyRules();
+	const young = Array.from({ length: 15 }, (_, i) => db(`staging-rollback-${stamp(0.1 + i * 0.1)}`));
+	assert.equal(planRetention({ databases: young, rules: ci, now: NOW }).filter((e) => e.action === "delete").length, 0);
+	const old = Array.from({ length: 14 }, (_, i) => db(`staging-rollback-${stamp(40 + i)}`));
+	const plan = planRetention({ databases: [...old, db("prod-backup-20250101-000000")], rules: ci, now: NOW });
+	assert.equal(plan.length, 14);
+	const del = plan.filter((e) => e.action === "delete");
+	assert.equal(del.length, 4);
+	assert.ok(del.every((e) => e.ageDays > 49));
+	assert.throws(() => ciStagingOnlyRules({ stagingKeepNewest: 9 }));
+	assert.throws(() => ciStagingOnlyRules({ stagingKeepDays: 6 }));
+});
+
+test("--ci-staging-only delete is allowed on Actions but capped and staging-only", () => {
+	const del = (name, extra = {}) => ({ name, prefix: "staging-rollback-", environment: "staging", action: "delete", ...extra });
+	const ok = [del("staging-rollback-20250101-000000")];
+	assert.deepEqual(deleteRefusals({ plan: ok, env: { GITHUB_ACTIONS: "true" }, ciStagingOnly: true }), []);
+	assert.equal(ciStagingDeleteRefusals({ plan: ok, maxDelete: 0 }).length, 1);
+	const many = Array.from({ length: 21 }, (_, i) => del(`staging-rollback-2025010${1 + (i % 9)}-0000${String(i).padStart(2, "0")}`));
+	assert.match(ciStagingDeleteRefusals({ plan: many }).join(" "), /above --max-delete 20/);
+	for (const bad of [
+		del("prod-rollback-20250101-000000", { prefix: "prod-rollback-", environment: "production" }),
+		del("freedomtimes-emdash-staging"),
+		del("staging-backup-20250101-000000", { prefix: "staging-backup-" }),
+	]) {
+		assert.equal(ciStagingDeleteRefusals({ plan: [bad] }).length, 1, bad.name);
+	}
+	// Every other mode still refuses on GitHub Actions.
+	const r = deleteRefusals({ plan: ok, expectCount: 1, env: { GITHUB_ACTIONS: "true" }, liveProduction: { identified: true }, liveStaging: { identified: true } });
+	assert.ok(r.some((x) => /never run on GitHub Actions/.test(x)));
+});
+
+test("databaseLimitCheck fails at 95+ with the MSI retention command", () => {
+	assert.equal(databaseLimitCheck(94).ok, true);
+	const at = databaseLimitCheck(95);
+	assert.equal(at.ok, false);
+	assert.match(at.message, /node scripts\/turso-backup-retention\.mjs --delete --expect-count N/);
+	assert.equal(databaseLimitCheck(100).ok, false);
+	assert.equal(databaseLimitCheck(86, 80).ok, false);
+	assert.throws(() => databaseLimitCheck(-1));
+	assert.throws(() => databaseLimitCheck(10, 0));
 });
