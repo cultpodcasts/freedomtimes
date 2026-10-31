@@ -844,6 +844,7 @@ Assert-True ($backupScriptText -match 'liveProvenanceCheck\s*=\s*\$liveProvenanc
 $agentsLogPayloadText = [regex]::Match($backupScriptText, '(?s)\$logPayload\s*=\s*\[ordered\]@\{.*?\n\s{8}\}').Value
 Assert-True ($agentsLogPayloadText -match 'liveProvenanceCheck\s*=\s*\$liveProvenance') "agents backup log payload records liveProvenanceCheck (#154)"
 Assert-True ($agentsLogPayloadText -match 'resolveSource\s*=\s*\[string\]\$resolved\.source') "agents backup log payload records resolveSource (#154)"
+Assert-True ($backupScriptText -match 'only writing the freedomtimes-agents log failed') "agents log writer failure says the branch and metadata already exist (#154)"
 
 # #148 / DR: the disaster-recovery safety backup can forward the explicit opt-in.
 $drScriptPath = Join-Path $PSScriptRoot "disaster-recover-production-emdash.ps1"

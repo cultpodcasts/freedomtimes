@@ -559,7 +559,13 @@ try {
         $logArgs = @(
             $logWriter, "--from-json", $logPayloadPath, "--stamp", $timestampUtc, "--agents-dir", $AgentsRepo
         )
-        $logRun = Invoke-External -FilePath "node" -Arguments $logArgs -CaptureOutput
+        try {
+            $logRun = Invoke-External -FilePath "node" -Arguments $logArgs -CaptureOutput
+        }
+        catch {
+            # #154: the writer runs last. Say what already exists so the operator does not redo the backup.
+            throw "Backup branch $branchName and metadata $metadataFileName were created (verificationPass=$verifyPass); only writing the freedomtimes-agents log failed: $($_.Exception.Message). Fix the cause and write it with: node web/scripts/write-emdash-backup-log.mjs --from-json $logPayloadPath --stamp $timestampUtc --agents-dir <freedomtimes-agents>"
+        }
         $agentsLogPath = ($logRun.Output | Select-Object -Last 1).ToString().Trim()
         Write-Host "Agents backup log: $agentsLogPath" -ForegroundColor Green
         Write-Host "Manual follow-up: git add + commit that JSON in freedomtimes-agents (no tokens, no .db). See web/docs/DEPLOY.md." -ForegroundColor Cyan
