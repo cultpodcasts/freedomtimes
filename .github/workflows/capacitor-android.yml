@@ -50,6 +50,9 @@ jobs:
       - name: Install Web Dependencies
         run: npm ci
 
+      - name: Pull-to-refresh guard tests (#150)
+        run: npx tsx --test scripts/test-android-pull-to-refresh.mts
+
       - name: Materialize Firebase Android Config
         run: |
           set -euo pipefail
@@ -97,11 +100,11 @@ jobs:
       - name: Sync Capacitor Android
         run: npm run cap:sync:android
 
-      - name: Assemble Android Debug Build
+      - name: Unit Test and Assemble Android Debug Build
         run: |
           chmod +x android/gradlew
           cd android
-          ./gradlew assembleDebug
+          ./gradlew testDebugUnitTest assembleDebug
 
       - name: Upload Android Debug APK
         uses: actions/upload-artifact@v7

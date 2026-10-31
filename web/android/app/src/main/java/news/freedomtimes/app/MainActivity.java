@@ -25,6 +25,8 @@ public class MainActivity extends BridgeActivity {
 		registerPlugin(NativeAppConfigPlugin.class);
 		super.onCreate(savedInstanceState);
 		appendUserAgentMarker();
+		// #150: native pull-to-refresh around the WebView (reloads the current origin).
+		WebViewPullToRefresh.install(this, getBridge());
 		// Cold-start VIEW intent: JS may not be ready yet → HTTPS loadUrl fallback.
 		deliverViewIntent(getIntent());
 	}

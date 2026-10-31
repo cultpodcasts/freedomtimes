@@ -5,4 +5,5 @@
     <string name="package_name">news.freedomtimes.app</string>
     <string name="custom_url_scheme">news.freedomtimes.app</string>
     <string name="default_notification_channel_id">reader-alerts</string>
+    <string name="pull_to_refresh_offline">You\'re offline. Check your connection, then pull down to try again.</string>
 </resources>
