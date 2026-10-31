@@ -886,7 +886,7 @@ Recommended pre-apply checkpoint and rollback helpers:
 
 # Emergency failback: retarget Worker to last verified branch (canonical DR):
 # sibling freedomtimes-agents/docs/DISASTER_RECOVERY.md
-.\scripts\disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-backup-YYYYMMDD-HHMMSS>
+.\scripts\disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <prod-rollback-YYYYMMDD-HHMMSS>
 # Site down (its safety backup cannot prove the live DB, #148)? Add -SkipLiveProvenanceCheck.
 # Never for a host mismatch; -SkipSafetyBackup takes no backup at all (web/docs/DEPLOY.md).
 ```

@@ -38,11 +38,11 @@ param(
   -UseFreshTursoCheckpoint: do not take a new backup here. Require backup metadata
   newer than 24h under .release/rollback-branches/ (written by
   backup-production-emdash.ps1 earlier in the same run) that is kind
-  production-emdash-content-backup, verificationPass true, a prod-backup-* branch and
+  production-emdash-content-backup, verificationPass true, a prod-rollback-* (or older prod-backup-*) branch and
   has workerTursoHost; a name match alone is not accepted. After the build resolves
   the emdash migrate target, refuse to migrate or deploy unless its host equals the
   backed-up workerTursoHost. Used by .github/workflows/deploy-worker.yml, which takes
-  the verified prod-backup-* Turso branch in its own step before this one.
+  the verified prod-rollback-* Turso branch in its own step before this one.
   It also proves the LIVE production Worker reads that host (#142): before build it
   compares GET https://freedomtimes.news/api/deploy-provenance.json (a hash of the
   Worker's Turso host, never the host) with the backed-up host, and again right after

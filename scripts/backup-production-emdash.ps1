@@ -7,11 +7,11 @@
   freedomtimes-emdash-production (that named DB can be a stale thin corpus).
 
   Creates:
-    1) Turso branch: prod-backup-YYYYMMDD-HHMMSS  (THE production EmDash content backup —
+    1) Turso branch: prod-rollback-YYYYMMDD-HHMMSS  (THE production EmDash content backup —
                    always this name, never the source Worker DB name such as
                    prod-work-embeds-… or freedomtimes-emdash-production)
     2) Local file:   .release/backups/emdash-production-YYYYMMDD-HHMMSS.db
-    3) Metadata:     .release/rollback-branches/YYYYMMDD-HHMMSS-prod-backup-YYYYMMDD-HHMMSS.json
+    3) Metadata:     .release/rollback-branches/YYYYMMDD-HHMMSS-prod-rollback-YYYYMMDD-HHMMSS.json
                    including workerTursoHost, sourceDatabase (whatever the Worker uses),
                    postCount, weeklySlugsSample, verification
     4) Backup log:   ../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json
@@ -19,7 +19,8 @@
                    freedomtimes-agents is a manual follow-up (web/docs/DEPLOY.md).
 
   The backup is of whatever Turso DB the production Worker is using. The backup branch
-  name is always prod-backup-<stamp>, never a work/scratch DB name.
+  name is always prod-rollback-<stamp> (Jon's naming, 31 Oct 2026; Sept to 31 Oct 2026 it was
+  prod-backup-<stamp>, and those branches stay valid), never a work/scratch DB name.
 
   Before any branch or export (#148), the resolved source host is checked against the LIVE
   production Worker: sha256("freedomtimes-turso-host-v1:" + host) must equal tursoHostSha256 from
@@ -36,7 +37,7 @@
   Non-zero exit if verify FAIL.
 
   -SkipFileExport (used by .github/workflows/deploy-worker.yml; the repo is public, so CI
-  never writes a .db): verify reads the new prod-backup-* branch directly instead of the
+  never writes a .db): verify reads the new prod-rollback-* branch directly instead of the
   file, with a read-only, 1-day database token created for that branch only
   (turso db tokens create <branch> -r -e 1d). The token is passed through process env,
   masked in GitHub Actions, never printed or written to disk, and cleared afterwards.
@@ -264,7 +265,7 @@ try {
     }
 
     $timestampUtc = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
-    $branchName = "prod-backup-$timestampUtc"
+    $branchName = "prod-rollback-$timestampUtc"
     $backupFileRel = ".release/backups/emdash-production-$timestampUtc.db"
     $backupFilePath = Join-Path $repoRoot $backupFileRel
     $metaDir = Join-Path $repoRoot ".release/rollback-branches"
@@ -305,7 +306,7 @@ try {
 
     Write-Host "Worker host:     $workerHost" -ForegroundColor Green
     Write-Host "Source database: $sourceDatabase  (whatever the production Worker points at — NOT the backup name)" -ForegroundColor Green
-    Write-Host "Backup branch:   $branchName  (always prod-backup-<stamp>; never named after the source)" -ForegroundColor Green
+    Write-Host "Backup branch:   $branchName  (always prod-rollback-<stamp>; never named after the source)" -ForegroundColor Green
     Write-Host "Published posts: $postCount" -ForegroundColor Green
 
     # #148: prove the source is the DB the LIVE production Worker reads before any branch or
@@ -543,7 +544,7 @@ try {
                 tursoBranch = $branchName
                 localFile   = $backupFileRel
             }
-            backupNaming           = "Turso branch is always prod-backup-YYYYMMDD-HHMMSS (never the Worker source name)."
+            backupNaming           = "Turso branch is always prod-rollback-YYYYMMDD-HHMMSS (never the Worker source name)."
             posts                  = $postsObj
             postCount              = $postCount
             weeklySlugsSample      = $weeklySample

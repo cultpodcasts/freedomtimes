@@ -30,7 +30,7 @@ param(
   also skip emdash migrate apply/check (Worker hotfix; no Turso mutate).
 
   -TursoBranchBackup: take the pre-migrate staging backup as a Turso branch
-  (staging-backup-YYYYMMDD-HHMMSS) instead of a .db export. Used by
+  (staging-rollback-YYYYMMDD-HHMMSS) instead of a .db export. Used by
   .github/workflows/deploy-worker.yml: the repo is public, so CI never writes or
   uploads a database file. Cannot combine with -SkipTursoBackup.
 

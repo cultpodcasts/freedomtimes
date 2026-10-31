@@ -8,10 +8,13 @@ import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 export const NAMED_PRODUCTION_DB_DEFAULT = "freedomtimes-emdash-production";
-/** New production EmDash backups (Turso branch). Never name backups after the Worker source DB. */
-export const BACKUP_BRANCH_PREFIX = "prod-backup-";
-/** Legacy backups created before the prod-backup-* rename. Still valid DR restore sources. */
+/**
+ * Production EmDash backups (Turso branch prod-rollback-<stamp>; Jon's naming from 31 Oct 2026).
+ * Never name backups after the Worker source DB.
+ */
 export const ROLLBACK_BRANCH_PREFIX = "prod-rollback-";
+/** Backups created between the Sept 2026 rename and 31 Oct 2026. Still valid DR restore sources. */
+export const BACKUP_BRANCH_PREFIX = "prod-backup-";
 export const BACKUP_FILE_PREFIX = "emdash-production-";
 
 /** @param {string} name */

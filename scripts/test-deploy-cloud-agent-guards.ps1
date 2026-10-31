@@ -506,22 +506,33 @@ try {
     $empty = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc $nowUtc.AddHours(-24)
     Assert-True ($null -eq $empty.Metadata) "no metadata: nothing selected"
 
-    $good = $base.Clone(); $good.backupDatabase = "prod-backup-20261030-100000"; $good.verificationPass = $true; $good.createdAtUtc = $nowUtc.AddMinutes(-5).ToString("o")
-    New-TestBackupMeta -Name "20261030-100000-prod-backup-20261030-100000.json" -Fields $good -AgeSeconds 40
+    $good = $base.Clone(); $good.backupDatabase = "prod-rollback-20261030-100000"; $good.verificationPass = $true; $good.createdAtUtc = $nowUtc.AddMinutes(-5).ToString("o")
+    New-TestBackupMeta -Name "20261030-100000-prod-rollback-20261030-100000.json" -Fields $good -AgeSeconds 40
+    # Older prod-backup-* name (Sept to 31 Oct 2026) is still read; this one has no host.
     $noHost = $good.Clone(); $noHost.backupDatabase = "prod-backup-20261030-100100"; $noHost.workerTursoHost = ""
     New-TestBackupMeta -Name "20261030-100100-prod-backup-20261030-100100.json" -Fields $noHost -AgeSeconds 30
-    $old = $good.Clone(); $old.backupDatabase = "prod-backup-20261028-100000"; $old.createdAtUtc = $nowUtc.AddHours(-30).ToString("o")
-    New-TestBackupMeta -Name "20261030-100200-prod-backup-20261028-100000.json" -Fields $old -AgeSeconds 20
+    $old = $good.Clone(); $old.backupDatabase = "prod-rollback-20261028-100000"; $old.createdAtUtc = $nowUtc.AddHours(-30).ToString("o")
+    New-TestBackupMeta -Name "20261030-100200-prod-rollback-20261028-100000.json" -Fields $old -AgeSeconds 20
     # Newest file: name-matched but NOT verified. The old code accepted this; it must be skipped.
-    $unverified = $good.Clone(); $unverified.backupDatabase = "prod-backup-20261030-100300"; $unverified.verificationPass = $false
-    New-TestBackupMeta -Name "20261030-100300-prod-backup-20261030-100300.json" -Fields $unverified -AgeSeconds 10
+    $unverified = $good.Clone(); $unverified.backupDatabase = "prod-rollback-20261030-100300"; $unverified.verificationPass = $false
+    New-TestBackupMeta -Name "20261030-100300-prod-rollback-20261030-100300.json" -Fields $unverified -AgeSeconds 10
+    # A metadata file named like a backup whose backupDatabase is a work DB is rejected.
+    $workName = $good.Clone(); $workName.backupDatabase = "prod-work-embeds-20260729-183444"
+    New-TestBackupMeta -Name "20261030-100400-prod-rollback-20261030-100400.json" -Fields $workName -AgeSeconds 5
 
     $pick = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc $nowUtc.AddHours(-24)
-    Assert-True ($null -ne $pick.Metadata -and $pick.Metadata.backupDatabase -eq "prod-backup-20261030-100000") "picks the newest verified, fresh, complete backup"
-    Assert-True (@($pick.Rejected).Count -eq 3) "rejects unverified, stale and host-less candidates"
+    Assert-True ($null -ne $pick.Metadata -and $pick.Metadata.backupDatabase -eq "prod-rollback-20261030-100000") "picks the newest verified, fresh, complete backup (prod-rollback-*)"
+    Assert-True (@($pick.Rejected).Count -eq 4) "rejects unverified, stale, host-less and non-backup-name candidates"
     Assert-True ((@($pick.Rejected) -join "`n") -match "verificationPass is not true") "unverified candidate is reported"
+    Assert-True ((@($pick.Rejected) -join "`n") -match "prod-work-embeds-20260729-183444' is not a prod-rollback-") "non-backup backupDatabase is reported"
 
-    Remove-Item -LiteralPath (Join-Path $metaDir "20261030-100000-prod-backup-20261030-100000.json")
+    $legacy = $good.Clone(); $legacy.backupDatabase = "prod-backup-20261031-080324"
+    New-TestBackupMeta -Name "20261031-080324-prod-backup-20261031-080324.json" -Fields $legacy -AgeSeconds 50
+    Remove-Item -LiteralPath (Join-Path $metaDir "20261030-100000-prod-rollback-20261030-100000.json")
+    $pickLegacy = Select-DeployFreshVerifiedProductionBackup -MetadataDir $metaDir -CutoffUtc $nowUtc.AddHours(-24)
+    Assert-True ($null -ne $pickLegacy.Metadata -and $pickLegacy.Metadata.backupDatabase -eq "prod-backup-20261031-080324") "a fresh verified older prod-backup-* is still accepted"
+    Remove-Item -LiteralPath (Join-Path $metaDir "20261031-080324-prod-backup-20261031-080324.json")
+
     $script:DeployRepoRoot = $checkpointTmp
     $script:DeployIsStaging = $false
     $assertMessage = ""
@@ -605,7 +616,7 @@ Assert-True ((Resolve-DeployLiveWorkerProvenanceVerdict -Phase PreDeploy -Status
 
 $previousBuildSha = [Environment]::GetEnvironmentVariable("FT_BUILD_COMMIT_SHA", "Process")
 try {
-    $script:DeployFreshBackupMetadata = [pscustomobject]@{ backupDatabase = "prod-backup-20261030-100000"; workerTursoHost = $provHost }
+    $script:DeployFreshBackupMetadata = [pscustomobject]@{ backupDatabase = "prod-rollback-20261030-100000"; workerTursoHost = $provHost }
     $env:FT_BUILD_COMMIT_SHA = "new5678"
     $fetchOk = { [pscustomobject]@{ StatusCode = 200; Body = (New-ProvBody $provHash "old1234") } }
     Assert-True ((Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreDeploy -Fetch $fetchOk -DelaySeconds 0 6>$null) -eq "Match") "pre-deploy: live Worker on the backed-up host proceeds"

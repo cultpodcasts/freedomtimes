@@ -7,10 +7,10 @@
   (overwrites current prod state — knee-jerk, can destroy evidence / newer rows).
 
   Preferred order (this script):
-    1) Identify -FromBranch (verified prod-backup-* NEW backups, or legacy
-       prod-rollback-* restore sources, or another known-good Turso DB)
+    1) Identify -FromBranch (a verified prod-rollback-* backup, or an older prod-backup-*
+       one, or another known-good Turso DB)
     2) Create a safety branch/export of the **current** Worker DB first
-       (that NEW safety backup is named prod-backup-YYYYMMDD-HHMMSS)
+       (that NEW safety backup is named prod-rollback-YYYYMMDD-HHMMSS)
     3) Retarget production Worker TURSO_* secrets to -FromBranch (or a fresh --from-db clone)
     4) Print verification probes (apex + sample posts)
 
@@ -22,15 +22,15 @@
   -SkipSafetyBackup takes no backup at all and is not the fix for a down site.
 
   Named production DB is left intact unless -OverwriteNamedProduction (dangerous).
-  NEW backups are always prod-backup-*. Legacy prod-rollback-* branches remain valid
-  restore sources. Never treat a work/scratch name (prod-work-embeds-…) as the
+  NEW backups are always prod-rollback-<stamp> (Jon's naming, 31 Oct 2026). prod-backup-*
+  branches (Sept to 31 Oct 2026) remain valid restore sources. Never treat a work/scratch name (prod-work-embeds-…) as the
   backup artifact name — that is a possible *source*, not the backup label.
 
 .EXAMPLE
-  pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch prod-backup-20260908-140000
+  pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch prod-rollback-20261101-140000
 
 .EXAMPLE
-  pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch prod-rollback-20260907-163120
+  pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch prod-backup-20261030-232606
 
 .EXAMPLE
   pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch prod-work-embeds-20260729-183444 -CloneToNewName prod-recovery-20260907-180000
@@ -151,14 +151,14 @@ try {
 
     Write-Host "=== Production EmDash DR (non-destructive first) ===" -ForegroundColor Cyan
     Write-Host "FromBranch: $FromBranch"
-    if ($FromBranch -match '^prod-backup-') {
-        Write-Host "Restore source looks like a current production backup (prod-backup-*)." -ForegroundColor Green
+    if ($FromBranch -match '^prod-rollback-') {
+        Write-Host "Restore source looks like a production backup (prod-rollback-*)." -ForegroundColor Green
     }
-    elseif ($FromBranch -match '^prod-rollback-') {
-        Write-Host "Restore source is a legacy prod-rollback-* backup (still valid)." -ForegroundColor Yellow
+    elseif ($FromBranch -match '^prod-backup-') {
+        Write-Host "Restore source is an older prod-backup-* backup (still valid)." -ForegroundColor Yellow
     }
     else {
-        Write-Warning "FromBranch is not prod-backup-* or legacy prod-rollback-*. Confirm this is a known-good Worker-resolved snapshot (not a scratch name treated as 'the backup')."
+        Write-Warning "FromBranch is not prod-rollback-* or the older prod-backup-*. Confirm this is a known-good Worker-resolved snapshot (not a scratch name treated as 'the backup')."
     }
 
     if (-not $SkipSafetyBackup) {
@@ -291,8 +291,8 @@ Next:
   4) Forbidden by default: DROP / blind SQL import over live named production without a fresh pre-change branch of current live first.
 
 Target DB: $targetDb
-Look for the NEW safety backup under: Turso prod-backup-YYYYMMDD-HHMMSS + agents log data/backups/prod-emdash-*.json
-Legacy restore sources may still be named prod-rollback-*.
+Look for the NEW safety backup under: Turso prod-rollback-YYYYMMDD-HHMMSS + agents log data/backups/prod-emdash-*.json
+Older restore sources may be named prod-backup-*.
 "@ -ForegroundColor Cyan
 }
 finally {

@@ -832,7 +832,8 @@ function Select-DeployFreshVerifiedProductionBackup {
       A candidate counts only when ALL of these hold:
         - kind = production-emdash-content-backup (written by backup-production-emdash.ps1)
         - verificationPass = true (a name match alone is never enough)
-        - backupDatabase is a prod-backup-* Turso branch
+        - backupDatabase is a prod-rollback-YYYYMMDD-HHMMSS Turso branch (or prod-backup-*, the
+          name backup-production-emdash.ps1 used before 31 Oct 2026)
         - workerTursoHost is set (the migrate-target host check needs it)
         - createdAtUtc (else file mtime) is not older than CutoffUtc
 
@@ -847,7 +848,8 @@ function Select-DeployFreshVerifiedProductionBackup {
     )
 
     $rejected = [System.Collections.Generic.List[string]]::new()
-    $candidates = @(Get-ChildItem -Path $MetadataDir -Filter "*prod-backup-*.json" -File -ErrorAction SilentlyContinue |
+    $candidates = @(Get-ChildItem -Path $MetadataDir -Filter "*.json" -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like "*prod-rollback-*.json" -or $_.Name -like "*prod-backup-*.json" } |
             Sort-Object LastWriteTimeUtc -Descending)
     foreach ($candidate in $candidates) {
         try {
@@ -873,8 +875,8 @@ function Select-DeployFreshVerifiedProductionBackup {
             continue
         }
         $backupDatabase = if ($props["backupDatabase"]) { [string]$meta.backupDatabase } else { "" }
-        if ($backupDatabase -notmatch '^prod-backup-\d{8}-\d{6}$') {
-            $rejected.Add("$($candidate.Name): backupDatabase '$backupDatabase' is not a prod-backup-YYYYMMDD-HHMMSS branch")
+        if ($backupDatabase -notmatch '^prod-(rollback|backup)-\d{8}-\d{6}$') {
+            $rejected.Add("$($candidate.Name): backupDatabase '$backupDatabase' is not a prod-rollback-YYYYMMDD-HHMMSS (or legacy prod-backup-*) branch")
             continue
         }
         $workerHost = if ($props["workerTursoHost"]) { [string]$meta.workerTursoHost } else { "" }
@@ -900,7 +902,7 @@ function Assert-DeployFreshEmDashTursoBackup {
 
     .DESCRIPTION
       Throws (nothing migrated or deployed) unless Select-DeployFreshVerifiedProductionBackup finds
-      a verified, fresh prod-backup-* metadata file. Stores it in $script:DeployFreshBackupMetadata so
+      a verified, fresh prod-rollback-* (or legacy prod-backup-*) metadata file. Stores it in $script:DeployFreshBackupMetadata so
       Assert-DeployMigrateTargetMatchesBackupHost can compare hosts after the build resolves the
       migrate target.
     #>
@@ -917,7 +919,7 @@ function Assert-DeployFreshEmDashTursoBackup {
         throw @(
             "Refusing to migrate or deploy: -UseFreshTursoCheckpoint needs a verified production backup newer than 24h",
             "(.release/rollback-branches/*.json with kind production-emdash-content-backup, verificationPass true,",
-            "a prod-backup-* branch and workerTursoHost) and none was found.",
+            "a prod-rollback-* (or legacy prod-backup-*) branch and workerTursoHost) and none was found.",
             "Run pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction first, or run deploy-production-local.ps1 without -UseFreshTursoCheckpoint so it takes its own backup."
         ) -join " "
     }
@@ -1461,7 +1463,8 @@ function Invoke-DeployStagingTursoExport {
 function Invoke-DeployStagingTursoBranchBackup {
     <#
     .SYNOPSIS
-      Staging backup as a Turso branch (staging-backup-YYYYMMDD-HHMMSS); writes no .db file.
+      Staging backup as a Turso branch (staging-rollback-YYYYMMDD-HHMMSS; staging-backup-* before
+      31 Oct 2026); writes no .db file.
 
     .DESCRIPTION
       Used by deploy-worker.yml through deploy-staging-local.ps1 -TursoBranchBackup: the repo is
@@ -1477,7 +1480,7 @@ function Invoke-DeployStagingTursoBranchBackup {
     $group = Get-DeployTursoDatabaseNameFromEnv -EnvKey "TF_VAR_TURSO_DATABASE_GROUP_STAGING" -DefaultName ""
 
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
-    $branchName = "staging-backup-$stamp"
+    $branchName = "staging-rollback-$stamp"
     Write-DeployStep "Creating staging EmDash backup branch '$branchName' from '$databaseName' (no .db export)"
 
     $createArgs = @("db", "create", $branchName, "--from-db", $databaseName)
