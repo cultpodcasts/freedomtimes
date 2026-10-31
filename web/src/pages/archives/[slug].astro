@@ -12,7 +12,7 @@ import {
 import { rethrowLookupFailure } from '../../lib/content-store-guard';
 import { assertContentStoreReady } from '../../lib/content-store-guard-db';
 import { isExpectedLookupMiss } from '../../lib/not-found';
-import { checkArchivePdf, type ArchivePdfStatus, type MediaHead } from '../../lib/content/archive-pdf';
+import { archivePdfCacheControl, checkArchivePdf, type ArchivePdfStatus, type MediaHead } from '../../lib/content/archive-pdf';
 import { buildContentEntryViewModel } from '../../lib/content/contentEntry';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
@@ -90,6 +90,8 @@ if (entry) {
 		const media = (cfEnv as { MEDIA?: { head?: (key: string) => Promise<unknown> } }).MEDIA;
 		const head: MediaHead | null = typeof media?.head === 'function' ? (key) => media.head!(key) : null;
 		pdfStatus = (await checkArchivePdf(pdfLink, head, console, { slug })).status;
+		const cacheControl = archivePdfCacheControl(pdfStatus);
+		if (cacheControl) Astro.response.headers.set('Cache-Control', cacheControl);
 	}
 }
 ---

@@ -34,8 +34,16 @@ export function archivePdfStorageKey(pdfLink: string | null | undefined): string
 	} catch {
 		return null;
 	}
-	if (!key || key.includes('..') || key.startsWith('/')) return null;
+	if (!key || key.startsWith('/') || key.split('/').some((segment) => segment === '..' || segment === '.')) return null;
 	return key;
+}
+
+/**
+ * Response Cache-Control for an archive render: a page that shows the "unavailable" notice must not
+ * be page-cached (isStorableResponse skips no-store), so restoring the file fixes the page at once.
+ */
+export function archivePdfCacheControl(status: ArchivePdfStatus): string | null {
+	return status === 'missing' ? 'no-store' : null;
 }
 
 export interface ArchivePdfCheck {
