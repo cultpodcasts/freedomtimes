@@ -205,6 +205,7 @@ Assert-True ($fileOnly.Value -eq "file-staging-jwt-0002" -and $null -eq $fileOnl
 Assert-True ((Get-DeployTursoAuthErrorClass -Text "SERVER_ERROR: Server returned HTTP status 401") -eq "unauthorized") "#140: 401 is an auth rejection"
 Assert-True ((Get-DeployTursoAuthErrorClass -Text "HTTP status 404 auth role not found") -eq "auth-role-not-found") "#140: 'auth role not found' (the #137 production error) is an auth rejection"
 Assert-True ((Get-DeployTursoAuthErrorClass -Text "getaddrinfo ENOTFOUND example.turso.io") -eq "") "#140: a DNS / network error is not an auth rejection"
+Assert-True ((Get-DeployTursoAuthErrorClass -Text "HTTP status 404 Not Found") -eq "not-found") "#140: a bare 404 is classed not-found (no fallback on it)"
 
 $savedStaging = $script:DeployIsStaging
 $savedBinding = $script:DeployTursoTokenBinding
@@ -227,6 +228,7 @@ try {
 
     foreach ($case in @(
             @{ Name = "a non-auth error"; Binding = $tfBinding; Probe = { [pscustomobject]@{ Ok = $false; Output = "getaddrinfo ENOTFOUND tf-staging-jwt-0001" } } },
+            @{ Name = "a bare 404 (wrong URL / deleted database)"; Binding = $tfBinding; Probe = { [pscustomobject]@{ Ok = $false; Output = "HTTP status 404 Not Found" } } },
             @{ Name = "a rejected .env.dev token (no Terraform token)"; Binding = @{ Value = "tf-staging-jwt-0001"; Source = "TURSO_AUTH_TOKEN (.env.dev)"; Fallback = $null }; Probe = $rejectTf },
             @{ Name = "no fallback candidate"; Binding = @{ Value = "tf-staging-jwt-0001"; Source = "terraform output turso_database_auth_token"; Fallback = $null }; Probe = $rejectTf },
             @{ Name = "both tokens rejected"; Binding = $tfBinding; Probe = { [pscustomobject]@{ Ok = $false; Output = "HTTP status 401 file-staging-jwt-0002 tf-staging-jwt-0001" } } }
@@ -244,6 +246,24 @@ try {
     $probeRan = $false
     Confirm-DeployStagingEmdashTursoToken -Probe { $script:probeRan = $true; [pscustomobject]@{ Ok = $false; Output = "401" } }
     Assert-True (-not $probeRan -and $env:TURSO_AUTH_TOKEN -eq "tf-staging-jwt-0001") "#140: production never probes or swaps the token"
+
+    # Real node, non-zero exit, PSNativeCommandUseErrorActionPreference = $true: classified, not thrown.
+    $savedRoot = $script:DeployRepoRoot
+    $probeRoot = Join-Path ([IO.Path]::GetTempPath()) ("probe140-{0}" -f [guid]::NewGuid())
+    New-Item -ItemType Directory -Path (Join-Path $probeRoot "web/scripts") -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $probeRoot "web/scripts/emdash-core-migrate.mjs") -Value 'console.error("SERVER_ERROR: Server returned HTTP status 401"); process.exit(1);'
+    $PSNativeCommandUseErrorActionPreference = $true
+    try {
+        $script:DeployRepoRoot = $probeRoot
+        $nativeThrew = $false
+        try { $real = Invoke-DeployEmdashTokenProbe } catch { $nativeThrew = $true }
+        Assert-True (-not $nativeThrew -and -not $real.Ok -and (Get-DeployTursoAuthErrorClass -Text $real.Output) -eq "unauthorized") "#140: real-node probe exit 1 is classified, not thrown, under PSNativeCommandUseErrorActionPreference = `$true"
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $false
+        $script:DeployRepoRoot = $savedRoot
+        Remove-Item -LiteralPath $probeRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 finally {
     $script:DeployIsStaging = $savedStaging

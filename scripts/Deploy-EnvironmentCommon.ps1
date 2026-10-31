@@ -1605,6 +1605,8 @@ function Invoke-DeployEmdashTokenProbe {
     $outFile = Join-Path ([IO.Path]::GetTempPath()) ("emdash-token-probe-{0}.out" -f [guid]::NewGuid())
     $errFile = Join-Path ([IO.Path]::GetTempPath()) ("emdash-token-probe-{0}.err" -f [guid]::NewGuid())
     try {
+        # Classify a non-zero exit instead of letting a caller's $true preference throw it (#140).
+        $PSNativeCommandUseErrorActionPreference = $false
         & node (Join-Path "scripts" "emdash-core-migrate.mjs") print-fingerprint 1>$outFile 2>$errFile
         $code = $LASTEXITCODE
         $text = ((Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue) ?? "") + "`n" +
@@ -1647,9 +1649,11 @@ function Confirm-DeployStagingEmdashTursoToken {
     $class = Get-DeployTursoAuthErrorClass -Text $first.Output
     $detail = Hide-DeployTokenValues -Text $first.Output -Values $secretValues
     $isTerraform = ([string]$binding.Source) -like "terraform output *"
-    if (-not $isTerraform -or [string]::IsNullOrEmpty($class) -or $null -eq $fallback) {
+    # A bare 404 (wrong TURSO_DATABASE_URL / deleted database) is not proof the token is stale.
+    $isAuthRejection = -not [string]::IsNullOrEmpty($class) -and $class -ne "not-found"
+    if (-not $isTerraform -or -not $isAuthRejection -or $null -eq $fallback) {
         $why = if (-not $isTerraform) { "the token is not the Terraform output" }
-            elseif ([string]::IsNullOrEmpty($class)) { "the error is not an auth rejection" }
+            elseif (-not $isAuthRejection) { "the error is not an auth rejection" }
             else { "there is no other staging token candidate (.env.dev TURSO_AUTH_TOKEN)" }
         $label = if ([string]::IsNullOrEmpty($class)) { "non-auth error" } else { $class }
         throw "The staging EmDash Turso token from $($binding.Source) failed a read-only emdash migrate --status ($label). No fallback: $why. Nothing was migrated. $detail"
