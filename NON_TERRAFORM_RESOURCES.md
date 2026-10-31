@@ -138,9 +138,13 @@ tooling blocks it:
   `freedomtimes`). It was verified plan-only on 31 Oct 2026 with Terraform 1.14.8 for both staging and production
   ([#117](https://github.com/cultpodcasts/freedomtimes/issues/117)): `terraform-run.ps1 -Operation plan -LoadEnvFiles
   -PlanFile <file>` saved the plan, and the guard read it with `terraform show -json` and reported `BLOCKED` naming
-  `holding_page` (the expected binding drift). The CI plans below show the same on every run. If that path ever
-  breaks (for example a Terraform version that cannot save or show a cloud plan), the guard fails closed and the
-  deploy stops before applying. To re-check by hand, plan only: run
+  `holding_page` (the expected binding drift). The CI plans below show the same on every run. Only plan, save
+  and `show -json` were checked: the final `terraform apply <saved plan>` against the cloud backend was not run
+  (plan-only verification), so the first full deploy is its first real use; if it fails there, it fails before
+  changing anything. Run local Terraform at the version CI pins (`terraform_version` in
+  `terraform-<env>.yml`, 1.14.8 at the time); `versions.tf` allows older versions that were not checked. If the
+  saved-plan path ever breaks (for example a Terraform version that cannot save or show a cloud plan), the guard
+  fails closed and the deploy stops before applying. To re-check by hand, plan only: run
   `pwsh scripts/terraform-run.ps1 -Environment <env> -Operation plan -LoadEnvFiles -PlanFile tfplan-guardcheck`, then
   `pwsh scripts/terraform-plan-guard-worker-script-upload.ps1 -Environment <env> -PlanFile tfplan-guardcheck`,
   then delete `infra/terraform/environments/<env>/tfplan-guardcheck`.
