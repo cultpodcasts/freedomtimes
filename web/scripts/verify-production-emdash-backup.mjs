@@ -10,7 +10,7 @@
  *
  * Usage (from repo root):
  *   node web/scripts/verify-production-emdash-backup.mjs --backup-db .release/backups/emdash-production-YYYYMMDD-HHMMSS.db --from-worker
- *   node web/scripts/verify-production-emdash-backup.mjs --backup-branch prod-backup-YYYYMMDD-HHMMSS --live-url ... --live-token ...
+ *   node web/scripts/verify-production-emdash-backup.mjs --backup-branch prod-rollback-YYYYMMDD-HHMMSS --live-url ... --live-token ...
  *   node web/scripts/verify-production-emdash-backup.mjs --check-metadata .release/rollback-branches/<stamp>-<branch>.json --max-age-hours 24
  *
  * Exit 0 = PASS, 1 = FAIL, 2 = usage/config error.

@@ -17,7 +17,7 @@ const payload = {
   environment: 'production',
   sourceDatabase: 'freedomtimes-emdash-production',
   workerTursoHost: 'freedomtimes-emdash-production-org.aws-eu-west-1.turso.io',
-  destination: { tursoBranch: 'prod-backup-20261031-080000', localFile: null },
+  destination: { tursoBranch: 'prod-rollback-20261031-080000', localFile: null },
   posts: { raw: 10, active: 9, published: 8, draft: 1, deleted: 1 },
   postCount: 8,
   weeklySlugsSample: ['weekly-1'],
@@ -36,7 +36,7 @@ describe('emdash backup agents log (#154)', () => {
     assert.equal(log.liveProvenanceCheck, 'match');
     assert.equal(log.resolveSource, 'worker-proxy');
     assert.equal(log.verificationPass, true);
-    assert.equal(log.destination.tursoBranch, 'prod-backup-20261031-080000');
+    assert.equal(log.destination.tursoBranch, 'prod-rollback-20261031-080000');
   });
 
   it('keeps an unproven source visible (bootstrap / skipped)', () => {

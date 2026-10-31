@@ -138,7 +138,7 @@ npx wrangler rollback --config wrangler.jsonc --env production <deployment-id>
 ```powershell
 pwsh ./scripts/disaster-recover-production-emdash.ps1 `
   -AllowProduction `
-  -FromBranch prod-backup-YYYYMMDD-HHMMSS
+  -FromBranch prod-rollback-YYYYMMDD-HHMMSS
 ```
 
 Then see script probes / [PRODUCTION_RELEASE_RUNBOOK.md §6](../../PRODUCTION_RELEASE_RUNBOOK.md#6-rollback-strategy).

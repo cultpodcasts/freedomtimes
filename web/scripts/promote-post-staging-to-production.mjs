@@ -28,7 +28,7 @@
  * Backup gate (Step 0): refuses unless `.release/rollback-branches/*.json` has
  * verification.pass=true newer than 24h. Refresh with:
  *   pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
- *   (creates Turso prod-backup-YYYYMMDD-HHMMSS of the Worker-resolved DB)
+ *   (creates Turso prod-rollback-YYYYMMDD-HHMMSS of the Worker-resolved DB)
  * or the wrapper:
  *   pwsh ./scripts/promote-post-with-backup-gate.ps1 -Collection posts -Slug <slug> -AllowProduction
  * Emergency only: --skip-backup-verify

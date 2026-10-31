@@ -4,7 +4,7 @@ name: Deploy Worker
 #   - pull_request to main from a cultpodcasts branch (not a fork) -> staging Worker
 #     (same steps as `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipVersionBump`,
 #     with the pre-migrate staging backup taken as a Turso branch).
-#   - push/merge to main -> verified production Turso backup branch `prod-backup-YYYYMMDD-HHMMSS`
+#   - push/merge to main -> verified production Turso backup branch `prod-rollback-YYYYMMDD-HHMMSS`
 #     in its own step, THEN the production Worker deploy (same steps as
 #     `deploy-production-local.ps1 -WorkerOnly -AllowProduction`). The deploy step only runs if the
 #     backup step passed, and refuses to migrate if its target host is not the backed-up host.
@@ -187,10 +187,10 @@ jobs:
       - name: Install pinned Turso CLI (sha256-verified, no secrets)
         run: bash ./scripts/ci-install-turso-cli.sh
 
-      - name: Verified production EmDash backup (Turso branch prod-backup-YYYYMMDD-HHMMSS; no .db)
+      - name: Verified production EmDash backup (Turso branch prod-rollback-YYYYMMDD-HHMMSS; no .db)
         shell: pwsh
         env:
-          # Turso platform API token (turso CLI auth for the prod-backup branch); same secret terraform-production.yml uses.
+          # Turso platform API token (turso CLI auth for the prod-rollback branch); same secret terraform-production.yml uses.
           TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN }}
           TF_VAR_TURSO_ORGANIZATION: ${{ vars.TF_VAR_TURSO_ORGANIZATION }}
           TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION: ${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}
@@ -210,8 +210,8 @@ jobs:
             -SkipFileExport -SkipAgentsLog `
             -Notes "deploy-worker.yml run ${{ github.run_id }} (${{ github.sha }}) Worker-resolved EmDash backup"
           if ($LASTEXITCODE -ne 0) { throw "Production EmDash backup/verify failed (exit $LASTEXITCODE). Nothing deployed." }
-          $meta = Get-ChildItem .release/rollback-branches/*-prod-backup-*.json | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-          if ($null -eq $meta) { throw "Backup step left no prod-backup metadata. Nothing deployed." }
+          $meta = Get-ChildItem .release/rollback-branches/*-prod-rollback-*.json | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if ($null -eq $meta) { throw "Backup step left no prod-rollback metadata. Nothing deployed." }
           $m = Get-Content -Raw -LiteralPath $meta.FullName | ConvertFrom-Json
           if ($m.verificationPass -ne $true) { throw "Backup $($m.backupDatabase) is not verified. Nothing deployed." }
           $live = if ($m.PSObject.Properties["liveProvenanceCheck"]) { [string]$m.liveProvenanceCheck } else { "" }

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   If no .release/rollback-branches metadata with verification.pass=true (24h) exists,
-  creates one via backup-production-emdash.ps1 (Turso prod-backup-YYYYMMDD-HHMMSS +
+  creates one via backup-production-emdash.ps1 (Turso prod-rollback-YYYYMMDD-HHMMSS +
   local emdash-production-<stamp>.db + agents log prod-emdash-<stamp>.json).
   Then runs promote-post-staging-to-production.mjs.
 

@@ -40,9 +40,9 @@ This runbook documents the repeatable process for getting verified staging conte
 |----------|-------------------|------------|
 | **Canonical operator log** | `freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json` | **Yes — commit in freedomtimes-agents** |
 | Staging log (when recorded) | `freedomtimes-agents/data/backups/staging-emdash-YYYYMMDD-HHMMSS.json` | Yes |
-| Turso backup branch | `prod-backup-YYYYMMDD-HHMMSS` | Turso only (THE production EmDash content backup — **always this name**, never `prod-work-embeds-…`. Legacy restore sources may still be `prod-rollback-*`.) |
+| Turso backup branch | `prod-rollback-YYYYMMDD-HHMMSS` | Turso only (THE production EmDash content backup — **always this name**, never `prod-work-embeds-…`. Older restore sources may be `prod-backup-*` (Sept to 31 Oct 2026).) |
 | Local file | `freedomtimes/.release/backups/emdash-production-YYYYMMDD-HHMMSS.db` | No (gitignored binary) |
-| Local metadata | `freedomtimes/.release/rollback-branches/YYYYMMDD-HHMMSS-prod-backup-YYYYMMDD-HHMMSS.json` | No (gitignored; includes `sourceDatabase` = Worker-resolved live DB, `workerTursoHost`, `postCount`, `weeklySlugsSample`, `verification`) |
+| Local metadata | `freedomtimes/.release/rollback-branches/YYYYMMDD-HHMMSS-prod-rollback-YYYYMMDD-HHMMSS.json` | No (gitignored; includes `sourceDatabase` = Worker-resolved live DB, `workerTursoHost`, `postCount`, `weeklySlugsSample`, `verification`) |
 
 Do **not** commit tokens or `.db` files into freedomtimes-agents. After backup, **write + commit** the JSON log.
 
@@ -50,7 +50,7 @@ Do **not** commit tokens or `.db` files into freedomtimes-agents. After backup, 
 
 Resolve Worker `TURSO_DATABASE_URL` hostname → Turso database name. **Never** blindly assume `freedomtimes-emdash-production`.
 
-Incident 2026-09-07: named `freedomtimes-emdash-production` was a **stale thin corpus** (15 July-capped posts) while the live Worker used `prod-work-embeds-20260729-183444` (23 posts). Restoring “named production” backups could not recover August/September. That work-embeds name is a **source**, not a backup. The next backup of whatever the Worker uses will be named `prod-backup-<stamp>`.
+Incident 2026-09-07: named `freedomtimes-emdash-production` was a **stale thin corpus** (15 July-capped posts) while the live Worker used `prod-work-embeds-20260729-183444` (23 posts). Restoring “named production” backups could not recover August/September. That work-embeds name is a **source**, not a backup. The next backup of whatever the Worker uses will be named `prod-rollback-<stamp>`.
 
 Canonical command (Windows WSL Turso / Linux native):
 
@@ -63,7 +63,7 @@ That script:
 1. Fills a fixed allowlist of keys from `.env.dev`, only where the process value is empty (exported values always win): `TURSO_PRODUCTION_EMDASH_DB_URL`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN`, `TURSO_PRODUCTION_EMDASH_DB_NAME`, `TF_VAR_TURSO_ORGANIZATION`, `TURSO_ORGANIZATION`, `TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION`. It never loads the generic `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` pair (that would let a failed Worker resolve fall back to a static, possibly stale DB) or any other key. A missing `.env.dev` is not an error; the resolver reports missing values. Only key names are printed.
 2. Resolves the live Worker Turso host (`web/scripts/resolve-production-worker-turso.mjs`) — **whatever** DB the Worker uses.
 3. Confirms the resolved source DB with read-only `turso db show <name>` before any branch or export, and also under `-DryRun` (`[dry-run] source DB confirmed: <name>`). On failure it stops with "Could not confirm Turso database '<name>' exists (exit N)", the possible causes (CLI not logged in — WSL has its own `~/.turso` login — network, CLI org differs from the resolver org, org slug left on the name), the resolver's org, and the CLI output with token-like lines redacted.
-4. Creates Turso branch `prod-backup-YYYYMMDD-HHMMSS` **from that resolved name** (never named after the source).
+4. Creates Turso branch `prod-rollback-YYYYMMDD-HHMMSS` **from that resolved name** (never named after the source).
 5. Exports `.release/backups/emdash-production-YYYYMMDD-HHMMSS.db`.
 6. **Verify** that export file exists and is a non-trivial size (see [Verify after `turso db export`](#verify-after-turso-db-export)). Export alone is not enough.
 7. Verifies backup published slugs match live Worker inventory (FAIL if thin / missing weeklies).

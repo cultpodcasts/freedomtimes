@@ -50,7 +50,7 @@ describe("databaseNameFromHostname", () => {
 });
 
 describe("isKnownProductionBackupBranch", () => {
-	it("accepts new prod-backup-* and legacy prod-rollback-*", () => {
+	it("accepts prod-rollback-* and the older prod-backup-*", () => {
 		assert.equal(isKnownProductionBackupBranch("prod-backup-20260908-140000"), true);
 		assert.equal(isKnownProductionBackupBranch("prod-rollback-20260907-163120"), true);
 		assert.equal(isKnownProductionBackupBranch("prod-work-embeds-20260729-183444"), false);

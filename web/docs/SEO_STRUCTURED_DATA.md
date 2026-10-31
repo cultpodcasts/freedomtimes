@@ -66,7 +66,7 @@ Definition: `web/.emdash/schema-migrations/2026-10-13-posts-structured-data-fiel
 (also merged into `web/.emdash/seed.json`).
 
 1. Back up staging Turso (AGENTS.md §2), e.g.
-   `turso db create staging-backup-<stamp> --from-db freedomtimes-emdash-staging --group freedomtimes-staging`.
+   `turso db create staging-rollback-<stamp> --from-db freedomtimes-emdash-staging --group freedomtimes-staging`.
 2. For each field in the migration file call EmDash MCP `schema_create_field` on
    `freedomtimes-staging` with `collection: "posts"` and the field definition (AGENTS.md §3: MCP only).
 3. `schema_get_collection {"slug":"posts"}` to verify. Production only when the operator asks.

@@ -77,7 +77,7 @@ Push-Location $repoRoot
 try {
     $timestampUtc = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     if ([string]::IsNullOrWhiteSpace($BranchName)) {
-        $BranchName = "prod-backup-$timestampUtc"
+        $BranchName = "prod-rollback-$timestampUtc"
     }
 
     $headHash = (Invoke-External -FilePath "git" -Arguments @("rev-parse", "HEAD") -CaptureOutput).Output[0].Trim()
@@ -95,7 +95,7 @@ try {
         Write-Host "[dry-run] turso db create $BranchName --from-db $ProductionDatabaseName$dryExtra" -ForegroundColor Yellow
     }
     else {
-        Write-Host "Creating Turso backup branch '$BranchName' from '$ProductionDatabaseName' (always prod-backup-<stamp> unless overridden)" -ForegroundColor Cyan
+        Write-Host "Creating Turso backup branch '$BranchName' from '$ProductionDatabaseName' (always prod-rollback-<stamp> unless overridden)" -ForegroundColor Cyan
         if ($UseWslTurso) {
             function Escape-BashSingleQuoted {
                 param([string]$Value)

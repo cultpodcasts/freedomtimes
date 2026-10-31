@@ -2,25 +2,31 @@
 /**
  * Turso CI backup branch retention (#143). Dry-run by default.
  *
- * Every CI deploy creates a Turso database branch that nothing deletes:
- *   staging-backup-YYYYMMDD-HHMMSS      deploy-worker.yml staging job (every PR push)
- *   prod-backup-YYYYMMDD-HHMMSS         deploy-worker.yml production job / backup-production-emdash.ps1
+ * Every deploy creates a Turso database branch that nothing deletes:
+ *   staging-rollback-YYYYMMDD-HHMMSS    deploy-worker.yml staging job (every PR push); before
+ *                                       31 Oct 2026 named staging-backup-YYYYMMDD-HHMMSS
+ *   prod-rollback-YYYYMMDD-HHMMSS       deploy-worker.yml production job / backup-production-emdash.ps1;
+ *                                       before 31 Oct 2026 named prod-backup-YYYYMMDD-HHMMSS (and,
+ *                                       before that, legacy prod-rollback-* checkpoints)
  *   ci-staging-backup-YYYYMMDD-HHMMSS   legacy terraform-staging.yml mutate dispatch
  *   ci-rollback-YYYYMMDD-HHMMSS         legacy terraform-production.yml mutate dispatch
+ * Old and new names of the same backup (prod-rollback-/prod-backup-, staging-rollback-/
+ * staging-backup-) are counted together for the keep-newest rules and floors.
  * They count against the Turso plan's database/storage limits; at the limit the fail-closed
  * backup step (and so the deploy) fails. This script lists them with ages and says which ones
  * the policy would delete. It deletes nothing unless run with --delete --expect-count N.
  *
  * Only names that match one of the prefixes above **and** end in a YYYYMMDD-HHMMSS stamp are
  * candidates. Everything else is never touched: named DBs (freedomtimes-emdash-production,
- * freedomtimes-emdash-staging), DR targets, prod-rollback-* operator checkpoints, prod-work-*,
- * prod-recovery-*, anything unrecognised.
+ * freedomtimes-emdash-staging), DR targets, prod-work-*, prod-recovery-*, prod-rollback-<not a
+ * stamp>, anything unrecognised.
  *
  * Always kept (whatever the age):
- *   - the newest N branches of each prefix (staging 10, production 5) and anything younger than
- *     the minimum age (staging 7 days, production 30 days);
- *   - the newest prod-backup-* (the rollback target of the last deploy: every production deploy
- *     takes one before it migrates) and the newest *verified* prod-backup-* from local
+ *   - the newest N branches of each family (staging 10, production 5) and anything younger than
+ *     the minimum age (staging 7 days, production 30 days), up to the maximum age (30 days), above
+ *     the floors (newest 3 production, newest 1 staging per family);
+ *   - the newest prod-rollback-* or prod-backup-* (the rollback target of the last deploy: every
+ *     production deploy takes one before it migrates) and the newest *verified* backup from local
  *     .release/rollback-branches/*.json metadata and freedomtimes-agents/data/backups/*.json logs,
  *     plus the branch the newest metadata file names (last local deploy/backup);
  *   - any branch the live production or staging Worker uses (matched by the host hash in
@@ -34,6 +40,15 @@
  * --protect name is not a database in the organisation, and refuses unless --expect-count equals
  * the number of branches the plan deletes.
  *
+ * Export before delete (Jon's policy, 31 Oct 2026): Turso keeps about a month of backup branches;
+ * older copies live only as gitignored local .db files on the operator's machine (the MSI), never
+ * anywhere public. Before deleting a branch, --delete exports it to
+ * .release/backups/emdash-<production|staging>-<stamp>.db (git check-ignore must say the path is
+ * ignored), then checks the file: size > 0, PRAGMA integrity_check = ok, and the ec_posts counts
+ * (raw, active, published) equal the branch's. An existing local copy that passes the same checks is
+ * kept and not exported again. If the export or any check fails, that branch is NOT deleted (an
+ * existing copy that fails is left untouched) and the run exits non-zero.
+ *
  * Output lists branch names, prefixes, ages and reasons only: never hostnames, URLs, the
  * organisation slug or tokens. Needs a Turso Platform API token (TURSO_PLATFORM_API_TOKEN,
  * TURSO_API_TOKEN or TF_VAR_turso_api_token; repo-root .env.dev is loaded when present) and the
@@ -44,8 +59,9 @@
  *   node scripts/turso-backup-retention.mjs --json          # dry-run, JSON plan
  *   node scripts/turso-backup-retention.mjs --delete --expect-count 12   # operator only
  */
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -62,8 +78,10 @@ export const DEPLOY_PROVENANCE_PATH = "/api/deploy-provenance.json";
 export const PRODUCTION_MIN_KEEP_NEWEST = 3;
 export const PRODUCTION_MIN_KEEP_DAYS = 14;
 export const STAGING_MIN_KEEP_NEWEST = 1;
+/** Jon's policy (31 Oct 2026): no CI backup branch older than a month, above the count floors. */
+export const DEFAULT_MAX_AGE_DAYS = 30;
 
-/** @typedef {{ prefix: string, environment: "staging" | "production", keepNewest: number, keepDays: number }} RetentionRule */
+/** @typedef {{ prefix: string, family: string, environment: "staging" | "production", keepNewest: number, keepDays: number, maxAgeDays: number, floorNewest: number }} RetentionRule */
 
 /** @returns {RetentionRule[]} */
 export function defaultRules({
@@ -71,7 +89,11 @@ export function defaultRules({
 	stagingKeepDays = 7,
 	productionKeepNewest = 5,
 	productionKeepDays = 30,
+	maxAgeDays = DEFAULT_MAX_AGE_DAYS,
 } = {}) {
+	if (maxAgeDays < PRODUCTION_MIN_KEEP_DAYS) {
+		throw new Error(`--max-age-days must be at least ${PRODUCTION_MIN_KEEP_DAYS}.`);
+	}
 	if (productionKeepNewest < PRODUCTION_MIN_KEEP_NEWEST) {
 		throw new Error(`--prod-keep-newest must be at least ${PRODUCTION_MIN_KEEP_NEWEST}.`);
 	}
@@ -84,11 +106,20 @@ export function defaultRules({
 	if (stagingKeepDays < 0) {
 		throw new Error("--staging-keep-days cannot be negative.");
 	}
+	const staging = { environment: "staging", keepNewest: stagingKeepNewest, keepDays: stagingKeepDays, maxAgeDays, floorNewest: STAGING_MIN_KEEP_NEWEST };
+	const production = { environment: "production", keepNewest: productionKeepNewest, keepDays: productionKeepDays, maxAgeDays, floorNewest: PRODUCTION_MIN_KEEP_NEWEST };
+	// family: prefixes counted together for keep-newest / floors / newest-production. Jon's naming
+	// (31 Oct 2026): new backups are prod-rollback-<stamp> / staging-rollback-<stamp>; the older
+	// prod-backup-* / staging-backup-* (and legacy prod-rollback-* checkpoints) are the same backups.
+	const prodFamily = "prod-rollback-*/prod-backup-*";
+	const stagingFamily = "staging-rollback-*/staging-backup-*";
 	return [
-		{ prefix: "staging-backup-", environment: "staging", keepNewest: stagingKeepNewest, keepDays: stagingKeepDays },
-		{ prefix: "ci-staging-backup-", environment: "staging", keepNewest: stagingKeepNewest, keepDays: stagingKeepDays },
-		{ prefix: "prod-backup-", environment: "production", keepNewest: productionKeepNewest, keepDays: productionKeepDays },
-		{ prefix: "ci-rollback-", environment: "production", keepNewest: productionKeepNewest, keepDays: productionKeepDays },
+		{ prefix: "staging-rollback-", family: stagingFamily, ...staging },
+		{ prefix: "staging-backup-", family: stagingFamily, ...staging },
+		{ prefix: "ci-staging-backup-", family: "ci-staging-backup-*", ...staging },
+		{ prefix: "prod-rollback-", family: prodFamily, ...production },
+		{ prefix: "prod-backup-", family: prodFamily, ...production },
+		{ prefix: "ci-rollback-", family: "ci-rollback-*", ...production },
 	];
 }
 
@@ -96,7 +127,7 @@ const STAMP_RE = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/;
 
 /**
  * The rule a database name belongs to, or null. The rest of the name after the prefix must be
- * exactly a YYYYMMDD-HHMMSS stamp, so e.g. prod-backup-manual or prod-rollback-* never match.
+ * exactly a YYYYMMDD-HHMMSS stamp, so e.g. prod-backup-manual or prod-rollback-pre-x never match.
  * @param {string} name
  * @param {RetentionRule[]} rules
  */
@@ -249,19 +280,32 @@ export function planRetention({ databases, rules, now, protect = new Map() }) {
 		});
 	}
 
-	for (const rule of rules) {
+	const families = new Map();
+	for (const rule of rules) if (!families.has(rule.family ?? rule.prefix)) families.set(rule.family ?? rule.prefix, rule);
+	for (const [family, rule] of families) {
+		const prefixes = new Set(rules.filter((r) => (r.family ?? r.prefix) === family).map((r) => r.prefix));
 		const group = entries
-			.filter((e) => e.prefix === rule.prefix)
+			.filter((e) => prefixes.has(e.prefix))
 			.sort((a, b) => (b.createdUtc ?? "9").localeCompare(a.createdUtc ?? "9") || b.name.localeCompare(a.name));
 		group.forEach((e, i) => {
 			if (e.deleteProtection) e.reasons.push("Turso delete protection is on");
 			if (e.ageDays === null) e.reasons.push("age unknown");
-			if (i < rule.keepNewest) e.reasons.push(`newest ${rule.keepNewest} ${rule.prefix}*`);
-			if (e.ageDays !== null && e.ageDays < rule.keepDays) e.reasons.push(`younger than ${rule.keepDays}d`);
-			if (rule.prefix === "prod-backup-" && i === 0) e.reasons.push("newest prod-backup-* (last deploy rollback target)");
+			if (i < rule.floorNewest) e.reasons.push(`floor: newest ${rule.floorNewest} ${family}`);
+			if (prefixes.has("prod-rollback-") && i === 0) e.reasons.push(`newest ${family} (last deploy rollback target)`);
+			// Count/age keeps below yield to the maximum age; the reasons above (and --protect,
+			// live Worker DBs, newest verified / referenced backups) never do.
+			const overMaxAge = e.ageDays !== null && rule.maxAgeDays !== undefined && e.ageDays > rule.maxAgeDays;
+			if (!overMaxAge) {
+				if (i < rule.keepNewest) e.reasons.push(`newest ${rule.keepNewest} ${family}`);
+				if (e.ageDays !== null && e.ageDays < rule.keepDays) e.reasons.push(`younger than ${rule.keepDays}d`);
+			}
 			if (e.reasons.length === 0) {
 				e.action = "delete";
-				e.reasons.push(`older than ${rule.keepDays}d and not among newest ${rule.keepNewest}`);
+				e.reasons.push(
+					overMaxAge
+						? `older than the ${rule.maxAgeDays}d maximum age and above the floor of ${rule.floorNewest}`
+						: `older than ${rule.keepDays}d and not among newest ${rule.keepNewest}`,
+				);
 			}
 		});
 	}
@@ -278,7 +322,7 @@ export function summarisePlan(entries, rules) {
 		return {
 			prefix: rule.prefix,
 			environment: rule.environment,
-			policy: `keep newest ${rule.keepNewest} and anything younger than ${rule.keepDays}d`,
+			policy: `${rule.family && rule.family !== `${rule.prefix}*` ? `counted with ${rule.family}: ` : ""}keep newest ${rule.keepNewest} and anything younger than ${rule.keepDays}d; nothing older than ${rule.maxAgeDays}d beyond the newest ${rule.floorNewest}`,
 			total: g.length,
 			keep: g.length - del.length,
 			wouldDelete: del.length,
@@ -339,6 +383,7 @@ function parseArgs(argv) {
 		protect: [],
 		agentsDir: path.resolve(repoRoot, "..", "freedomtimes-agents"),
 		metadataDir: path.join(repoRoot, ".release", "rollback-branches"),
+		backupsDir: path.join(repoRoot, ".release", "backups"),
 		productionSite: PRODUCTION_SITE,
 		stagingSite: STAGING_SITE,
 		rules: {},
@@ -367,6 +412,7 @@ function parseArgs(argv) {
 		else if (a === "--staging-keep-days") out.rules.stagingKeepDays = num(next(), a);
 		else if (a === "--prod-keep-newest") out.rules.productionKeepNewest = num(next(), a);
 		else if (a === "--prod-keep-days") out.rules.productionKeepDays = num(next(), a);
+		else if (a === "--max-age-days") out.rules.maxAgeDays = num(next(), a);
 		else if (a === "--help" || a === "-h") {
 			out.help = true;
 		} else {
@@ -384,13 +430,170 @@ Dry-run by default: lists CI backup branches with ages and what the policy would
   --staging-keep-days N      Default 7
   --prod-keep-newest N       Default 5 (min ${PRODUCTION_MIN_KEEP_NEWEST})
   --prod-keep-days N         Default 30 (min ${PRODUCTION_MIN_KEEP_DAYS})
+  --max-age-days N           Default ${DEFAULT_MAX_AGE_DAYS} (min ${PRODUCTION_MIN_KEEP_DAYS}): older branches go even when a keep-newest
+                             rule would keep them, down to the floors (newest ${PRODUCTION_MIN_KEEP_NEWEST} production,
+                             ${STAGING_MIN_KEEP_NEWEST} staging per prefix). Always-kept branches stay.
   --agents-dir PATH          freedomtimes-agents checkout (default ../freedomtimes-agents)
   --metadata-dir PATH        Default .release/rollback-branches
   --delete --expect-count N  Operator only: delete exactly the N branches the dry-run listed.
                              Refused on GitHub Actions, when the live Worker DBs are not identified,
                              and while a --protect name is not a database in the organisation.
+                             Each branch is first exported to .release/backups/emdash-<env>-<stamp>.db
+                             (must be gitignored) and checked (size, integrity_check, post counts);
+                             a branch whose copy fails is kept (exit 3). Needs the Turso CLI
+                             (WSL on Windows) and web/node_modules.
   --allow-unverified-staging With --delete: allow staging branches to go when the staging Worker's
                              provenance cannot be read (Auth0 lock). Production has no such switch.`;
+
+/** Local .db path for a branch: .release/backups/emdash-<production|staging>-<stamp>.db */
+export function localBackupPath(entry, backupsDir) {
+	const stamp = entry.name.slice(entry.prefix.length);
+	if (!/^\d{8}-\d{6}$/.test(stamp)) throw new Error(`unexpected backup branch name ${entry.name}`);
+	return path.join(backupsDir, `emdash-${entry.environment}-${stamp}.db`);
+}
+
+function sameCounts(a, b) {
+	return a && b && a.raw === b.raw && a.active === b.active && a.published === b.published;
+}
+
+function fmtCounts(c) {
+	return c ? `raw ${c.raw}, active ${c.active}, published ${c.published}` : "?";
+}
+
+/**
+ * Make sure a verified local .db copy of the branch exists before it is deleted.
+ * deps: isIgnored(path), exists(path), size(path), exportBranch(name, outPath),
+ *       fileCheck(path) -> { integrity: string, counts }, branchCounts(name) -> counts,
+ *       rename(from, to), remove(path).
+ * @returns {Promise<{ ok: boolean, action: "existing" | "exported" | "skipped", file: string, detail: string }>}
+ */
+export async function ensureLocalCopy(entry, backupsDir, deps) {
+	const file = localBackupPath(entry, backupsDir);
+	const rel = path.basename(file);
+	const fail = (detail) => ({ ok: false, action: "skipped", file: rel, detail });
+	try {
+		if (!deps.isIgnored(file) || !deps.isIgnored(`${file}.partial`)) return fail(`${rel} is not gitignored; refusing to write a backup there`);
+		const check = async (p) => {
+			if (!deps.exists(p) || !(deps.size(p) > 0)) return "file missing or empty";
+			const f = await deps.fileCheck(p);
+			if (String(f.integrity).toLowerCase() !== "ok") return `integrity_check: ${String(f.integrity).slice(0, 80)}`;
+			const b = await deps.branchCounts(entry.name);
+			if (!sameCounts(f.counts, b)) return `post counts differ (file ${fmtCounts(f.counts)}; branch ${fmtCounts(b)})`;
+			return "";
+		};
+		if (deps.exists(file)) {
+			const problem = await check(file);
+			if (problem) return fail(`existing ${rel} does not verify (${problem}); left untouched`);
+			return { ok: true, action: "existing", file: rel, detail: "existing local copy verified" };
+		}
+		const partial = `${file}.partial`;
+		if (deps.exists(partial)) deps.remove(partial);
+		try {
+			await deps.exportBranch(entry.name, partial);
+		} catch (err) {
+			if (deps.exists(partial)) deps.remove(partial);
+			return fail(`export failed (${err?.message || err})`);
+		}
+		let problem;
+		try {
+			problem = await check(partial);
+		} catch (err) {
+			problem = `local copy check failed: ${err?.message || err}`;
+		}
+		if (problem) {
+			if (deps.exists(partial)) deps.remove(partial);
+			return fail(`export did not verify (${problem})`);
+		}
+		deps.rename(partial, file);
+		return { ok: true, action: "exported", file: rel, detail: "exported and verified" };
+	} catch (err) {
+		return fail(`local copy check failed (${err?.message || err})`);
+	}
+}
+
+/**
+ * Delete each branch only after ensureLocalCopy succeeded for it.
+ * @returns {Promise<{ deleted: object[], skipped: object[] }>}
+ */
+export async function deleteWithLocalCopies(toDelete, { ensure, del, log = () => {} }) {
+	const deleted = [];
+	const skipped = [];
+	for (const e of toDelete) {
+		const copy = await ensure(e);
+		if (!copy.ok) {
+			skipped.push({ name: e.name, ageDays: e.ageDays, file: copy.file, detail: copy.detail });
+			log(`NOT deleted ${e.name} (${fmtAge(e.ageDays)}): ${copy.detail}`);
+			continue;
+		}
+		await del(e.name);
+		deleted.push({ name: e.name, ageDays: e.ageDays, file: copy.file, copy: copy.action });
+		log(`Deleted ${e.name} (${fmtAge(e.ageDays)}); local copy ${copy.file} (${copy.detail})`);
+	}
+	return { deleted, skipped };
+}
+
+function shQuote(s) {
+	return `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
+/** Turso CLI (WSL on Windows, like backup-production-emdash.ps1). Returns the last stdout line. */
+function tursoCli(args) {
+	const r =
+		process.platform === "win32"
+			? spawnSync("wsl", ["bash", "-lc", `$HOME/.turso/turso ${args.map(shQuote).join(" ")}`], { encoding: "utf8" })
+			: spawnSync("turso", args, { encoding: "utf8" });
+	if (r.status !== 0) throw new Error(`turso ${args[0]} ${args[1]} exited ${r.status ?? r.error?.code ?? "?"}`);
+	const lines = String(r.stdout || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+	return lines.at(-1) ?? "";
+}
+
+function cliOutputPath(p) {
+	if (process.platform !== "win32") return p;
+	// Same form as backup-production-emdash.ps1: wsl bash -lc "wslpath -a '<path>'" (a bare
+	// `wsl wslpath C:\\...` loses the backslashes in WSL's command line).
+	const r = spawnSync("wsl", ["bash", "-lc", `wslpath -a ${shQuote(p)}`], { encoding: "utf8" });
+	const out = String(r.stdout || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).at(-1) ?? "";
+	if (r.status !== 0 || !out) throw new Error("wslpath failed for the output file");
+	return out;
+}
+
+export async function realLocalCopyDeps() {
+	const lib = path.join(repoRoot, "web", "scripts", "lib", "production-emdash-inventory.mjs");
+	const { countPostInventory, openLibsql, openSqliteReadonly } = await import(pathToFileURL(lib).href);
+	return {
+		isIgnored: (p) => spawnSync("git", ["check-ignore", "-q", "--", path.relative(repoRoot, p)], { cwd: repoRoot }).status === 0,
+		exists: (p) => existsSync(p),
+		size: (p) => statSync(p).size,
+		rename: (a, b) => renameSync(a, b),
+		remove: (p) => rmSync(p, { force: true }),
+		exportBranch: async (name, outPath) => {
+			tursoCli(["db", "export", name, "--output-file", cliOutputPath(outPath)]);
+		},
+		fileCheck: async (p) => {
+			const c = openSqliteReadonly(p);
+			try {
+				const rows = (await c.execute("PRAGMA integrity_check")).rows;
+				const integrity = rows.map((r) => String(r[0] ?? r.integrity_check)).join("; ");
+				return { integrity, counts: await countPostInventory(c) };
+			} finally {
+				c.close?.();
+			}
+		},
+		branchCounts: async (name) => {
+			const url = tursoCli(["db", "show", name, "--url"]);
+			if (!/^libsql:\/\//.test(url)) throw new Error(`could not read the URL of ${name}`);
+			// Read-only, 1-day token from the Turso CLI (as backup-production-emdash.ps1 does); never printed.
+			let token = tursoCli(["db", "tokens", "create", name, "--read-only", "--expiration", "1d"]);
+			const c = openLibsql(url, token);
+			token = "";
+			try {
+				return await countPostInventory(c);
+			} finally {
+				c.close?.();
+			}
+		},
+	};
+}
 
 function platformToken(env) {
 	for (const k of ["TURSO_PLATFORM_API_TOKEN", "TURSO_API_TOKEN", "TF_VAR_turso_api_token"]) {
@@ -524,7 +727,13 @@ async function main(argv) {
 			console.log(`\n${s.prefix}* [${s.environment}] ${s.policy}`);
 			console.log(`  total ${s.total}, keep ${s.keep}, would delete ${s.wouldDelete}; ages ${fmtAge(s.newestAgeDays)} .. ${fmtAge(s.oldestAgeDays)}`);
 			for (const e of plan.filter((p) => p.prefix === s.prefix)) {
-				console.log(`  ${e.action === "delete" ? "DELETE" : "keep  "}  ${e.name}  ${fmtAge(e.ageDays)}  ${e.reasons.join("; ")}`);
+				const local =
+					e.action === "delete"
+						? existsSync(localBackupPath(e, opts.backupsDir))
+							? "  [local .db present; verified before delete]"
+							: "  [no local .db yet; exported before delete]"
+						: "";
+				console.log(`  ${e.action === "delete" ? "DELETE" : "keep  "}  ${e.name}  ${fmtAge(e.ageDays)}  ${e.reasons.join("; ")}${local}`);
 			}
 		}
 	}
@@ -550,12 +759,15 @@ async function main(argv) {
 	if (opts.allowUnverifiedStaging && !liveStaging.identified && toDelete.some((e) => e.environment === "staging")) {
 		console.error("WARNING: deleting staging branches without the staging Worker's provenance (--allow-unverified-staging).");
 	}
-	for (const e of toDelete) {
-		await deleteDatabase(org, token, e.name);
-		console.error(`Deleted ${e.name} (${fmtAge(e.ageDays)})`);
-	}
-	console.error(`Deleted ${toDelete.length} branch(es).`);
-	return 0;
+	const backupsDir = opts.backupsDir;
+	const deps = await realLocalCopyDeps();
+	const { deleted, skipped } = await deleteWithLocalCopies(toDelete, {
+		ensure: (e) => ensureLocalCopy(e, backupsDir, deps),
+		del: (name) => deleteDatabase(org, token, name),
+		log: (line) => console.error(line),
+	});
+	console.error(`Deleted ${deleted.length} branch(es); ${skipped.length} kept because the local copy failed.`);
+	return skipped.length ? 3 : 0;
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {

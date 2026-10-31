@@ -5,9 +5,10 @@
 # Usage:
 #   scripts/ci-turso-emdash-backup.sh <staging|production> <database-name> [group]
 #
-# Staging: turso db create --from-db (ci-staging-backup-STAMP branch). No .db file: this
+# Staging: turso db create --from-db (staging-rollback-STAMP branch; ci-staging-backup-STAMP before 31 Oct 2026). No .db file: this
 #          repo is public, so CI never exports or uploads a database file.
-# Production: turso db create --from-db (rollback branch) + metadata JSON
+# Production: turso db create --from-db (prod-rollback-STAMP branch; ci-rollback-STAMP before
+#             31 Oct 2026) + metadata JSON
 #
 # The Turso CLI is the pinned, sha256-checked release from scripts/ci-install-turso-cli.sh,
 # installed with every token variable removed from its environment.
@@ -71,7 +72,7 @@ cd "${REPO_ROOT}"
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 
 if [[ "$ENVIRONMENT" == "staging" ]]; then
-  BRANCH_NAME="ci-staging-backup-${STAMP}"
+  BRANCH_NAME="staging-rollback-${STAMP}"
   echo "Creating staging EmDash backup branch '${BRANCH_NAME}' from '${DATABASE_NAME}' (no .db export)"
   CREATE=(turso db create "${BRANCH_NAME}" --from-db "${DATABASE_NAME}")
   if [[ -n "$TURSO_GROUP" ]]; then
@@ -87,7 +88,7 @@ if [[ "$ENVIRONMENT" == "staging" ]]; then
   exit 0
 fi
 
-BRANCH_NAME="ci-rollback-${STAMP}"
+BRANCH_NAME="prod-rollback-${STAMP}"
 echo "Creating production EmDash rollback branch '${BRANCH_NAME}' from '${DATABASE_NAME}'"
 CREATE=(turso db create "${BRANCH_NAME}" --from-db "${DATABASE_NAME}")
 if [[ -n "$TURSO_GROUP" ]]; then

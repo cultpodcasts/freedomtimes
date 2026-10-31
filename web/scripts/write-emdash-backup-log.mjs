@@ -127,7 +127,7 @@ export function buildBackupLog(raw, { environment, createdAtUtc, fileName }) {
 		},
 		backupNaming:
 			raw.backupNaming ??
-			"Turso branch is always prod-backup-YYYYMMDD-HHMMSS (never the Worker source name).",
+			"Turso branch is always prod-rollback-YYYYMMDD-HHMMSS (never the Worker source name).",
 		posts: {
 			ecPostsRaw: raw.posts?.raw ?? raw.posts?.ecPostsRaw ?? null,
 			active: raw.posts?.active ?? null,

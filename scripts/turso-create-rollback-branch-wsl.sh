@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Create a full Turso copy of the Worker-resolved production EmDash DB (run from WSL).
-# New branch name is prod-backup-YYYYMMDD-HHMMSS (legacy env TURSO_ROLLBACK_BRANCH_NAME still overrides).
+# New branch name is prod-rollback-YYYYMMDD-HHMMSS (legacy env TURSO_ROLLBACK_BRANCH_NAME still overrides).
 # Usage:
 #   ./scripts/turso-create-rollback-branch-wsl.sh [production-db-name] [group-name]
 # Pass the Worker-resolved production DB name (do NOT assume freedomtimes-emdash-production).
@@ -23,7 +23,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
 TIMESTAMP_UTC="$(date -u +%Y%m%d-%H%M%S)"
-BRANCH_NAME="${TURSO_ROLLBACK_BRANCH_NAME:-${TURSO_BACKUP_BRANCH_NAME:-prod-backup-${TIMESTAMP_UTC}}}"
+BRANCH_NAME="${TURSO_ROLLBACK_BRANCH_NAME:-${TURSO_BACKUP_BRANCH_NAME:-prod-rollback-${TIMESTAMP_UTC}}}"
 
 echo "Creating '${BRANCH_NAME}' from '${PROD_DB}' (group: ${GROUP})"
 turso db create "${BRANCH_NAME}" --from-db "${PROD_DB}" --group "${GROUP}"

@@ -59,7 +59,7 @@ Create a checkpoint branch from the production database before doing anything el
 
 ```powershell
 pwsh ./scripts/backup-production-emdash.ps1 -AllowProduction
-# Creates Turso branch prod-backup-YYYYMMDD-HHMMSS from the Worker-resolved DB
+# Creates Turso branch prod-rollback-YYYYMMDD-HHMMSS from the Worker-resolved DB
 # (never assume named freedomtimes-emdash-production). Commit the agents log.
 ```
 
@@ -74,7 +74,7 @@ pwsh ./scripts/deploy-production-local.ps1
 
 Record these with the release notes:
 
-1. backup Turso branch name (`prod-backup-YYYYMMDD-HHMMSS`)
+1. backup Turso branch name (`prod-rollback-YYYYMMDD-HHMMSS`)
 2. creation timestamp
 3. Worker-resolved source database name
 
@@ -99,7 +99,7 @@ Do not run this step for EmDash-dependent code until Step 3 shows production sch
 
 ### 2a. Standard: GitHub Actions (`deploy-worker.yml`)
 
-Web Worker releases go through a PR: the PR deploys staging, the operator checks staging and merges, and the merge runs a verified production Turso backup (Turso branch `prod-backup-YYYYMMDD-HHMMSS` only; no `.db` or artifact from CI) and then the production Worker deploy. Steps, secrets and restore: **[web/docs/DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)** (the one place that defines it). This workflow never applies Terraform; see the Terraform row above.
+Web Worker releases go through a PR: the PR deploys staging, the operator checks staging and merges, and the merge runs a verified production Turso backup (Turso branch `prod-rollback-YYYYMMDD-HHMMSS` only; no `.db` or artifact from CI) and then the production Worker deploy. Steps, secrets and restore: **[web/docs/DEPLOY.md § Standard path](web/docs/DEPLOY.md#standard-path-github-actions-deploy-workeryml)** (the one place that defines it). This workflow never applies Terraform; see the Terraform row above.
 
 ### Legacy: Terraform dispatch (`production-release.ps1`)
 
@@ -280,7 +280,7 @@ Production serves an anonymous reader page cache and runs the Worker in `aws:eu-
 
 ## 6. Rollback Strategy
 
-**Prefer sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md):** identify last verified `prod-backup-*` (or legacy `prod-rollback-*`) / agents log, then **retarget the Worker** to that branch. Do not restore onto named production as the first step.
+**Prefer sibling [freedomtimes-agents/docs/DISASTER_RECOVERY.md](../freedomtimes-agents/docs/DISASTER_RECOVERY.md):** identify last verified `prod-rollback-*` (or older `prod-backup-*`) / agents log, then **retarget the Worker** to that branch. Do not restore onto named production as the first step.
 
 1. Revert code on `main` and re-run production workflow.
 2. If data rollback is needed, switch production runtime from the current Worker Turso credentials to the pre-release Turso rollback branch credentials (`pwsh ./scripts/disaster-recover-production-emdash.ps1 -AllowProduction -FromBranch <name>`).
