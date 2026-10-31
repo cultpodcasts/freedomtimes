@@ -134,9 +134,20 @@ tooling blocks it:
   or the operator passes the break-glass switch `-AllowWorkerScriptUpload`. For a non-Worker change, apply with
   `-Target` (for example `-Target 'cloudflare_dns_record.api_custom_hostname'`), or run the full
   `deploy-<env>-local.ps1`, which re-uploads the real bundle with Wrangler later in the same run. The saved-plan
-  + `terraform show -json` path has only been tested with a fake `terraform`; checking it against the Terraform
-  Cloud backend (plan only) before the next full deploy is [#117](https://github.com/cultpodcasts/freedomtimes/issues/117).
-  If it does not work there, the guard fails closed and the deploy stops before applying.
+  + `terraform show -json` path works against the Terraform Cloud backend (`cloud {}` block, organization
+  `freedomtimes`). It was verified plan-only on 31 Oct 2026 with Terraform 1.14.8 for both staging and production
+  ([#117](https://github.com/cultpodcasts/freedomtimes/issues/117)): `terraform-run.ps1 -Operation plan -LoadEnvFiles
+  -PlanFile <file>` saved the plan, and the guard read it with `terraform show -json` and reported `BLOCKED` naming
+  `holding_page` (the expected binding drift). The CI plans below show the same on every run. Only plan, save
+  and `show -json` were checked: the final `terraform apply <saved plan>` against the cloud backend was not run
+  (plan-only verification), so the first full deploy is its first real use; if it fails there, it fails before
+  changing anything. Run local Terraform at the version CI pins (`terraform_version` in
+  `terraform-<env>.yml`, 1.14.8 at the time); `versions.tf` allows older versions that were not checked. If the
+  saved-plan path ever breaks (for example a Terraform version that cannot save or show a cloud plan), the guard
+  fails closed and the deploy stops before applying. To re-check by hand, plan only: run
+  `pwsh scripts/terraform-run.ps1 -Environment <env> -Operation plan -LoadEnvFiles -PlanFile tfplan-guardcheck`, then
+  `pwsh scripts/terraform-plan-guard-worker-script-upload.ps1 -Environment <env> -PlanFile tfplan-guardcheck`,
+  then delete `infra/terraform/environments/<env>/tfplan-guardcheck`.
 - **GitHub Actions:** `terraform-staging.yml` and `terraform-production.yml` run the same guard
   (`Guard Worker Script Upload Plan`) on every plan, immediately before `Terraform Apply`. CI never sets
   `FT_WRANGLER_DEPLOY_FOLLOWS`, because the workflows have no failure recovery or placement check between the
@@ -147,16 +158,17 @@ tooling blocks it:
   report-only: when the guard prints `BLOCKED:` it notes that an apply would be refused (the expected drift), and
   when it could not check the plan (no plan file, `terraform show -json` failed, unparseable JSON) it raises a
   `::warning` instead; the job still passes either way. Those runs also exercise the `terraform show -json` path
-  against the Terraform Cloud backend (evidence for #117).
+  against the Terraform Cloud backend, so a `::warning` there (instead of the `BLOCKED` notice) means that path has
+  regressed (#117).
 - **After apply:** `terraform-run.ps1` runs `web/scripts/verify-worker-placement.mjs`. Exit **4** = placement /
   `PAGE_CACHE` / `ASSETS` do not match `wrangler.jsonc`, or a static-asset / unmatched-route probe failed; exit **5** = could not verify (no token, API or
   network error, or a probe could not run: network error on every attempt, probe path not in the build); both print the redeploy command. The deploy scripts defer this check until after their
   `wrangler deploy`, and warn loudly if Terraform applied but `wrangler deploy` did not complete.
 - **Recovery:** `pwsh scripts/deploy-<env>-local.ps1 -WorkerOnly -SkipVersionBump` (Wrangler redeploy), or roll
   back to the last Wrangler version in the Cloudflare dashboard.
-- **Local tests (no network, fake `terraform` / `node`, no CI):**
-  `pwsh -NoProfile -File ./scripts/test-terraform-worker-script-guards.ps1` and
-  `pwsh -NoProfile -File ./scripts/test-deploy-cloud-agent-guards.ps1`.
+- **Tests (no network, fake `terraform` / `node`):**
+  `pwsh -NoProfile -File ./scripts/test-terraform-worker-script-guards.ps1` (local only) and
+  `pwsh -NoProfile -File ./scripts/test-deploy-cloud-agent-guards.ps1` (also run by `ci-guards.yml`).
 
 We deliberately do not mirror `wrangler.jsonc` bindings into Terraform (two owners that can disagree) or add
 `bindings` to `ignore_changes` (Terraform owns the `secret_text` bindings, and secret rotations would silently
