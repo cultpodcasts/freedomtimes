@@ -11,7 +11,11 @@
  *   node web/scripts/write-emdash-backup-log.mjs --stdin
  *
  * Payload keys (no tokens): sourceDatabase, destination.tursoBranch, destination.localFile,
- * posts.{raw,active,published,draft,deleted}, workerTursoHost, verificationPass, notes.
+ * posts.{raw,active,published,draft,deleted}, workerTursoHost, verificationPass,
+ * liveProvenanceCheck (match | bootstrap | skipped, #148), resolveSource, notes.
+ *
+ * schemaVersion 2 (#154) adds liveProvenanceCheck and resolveSource. In a schemaVersion 1 log
+ * they are absent: the backup source was not recorded as proven.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
@@ -76,32 +80,38 @@ function readPayload(args) {
 	throw new Error("Pass --from-json <file> or --stdin");
 }
 
+export const BACKUP_LOG_SCHEMA_VERSION = 2;
+
+/** Values backup-production-emdash.ps1 writes (#148); anything else is refused. */
+export const LIVE_PROVENANCE_CHECK_VALUES = ["match", "bootstrap", "skipped"];
+
+/** @param {unknown} value */
+export function normalizeLiveProvenanceCheck(value) {
+	if (value === undefined || value === null || value === "") return null;
+	const v = String(value).trim().toLowerCase();
+	if (!LIVE_PROVENANCE_CHECK_VALUES.includes(v)) {
+		throw new Error(
+			`Invalid liveProvenanceCheck "${value}" (expected ${LIVE_PROVENANCE_CHECK_VALUES.join(" | ")}).`,
+		);
+	}
+	return v;
+}
+
 export function backupLogFileName(environment, stamp) {
 	const env = environment === "staging" ? "staging" : "prod";
 	return `${env}-emdash-${stamp}.json`;
 }
 
-function main() {
-	const args = parseArgs(process.argv.slice(2));
-	const raw = readPayload(args);
-	const environment = (args.environment || raw.environment || "production").toLowerCase();
-	const createdAtUtc = raw.createdAtUtc || new Date().toISOString();
-	const stamp = args.stamp || stampFromIsoOrNow(createdAtUtc);
-	const agentsRoot = args.agentsDir || agentsRepoRoot();
-	if (!existsSync(agentsRoot)) {
-		throw new Error(
-			`freedomtimes-agents repo not found at ${agentsRoot}. Set FREEDOMTIMES_AGENTS_DIR or clone it as a sibling.`,
-		);
-	}
-
-	const destDir = path.join(agentsRoot, "data", "backups");
-	mkdirSync(destDir, { recursive: true });
-	const fileName = backupLogFileName(environment, stamp);
-	const outPath = path.join(destDir, fileName);
-
+/**
+ * The committed log object (pure; no I/O). Throws on missing source / destination or an
+ * unknown liveProvenanceCheck value.
+ * @param {Record<string, any>} raw payload from backup-production-emdash.ps1
+ * @param {{ environment: string, createdAtUtc: string, fileName: string }} opts
+ */
+export function buildBackupLog(raw, { environment, createdAtUtc, fileName }) {
 	const log = stripSecrets({
 		kind: "emdash-backup-log",
-		schemaVersion: 1,
+		schemaVersion: BACKUP_LOG_SCHEMA_VERSION,
 		createdAtUtc,
 		environment: environment === "staging" ? "staging" : "production",
 		sourceDatabase: raw.sourceDatabase,
@@ -128,6 +138,9 @@ function main() {
 		},
 		weeklySlugsSample: raw.weeklySlugsSample ?? [],
 		verificationPass: raw.verificationPass ?? raw.verification?.pass ?? null,
+		// #154: was the backup source proven to be the live Worker's DB (#148)?
+		liveProvenanceCheck: normalizeLiveProvenanceCheck(raw.liveProvenanceCheck),
+		resolveSource: typeof raw.resolveSource === "string" && raw.resolveSource.trim() ? raw.resolveSource.trim() : null,
 		freedomtimesMetadata: raw.freedomtimesMetadata ?? raw.metadataFile ?? null,
 		agentsLogPath: `data/backups/${fileName}`,
 		notes: raw.notes ?? null,
@@ -139,6 +152,29 @@ function main() {
 	if (!log.destination.tursoBranch && !log.destination.localFile) {
 		throw new Error("Backup log requires destination.tursoBranch and/or destination.localFile.");
 	}
+
+	return log;
+}
+
+function main() {
+	const args = parseArgs(process.argv.slice(2));
+	const raw = readPayload(args);
+	const environment = (args.environment || raw.environment || "production").toLowerCase();
+	const createdAtUtc = raw.createdAtUtc || new Date().toISOString();
+	const stamp = args.stamp || stampFromIsoOrNow(createdAtUtc);
+	const agentsRoot = args.agentsDir || agentsRepoRoot();
+	if (!existsSync(agentsRoot)) {
+		throw new Error(
+			`freedomtimes-agents repo not found at ${agentsRoot}. Set FREEDOMTIMES_AGENTS_DIR or clone it as a sibling.`,
+		);
+	}
+
+	const destDir = path.join(agentsRoot, "data", "backups");
+	mkdirSync(destDir, { recursive: true });
+	const fileName = backupLogFileName(environment, stamp);
+	const outPath = path.join(destDir, fileName);
+
+	const log = buildBackupLog(raw, { environment, createdAtUtc, fileName });
 
 	writeFileSync(outPath, `${JSON.stringify(log, null, 2)}\n`, "utf8");
 	console.log(outPath);

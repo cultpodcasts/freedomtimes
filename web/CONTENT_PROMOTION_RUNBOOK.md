@@ -68,7 +68,7 @@ That script:
 6. **Verify** that export file exists and is a non-trivial size (see [Verify after `turso db export`](#verify-after-turso-db-export)). Export alone is not enough.
 7. Verifies backup published slugs match live Worker inventory (FAIL if thin / missing weeklies).
 8. Writes metadata under `.release/rollback-branches/`.
-9. Writes the committed log under `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`. <!-- pragma: allowlist secret -->
+9. Writes the committed log under `../freedomtimes-agents/data/backups/prod-emdash-YYYYMMDD-HHMMSS.json`, including `liveProvenanceCheck` (`match` = source proven to be the live Worker's DB; `bootstrap` / `skipped` = not proven, #148) and `resolveSource` (schemaVersion 2, #154; field contract in freedomtimes-agents `data/backups/README.md`). <!-- pragma: allowlist secret -->
 
 Local tests for steps 1 and 3 (no network, fake values, no CI): `pwsh -NoProfile -File ./scripts/test-backup-production-env-and-preflight.ps1`. The `.env` parser is shared with the deploy scripts in `scripts/lib/EnvFile.ps1`.
 

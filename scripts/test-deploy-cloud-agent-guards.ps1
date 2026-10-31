@@ -841,6 +841,10 @@ Assert-True ($preBackupIdx -gt 0 -and $preBackupIdx -lt $caveatIdx -and $caveatI
 Assert-True ($backupScriptText -notmatch '(?m)^\s*Write-Warning \$w\s*$' -and $backupScriptText -notmatch 'Write-Warning "Source is the named production DB') "backup-production-emdash.ps1 has no unconditional resolver-caveat warnings left"
 Assert-True ($backupScriptText -match 'SkipLiveProvenanceCheck -and \$env:GITHUB_ACTIONS -eq "true"\)\s*\{\s*throw') "backup-production-emdash.ps1 refuses -SkipLiveProvenanceCheck on GitHub Actions"
 Assert-True ($backupScriptText -match 'liveProvenanceCheck\s*=\s*\$liveProvenance') "backup metadata records liveProvenanceCheck"
+$agentsLogPayloadText = [regex]::Match($backupScriptText, '(?s)\$logPayload\s*=\s*\[ordered\]@\{.*?\n\s{8}\}').Value
+Assert-True ($agentsLogPayloadText -match 'liveProvenanceCheck\s*=\s*\$liveProvenance') "agents backup log payload records liveProvenanceCheck (#154)"
+Assert-True ($agentsLogPayloadText -match 'resolveSource\s*=\s*\[string\]\$resolved\.source') "agents backup log payload records resolveSource (#154)"
+Assert-True ($backupScriptText -match 'only writing the freedomtimes-agents log failed') "agents log writer failure says the branch and metadata already exist (#154)"
 
 # #148 / DR: the disaster-recovery safety backup can forward the explicit opt-in.
 $drScriptPath = Join-Path $PSScriptRoot "disaster-recover-production-emdash.ps1"
