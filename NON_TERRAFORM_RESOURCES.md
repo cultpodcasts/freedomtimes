@@ -177,8 +177,11 @@ It checks placement `mode = targeted` + region `aws:eu-west-1`, `PAGE_CACHE` / `
 `last_deployed_from = wrangler`. It then makes two logged-out GETs on the environment's own origin
 (`https://staging.freedomtimes.news` / `https://freedomtimes.news`): `/favicon.svg` must be HTTP 200 with a
 non-HTML content-type (static assets are served before the Worker, so the staging login wall does not apply),
-and `/__ft-verify/no-such-route/a/b` must not be 5xx (an unbound `env.ASSETS` makes every unmatched route 500;
-any 4xx/3xx passes — the probe checks "no 5xx", not "is 404"). The static-asset URL gets a fresh
+and `/__ft-verify/no-such-route/a/b` must be exactly HTTP 404 (the not-found page from #119) on production, or a
+3xx redirect with a `Location` to sign-in on staging, because `wrangler.jsonc` sets `SITE_ACCESS_MODE` to `locked`
+there (#122). Anything else fails and names the cause where it is known: a 503 means the content store is
+unavailable (an unmigrated, empty or unreachable EmDash database, #160); a 500 usually means `env.ASSETS` is
+unbound; a 400 means unmatched URLs no longer reach the not-found page. The static-asset URL gets a fresh
 `?ft-verify=<ms>` cache-buster so an edge-cached copy cannot pass it, and `cf-cache-status` is logged. Each probe
 retries up to 4 attempts, 5 s apart (a transient edge 5xx or a version still propagating does not fail the
 deploy); every attempt's status is logged, never headers or cookies. Still failing after the last attempt =
