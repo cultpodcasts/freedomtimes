@@ -21,6 +21,17 @@
   The backup is of whatever Turso DB the production Worker is using. The backup branch
   name is always prod-backup-<stamp>, never a work/scratch DB name.
 
+  Before any branch or export (#148), the resolved source host is checked against the LIVE
+  production Worker: sha256("freedomtimes-turso-host-v1:" + host) must equal tursoHostSha256 from
+  https://freedomtimes.news/api/deploy-provenance.json (DEPLOY_PROVENANCE_TOKEN sent as a bearer
+  when set). Mismatch, a missing hash, a redirect, 401/403 or repeated network/5xx failures stop
+  the script: nothing is backed up. A 404 passes only as the #144 bootstrap (live commit predates
+  the endpoint). On a match the resolver caveats (env fallback, "named DB stale/thin") collapse
+  into one notice. -SkipLiveProvenanceCheck (local only, refused on GitHub Actions) is for when
+  the site is down, e.g. the disaster-recovery safety backup
+  (disaster-recover-production-emdash.ps1 -SkipLiveProvenanceCheck forwards it); the caveats
+  then stay warnings and the metadata records liveProvenanceCheck: skipped.
+
   Then runs verify-production-emdash-backup.mjs (--from-worker --compare-staging by default).
   Non-zero exit if verify FAIL.
 
@@ -48,7 +59,8 @@ param(
     [string]$DatabaseNameOverride,
     [int]$VerifyMaxAgeHours = 24,
     [string]$AgentsRepo,
-    [switch]$SkipAgentsLog
+    [switch]$SkipAgentsLog,
+    [switch]$SkipLiveProvenanceCheck
 )
 
 Set-StrictMode -Version Latest
@@ -56,6 +68,9 @@ $ErrorActionPreference = "Stop"
 
 . "$PSScriptRoot/lib/EnvFile.ps1"
 . "$PSScriptRoot/lib/TursoSourcePreflight.ps1"
+# Live Worker provenance helpers (#142/#144/#148): Assert-DeployLiveWorkerTursoHostMatchesBackup
+# -Phase PreBackup and Write-DeployBackupSourceCaveats.
+. "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 
 # Keys this script may fill from .env.dev (only when the process value is empty).
 # Deliberately NOT TURSO_DATABASE_URL / TURSO_AUTH_TOKEN: the resolver's env fallback
@@ -75,6 +90,9 @@ $script:ProductionBackupEnvDevKeys = @(
 
 if (-not $AllowProduction) {
     throw "Refusing production EmDash backup without -AllowProduction."
+}
+if ($SkipLiveProvenanceCheck -and $env:GITHUB_ACTIONS -eq "true") {
+    throw "Refusing -SkipLiveProvenanceCheck on GitHub Actions (#148): CI must prove the backup source is the live Worker's DB."
 }
 
 function Test-CommandAvailable {
@@ -289,14 +307,20 @@ try {
     Write-Host "Source database: $sourceDatabase  (whatever the production Worker points at — NOT the backup name)" -ForegroundColor Green
     Write-Host "Backup branch:   $branchName  (always prod-backup-<stamp>; never named after the source)" -ForegroundColor Green
     Write-Host "Published posts: $postCount" -ForegroundColor Green
-    if ($resolved.warnings) {
-        foreach ($w in @($resolved.warnings)) {
-            Write-Warning $w
-        }
+
+    # #148: prove the source is the DB the LIVE production Worker reads before any branch or
+    # export (and before the -DryRun return). Throws on mismatch/failure: nothing backed up.
+    if ($SkipLiveProvenanceCheck) {
+        $liveProvenance = "skipped"
+        Write-Warning "-SkipLiveProvenanceCheck: NOT checking the backup source against the live Worker (#148). Confirm the Worker host yourself."
     }
-    if ($sourceDatabase -eq "freedomtimes-emdash-production") {
-        Write-Warning "Source is the named production DB. Confirm Worker host is correct before treating this as the live corpus."
+    else {
+        $liveOutcome = Assert-DeployLiveWorkerTursoHostMatchesBackup -Phase PreBackup -ExpectedTursoHost $workerHost
+        $liveProvenance = if ($liveOutcome -eq "Match") { "match" } else { "bootstrap" }
     }
+    $resolverWarnings = if ($resolved.PSObject.Properties["warnings"] -and $resolved.warnings) { [string[]]@($resolved.warnings) } else { [string[]]@() }
+    Write-DeployBackupSourceCaveats -LiveProvenance $liveProvenance -ResolverWarnings $resolverWarnings `
+        -SourceDatabase $sourceDatabase -ResolveSource ([string]$resolved.source)
 
     if ([string]::IsNullOrWhiteSpace($TursoGroup)) {
         $TursoGroup = if ($env:TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION) {
@@ -477,6 +501,8 @@ try {
         backupFile         = $backupFileRel
         workerTursoHost    = $workerHost
         resolveSource      = [string]$resolved.source
+        # #148: match = live Worker host hash proved the source; bootstrap / skipped = unproven.
+        liveProvenanceCheck = $liveProvenance
         postCount          = $postCount
         weeklySlugsSample  = $weeklySample
         inventoryHash      = [string]$resolved.inventoryHash

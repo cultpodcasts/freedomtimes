@@ -1017,9 +1017,10 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
     <#
     .SYNOPSIS
       Pure decision for one provenance response. Outcome is one of:
-        Match      live Worker host hash equals the backed-up host hash
+        Match      live Worker host hash equals the expected host hash (PreBackup: the backup
+                   source host, #148; PreDeploy/PostDeploy: the backed-up host)
         Mismatch   live Worker reads another DB (fail closed)
-        BootstrapCandidate  PreDeploy 404. NOT a pass: Assert-DeployLiveWorkerTursoHostMatchesBackup
+        BootstrapCandidate  PreBackup/PreDeploy 404. NOT a pass: Assert-DeployLiveWorkerTursoHostMatchesBackup
                    allows a bootstrap only with positive evidence that the live Worker
                    predates the endpoint (Resolve-DeployProvenanceBootstrapEvidence, #144)
         Retry      transient (network, 5xx; PostDeploy also 404 or old commit still serving)
@@ -1027,7 +1028,7 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
     #>
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet("PreDeploy", "PostDeploy")]
+        [ValidateSet("PreBackup", "PreDeploy", "PostDeploy")]
         [string]$Phase,
         [int]$StatusCode,
         [string]$Body,
@@ -1036,12 +1037,16 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
     )
 
     $verdict = { param($Outcome, $Message) [pscustomobject]@{ Outcome = $Outcome; Message = $Message } }
+    $expectedLabel = if ($Phase -eq "PreBackup") { "backup source" } else { "backed-up" }
 
     if ([string]::IsNullOrWhiteSpace($ExpectedHash)) {
+        if ($Phase -eq "PreBackup") {
+            return (& $verdict "Fail" "The backup source has no Turso host, so there is nothing to compare the live Worker with.")
+        }
         return (& $verdict "Fail" "The backup metadata has no workerTursoHost, so there is nothing to compare the live Worker with.")
     }
     if ($StatusCode -eq 404) {
-        if ($Phase -eq "PreDeploy") {
+        if ($Phase -ne "PostDeploy") {
             return (& $verdict "BootstrapCandidate" "The live production Worker returned 404 for $($script:DeployProvenancePath).")
         }
         return (& $verdict "Retry" "The deployed Worker still returns 404 for $($script:DeployProvenancePath).")
@@ -1077,9 +1082,10 @@ function Resolve-DeployLiveWorkerProvenanceVerdict {
         return (& $verdict "Fail" "The live Worker reported no Turso host hash (no TURSO_DATABASE_URL Worker secret?).")
     }
     if ($liveHash -ne $ExpectedHash.Trim().ToLowerInvariant()) {
-        return (& $verdict "Mismatch" "The live production Worker reads a different Turso DB host than the one backed up (host hash $($liveHash.Substring(0, [Math]::Min(12, $liveHash.Length)))… vs backed-up $($ExpectedHash.Substring(0, [Math]::Min(12, $ExpectedHash.Length)))…).")
+        $than = if ($Phase -eq "PreBackup") { "the backup source (TURSO_PRODUCTION_EMDASH_DB_URL / resolved Worker host)" } else { "the one backed up" }
+        return (& $verdict "Mismatch" "The live production Worker reads a different Turso DB host than $than (host hash $($liveHash.Substring(0, [Math]::Min(12, $liveHash.Length)))… vs $expectedLabel $($ExpectedHash.Substring(0, [Math]::Min(12, $ExpectedHash.Length)))…).")
     }
-    return (& $verdict "Match" "The live production Worker reads the backed-up DB host (commit '$liveCommit').")
+    return (& $verdict "Match" "The live production Worker reads the $expectedLabel DB host (commit '$liveCommit').")
 }
 
 function Invoke-DeployProductionSiteGet {
@@ -1249,10 +1255,14 @@ function Resolve-DeployProvenanceBootstrapEvidence {
 function Assert-DeployLiveWorkerTursoHostMatchesBackup {
     <#
     .SYNOPSIS
-      Fail closed unless the live production Worker reads the backed-up (and migrated) DB host.
+      Fail closed unless the live production Worker reads the expected DB host.
 
     .DESCRIPTION
-      PreDeploy: before build/migrate/deploy. Mismatch, missing hash or any unexpected response
+      PreBackup (#148): in backup-production-emdash.ps1, before any Turso branch or export, against
+      -ExpectedTursoHost (the resolved backup source host, i.e. TURSO_PRODUCTION_EMDASH_DB_URL on CI).
+      Same rules as PreDeploy (404 = bootstrap only with #144 evidence); failures say nothing was
+      backed up. Returns "Match" or "Bootstrap".
+      PreDeploy: before build/migrate/deploy, against the selected backup's workerTursoHost. Mismatch, missing hash or any unexpected response
       throws (nothing migrated or deployed). A 404 is a bootstrap ONLY when
       Resolve-DeployProvenanceBootstrapEvidence proves the live Worker predates the endpoint
       (#144: its /api/version.json commit is known and does not contain the route); then a loud
@@ -1265,8 +1275,10 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
     #>
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet("PreDeploy", "PostDeploy")]
+        [ValidateSet("PreBackup", "PreDeploy", "PostDeploy")]
         [string]$Phase,
+        # PreBackup only: the Turso host the backup is about to read.
+        [string]$ExpectedTursoHost = "",
         [scriptblock]$Fetch = { Invoke-DeployLiveWorkerProvenanceRequest },
         [scriptblock]$FetchVersion = { Invoke-DeployLiveWorkerVersionRequest },
         [hashtable]$GitOps = $null,
@@ -1274,16 +1286,27 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
         [int]$DelaySeconds = 5
     )
 
-    if ($null -eq $script:DeployFreshBackupMetadata) {
+    $preBackup = $Phase -eq "PreBackup"
+    if ($preBackup) {
+        if ([string]::IsNullOrWhiteSpace($ExpectedTursoHost)) {
+            throw "Refusing to back up (live Worker provenance, #148): no backup source host to compare with the live Worker. Nothing was backed up, migrated or deployed."
+        }
+    }
+    elseif ($null -eq $script:DeployFreshBackupMetadata) {
         throw "Internal: Assert-DeployLiveWorkerTursoHostMatchesBackup called without a selected backup (Assert-DeployFreshEmDashTursoBackup first)."
     }
     if ($MaxAttempts -le 0) {
         $MaxAttempts = if ($Phase -eq "PostDeploy") { 24 } else { 4 }
     }
-    $expectedHash = Get-DeployTursoHostProvenanceHash -TursoHost ([string]$script:DeployFreshBackupMetadata.workerTursoHost)
+    $expectedHost = if ($preBackup) { $ExpectedTursoHost } else { [string]$script:DeployFreshBackupMetadata.workerTursoHost }
+    $expectedHash = Get-DeployTursoHostProvenanceHash -TursoHost $expectedHost
     $expectedCommit = [Environment]::GetEnvironmentVariable("FT_BUILD_COMMIT_SHA", "Process")
-    $backupName = [string]$script:DeployFreshBackupMetadata.backupDatabase
-    $failurePrefix = if ($Phase -eq "PreDeploy") {
+    $backupName = if ($preBackup) { "" } else { [string]$script:DeployFreshBackupMetadata.backupDatabase }
+    $nothingDone = if ($preBackup) { "Nothing was backed up, migrated or deployed." } else { "Nothing was migrated or deployed." }
+    $failurePrefix = if ($preBackup) {
+        "Refusing to back up (live Worker provenance, #148):"
+    }
+    elseif ($Phase -eq "PreDeploy") {
         "Refusing to migrate or deploy (live Worker provenance, #142):"
     }
     else {
@@ -1305,8 +1328,14 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
             -Body ([string]$response.Body) -ExpectedHash $expectedHash -ExpectedCommitSha $expectedCommit
         switch ($last.Outcome) {
             "Match" {
-                Write-DeployStep "Live Worker provenance ($Phase): $($last.Message) Backup $backupName."
-                & $summary "- Live Worker provenance ($Phase, #142): match (Turso host hash = backup ``$backupName``)"
+                if ($preBackup) {
+                    Write-Host "Live Worker provenance ($Phase): $($last.Message)" -ForegroundColor Green
+                    & $summary "- Live Worker provenance ($Phase, #148): match (backup source Turso host hash = live Worker)"
+                }
+                else {
+                    Write-DeployStep "Live Worker provenance ($Phase): $($last.Message) Backup $backupName."
+                    & $summary "- Live Worker provenance ($Phase, #142): match (Turso host hash = backup ``$backupName``)"
+                }
                 return "Match"
             }
             "BootstrapCandidate" {
@@ -1316,23 +1345,37 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
                 $evidence = Resolve-DeployProvenanceBootstrapEvidence -VersionStatusCode ([int]$versionResponse.StatusCode) `
                     -VersionBody ([string]$versionResponse.Body) -Git $ops
                 if (-not $evidence.Allowed) {
-                    throw "$failurePrefix $($last.Message) Not a provenance bootstrap (#144): $($evidence.Message) Nothing was migrated or deployed."
+                    throw "$failurePrefix $($last.Message) Not a provenance bootstrap (#144): $($evidence.Message) $nothingDone"
                 }
-                $message = "$($last.Message) $($evidence.Message) Bootstrap: this run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory."
+                $message = if ($preBackup) {
+                    "$($last.Message) $($evidence.Message) Bootstrap: the backup source cannot be proven live this run; the deploy step's checks still apply."
+                }
+                else {
+                    "$($last.Message) $($evidence.Message) Bootstrap: this run relies on the secret-vs-backup host check only; the post-deploy check against the new Worker is mandatory."
+                }
+                $issue = if ($preBackup) { "#148" } else { "#142" }
                 if ($env:GITHUB_ACTIONS -eq "true") {
-                    Write-Host "::warning title=Live Worker provenance bootstrap (#142)::$message"
+                    Write-Host "::warning title=Live Worker provenance bootstrap ($issue)::$message"
                 }
                 Write-Warning $message
-                $script:DeployLiveProvenanceBootstrap = $true
-                & $summary "- Live Worker provenance ($Phase, #142): **bootstrap** (live commit ``$($evidence.LiveCommit)`` predates the endpoint; secret-vs-backup host check only)"
+                if (-not $preBackup) {
+                    $script:DeployLiveProvenanceBootstrap = $true
+                }
+                $summaryTail = if ($preBackup) {
+                    "backup source not proven; the deploy step re-checks the live Worker before migrating"
+                }
+                else {
+                    "secret-vs-backup host check only"
+                }
+                & $summary "- Live Worker provenance ($Phase, $issue): **bootstrap** (live commit ``$($evidence.LiveCommit)`` predates the endpoint; $summaryTail)"
                 return "Bootstrap"
             }
             "Mismatch" {
-                $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed. $fixHint" } else { $fixHint }
+                $tail = if ($Phase -ne "PostDeploy") { "$nothingDone $fixHint" } else { $fixHint }
                 throw "$failurePrefix $($last.Message) $tail"
             }
             "Fail" {
-                $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed." } else { "" }
+                $tail = if ($Phase -ne "PostDeploy") { $nothingDone } else { "" }
                 throw "$failurePrefix $($last.Message) $tail".Trim()
             }
             default {
@@ -1342,8 +1385,49 @@ function Assert-DeployLiveWorkerTursoHostMatchesBackup {
             }
         }
     }
-    $tail = if ($Phase -eq "PreDeploy") { "Nothing was migrated or deployed." } else { "" }
+    $tail = if ($Phase -ne "PostDeploy") { $nothingDone } else { "" }
     throw "$failurePrefix gave up after $MaxAttempts attempts: $($last.Message) $tail".Trim()
+}
+
+function Write-DeployBackupSourceCaveats {
+    <#
+    .SYNOPSIS
+      #148: how backup-production-emdash.ps1 reports resolver caveats (env fallback, proxy resolve
+      failed, "named DB stale/thin", "source is the named production DB").
+      LiveProvenance "match": the live Worker's host hash already proved the source, so the caveats
+      collapse into ONE informational line (a ::notice:: on GitHub Actions). "bootstrap"/"skipped":
+      nothing proved the source, so each caveat stays a warning, as before.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("match", "bootstrap", "skipped")]
+        [string]$LiveProvenance,
+        [string[]]$ResolverWarnings = @(),
+        [string]$SourceDatabase = "",
+        [string]$ResolveSource = ""
+    )
+
+    $caveats = [System.Collections.Generic.List[string]]::new()
+    foreach ($w in @($ResolverWarnings)) {
+        if (-not [string]::IsNullOrWhiteSpace($w)) { $caveats.Add([string]$w) }
+    }
+    if ($SourceDatabase -eq "freedomtimes-emdash-production") { # pragma: allowlist secret
+        $caveats.Add("Source is the named production DB. Confirm Worker host is correct before treating this as the live corpus.")
+    }
+
+    if ($LiveProvenance -eq "match") {
+        $line = "Backup source verified by live Worker provenance (#148): the live production Worker reads this DB host (resolved via $ResolveSource). $($caveats.Count) resolver caveat(s) superseded."
+        if ($env:GITHUB_ACTIONS -eq "true") {
+            Write-Host "::notice title=Backup source verified (#148)::$line"
+        }
+        else {
+            Write-Host $line -ForegroundColor Green
+        }
+        return
+    }
+    foreach ($c in $caveats) {
+        Write-Warning $c
+    }
 }
 
 function Invoke-DeployStagingTursoExport {
