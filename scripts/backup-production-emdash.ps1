@@ -548,6 +548,9 @@ try {
             postCount              = $postCount
             weeklySlugsSample      = $weeklySample
             verificationPass       = $verifyPass
+            # #154: same values as the metadata, so the committed log shows whether the source was proven (#148).
+            liveProvenanceCheck    = $liveProvenance
+            resolveSource          = [string]$resolved.source
             freedomtimesMetadata   = (".release/rollback-branches/" + $metadataFileName)
             notes                  = $Notes
         }
