@@ -36,6 +36,9 @@ $script:DeployCommonScriptRoot = $PSScriptRoot
 # Set when a Terraform apply starts / when wrangler deploy succeeds; read by
 # Write-DeployIncompleteAfterTerraformWarning in the deploy scripts' finally blocks.
 $script:DeployTerraformApplyStarted = $false
+# Last staging/production EmDash token binding from Set-TursoBuildEnv (Value, Source, Fallback).
+# Read by Confirm-DeployStagingEmdashTursoToken (#140). Never printed.
+$script:DeployTursoTokenBinding = $null
 $script:DeployWorkerDeployCompleted = $false
 # Must be script-scoped: dotsourcing inside Initialize-DeployEnvironment would define
 # Resolve-TerraformExecutable only in that function's local scope, then drop it on return
@@ -350,7 +353,7 @@ function Set-DeployTursoBuildEnvFromTerraform {
     # Do not clobber TURSO_AUTH_TOKEN with an empty Terraform output (that used
     # to leave process production JWT paired with a staging URL).
     . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
-    $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
+    $script:DeployTursoTokenBinding = (Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot).Token
 }
 
 function Test-DeployCloudflareApiTokenPlausible {
@@ -1561,6 +1564,110 @@ function Ensure-DeployEmdashTargetFingerprintFromStatus {
     }
 }
 
+# ---------------------------------------------------------------------------------------------
+# Staging EmDash token check (issue #140)
+# ---------------------------------------------------------------------------------------------
+# The staging resolver prefers the Terraform output turso_database_auth_token (CI parity). Before
+# migrate, prove the selected token with a read-only `emdash-core-migrate.mjs print-fingerprint`
+# (emdash migrate --status --json). Only a Terraform token that Turso rejects with an auth-class
+# error falls back to the resolver's next candidate (process / .env.dev); anything else fails
+# closed before migrate. Never prints token values.
+
+function Get-DeployTursoAuthErrorClass {
+    param([string]$Text)
+    $t = [string]$Text
+    if ($t -match '(?i)auth role not found') { return "auth-role-not-found" }
+    if ($t -match '(?i)\b401\b|unauthori[sz]ed') { return "unauthorized" }
+    if ($t -match '(?i)\b403\b|forbidden') { return "forbidden" }
+    if ($t -match '(?i)\b404\b') { return "not-found" }
+    if ($t -match '(?i)\bjwt\b|invalid token|token (is )?(expired|invalid)') { return "invalid-jwt" }
+    return ""
+}
+
+function Hide-DeployTokenValues {
+    param([string]$Text, [string[]]$Values)
+    $out = [string]$Text
+    foreach ($v in @($Values)) {
+        $trimmed = ([string]$v).Trim()
+        if ($trimmed.Length -ge 8) {
+            $out = $out.Replace($trimmed, "[redacted]")
+        }
+    }
+    return $out
+}
+
+function Invoke-DeployEmdashTokenProbe {
+    param([scriptblock]$Probe)
+    if ($null -ne $Probe) {
+        return & $Probe
+    }
+    Push-Location (Join-Path $script:DeployRepoRoot "web")
+    $outFile = Join-Path ([IO.Path]::GetTempPath()) ("emdash-token-probe-{0}.out" -f [guid]::NewGuid())
+    $errFile = Join-Path ([IO.Path]::GetTempPath()) ("emdash-token-probe-{0}.err" -f [guid]::NewGuid())
+    try {
+        & node (Join-Path "scripts" "emdash-core-migrate.mjs") print-fingerprint 1>$outFile 2>$errFile
+        $code = $LASTEXITCODE
+        $text = ((Get-Content -LiteralPath $errFile -Raw -ErrorAction SilentlyContinue) ?? "") + "`n" +
+            ((Get-Content -LiteralPath $outFile -Raw -ErrorAction SilentlyContinue) ?? "")
+        return [pscustomobject]@{ Ok = ($code -eq 0); Output = $text.Trim() }
+    }
+    finally {
+        Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
+        Pop-Location
+    }
+}
+
+function Confirm-DeployStagingEmdashTursoToken {
+    <#
+    .SYNOPSIS
+      Staging only: read-only check that Turso accepts the resolved EmDash token; fall back from a
+      rejected Terraform-output token to the next resolver candidate (#140). -Probe is for tests.
+    #>
+    param([scriptblock]$Probe)
+
+    if (-not $script:DeployIsStaging) {
+        return
+    }
+
+    $binding = $script:DeployTursoTokenBinding
+    $current = [Environment]::GetEnvironmentVariable("TURSO_AUTH_TOKEN", "Process")
+    if ($null -eq $binding -or ([string]$binding.Value).Trim() -ne ([string]$current).Trim()) {
+        # Token set outside Set-TursoBuildEnv: check it, but there is no known fallback.
+        $binding = @{ Value = $current; Source = "TURSO_AUTH_TOKEN (process)"; Fallback = $null }
+    }
+    $fallback = $binding.Fallback
+    $secretValues = @($binding.Value, $(if ($null -ne $fallback) { $fallback.Value } else { "" }))
+
+    Write-DeployStep "Checking the staging EmDash Turso token from $($binding.Source) (read-only emdash migrate --status)"
+    $first = Invoke-DeployEmdashTokenProbe -Probe $Probe
+    if ($first.Ok) {
+        return
+    }
+
+    $class = Get-DeployTursoAuthErrorClass -Text $first.Output
+    $detail = Hide-DeployTokenValues -Text $first.Output -Values $secretValues
+    $isTerraform = ([string]$binding.Source) -like "terraform output *"
+    if (-not $isTerraform -or [string]::IsNullOrEmpty($class) -or $null -eq $fallback) {
+        $why = if (-not $isTerraform) { "the token is not the Terraform output" }
+            elseif ([string]::IsNullOrEmpty($class)) { "the error is not an auth rejection" }
+            else { "there is no other staging token candidate (.env.dev TURSO_AUTH_TOKEN)" }
+        $label = if ([string]::IsNullOrEmpty($class)) { "non-auth error" } else { $class }
+        throw "The staging EmDash Turso token from $($binding.Source) failed a read-only emdash migrate --status ($label). No fallback: $why. Nothing was migrated. $detail"
+    }
+
+    $env:TURSO_AUTH_TOKEN = $fallback.Value
+    $second = Invoke-DeployEmdashTokenProbe -Probe $Probe
+    if (-not $second.Ok) {
+        $env:TURSO_AUTH_TOKEN = $binding.Value
+        $secondClass = Get-DeployTursoAuthErrorClass -Text $second.Output
+        $secondDetail = Hide-DeployTokenValues -Text $second.Output -Values $secretValues
+        throw "Turso rejected both staging EmDash tokens: $($binding.Source) ($class) and $($fallback.Source) ($(if ($secondClass) { $secondClass } else { 'non-auth error' })). Mint a staging token (AGENTS.md CA-21). Nothing was migrated. $secondDetail"
+    }
+
+    Write-Warning "Turso rejected the Terraform output turso_database_auth_token ($class). Using $($fallback.Source) for emdash migrate in this run. The Terraform token in state is stale: re-mint it with a reviewed staging Terraform apply using -replace=turso_database_token.emdash (AGENTS.md CA-21, #140)."
+    $script:DeployTursoTokenBinding = @{ Value = $fallback.Value; Source = $fallback.Source; Fallback = $null }
+}
+
 function Invoke-DeployEmdashCoreMigrate {
     if ($script:DeploySkipTursoMutate) {
         Write-DeployStep "Skipping EmDash core migrate (-WorkerOnly -SkipTursoBackup); Worker hotfix does not touch Turso"
@@ -1579,6 +1686,9 @@ function Invoke-DeployEmdashCoreMigrate {
     if (-not (Test-Path $manifest)) {
         throw "Missing $manifest after npm run build. Deploy aborted before migrate."
     }
+
+    # #140: a stale Terraform-output staging token must not beat a good .env.dev token.
+    Confirm-DeployStagingEmdashTursoToken
 
     # Local deploy always pins process env from same-run --status (CI GitHub
     # secrets are not Cursor secrets). Production-looking hosts refuse apply
@@ -1932,7 +2042,7 @@ function Invoke-DeployWorkerBuild {
     # Core migrate needs a real Turso URL in .emdash/migrations.json. Always
     # resolve credentials (Terraform outputs or .env.dev) — including -WorkerOnly.
     . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
-    $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
+    $script:DeployTursoTokenBinding = (Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot).Token
     Assert-DeployRequiredBuildEnv
     # #116: the build runs before the Terraform apply; Sync-DeployTursoBuildEnvAfterTerraform
     # compares this URL with the one resolved after the apply.
@@ -1983,7 +2093,7 @@ function Sync-DeployTursoBuildEnvAfterTerraform {
     }
     if ($null -eq $Resolve) {
         . "$script:DeployCommonScriptRoot/resolve-turso-build-credentials.ps1"
-        $null = Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot
+        $script:DeployTursoTokenBinding = (Set-TursoBuildEnv -Environment $script:DeployEnvironment -RepoRoot $script:DeployRepoRoot).Token
     }
     else {
         $null = & $Resolve
