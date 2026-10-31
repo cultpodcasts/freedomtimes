@@ -61,7 +61,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -567,6 +567,8 @@ export async function realLocalCopyDeps() {
 		rename: (a, b) => renameSync(a, b),
 		remove: (p) => rmSync(p, { force: true }),
 		exportBranch: async (name, outPath) => {
+			// .release/backups/ may not exist on a fresh checkout (git-ignored; checked above).
+			mkdirSync(path.dirname(outPath), { recursive: true });
 			tursoCli(["db", "export", name, "--output-file", cliOutputPath(outPath)]);
 		},
 		fileCheck: async (p) => {
@@ -730,7 +732,7 @@ async function main(argv) {
 				const local =
 					e.action === "delete"
 						? existsSync(localBackupPath(e, opts.backupsDir))
-							? "  [local .db present; verified before delete]"
+							? "  [local .db present; checked before delete, branch kept if it does not verify]"
 							: "  [no local .db yet; exported before delete]"
 						: "";
 				console.log(`  ${e.action === "delete" ? "DELETE" : "keep  "}  ${e.name}  ${fmtAge(e.ageDays)}  ${e.reasons.join("; ")}${local}`);
