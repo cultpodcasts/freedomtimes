@@ -1,0 +1,154 @@
+---
+import Header from '../components/Header.astro';
+import Layout from '../layouts/Layout.astro';
+import { hasAdminRole, hasEditorialRole } from '../lib/auth';
+import { requireAdminPageSession, type AdminSessionBase } from '../lib/admin-session';
+import { APP_ENVIRONMENT_PATH } from '../lib/app-environment-switch';
+
+export const prerender = false;
+
+// #149: editors only (Auth0 `admin` or `editor`, verified server-side from the signed ID token).
+// Readers and `staging-reader` never get this page: no session -> login, other roles -> /?denied=1.
+const auth = await requireAdminPageSession<AdminSessionBase & { isAdmin: boolean }>({
+	context: {
+		cookies: Astro.cookies,
+		url: Astro.url,
+		request: Astro.request,
+		redirect: Astro.redirect,
+	},
+	roleCheck: hasEditorialRole,
+	loginNextPath: APP_ENVIRONMENT_PATH,
+	logPrefix: 'app-environment-session',
+	buildSession: (base, payload) => ({ ...base, isAdmin: hasAdminRole(payload) }),
+});
+
+if (auth instanceof Response) {
+	return auth;
+}
+
+Astro.response.headers.set('cache-control', 'no-store');
+---
+
+<Layout
+	title="App environment"
+	description="Switch the Freedom Times Android app between production and staging."
+	canonicalUrl={null}
+	noindex={true}
+>
+	<Header section="App environment" isAdmin={auth.isAdmin} isSignedIn={true} isEditor={true} />
+	<article class="app-environment">
+		<h1>App environment</h1>
+		<p class="lede">
+			Editors can point the Android app at staging to check changes before they go live, then switch back.
+			While the app is on staging a red STAGING strip shows on every screen.
+		</p>
+		<ul class="notes">
+			<li>Staging needs a Secure Access sign-in after the switch.</li>
+			<li>Notifications follow the app: the old site's registration is removed and, if notifications are allowed, the new site registers this device again.</li>
+			<li>The choice is kept when the app restarts. New installs open production.</li>
+		</ul>
+		<p id="app-env-status" class="status" aria-live="polite">Checking the app...</p>
+		<button id="app-env-switch" class="switch" type="button" hidden></button>
+		<p id="app-env-message" class="message" aria-live="polite"></p>
+	</article>
+	<script>
+		import { Capacitor } from '@capacitor/core';
+
+		import {
+			describeSwitchResult,
+			planAppEnvironmentView,
+			type AppEnvironmentProbe,
+		} from '../lib/app-environment-switch';
+		import { nativeAppConfig } from '../lib/native-app-config';
+
+		const status = document.getElementById('app-env-status');
+		const button = document.getElementById('app-env-switch');
+		const message = document.getElementById('app-env-message');
+
+		async function probe(): Promise<AppEnvironmentProbe> {
+			if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') {
+				return { kind: 'not-android-app' };
+			}
+			try {
+				return { kind: 'native', value: await nativeAppConfig.getEnvironment() };
+			} catch {
+				return { kind: 'unsupported-app' };
+			}
+		}
+
+		async function render(): Promise<void> {
+			if (!(status instanceof HTMLElement) || !(button instanceof HTMLButtonElement) || !(message instanceof HTMLElement)) {
+				return;
+			}
+			const view = planAppEnvironmentView(await probe());
+			status.textContent = view.status;
+			button.hidden = view.target === null;
+			button.textContent = view.buttonLabel ?? '';
+			button.onclick = view.target === null ? null : async () => {
+				const target = view.target!;
+				button.disabled = true;
+				message.textContent = '';
+				try {
+					const result = await nativeAppConfig.requestEnvironmentSwitch({ environment: target });
+					message.textContent = describeSwitchResult(target, result);
+				} catch {
+					message.textContent = describeSwitchResult(target, { switched: false, reason: 'error' });
+				} finally {
+					button.disabled = false;
+				}
+			};
+		}
+
+		void render();
+	</script>
+</Layout>
+
+<style>
+	.app-environment {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+	}
+
+	.lede,
+	.notes {
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
+
+	.status {
+		margin: 1.5rem 0 1rem;
+		font-weight: 700;
+	}
+
+	.switch {
+		padding: 0.8rem 1.4rem;
+		border: 0;
+		border-radius: 4px;
+		background: #111111;
+		color: #ffffff;
+		font: inherit;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.switch:disabled {
+		opacity: 0.6;
+		cursor: progress;
+	}
+
+	.message {
+		margin-top: 1rem;
+		color: var(--text-secondary);
+	}
+</style>

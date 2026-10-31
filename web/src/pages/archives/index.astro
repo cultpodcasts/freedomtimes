@@ -96,6 +96,7 @@ const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
 const isLocked = siteAccessMode !== 'public';
 
 let isAdmin = false;
+let isEditor = false;
 let isSignedIn = false;
 
 const sessionContext = {
@@ -113,11 +114,13 @@ if (isLocked) {
 	}
 
 	isAdmin = session.isAdmin;
+	isEditor = session.isEditor;
 	isSignedIn = true;
 } else {
 	const session = await getOptionalEditorialSession(sessionContext);
 	if (session) {
 		isAdmin = session.isAdmin;
+		isEditor = session.isEditor;
 		isSignedIn = true;
 	}
 }
@@ -179,7 +182,7 @@ const cards: ArchiveCard[] = entries.map((entry) => {
 
 <Layout>
 	<div class="archive-index">
-		<Header section="Archives" sectionUrl="/archives" isAdmin={isAdmin} isSignedIn={isSignedIn} brandAsHeading />
+		<Header section="Archives" sectionUrl="/archives" isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} brandAsHeading />
 
 		{cards.length === 0 ? (
 			<p class="empty">No archive issues are available yet.</p>

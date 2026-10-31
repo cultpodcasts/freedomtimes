@@ -1,6 +1,6 @@
 # Android Capacitor builds (staging vs production)
 
-This project’s Android shell loads the site from a **live URL** configured at sync time via `CAPACITOR_SERVER_URL` (see `web/capacitor.config.ts`). Use the helper script so the URL, Capacitor assets, and Gradle build stay aligned.
+This project’s Android shell loads the site from a **live URL**. `CAPACITOR_SERVER_URL` (see `web/capacitor.config.ts`) is baked in at sync time; when it is one of the two Freedom Times origins, the Android app opens the editor's saved choice instead, which defaults to **production** (see [Staging / production switch (#149)](#staging--production-switch-149)). Use the helper script so the URL, Capacitor assets, and Gradle build stay aligned.
 
 ## Script
 
@@ -16,7 +16,7 @@ From the **repository root**:
 | Parameter | Values | Default | Purpose |
 |-----------|--------|---------|---------|
 | `-BuildType` | `Debug`, `Release` | `Debug` | Gradle task: `assembleDebug` or `assembleRelease`. |
-| `-Target` | `Staging`, `Production` | `Staging` | Sets `CAPACITOR_SERVER_URL` to `https://staging.freedomtimes.news` or `https://freedomtimes.news`. |
+| `-Target` | `Staging`, `Production` | `Staging` | Sets `CAPACITOR_SERVER_URL` to `https://staging.freedomtimes.news` or `https://freedomtimes.news`. On Android both give the same switchable app, which opens production until an editor switches it (#149). |
 | `-JavaHome` | Path to JDK root | `$env:JAVA_HOME` or common Android OpenJDK path | Must contain `bin\java.exe`. |
 | `-SkipCapSync` | Switch | off | Skip `npm run cap:sync:android` (only run Gradle). |
 | `-RefreshLauncherIcons` | Switch | off | Run `npm run android:launcher-icons` first (PNG launchers from `web/public/favicon.svg`). |
@@ -48,13 +48,13 @@ GitHub Actions is not publishing Android APKs right now — build and sideload l
 # EmDash / magic-link tests against production host (recommended for prod Outlook links)
 .\scripts\build-android-capacitor.ps1 -BuildType Debug -Target Production
 
-# Or Cap WebView pointed at staging
+# Or bake the staging URL (the app still opens production until switched, #149)
 .\scripts\build-android-capacitor.ps1 -BuildType Debug -Target Staging
 
 adb install -r .\web\android\app\build\outputs\apk\debug\app-debug.apk
 ```
 
-`-Target` only sets `CAPACITOR_SERVER_URL` (which origin the WebView loads). App Links verification for a `https://freedomtimes.news/...` VIEW always checks **production** `/.well-known/assetlinks.json`, regardless of `-Target`.
+`-Target` only sets `CAPACITOR_SERVER_URL`; both values build the same switchable Android app, which opens production first (use the in-app switch, #149, to reach staging). App Links verification for a `https://freedomtimes.news/...` VIEW always checks **production** `/.well-known/assetlinks.json`, regardless of `-Target`.
 
 ## Pull-to-refresh (#150)
 
@@ -73,6 +73,19 @@ In the Android app, pulling down at the very top of any page reloads it and show
 - **Offline:** if Android reports no network, the page stays as it is and a short "You're offline" message appears (needs `ACCESS_NETWORK_STATE`, a normal permission with no prompt). If a reload never reports loaded, the spinner stops after 15 s.
 - **Opt out:** add `data-ft-no-pull-refresh` to an element whose own vertical drag should never refresh (for example a future drag-to-reorder list).
 - **Tests:** `npx tsx --test scripts/test-android-pull-to-refresh.mts` (guard behaviour and native wiring) and `./gradlew testDebugUnitTest` (`PullToRefreshPolicyTest`), both run by `capacitor-android.yml`. The touch feel still needs a check on a real device.
+
+## Staging / production switch (#149)
+
+Editors can point an installed Android app at staging and back without reinstalling.
+
+- **Where:** signed-in admins and editors (not `staging-reader`) see **App environment** in the site menu, in the Android app only. The page `/app-environment` is server-gated to Auth0 `admin` or `editor` (`requireAdminPageSession` with `hasEditorialRole`, the same signed ID-token check as the other staff tools). No session goes to sign-in; `staging-reader` and any other role get `/?denied=1`. Anonymous readers never get the link or the page. The page is `noindex`, `no-store`, and denied by the page cache.
+- **Why this gating:** the role is checked on the server from the verified Auth0 ID token, not in page JavaScript. The native side also refuses `NativeAppConfig.requestEnvironmentSwitch` unless the WebView is on `/app-environment` on the app's active origin (`AppEnvironmentPolicy.isSwitchRequestAllowed`), so script on a reader page can't trigger it, and a native confirm dialog still needs a tap. Switching back to production is always allowed from the STAGING strip.
+- **Default and persistence:** the choice is stored in app `SharedPreferences` (`ft_app_environment`). Nothing stored means production. It survives restarts and app updates; clearing app data or reinstalling resets it to production.
+- **How the site changes:** Capacitor injects its native bridge only into its configured `server.url`, so the app can't just navigate there. Before `BridgeActivity` creates the bridge, `AppEnvironmentConfig` copies the synced `assets/capacitor.config.json` with only `server.url` replaced and loads that copy. A switch saves the choice and restarts the app in a fresh task. A local dev build whose URL is not a Freedom Times origin keeps its URL and has no switch.
+- **Staging lock unchanged:** the switch just loads `https://staging.freedomtimes.news`. The Secure Access wall, Auth0 sign-in, `noindex` and robots on staging are unchanged and still apply.
+- **STAGING indicator:** a native red **STAGING** strip sits above the WebView, outside the page, so no page can hide it. It shows on every staging screen (reader pages, admin, the Secure Access wall, EmDash login), and the page area moves down by its height. It follows the URL actually loading, so a staging App Link opened in a production-set app is marked too; production shows nothing. It has no close control. Tapping it offers **Switch to production**. Limitation: the Auth0 hosted sign-in opens in a browser tab outside the app, which the strip can't cover.
+- **Push never crosses environments:** staging and production share one Firebase project, so one FCM token would be valid in both sites' subscription tables. Before a switch the app deletes its FCM token (`FirebaseMessaging.deleteToken`). The old site's row is then dead: FCM answers `UNREGISTERED` and the scheduler deactivates it on its next send. On the new site, if notification permission is granted, the normal page-load registration (`ensureNativePushRegistration`) gets a new token and stores it with that site only. If the token can't be deleted (for example offline), the switch is cancelled and nothing changes. An editor on staging gets only staging notifications, and production notifications come back after switching back.
+- **Tests:** `./gradlew testDebugUnitTest` (`AppEnvironmentPolicyTest`: default, host matching, indicator rule, request gate) and `npx tsx --test scripts/test-android-app-environment.mts` (page view logic, server gate, native wiring, push reset order). Both run in `capacitor-android.yml`.
 
 ## Signing notes
 

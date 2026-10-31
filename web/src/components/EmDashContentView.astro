@@ -42,6 +42,7 @@ const {
 	isPreview = false,
 	isAdmin = false,
 	isSignedIn,
+	isEditor = false,
 	pdfStatus = "unknown",
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
@@ -52,6 +53,8 @@ const {
 	isPreview?: boolean;
 	isAdmin?: boolean;
 	isSignedIn?: boolean;
+	/** Auth0 `admin` or `editor` (#149 app environment link). */
+	isEditor?: boolean;
 	/** Archives only (#151): `missing` replaces the PDF link with an unavailable notice. */
 	pdfStatus?: "available" | "missing" | "unknown";
 };
@@ -207,6 +210,7 @@ const jsonLd: Record<string, unknown>[] = isPost
 				: getHomePath()}
 			isAdmin={isAdmin}
 			isSignedIn={resolvedIsSignedIn}
+			isEditor={isEditor}
 		/>
 
 		<div class="entry-shell">

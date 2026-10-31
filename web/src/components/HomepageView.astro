@@ -20,9 +20,11 @@ type Props = {
   entries: HomepageEntry[];
   isAdmin?: boolean;
   isSignedIn?: boolean;
+  /** Auth0 `admin` or `editor` (#149 app environment link). */
+  isEditor?: boolean;
 };
 
-const { entries: postEntries, isAdmin = false, isSignedIn = false } = Astro.props;
+const { entries: postEntries, isAdmin = false, isSignedIn = false, isEditor = false } = Astro.props;
 
 type Story = {
   slug: string;
@@ -220,7 +222,7 @@ const homeCanonicalPath = getHomeCanonicalPath({
   ogImageAlt={`${SITE_DISPLAY_NAME} homepage`}
 >
   <div class="paper-wrap">
-    <Header isAdmin={isAdmin} isSignedIn={isSignedIn} brandAsHeading />
+    <Header isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} brandAsHeading />
 
     <main class="front-grid">
       {lead ? (

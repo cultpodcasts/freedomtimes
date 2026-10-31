@@ -22,7 +22,7 @@ if (auth instanceof Response) {
 	description="Review reader-submitted push notification troubleshooting reports."
 	canonicalUrl={Astro.url.href}
 >
-	<Header section="Push diagnostics" isAdmin={true} isSignedIn={true} />
+	<Header section="Push diagnostics" isAdmin={true} isSignedIn={true} isEditor={true} />
 	<article class="diagnostics-admin">
 		<h1>Push notification diagnostics</h1>
 		<p class="lede">Reports are stored in the subscriptions database — not in EmDash.</p>

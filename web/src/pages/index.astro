@@ -30,9 +30,11 @@ if (rootAction.kind === 'login-wall') {
 }
 
 let isAdmin = false;
+let isEditor = false;
 let isSignedIn = false;
 if (session) {
 	isAdmin = session.isAdmin;
+	isEditor = session.isEditor;
 	isSignedIn = true;
 }
 
@@ -41,4 +43,4 @@ if (session) {
 // a 200 whose body is cut off when HomepageView's query fails mid-render.
 const entries = await loadHomepageEntries();
 ---
-<HomepageView entries={entries} isAdmin={isAdmin} isSignedIn={isSignedIn} />
+<HomepageView entries={entries} isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} />

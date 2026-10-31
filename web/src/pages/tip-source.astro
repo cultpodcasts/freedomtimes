@@ -34,14 +34,17 @@ if (session instanceof Response) {
 }
 
 let isAdmin = false;
+let isEditor = false;
 let isSignedIn = false;
 if (session) {
   isAdmin = session.isAdmin;
+  isEditor = session.isEditor;
   isSignedIn = true;
 } else {
   const optional = await getOptionalEditorialSession(sessionContext);
   if (optional) {
     isAdmin = optional.isAdmin;
+    isEditor = optional.isEditor;
     isSignedIn = true;
   }
 }
@@ -56,7 +59,7 @@ const shortSha = formatShortCommitSha();
 	description="Verify which open-source commit handles story tips and notification diagnostics on this deployment."
 	canonicalUrl={Astro.url.href}
 >
-	<Header section="Source verification" isAdmin={isAdmin} isSignedIn={isSignedIn} />
+	<Header section="Source verification" isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} />
 	<article class="source-page">
 		<h1>Verify what runs on this site</h1>
 		<p class="lede">

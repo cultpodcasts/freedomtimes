@@ -8,6 +8,8 @@ interface Props {
 	/** Auth0 `admin` role — shows the Freedom Times `/admin` hub link. */
 	isAdmin?: boolean;
 	isSignedIn?: boolean;
+	/** Auth0 `admin` or `editor` - may see the Android app environment link (#149). */
+	isEditor?: boolean;
 	/**
 	 * Render the site name as the page's single `<h1>`. Only for pages with no
 	 * headline of their own (homepage, archives index). Article / hub pages keep
@@ -16,7 +18,7 @@ interface Props {
 	brandAsHeading?: boolean;
 }
 
-const { section, sectionUrl, isAdmin, isSignedIn, brandAsHeading = false } = Astro.props;
+const { section, sectionUrl, isAdmin, isSignedIn, isEditor = false, brandAsHeading = false } = Astro.props;
 const BrandTag = brandAsHeading ? 'h1' : 'p';
 const homePath = getHomePath();
 ---
@@ -53,7 +55,11 @@ const homePath = getHomePath();
 			)}
 			{/* Sign in: Capacitor native only (hidden until client reveals). Sign out / Admin stay on web. */}
 			{isSignedIn ? (
-				<a href="/auth/logout">Sign out</a>
+				<>
+					{/* #149: admin/editor only, Android app only (revealed below). The page itself is also server-gated. */}
+					{isEditor && <a class="nav-app-environment" href="/app-environment" hidden>App environment</a>}
+					<a href="/auth/logout">Sign out</a>
+				</>
 			) : (
 				<a
 					class="nav-sign-in"
@@ -255,14 +261,24 @@ const homePath = getHomePath();
 <script>
 	import { Capacitor } from '@capacitor/core';
 
+	import { shouldRevealAppEnvironmentLink } from '../lib/app-environment-switch';
+
 	const nav = document.querySelector('.main-nav');
 	const toggle = document.querySelector('#mobile-nav-toggle');
 	const content = document.querySelector('#mobile-nav-content');
 	const signInLink = document.querySelector('.nav-sign-in');
+	const appEnvironmentLink = document.querySelector('.nav-app-environment');
 
 	// Browser / PWA: leave Sign in hidden. Capacitor native: show it (same flag Layout uses for data-native-shell).
 	if (signInLink instanceof HTMLAnchorElement && Capacitor.isNativePlatform()) {
 		signInLink.hidden = false;
+	}
+
+	if (
+		appEnvironmentLink instanceof HTMLAnchorElement
+		&& shouldRevealAppEnvironmentLink(Capacitor.isNativePlatform(), Capacitor.getPlatform())
+	) {
+		appEnvironmentLink.hidden = false;
 	}
 
 	if (nav instanceof HTMLElement && toggle instanceof HTMLButtonElement && content instanceof HTMLElement) {

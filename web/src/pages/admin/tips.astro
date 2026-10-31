@@ -22,7 +22,7 @@ if (auth instanceof Response) {
 	description="Review and triage reader story tips."
 	canonicalUrl={Astro.url.href}
 >
-	<Header section="Story tips" isAdmin={true} isSignedIn={true} />
+	<Header section="Story tips" isAdmin={true} isSignedIn={true} isEditor={true} />
 	<article class="tips-admin">
 		<h1>Story tips desk</h1>
 		<p class="lede">Tips are stored in the dedicated tips database — not in EmDash.</p>
