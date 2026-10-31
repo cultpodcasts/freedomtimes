@@ -14,6 +14,8 @@ import {
 	getOptionalEditorialSession,
 	requireEditorialSession,
 } from '../lib/editorial-session';
+import { rethrowLookupFailure } from '../lib/content-store-guard';
+import { assertContentStoreReady } from '../lib/content-store-guard-db';
 import { decideEntryLookup, decideSlugParam, errorMessage, isExpectedLookupMiss } from '../lib/not-found';
 import { resolveHomepageGet } from '../lib/root-route';
 
@@ -136,10 +138,13 @@ if (!isHomepage) {
 	const outcome = decideEntryLookup(lookups);
 	if (outcome.kind === 'server-error') {
 		// Rethrow like posts/[slug].astro, so Astro renders src/pages/500.astro (500, no-store,
-		// noindex, no canonical) instead of an unstyled text page (#123 review).
-		throw outcome.error;
+		// noindex, no canonical) instead of an unstyled text page (#123 review); 503 instead when
+		// the content store itself is down (#128).
+		await rethrowLookupFailure(outcome.error, assertContentStoreReady);
 	}
 	if (outcome.kind === 'not-found') {
+		// A 404 only on a live database: an unmigrated / empty one is a 503, never a mass 404 (#128).
+		await assertContentStoreReady();
 		notFound = true;
 		Astro.response.status = 404;
 	}

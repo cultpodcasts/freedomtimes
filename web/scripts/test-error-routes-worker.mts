@@ -8,18 +8,17 @@
  *
  * Always runs (database unreachable, TURSO_DATABASE_URL → a closed local port):
  *   - unknown multi-segment URLs → 404, NotFoundView, noindex, no canonical
- *   - `/<slug>` and `/posts/<slug>` → 5xx, NOT 404 (an outage must never look like "gone");
- *     `/<slug>`, `/posts/<slug>` and `/` render src/pages/500.astro (#123: `/` used to stream a
- *     cut-off 200, `/<slug>` used to answer an unstyled plain-text 500)
+ *   - `/<slug>`, `/posts/<slug>` and `/` → 503 + Retry-After, src/pages/500.astro with no robots
+ *     meta (#128: the content store is down; an outage must never look like "gone"). Before #128
+ *     these were the 500 page (#123: `/` used to stream a cut-off 200, `/<slug>` used to answer an
+ *     unstyled plain-text 500)
  *   - with PAGE_CACHE=on: `/` stays a 5xx on repeat requests, never `x-ft-cache: HIT` (#123)
  *   - `/sitemap-site-pages.xml` (#34) → 503 + Retry-After, never 404
  * Always runs (database answers HTTP 404 "Not Found" with a body saying "missing", like the wrong
  * libsql host of July 2026, from a local stub server):
- *   - `/<slug>` and `/posts/<slug>` → 500 page, NEVER the noindex 404 page, although the error
- *     message reads like a miss (#121: only a typed not-found is a 404; the old message-text
- *     classifier served the 404 for these two)
- *   - `/archives/<slug>` → 500 page too: a regression guard (the old archives route already gave
- *     the 500 page here), so archives keeps the posts pattern
+ *   - `/<slug>`, `/posts/<slug>` and `/archives/<slug>` → 503 page, NEVER the noindex 404 page,
+ *     although the error message reads like a miss (#121: only a typed not-found is a 404; #128:
+ *     the content-store probe fails too, so it is a 503)
  * With FT_TEST_LIBSQL_URL (a LOCAL libsql / `turso dev` URL, migrated with `npx emdash migrate`):
  *   - `/` → 200, unknown slug / unknown multi-segment → 404, locked staging → 302 to sign-in
  *   - with PAGE_CACHE=on: `/` → MISS then HIT with the same complete page; `/?x=1` → BYPASS-query
@@ -33,7 +32,16 @@
  *   - FT_TEST_ARCHIVE_SLUG (optional): a published archive issue that must render 200 at both
  *     `/archives/<slug>` and `/archives/<id>` (EmDash's loader matches slug OR id; the id is read
  *     from the local database's `ec_archives` row)
- * Never point FT_TEST_LIBSQL_URL at staging or production: the Worker may write (auto-seed).
+ *   FT_TEST_LIBSQL_URL needs at least one published post: with none, the content-store guard
+ *   (#128) rightly answers 503 for `/` and every miss.
+ * With FT_TEST_EMPTY_LIBSQL_URL (a LOCAL libsql URL, migrated with `npx emdash migrate`, no posts;
+ * the Worker auto-seeds the empty `ec_*` tables on its first request), #128:
+ *   - `/`, `/<slug>`, `/posts/<slug>`, `/archives/<slug>` → 503 page, never a 404 or an empty 200
+ *   - `/sitemap-site-pages.xml` → 503, never a thin sitemap; unknown multi-segment URLs stay 404
+ * With FT_TEST_UNMIGRATED_LIBSQL_URL (a LOCAL libsql URL with an empty, never-migrated database):
+ *   - reader URLs → 503 + Retry-After (EmDash's pending-migrations answer), never 404
+ * Never point FT_TEST_LIBSQL_URL, FT_TEST_EMPTY_LIBSQL_URL or FT_TEST_UNMIGRATED_LIBSQL_URL at
+ * staging or production: the Worker may write (auto-seed).
  *
  * Not part of `npm test` / the build: it needs a fresh dist/, wrangler and ~30 s per Worker.
  */
@@ -54,13 +62,17 @@ const config = 'wrangler.jsonc';
 const built = 'dist/server/entry.mjs';
 const UNREACHABLE_DB = 'http://127.0.0.1:9';
 const localDb = process.env.FT_TEST_LIBSQL_URL?.trim() || '';
+const emptyDb = process.env.FT_TEST_EMPTY_LIBSQL_URL?.trim() || '';
+const unmigratedDb = process.env.FT_TEST_UNMIGRATED_LIBSQL_URL?.trim() || '';
 const postSlug = process.env.FT_TEST_POST_SLUG?.trim() || '';
 const pageSlug = process.env.FT_TEST_PAGE_SLUG?.trim() || '';
 const archiveSlug = process.env.FT_TEST_ARCHIVE_SLUG?.trim() || '';
 const SITE_SITEMAP = '/sitemap-site-pages.xml';
 
-if (localDb && !/^(https?|libsql|ws):\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(localDb)) {
-	throw new Error('FT_TEST_LIBSQL_URL must be a local URL (127.0.0.1 / localhost)');
+for (const [name, url] of [['FT_TEST_LIBSQL_URL', localDb], ['FT_TEST_EMPTY_LIBSQL_URL', emptyDb], ['FT_TEST_UNMIGRATED_LIBSQL_URL', unmigratedDb]]) {
+	if (url && !/^(https?|libsql|ws):\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/.test(url)) {
+		throw new Error(`${name} must be a local URL (127.0.0.1 / localhost)`);
+	}
 }
 
 /** Unknown multi-segment URLs that were 500 / error 1101 on production on 27 Oct 2026. */
@@ -133,6 +145,18 @@ function assertServerErrorPage(r: { status: number; headers: Headers; body: stri
 	assert.doesNotMatch(r.body, /data-ft-not-found/, `${path}: never the 404 page`);
 }
 
+/** #128: the content store is down / unmigrated / empty → 503 + Retry-After, no robots meta, never 404. */
+function assertStoreUnavailablePage(r: { status: number; headers: Headers; body: string }, path: string) {
+	assert.equal(r.status, 503, `${path}: status`);
+	assert.equal(r.headers.get('retry-after'), '300', `${path}: Retry-After`);
+	assert.equal(r.headers.get('cache-control'), 'no-store', `${path}: no-store`);
+	assert.match(r.body, /data-ft-server-error/, `${path}: src/pages/500.astro`);
+	assert.match(r.body, /data-ft-content-store-unavailable/, `${path}: content-store variant`);
+	assert.doesNotMatch(r.body, /<meta name="robots"/, `${path}: no robots meta on a 503`);
+	assert.doesNotMatch(r.body, /rel="canonical"/, `${path}: no canonical on a 503`);
+	assert.doesNotMatch(r.body, /data-ft-not-found/, `${path}: never the 404 page`);
+}
+
 describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${built}`) && `no ${built}: run npm run build first` }, () => {
 	describe('database unreachable (public)', () => {
 		let w: Worker | undefined;
@@ -149,20 +173,23 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 			assert.ok(r.status >= 500 && r.status < 600, `/posts/some-real-looking-post: got ${r.status}`);
 			assert.doesNotMatch(r.body, /data-ft-not-found/);
 		});
-		it('/some-real-looking-page → 500 page via [slug] (no-store, noindex), never 404 or plain text', async () => {
-			assertServerErrorPage(await get(w!, '/some-real-looking-page'), '/some-real-looking-page');
+		it('/some-real-looking-page → 503 page via [slug] (store down, #128), never 404 or plain text', async () => {
+			assertStoreUnavailablePage(await get(w!, '/some-real-looking-page'), '/some-real-looking-page');
 		});
-		it('/ → 500 page (no-store, noindex), never a cut-off 200 or the 404 page (#123)', async () => {
+		it('/ → 503 page (store down, #128), never a cut-off 200 or the 404 page (#123)', async () => {
 			const r = await get(w!, '/');
-			assertServerErrorPage(r, '/');
+			assertStoreUnavailablePage(r, '/');
 		});
 		it(`${SITE_SITEMAP} → 503 + Retry-After, never 404 (#34)`, async () => {
 			const r = await get(w!, SITE_SITEMAP);
 			assert.equal(r.status, 503, `${SITE_SITEMAP}: got ${r.status}`);
 			assert.equal(r.headers.get('retry-after'), '300');
 		});
-		it('500.astro: server errors render the 500 page (no-store, noindex, no canonical)', async () => {
-			assertServerErrorPage(await get(w!, '/posts/some-real-looking-post'), '/posts/some-real-looking-post');
+		it('500.astro: a down content store renders the 503 variant (Retry-After, no-store, no robots meta, no canonical)', async () => {
+			assertStoreUnavailablePage(await get(w!, '/posts/some-real-looking-post'), '/posts/some-real-looking-post');
+		});
+		it('/archives/some-real-looking-issue → 503 page (store down, #128)', async () => {
+			assertStoreUnavailablePage(await get(w!, '/archives/some-real-looking-issue'), '/archives/some-real-looking-issue');
 		});
 	});
 
@@ -176,7 +203,7 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		it('/ → 5xx on every request, never stored or served from the page cache (#123)', async () => {
 			for (let i = 0; i < 3; i += 1) {
 				const r = await get(w!, '/');
-				assertServerErrorPage(r, `/ (request ${i + 1})`);
+				assertStoreUnavailablePage(r, `/ (request ${i + 1})`);
 				assert.notEqual(r.headers.get('x-ft-cache'), 'HIT', `/ (request ${i + 1}): served from cache`);
 				assert.notEqual(r.headers.get('x-ft-cache'), 'MISS', `/ (request ${i + 1}): a 5xx was offered to the cache`);
 			}
@@ -201,15 +228,59 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		});
 
 		for (const path of ['/some-real-looking-page', '/posts/some-real-looking-post']) {
-			it(`${path} → 500 page, never the noindex 404 (a miss-like message is still an outage)`, async () => {
-				assertServerErrorPage(await get(w!, path), path);
+			it(`${path} → 503 page, never the noindex 404 (a miss-like message is still an outage)`, async () => {
+				assertStoreUnavailablePage(await get(w!, path), path);
 			});
 		}
-		it('/archives/some-real-looking-issue → 500 page (regression guard: archives follows the posts pattern)', async () => {
-			assertServerErrorPage(await get(w!, '/archives/some-real-looking-issue'), '/archives/some-real-looking-issue');
+		it('/archives/some-real-looking-issue → 503 page (regression guard: archives follows the posts pattern)', async () => {
+			assertStoreUnavailablePage(await get(w!, '/archives/some-real-looking-issue'), '/archives/some-real-looking-issue');
 		});
 		for (const path of ['/a/b/c', '/posts/x/y']) {
 			it(`${path} → 404 page (no route matches; unaffected)`, async () => assertNotFoundPage(await get(w!, path), path));
+		}
+	});
+
+	describe('local database migrated but empty (public, #128)', { skip: !emptyDb && 'set FT_TEST_EMPTY_LIBSQL_URL to a local migrated libsql URL with no posts' }, () => {
+		let w: Worker | undefined;
+		before(async () => {
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'on', TURSO_DATABASE_URL: emptyDb, TURSO_AUTH_TOKEN: 'local-test' });
+		});
+		after(() => stopWorker(w));
+
+		for (const path of ['/', '/about-us', '/some-real-looking-page', '/posts/some-real-looking-post', '/archives/some-real-looking-issue']) {
+			it(`${path} → 503 page on every request, never a 404, an empty 200 or a page-cache HIT`, async () => {
+				for (let i = 0; i < 3; i += 1) {
+					const r = await get(w!, path);
+					assertStoreUnavailablePage(r, `${path} (request ${i + 1})`);
+					assert.notEqual(r.headers.get('x-ft-cache'), 'HIT', `${path} (request ${i + 1}): served from cache`);
+					assert.notEqual(r.headers.get('x-ft-cache'), 'MISS', `${path} (request ${i + 1}): a 503 was offered to the cache`);
+				}
+			});
+		}
+		it(`${SITE_SITEMAP} → 503, never a thin sitemap`, async () => {
+			const r = await get(w!, SITE_SITEMAP);
+			assert.equal(r.status, 503, `${SITE_SITEMAP}: got ${r.status} ${r.body.slice(0, 200)}`);
+		});
+		for (const path of ['/a/b/c', '/posts/x/y']) {
+			it(`${path} → 404 page (no route matches; unaffected)`, async () => assertNotFoundPage(await get(w!, path), path));
+		}
+	});
+
+	describe('local database never migrated (public)', { skip: !unmigratedDb && 'set FT_TEST_UNMIGRATED_LIBSQL_URL to a local empty libsql URL' }, () => {
+		let w: Worker | undefined;
+		before(async () => {
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'off', TURSO_DATABASE_URL: unmigratedDb, TURSO_AUTH_TOKEN: 'local-test' });
+		});
+		after(() => stopWorker(w));
+
+		for (const path of ['/', '/some-real-looking-page', '/posts/some-real-looking-post', '/archives/some-real-looking-issue']) {
+			it(`${path} → 503 + Retry-After, never 404`, async () => {
+				const r = await get(w!, path);
+				assert.equal(r.status, 503, `${path}: got ${r.status}`);
+				assert.ok(r.headers.get('retry-after'), `${path}: Retry-After`);
+				assert.doesNotMatch(r.body, /data-ft-not-found/);
+				assert.doesNotMatch(r.body, /noindex/, `${path}: no noindex on a 503`);
+			});
 		}
 	});
 
@@ -227,9 +298,8 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		});
 		it('direct GET /404 → 404 page, /500 → 500 page (static error routes outrank [slug], #120)', async () => {
 			assertNotFoundPage(await get(w!, '/404'), '/404');
-			const r = await get(w!, '/500');
-			assert.equal(r.status, 500);
-			assert.match(r.body, /data-ft-server-error/);
+			// Not a content-store failure: the plain 500 variant (500, no-store, noindex, no canonical).
+			assertServerErrorPage(await get(w!, '/500'), '/500');
 		});
 		it('/no-such-page-xyz → 404 page', async () => assertNotFoundPage(await get(w!, '/no-such-page-xyz'), '/no-such-page-xyz'));
 		it('/posts/does-not-exist-xyz → 404 page', async () => assertNotFoundPage(await get(w!, '/posts/does-not-exist-xyz'), '/posts/does-not-exist-xyz'));

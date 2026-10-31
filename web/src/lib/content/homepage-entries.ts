@@ -16,12 +16,15 @@
  *
  * Edit mode / preview requests (editors seeing draft revisions) keep using
  * `getEmDashCollection`, which overlays draft revisions; so does any failure
- * of the light query (logged, never thrown).
+ * of the light query (logged, never thrown) on a healthy content store. An unmigrated, empty or
+ * unreachable store throws `ContentStoreUnavailableError` instead (503, #128).
  */
 import { getEmDashCollection, getRequestContext } from 'emdash';
 import { getDb } from 'emdash/runtime';
 import { sql } from 'kysely';
 
+import { rethrowLookupFailure } from '../content-store-guard';
+import { assertContentStoreReady } from '../content-store-guard-db';
 import { HOMEPAGE_POST_COLUMNS, mapHomepageRow, type HomepageEntry } from './homepage-entries-map';
 
 export type { HomepageEntry };
@@ -39,6 +42,7 @@ export const HOMEPAGE_POST_LIMIT = 100;
 export async function loadHomepageEntries(limit = HOMEPAGE_POST_LIMIT): Promise<HomepageEntry[]> {
   const ctx = getRequestContext();
   const needsDrafts = Boolean(ctx?.editMode) || ctx?.preview?.collection === 'posts';
+  let entries: HomepageEntry[] | null = null;
   if (!needsDrafts) {
     try {
       const db = await getDb();
@@ -49,16 +53,25 @@ export async function loadHomepageEntries(limit = HOMEPAGE_POST_LIMIT): Promise<
         ORDER BY ${sql.ref('published_at')} DESC, ${sql.ref('updated_at')} DESC, ${sql.ref('id')} DESC
         LIMIT ${limit}
       `.execute(db);
-      return result.rows.map(mapHomepageRow);
+      entries = result.rows.map(mapHomepageRow);
     } catch (error) {
       console.warn('[ft-homepage] light posts query failed; falling back to getEmDashCollection', error);
+      // A missing ec_posts or a dead database is a 503, not a fallback that EmDash would turn into
+      // an empty 200 homepage (#128). A healthy store keeps the fallback.
+      await assertContentStoreReady({ fresh: true });
     }
   }
-  const { entries, error } = await getEmDashCollection('posts', {
-    status: 'published',
-    limit,
-    orderBy: { published_at: 'desc', updated_at: 'desc' },
-  });
-  if (error) throw error;
-  return entries as unknown as HomepageEntry[];
+  if (entries === null) {
+    const collection = await getEmDashCollection('posts', {
+      status: 'published',
+      limit,
+      orderBy: { published_at: 'desc', updated_at: 'desc' },
+    });
+    if (collection.error) await rethrowLookupFailure(collection.error, assertContentStoreReady);
+    entries = collection.entries as unknown as HomepageEntry[];
+  }
+  // A homepage with no posts means an empty or wrong database, never a real state of this site:
+  // 503 so Google retries, not a 200 that lists nothing (#128).
+  if (entries.length === 0) await assertContentStoreReady();
+  return entries;
 }
