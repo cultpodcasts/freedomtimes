@@ -73,7 +73,8 @@ shows the new preview.
 ### X
 
 - Limit: 280, counted the way X counts. The link always counts as 23, because X wraps every URL in `t.co`.
-  Emoji and CJK characters count 2.
+  Emoji and CJK characters count 2. Anything in the title that looks like a link (e.g. `freedomtimes.news`) is
+  also counted as 23, so the title is never under-counted. At worst it is trimmed slightly more than X needs.
 - One call: `POST https://api.x.com/2/tweets` with `{"text": …}`, signed with OAuth 1.0a user context
   (HMAC-SHA1). X builds the link card itself from the article page's Open Graph tags.
 - The confirm dialog names the account by the numeric user id at the start of the access token. That avoids a
@@ -138,9 +139,10 @@ then run `npx wrangler secret delete BLUESKY_APP_PASSWORD --config wrangler.json
    spending limit).
 2. Create an app. In its user authentication settings, set **App permissions** to **Read and write**.
 3. On the app's **Keys and tokens** tab, copy the **API Key** and **API Key Secret**, then generate the
-   **Access Token** and **Access Token Secret**. Generate the access token *after* setting Read and write:
-   X tokens keep the permissions they were created with, so a token made while the app was read-only gets a
-   403 when posting. If that happens, regenerate the token.
+   **Access Token** and **Access Token Secret**. Generate the access token *after* setting Read and write.
+   X's docs say changing an app's permissions needs new tokens to pick up the new scope, so a token made while
+   the app was read-only can't post. If the panel shows "X refused the post" with a permission error,
+   regenerate the access token and secret and set both again.
 4. From `web/`:
 
    ```powershell

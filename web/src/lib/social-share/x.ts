@@ -68,26 +68,40 @@ function graphemeWeight(grapheme: string): number {
 	return weight;
 }
 
-/** X's weighted length of plain text (no URL detection; URLs are added separately). */
+/** X's weighted length of plain text, with no URL detection. */
 export function xTextWeight(text: string): number {
 	let total = 0;
 	for (const { segment } of segmenter.segment(text)) total += graphemeWeight(segment);
 	return total;
 }
 
+/**
+ * Anything X may auto-link: an http(s) URL, or a bare domain such as
+ * `freedomtimes.news` or `bit.ly/x`. Deliberately broader than X's own
+ * detection, so a title is never under-counted (at worst it is trimmed a bit more).
+ */
+const URL_LIKE = /(?:https?:\/\/)?(?:[\p{L}\p{N}-]+\.)+\p{L}{2,}(?:\/[^\s]*)?/giu;
+
+/** X's weighted length of post text: every URL-like token counts as 23 (t.co). */
+export function xWeightedLength(text: string): number {
+	let total = 0;
+	let last = 0;
+	for (const m of text.matchAll(URL_LIKE)) {
+		total += xTextWeight(text.slice(last, m.index)) + X_URL_WEIGHT;
+		last = (m.index ?? 0) + m[0].length;
+	}
+	return total + xTextWeight(text.slice(last));
+}
+
 const ELLIPSIS = '…';
 
-/** Trim to at most `max` weighted characters, ending with "…" when cut. */
+/** Trim to at most `max` weighted characters (URL-like tokens count 23), ending with "…" when cut. */
 export function truncateXWeighted(text: string, max: number): string {
-	if (xTextWeight(text) <= max) return text;
-	const room = max - xTextWeight(ELLIPSIS);
+	if (xWeightedLength(text) <= max) return text;
 	let out = '';
-	let used = 0;
 	for (const { segment } of segmenter.segment(text)) {
-		const w = graphemeWeight(segment);
-		if (used + w > room) break;
+		if (xWeightedLength(`${out}${segment}`.trimEnd() + ELLIPSIS) > max) break;
 		out += segment;
-		used += w;
 	}
 	const trimmed = out.trimEnd();
 	return trimmed ? `${trimmed}${ELLIPSIS}` : '';
@@ -97,7 +111,7 @@ export interface XPostDraft {
 	/** Exact post text: title, blank line, article URL. */
 	text: string;
 	url: string;
-	/** X's weighted length of `text` (the URL counted as 23). */
+	/** X's weighted length of `text` (URLs counted as 23). */
 	weightedLength: number;
 }
 
@@ -108,8 +122,7 @@ export function buildXDraft(input: { title: string; description: string; url: st
 	const room = X_MAX_WEIGHTED_LENGTH - X_URL_WEIGHT - xTextWeight(SEPARATOR);
 	const title = truncateXWeighted(input.title.trim(), room);
 	const text = title ? `${title}${SEPARATOR}${input.url}` : input.url;
-	const weightedLength = title ? xTextWeight(title) + xTextWeight(SEPARATOR) + X_URL_WEIGHT : X_URL_WEIGHT;
-	return { text, url: input.url, weightedLength };
+	return { text, url: input.url, weightedLength: xWeightedLength(text) };
 }
 
 /** RFC 3986 percent-encoding, as X's OAuth 1.0a guide requires. */

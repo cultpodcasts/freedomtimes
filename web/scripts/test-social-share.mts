@@ -50,6 +50,7 @@ import {
 	xAccountLabel,
 	xProvider,
 	xTextWeight,
+	xWeightedLength,
 } from '../src/lib/social-share/x.ts';
 
 const PROD_URL = 'https://freedomtimes.news/_emdash/api/content/posts/p1/extensions/panel/ft-social-share/bluesky';
@@ -561,6 +562,12 @@ describe('X client (mocked)', () => {
 		assert.ok(draft.weightedLength > X_MAX_WEIGHTED_LENGTH - 4, 'uses the room');
 		assert.ok(draft.text.endsWith(`\n\n${url}`), 'the full link is always kept');
 		assert.ok(draft.text.includes('…'));
+		assert.equal(xWeightedLength(`Cult news\n\n${url}`), 9 + 2 + 23);
+		assert.equal(xWeightedLength('Read freedomtimes.news or bit.ly/x today'), 5 + 23 + 4 + 23 + 6);
+		assert.equal(xWeightedLength('e.g. U.S. news'), 14, 'abbreviations are not links');
+		const linky = buildXDraft({ title: `${'word '.repeat(40)}see freedomtimes.news ${'more '.repeat(10)}`, description: '', url });
+		assert.ok(linky.weightedLength <= X_MAX_WEIGHTED_LENGTH, 'a domain in the title is counted as 23, never under-counted');
+		assert.equal(linky.weightedLength, xWeightedLength(linky.text));
 		const short = buildXDraft({ title: 'Cult news', description: '', url });
 		assert.equal(short.text, `Cult news\n\n${url}`);
 		assert.equal(short.weightedLength, 9 + 2 + 23);
@@ -603,7 +610,7 @@ describe('X client (mocked)', () => {
 			);
 		assert.equal(await run(() => json(401, { title: 'Unauthorized', detail: 'Unauthorized', status: 401 })), true);
 		assert.equal(await run(() => json(403, { detail: 'You are not permitted to perform this action.' })), true);
-		assert.equal(await run(() => json(402, { title: 'CreditsDepleted' })), true);
+		assert.equal(await run(() => json(400, { title: 'Invalid Request' })), true);
 		assert.equal(await run(() => json(429, { title: 'Too Many Requests' })), true);
 		assert.equal(await run(() => json(503, {})), false);
 		assert.equal(await run(() => Promise.reject(new Error('socket hang up'))), false);
