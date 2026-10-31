@@ -13,6 +13,8 @@
 #
 # The run number is the deploy-worker.yml run counter (one counter for staging and production
 # runs), so the production number only ever goes up, and re-running a run keeps its version.
+# The counter belongs to the workflow FILE: renaming or deleting/recreating deploy-worker.yml
+# restarts it at 1. Raise the base minor in web/package.json in the same PR before doing that.
 # The stamp is baked into the build (FT_* is a vite envPrefix) and served by /api/version.json
 # (`version`) next to `commitSha`, which #142/#144/#148 read.
 
