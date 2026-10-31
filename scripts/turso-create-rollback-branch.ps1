@@ -17,6 +17,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# #114: native-Turso fallback to ~/.turso/turso via $env:PATH (Linux env names are case-sensitive).
+. "$PSScriptRoot/lib/PathEntry.ps1"
+
 if (-not $AllowProduction) {
     throw "Refusing to create production EmDash backup checkpoint without -AllowProduction."
 }
@@ -62,14 +65,9 @@ if ($UseWslTurso) {
         throw "wsl is required for Turso (install Ubuntu WSL, then Turso: curl -sSfL https://get.tur.so/install.sh | bash). See docs/CLI_PATHS_WINDOWS.md"
     }
 }
-elseif (-not (Test-CommandAvailable -CommandName "turso")) {
-    $homeTurso = Join-Path $HOME ".turso/turso"
-    if (Test-Path $homeTurso) {
-        $env:Path = "$(Split-Path $homeTurso -Parent)$([IO.Path]::PathSeparator)$env:Path"
-    }
-    else {
-        throw "Turso CLI not on PATH and `$HOME/.turso/turso is missing. On Linux install with curl -sSfL https://get.tur.so/install.sh | bash. On Windows use WSL (default) or install Turso. See docs/CLI_PATHS_WINDOWS.md"
-    }
+else {
+    # $env:PATH, never $env:Path: Linux env names are case-sensitive (#114).
+    $null = Initialize-NativeTursoCli -MissingMessage "Turso CLI not on PATH and `$HOME/.turso/turso is missing. On Linux install with curl -sSfL https://get.tur.so/install.sh | bash. On Windows use WSL (default) or install Turso. See docs/CLI_PATHS_WINDOWS.md"
 }
 
 $repoRoot = Split-Path $PSScriptRoot -Parent

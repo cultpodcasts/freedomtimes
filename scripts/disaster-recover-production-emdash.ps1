@@ -59,6 +59,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# #114: native-Turso fallback to ~/.turso/turso via $env:PATH (Linux env names are case-sensitive).
+. "$PSScriptRoot/lib/PathEntry.ps1"
+
 if (-not $AllowProduction) {
     throw "Refusing production EmDash disaster recovery without -AllowProduction."
 }
@@ -139,14 +142,9 @@ try {
     if ($script:UseWslTurso -and -not (Test-CommandAvailable -CommandName "wsl")) {
         throw "wsl required on Windows. See docs/CLI_PATHS_WINDOWS.md"
     }
-    if (-not $script:UseWslTurso -and -not (Test-CommandAvailable -CommandName "turso")) {
-        $homeTurso = Join-Path $HOME ".turso/turso"
-        if (Test-Path $homeTurso) {
-            $env:Path = "$(Split-Path $homeTurso -Parent)$([IO.Path]::PathSeparator)$env:Path"
-        }
-        else {
-            throw "turso CLI missing"
-        }
+    if (-not $script:UseWslTurso) {
+        # $env:PATH, never $env:Path: Linux env names are case-sensitive (#114).
+        $null = Initialize-NativeTursoCli -MissingMessage "turso CLI missing (not on PATH and no `$HOME/.turso/turso)"
     }
 
     Write-Host "=== Production EmDash DR (non-destructive first) ===" -ForegroundColor Cyan

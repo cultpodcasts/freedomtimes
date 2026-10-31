@@ -1,7 +1,8 @@
 # Local tests for the production backup's .env.dev fill-missing loader and the
 # read-only `turso db show` preflight. No network, no Turso, no real .env.dev.
 # Run: pwsh -NoProfile -File ./scripts/test-backup-production-env-and-preflight.ps1
-# Local only (this repo has no CI). Uses fake values in a temp dir.
+# Local only (not run by ci-guards.yml). Uses fake values in a temp dir.
+# The -UseNativeTurso ~/.turso PATH fallback (#114) is covered by scripts/test-path-entry.ps1.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
