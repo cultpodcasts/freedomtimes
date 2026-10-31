@@ -292,20 +292,41 @@ export function verifierExitCode({ mismatch, unverified }) {
 	return unverified.length > 0 ? 2 : 0;
 }
 
-/** A path no page or asset matches; the Worker must answer it with a 4xx/3xx, never a 5xx. */
+/**
+ * A path no page or asset matches. A public site must answer it with the not-found page (HTTP 404,
+ * src/pages/404.astro since #119); the locked staging site answers a logged-out request with a redirect
+ * to sign-in before any route runs.
+ */
 export const DEFAULT_UNMATCHED_PROBE_PATH = '/__ft-verify/no-such-route/a/b';
 
+/** Redirect statuses the locked (SITE_ACCESS_MODE=locked) login wall may answer a logged-out request with. */
+export const LOCKED_SITE_REDIRECT_STATUSES = Object.freeze([301, 302, 303, 307, 308]);
+
 /**
- * Logged-out GET of a URL no route matches (redirects not followed). The @astrojs/cloudflare entry sends
- * unmatched routes to env.ASSETS.fetch() (fallbackToAssets) before rendering the 404, so a missing assets
- * binding shows up here as HTTP 500 ("Cannot read properties of undefined (reading 'fetch')"). Pass: any
- * status below 500 (404 on production; the staging login wall may answer 302). This checks "no 5xx", NOT
- * "is a 404": which 4xx a deep unmatched URL gets depends on the route Astro matches (a proper 404 page
- * for every unmatched URL is issue #119), so a 400 also passes.
- * @param {{ url: string, fetchImpl?: typeof fetch }} opts
+ * What the unmatched-route probe must see for a given SITE_ACCESS_MODE (from wrangler.jsonc):
+ * "locked" → a redirect with a Location (the login wall); anything else (public) → exactly 404.
+ * @param {string | undefined} siteAccessMode
+ * @returns {{ mode: 'locked' | 'public', describe: string }}
+ */
+export function unmatchedRouteExpectation(siteAccessMode) {
+	return siteAccessMode === 'locked'
+		? { mode: 'locked', describe: 'a 3xx redirect to sign-in (SITE_ACCESS_MODE=locked)' }
+		: { mode: 'public', describe: 'HTTP 404 (the not-found page)' };
+}
+
+/**
+ * Logged-out GET of a URL no route matches (redirects not followed). Pass: exactly HTTP 404 on a public
+ * site (#122; every unmatched URL renders src/pages/404.astro since #119, so a 400 "Missing slug" or a 200
+ * is a regression), or a 3xx with a Location on the locked staging site (login wall). Anything else fails,
+ * with the cause named where it is known:
+ * - 503: the content store is unavailable (#128 / #160: unmigrated, empty or unreachable EmDash database,
+ *   or EmDash migrations pending) — a deploy against a broken store must not pass;
+ * - other 5xx: a 500 here usually means env.ASSETS is unbound (the @astrojs/cloudflare entry sends
+ *   unmatched routes to env.ASSETS.fetch() before rendering the 404).
+ * @param {{ url: string, fetchImpl?: typeof fetch, siteAccessMode?: string }} opts
  * @returns {Promise<{ ok: boolean, status: number, contentType: string, failure?: string } | { error: string }>}
  */
-export async function probeUnmatchedRoute({ url, fetchImpl = fetch }) {
+export async function probeUnmatchedRoute({ url, fetchImpl = fetch, siteAccessMode }) {
 	let res;
 	try {
 		res = await fetchImpl(url, { redirect: 'manual' });
@@ -314,15 +335,38 @@ export async function probeUnmatchedRoute({ url, fetchImpl = fetch }) {
 		return { error: `unmatched-route probe of ${redactUrl(url)} failed: ${describeNetworkError(err)}` };
 	}
 	const contentType = res.headers.get('content-type') ?? '';
-	if (res.status >= 500) {
-		return {
-			ok: false,
-			status: res.status,
-			contentType,
-			failure: `unmatched route ${redactUrl(url)} returned HTTP ${res.status}, expected a 4xx/3xx (a 500 here usually means env.ASSETS is unbound)`,
-		};
+	const expectation = unmatchedRouteExpectation(siteAccessMode);
+	const location = res.headers.get('location');
+	const ok =
+		expectation.mode === 'locked'
+			? LOCKED_SITE_REDIRECT_STATUSES.includes(res.status) && Boolean(location)
+			: res.status === 404;
+	if (ok) return { ok: true, status: res.status, contentType };
+	let where = '';
+	if (location) {
+		try {
+			where = ` (location ${redactUrl(new URL(location, url).href)})`;
+		} catch {
+			where = ' (unparseable location)';
+		}
 	}
-	return { ok: true, status: res.status, contentType };
+	let cause = '';
+	if (res.status === 503) {
+		const retryAfter = res.headers.get('retry-after');
+		cause = `: the content store is unavailable${retryAfter ? ` (Retry-After ${retryAfter})` : ''} — the Worker's EmDash database is unmigrated, empty or unreachable, or migrations are pending (#128 / #160); fix the database binding before trusting this deploy`;
+	} else if (res.status >= 500) {
+		cause = ' (a 500 here usually means env.ASSETS is unbound)';
+	} else if (expectation.mode === 'public' && res.status === 400) {
+		cause = ' (a 400 "Missing slug" means the not-found page from #119 is no longer reached)';
+	} else if (expectation.mode === 'locked' && res.status === 404) {
+		cause = ' (a logged-out 404 means the login wall did not run)';
+	}
+	return {
+		ok: false,
+		status: res.status,
+		contentType,
+		failure: `unmatched route ${redactUrl(url)} returned HTTP ${res.status}${where}, expected ${expectation.describe}${cause}`,
+	};
 }
 
 /** Parse a Server-Timing header into { name: durMs }. */

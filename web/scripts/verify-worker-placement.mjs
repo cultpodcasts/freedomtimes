@@ -11,8 +11,10 @@
 //        [--asset-origin https://host] [--asset-path /favicon.svg] [--no-asset-probe]
 //
 // Asset probes (no cookies, redirects not followed): GET <origin><asset-path>?ft-verify=<ms> (cache-busted)
-// must be HTTP 200 with a non-HTML content-type, and GET <origin>/__ft-verify/no-such-route/a/b must not be
-// 5xx (an unbound env.ASSETS makes every unmatched route 500; any 4xx/3xx passes). Each probe retries up to
+// must be HTTP 200 with a non-HTML content-type, and GET <origin>/__ft-verify/no-such-route/a/b must be exactly
+// HTTP 404 on a public site, or a 3xx redirect to sign-in when wrangler.jsonc SITE_ACCESS_MODE is "locked"
+// (staging). A 503 there means the content store is unavailable (#160) and a 500 usually an unbound
+// env.ASSETS; both fail, as does any other status (#122). Each probe retries up to
 // 4 attempts, 5 s apart, before a failure counts; every attempt's status is logged (no headers/cookies). Origin defaults to SITE_ORIGINS[env] (staging.freedomtimes.news / freedomtimes.news); static
 // assets are served before the Worker, so the staging login wall does not apply. The path must exist in
 // dist/client or public/ (default /favicon.svg), otherwise exit 2.
@@ -145,7 +147,12 @@ async function main() {
 			// network error counts; the static asset gets a fresh ?ft-verify=<ms> cache-buster per attempt.
 			const probes = [
 				['static asset', `${origin}${assetPath}`, probeStaticAsset, () => withCacheBust(`${origin}${assetPath}`)],
-				['unmatched route', `${origin}${DEFAULT_UNMATCHED_PROBE_PATH}`, probeUnmatchedRoute, () => `${origin}${DEFAULT_UNMATCHED_PROBE_PATH}`],
+				[
+					'unmatched route',
+					`${origin}${DEFAULT_UNMATCHED_PROBE_PATH}`,
+					(o) => probeUnmatchedRoute({ ...o, siteAccessMode: expected.plainText.SITE_ACCESS_MODE }),
+					() => `${origin}${DEFAULT_UNMATCHED_PROBE_PATH}`,
+				],
 			];
 			for (const [label, probeUrl, probe, makeUrl] of probes) {
 				const result = await probeWithRetry({
