@@ -199,6 +199,9 @@ jobs:
           # refuses to run if its host differs from the backed-up workerTursoHost.
           TURSO_PRODUCTION_EMDASH_DB_URL: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_URL }}
           TURSO_PRODUCTION_EMDASH_DB_TOKEN: ${{ secrets.TURSO_PRODUCTION_EMDASH_DB_TOKEN }}
+          # #148: the backup script proves that host is the live Worker's DB (/api/deploy-provenance.json)
+          # before creating any branch. Optional bearer, only if the Worker has that secret.
+          DEPLOY_PROVENANCE_TOKEN: ${{ secrets.DEPLOY_PROVENANCE_TOKEN }}
         run: |
           $group = if ([string]::IsNullOrWhiteSpace($env:TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION)) { "freedomtimes-production" } else { $env:TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }
           # -SkipFileExport: verify reads the new branch directly; nothing is written to disk.
@@ -211,15 +214,17 @@ jobs:
           if ($null -eq $meta) { throw "Backup step left no prod-backup metadata. Nothing deployed." }
           $m = Get-Content -Raw -LiteralPath $meta.FullName | ConvertFrom-Json
           if ($m.verificationPass -ne $true) { throw "Backup $($m.backupDatabase) is not verified. Nothing deployed." }
-          if ($m.resolveSource -ne "wrangler-getPlatformProxy-production") {
-            # Routine on CI (no wrangler login). Not a warning: the deploy step's live Worker
-            # provenance check (#142) fails closed if the live Worker is on another DB host.
-            Write-Host "::notice::Backup source came from env fallback $($m.resolveSource) (the TURSO_PRODUCTION_EMDASH_DB_URL secret), not the live Worker binding. The deploy step checks the live Worker's DB host hash against this backup before migrating (#142)."
+          $live = if ($m.PSObject.Properties["liveProvenanceCheck"]) { [string]$m.liveProvenanceCheck } else { "" }
+          if ($live -ne "match" -and $m.resolveSource -ne "wrangler-getPlatformProxy-production") {
+            # Only when the backup script could not prove the source (bootstrap). On a match it
+            # already wrote one ::notice:: (#148). The deploy step's provenance check (#142) still runs.
+            Write-Host "::notice::Backup source came from env fallback $($m.resolveSource) (the TURSO_PRODUCTION_EMDASH_DB_URL secret) and was not proven live before backup ($live). The deploy step checks the live Worker's DB host hash against this backup before migrating (#142)."
           }
+          $sourceProof = if ($live -eq "match") { "verified by live Worker provenance before backup (#148)" } else { "NOT verified before backup ($live)" }
           @(
             "### Production EmDash backup",
             "- Turso branch: ``$($m.backupDatabase)`` (verified; no .db exported or uploaded)",
-            "- Source: ``$($m.sourceDatabase)`` via $($m.resolveSource)",
+            "- Source: ``$($m.sourceDatabase)`` via $($m.resolveSource), $sourceProof",
             "- Restore: web/docs/DEPLOY.md § If the production job fails"
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
