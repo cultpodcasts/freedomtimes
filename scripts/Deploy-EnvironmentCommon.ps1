@@ -1487,7 +1487,8 @@ function Invoke-DeployStagingTursoBranchBackup {
 
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     $branchName = "staging-rollback-$stamp"
-    Assert-TursoDatabaseHeadroom -RepoRoot (Split-Path $PSScriptRoot -Parent)
+    # Staging stops at 90 so the production backup keeps ~5 slots (PR #176).
+    Assert-TursoDatabaseHeadroom -RepoRoot (Split-Path $PSScriptRoot -Parent) -Threshold 90
     Write-DeployStep "Creating staging EmDash backup branch '$branchName' from '$databaseName' (no .db export)"
 
     $createArgs = @("db", "create", $branchName, "--from-db", $databaseName)

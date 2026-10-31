@@ -15,6 +15,7 @@ import {
 	isCiStagingCandidate,
 	localBackupPath,
 	matchRule,
+	run,
 	parseNameStamp,
 	planRetention,
 	protectedFromBackupRecords,
@@ -491,17 +492,19 @@ test("--ci-staging-only keeps the newest 10 whatever their age and deletes only 
 
 test("--ci-staging-only delete is allowed on Actions but capped and staging-only", () => {
 	const del = (name, extra = {}) => ({ name, prefix: "staging-rollback-", environment: "staging", action: "delete", ...extra });
+	const LS = { identified: true, note: "test" };
+	assert.match(ciStagingDeleteRefusals({ plan: [] }).join(" "), /staging target was not identified/);
 	const ok = [del("staging-rollback-20250101-000000")];
-	assert.deepEqual(deleteRefusals({ plan: ok, env: { GITHUB_ACTIONS: "true" }, ciStagingOnly: true }), []);
-	assert.equal(ciStagingDeleteRefusals({ plan: ok, maxDelete: 0 }).length, 1);
+	assert.deepEqual(deleteRefusals({ plan: ok, env: { GITHUB_ACTIONS: "true" }, ciStagingOnly: true, liveStaging: LS }), []);
+	assert.equal(ciStagingDeleteRefusals({ plan: ok, maxDelete: 0, liveStaging: LS }).length, 1);
 	const many = Array.from({ length: 21 }, (_, i) => del(`staging-rollback-2025010${1 + (i % 9)}-0000${String(i).padStart(2, "0")}`));
-	assert.match(ciStagingDeleteRefusals({ plan: many }).join(" "), /above --max-delete 20/);
+	assert.match(ciStagingDeleteRefusals({ plan: many, liveStaging: LS }).join(" "), /above --max-delete 20/);
 	for (const bad of [
 		del("prod-rollback-20250101-000000", { prefix: "prod-rollback-", environment: "production" }),
 		del("freedomtimes-emdash-staging"),
 		del("staging-backup-20250101-000000", { prefix: "staging-backup-" }),
 	]) {
-		assert.equal(ciStagingDeleteRefusals({ plan: [bad] }).length, 1, bad.name);
+		assert.equal(ciStagingDeleteRefusals({ plan: [bad], liveStaging: LS }).length, 1, bad.name);
 	}
 	// Every other mode still refuses on GitHub Actions.
 	const r = deleteRefusals({ plan: ok, expectCount: 1, env: { GITHUB_ACTIONS: "true" }, liveProduction: { identified: true }, liveStaging: { identified: true } });
@@ -517,4 +520,75 @@ test("databaseLimitCheck fails at 95+ with the MSI retention command", () => {
 	assert.equal(databaseLimitCheck(86, 80).ok, false);
 	assert.throws(() => databaseLimitCheck(-1));
 	assert.throws(() => databaseLimitCheck(10, 0));
+});
+
+// --- PR #176 cycle 1: main() end to end via run() with a stubbed fetch ---
+
+function stubTurso(names, { listStatus = 200 } = {}) {
+	const calls = [];
+	const fetch = async (url, init = {}) => {
+		const u = String(url);
+		calls.push({ method: init.method || "GET", url: u });
+		if (u.includes("deploy-provenance")) return { ok: false, status: 401, json: async () => ({}) };
+		if ((init.method || "GET") === "DELETE") return { ok: true, status: 200, json: async () => ({}) };
+		if (listStatus !== 200) return { ok: false, status: listStatus, json: async () => ({}) };
+		return { ok: true, status: 200, json: async () => ({ databases: names.map((n) => db(n)) }) };
+	};
+	return { fetch, calls, deletes: () => calls.filter((c) => c.method === "DELETE").map((c) => decodeURIComponent(c.url.split("/").pop())) };
+}
+const CI_ENV = { GITHUB_ACTIONS: "true", TURSO_API_TOKEN: "test-token", TF_VAR_TURSO_ORGANIZATION: ORG };
+const quiet = { out: () => {}, err: () => {} };
+const realStamp = (daysAgo) => {
+	const d = new Date(Date.now() - daysAgo * 86_400_000);
+	const p = (n) => String(n).padStart(2, "0");
+	return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`;
+};
+const emptyDirs = ["--metadata-dir", "/nonexistent-ft-meta", "--agents-dir", "/nonexistent-ft-agents"];
+
+test("run --ci-staging-only --delete on Actions deletes only old staging-rollback-<stamp> beyond the newest 10", async () => {
+	const old = Array.from({ length: 13 }, (_, i) => `staging-rollback-${realStamp(20 + i)}`);
+	const others = [
+		"freedomtimes-emdash-production", "freedomtimes-emdash-staging", "prod-work-embeds",
+		`prod-rollback-${realStamp(60)}`, "prod-rollback-20260430-2115", `prod-backup-${realStamp(60)}`,
+		`staging-backup-${realStamp(60)}`, `ci-rollback-${realStamp(60)}`, "staging-rollback-manual",
+	];
+	const t = stubTurso([...others, ...old]);
+	const code = await run(["--ci-staging-only", "--delete", ...emptyDirs], { env: CI_ENV, fetch: t.fetch, ...quiet });
+	assert.equal(code, 0);
+	assert.deepEqual(t.deletes().sort(), old.slice(10).sort());
+});
+
+test("run --ci-staging-only refuses above --max-delete and when the staging target is missing", async () => {
+	const old = Array.from({ length: 13 }, (_, i) => `staging-rollback-${realStamp(20 + i)}`);
+	const t = stubTurso(["freedomtimes-emdash-staging", ...old]);
+	assert.equal(await run(["--ci-staging-only", "--delete", "--max-delete", "2", ...emptyDirs], { env: CI_ENV, fetch: t.fetch, ...quiet }), 2);
+	assert.deepEqual(t.deletes(), []);
+	const t2 = stubTurso(old);
+	assert.equal(await run(["--ci-staging-only", "--delete", ...emptyDirs], { env: CI_ENV, fetch: t2.fetch, ...quiet }), 2);
+	assert.deepEqual(t2.deletes(), []);
+	// TF_VAR_TURSO_DATABASE_NAME_STAGING names (and protects) a DR-retargeted branch.
+	const t3 = stubTurso(old);
+	const env = { ...CI_ENV, TF_VAR_TURSO_DATABASE_NAME_STAGING: old[12] };
+	assert.equal(await run(["--ci-staging-only", "--delete", ...emptyDirs], { env, fetch: t3.fetch, ...quiet }), 0);
+	assert.deepEqual(t3.deletes().sort(), old.slice(10, 12).sort());
+});
+
+test("run --ci-staging-only rejects loose or production rule options", async () => {
+	const t = stubTurso(["freedomtimes-emdash-staging"]);
+	for (const extra of [["--prod-keep-days", "30"], ["--max-age-days", "30"], ["--staging-keep-newest", "5"], ["--staging-keep-days", "1"]]) {
+		await assert.rejects(() => run(["--ci-staging-only", ...extra, ...emptyDirs], { env: CI_ENV, fetch: t.fetch, ...quiet }), extra.join(" "));
+	}
+	assert.deepEqual(t.deletes(), []);
+});
+
+test("run --check-limit: no token skips locally, fails closed on Actions; non-200 list fails", async () => {
+	const t = stubTurso([]);
+	assert.equal(await run(["--check-limit"], { env: {}, fetch: t.fetch, ...quiet }), 0);
+	assert.equal(await run(["--check-limit"], { env: { GITHUB_ACTIONS: "true" }, fetch: t.fetch, ...quiet }), 1);
+	assert.equal(await run(["--check-limit"], { env: { GITHUB_ACTIONS: "true", TURSO_API_TOKEN: "x" }, fetch: t.fetch, ...quiet }), 1);
+	const bad = stubTurso([], { listStatus: 500 });
+	await assert.rejects(() => run(["--check-limit"], { env: CI_ENV, fetch: bad.fetch, ...quiet }), /HTTP 500/);
+	const full = stubTurso(Array.from({ length: 95 }, (_, i) => `db-${i}`));
+	assert.equal(await run(["--check-limit"], { env: CI_ENV, fetch: full.fetch, ...quiet }), 4);
+	assert.equal(await run(["--check-limit", "--limit-threshold", "96"], { env: CI_ENV, fetch: full.fetch, ...quiet }), 0);
 });

@@ -102,6 +102,29 @@ export const DEFAULT_DATABASE_LIMIT_THRESHOLD = 95;
 /** --ci-staging-only: most branches one CI run may delete. */
 export const DEFAULT_CI_MAX_DELETE = 20;
 export const CI_STAGING_PREFIX = "staging-rollback-";
+/** --ci-staging-only floors. Newest-N always holds. The age floor is pending Jon's decision
+ *  (PR #176 thread 1): set CI_STAGING_MIN_KEEP_DAYS to 0 for a count-only CI policy. */
+export const CI_STAGING_MIN_KEEP_NEWEST = 10;
+export const CI_STAGING_MIN_KEEP_DAYS = 7;
+export const DEFAULT_STAGING_DATABASE_NAME = "freedomtimes-emdash-staging";
+
+export function isGithubActions(env = process.env) {
+	return String(env.GITHUB_ACTIONS || "").toLowerCase() === "true";
+}
+
+/**
+ * --ci-staging-only: the live staging target, by provenance hash match or by name
+ * (TF_VAR_TURSO_DATABASE_NAME_STAGING, default freedomtimes-emdash-staging) present in the org.
+ * @returns {{ identified: boolean, names: string[], note: string }}
+ */
+export function ciStagingTarget({ databases, env = {}, provenanceMatches = [] }) {
+	const all = new Set(databases.map((db) => String(db.Name || db.name || "")));
+	const configured = String(env.TF_VAR_TURSO_DATABASE_NAME_STAGING || "").trim() || DEFAULT_STAGING_DATABASE_NAME;
+	const names = [...new Set([...provenanceMatches, ...(all.has(configured) ? [configured] : [])])];
+	if (provenanceMatches.length) return { identified: true, names, note: "live staging provenance" };
+	if (all.has(configured)) return { identified: true, names, note: `named ${configured}` };
+	return { identified: false, names, note: `staging DB ${configured} not found in the organisation` };
+}
 
 /** @typedef {{ prefix: string, family: string, environment: "staging" | "production", keepNewest: number, keepDays: number, maxAgeDays: number, floorNewest: number, legacyMinuteStamp?: boolean }} RetentionRule */
 
@@ -150,12 +173,12 @@ export function defaultRules({
  * age), delete only when older than 7 days. Nothing else is ever in scope.
  * @returns {RetentionRule[]}
  */
-export function ciStagingOnlyRules({ stagingKeepNewest = 10, stagingKeepDays = 7 } = {}) {
-	if (!Number.isInteger(stagingKeepNewest) || stagingKeepNewest < 10) {
+export function ciStagingOnlyRules({ stagingKeepNewest = CI_STAGING_MIN_KEEP_NEWEST, stagingKeepDays = CI_STAGING_MIN_KEEP_DAYS } = {}) {
+	if (!Number.isInteger(stagingKeepNewest) || stagingKeepNewest < CI_STAGING_MIN_KEEP_NEWEST) {
 		throw new Error("--ci-staging-only keeps at least the newest 10 staging-rollback branches.");
 	}
-	if (!Number.isInteger(stagingKeepDays) || stagingKeepDays < 7) {
-		throw new Error("--ci-staging-only deletes nothing younger than 7 days.");
+	if (!Number.isInteger(stagingKeepDays) || stagingKeepDays < CI_STAGING_MIN_KEEP_DAYS) {
+		throw new Error(`--ci-staging-only deletes nothing younger than ${CI_STAGING_MIN_KEEP_DAYS} days.`);
 	}
 	return [{
 		prefix: CI_STAGING_PREFIX,
@@ -411,7 +434,7 @@ export function deleteRefusals({
 	const out = [];
 	const toDelete = plan.filter((e) => e.action === "delete");
 	if (ciStagingOnly) {
-		return ciStagingDeleteRefusals({ plan, maxDelete, unmatchedProtect });
+		return ciStagingDeleteRefusals({ plan, maxDelete, unmatchedProtect, liveStaging });
 	}
 	if (String(env.GITHUB_ACTIONS || "").toLowerCase() === "true") {
 		out.push("deletion is never run on GitHub Actions (report only in CI)");
@@ -443,8 +466,11 @@ export function isCiStagingCandidate(name) {
 }
 
 /** Checks --ci-staging-only --delete must pass (allowed on GitHub Actions). */
-export function ciStagingDeleteRefusals({ plan, maxDelete = DEFAULT_CI_MAX_DELETE, unmatchedProtect = [] }) {
+export function ciStagingDeleteRefusals({ plan, maxDelete = DEFAULT_CI_MAX_DELETE, unmatchedProtect = [], liveStaging }) {
 	const out = [];
+	if (!liveStaging?.identified) {
+		out.push(`the live staging target was not identified (${liveStaging?.note || "unknown"}); --ci-staging-only deletes nothing`);
+	}
 	const toDelete = plan.filter((e) => e.action === "delete");
 	for (const e of toDelete) {
 		if (!isCiStagingCandidate(e.name) || e.environment !== "staging" || e.prefix !== CI_STAGING_PREFIX) {
@@ -735,8 +761,25 @@ function organization(env) {
 	return "";
 }
 
+/** Side effects main() uses; run() swaps them for tests. */
+let io = { fetch: (...a) => globalThis.fetch(...a), out: (...a) => console.log(...a), err: (...a) => console.error(...a) };
+
+/**
+ * Testable entry point: run(argv, { env, fetch, out, err, loadEnvDev }) -> exit code.
+ * loadEnvDev defaults to false here (tests); the CLI entry loads repo-root .env.dev.
+ */
+export async function run(argv, { env = process.env, fetch, out, err, loadEnvDev = false } = {}) {
+	const prev = io;
+	io = { fetch: fetch ?? prev.fetch, out: out ?? prev.out, err: err ?? prev.err };
+	try {
+		return await main(argv, { env, loadEnvDev });
+	} finally {
+		io = prev;
+	}
+}
+
 async function listDatabases(org, token) {
-	const res = await fetch(`${TURSO_API_BASE}/v1/organizations/${encodeURIComponent(org)}/databases`, {
+	const res = await io.fetch(`${TURSO_API_BASE}/v1/organizations/${encodeURIComponent(org)}/databases`, {
 		headers: { Authorization: `Bearer ${token}` },
 	});
 	if (!res.ok) throw new Error(`Turso Platform API list databases failed (HTTP ${res.status}).`);
@@ -746,7 +789,7 @@ async function listDatabases(org, token) {
 }
 
 async function deleteDatabase(org, token, name) {
-	const res = await fetch(
+	const res = await io.fetch(
 		`${TURSO_API_BASE}/v1/organizations/${encodeURIComponent(org)}/databases/${encodeURIComponent(name)}`,
 		{ method: "DELETE", headers: { Authorization: `Bearer ${token}` } },
 	);
@@ -758,7 +801,7 @@ async function liveHostHash(site, env) {
 	const t = String(env.DEPLOY_PROVENANCE_TOKEN || "").trim();
 	if (t) headers.Authorization = `Bearer ${t}`;
 	try {
-		const res = await fetch(new URL(DEPLOY_PROVENANCE_PATH, site), { headers, redirect: "manual" });
+		const res = await io.fetch(new URL(DEPLOY_PROVENANCE_PATH, site), { headers, redirect: "manual" });
 		if (!res.ok) return { hash: null, note: `provenance HTTP ${res.status}` };
 		const body = await res.json();
 		const hash = typeof body?.tursoHostSha256 === "string" ? body.tursoHostSha256.toLowerCase() : null;
@@ -778,27 +821,31 @@ function fmtAge(a) {
 	return a === null ? "?" : `${a.toFixed(1)}d`;
 }
 
-async function main(argv) {
+async function main(argv, { env = process.env, loadEnvDev: loadDev = true } = {}) {
 	const opts = parseArgs(argv);
 	if (opts.help) {
-		console.log(HELP);
+		io.out(HELP);
 		return 0;
 	}
 	const envDev = path.join(repoRoot, "web", "scripts", "lib", "load-env-dev.mjs");
-	if (existsSync(envDev)) {
+	if (loadDev && existsSync(envDev)) {
 		const { loadEnvDev } = await import(pathToFileURL(envDev).href);
 		loadEnvDev(path.join(repoRoot, ".env.dev"));
 	}
-	const env = process.env;
 	const token = platformToken(env);
 	const org = organization(env);
 	if (opts.checkLimit) {
 		if (!token || !org) {
-			console.error("turso-backup-retention --check-limit: no Turso Platform API token or organisation in the environment; database count not checked.");
+			if (isGithubActions(env)) {
+				// AGENTS.md §6: never silently skip on CI (a renamed secret/var would disable the guard).
+				io.err("turso-backup-retention --check-limit: no Turso Platform API token or organisation on GitHub Actions; failing closed. Set TURSO_API_TOKEN and TF_VAR_TURSO_ORGANIZATION for this step.");
+				return 1;
+			}
+			io.err("turso-backup-retention --check-limit: no Turso Platform API token or organisation in the environment; database count not checked (local session).");
 			return 0;
 		}
 		const r = databaseLimitCheck((await listDatabases(org, token)).length, opts.limitThreshold);
-		(r.ok ? console.log : console.error)(r.message);
+		(r.ok ? io.out : io.err)(r.message);
 		return r.ok ? 0 : 4;
 	}
 	if (opts.ciStagingOnly && Object.keys(opts.rules).some((k) => !["stagingKeepNewest", "stagingKeepDays"].includes(k))) {
@@ -834,14 +881,19 @@ async function main(argv) {
 	addProtect(protect, evidence.newestVerified, "newest verified prod backup (local metadata / agents log)");
 	addProtect(protect, evidence.lastReferenced, "named by the newest backup metadata (last local deploy)");
 
+	let liveStaging = { identified: stagingMatches.length > 0, note: stagingLive.note };
+	if (opts.ciStagingOnly) {
+		const target = ciStagingTarget({ databases, env, provenanceMatches: stagingMatches });
+		for (const n of target.names) addProtect(protect, n, "live staging target (--ci-staging-only)");
+		liveStaging = { identified: target.identified, note: `${target.note}; provenance: ${stagingLive.note}` };
+	}
 	const plan = planRetention({ databases, rules, now: new Date(), protect });
 	const summary = summarisePlan(plan, rules);
 	const liveProduction = { identified: prodMatches.length > 0, note: prodLive.note };
-	const liveStaging = { identified: stagingMatches.length > 0, note: stagingLive.note };
 	const otherCount = databases.length - plan.length;
 
 	if (opts.json) {
-		console.log(JSON.stringify({
+		io.out(JSON.stringify({
 			mode: `${opts.ciStagingOnly ? "ci-staging-only " : ""}${opts.delete ? "delete" : "dry-run"}`,
 			databasesInOrganisation: databases.length,
 			notInScope: otherCount,
@@ -853,15 +905,15 @@ async function main(argv) {
 			plan,
 		}, null, 2));
 	} else {
-		console.log(`Turso backup retention (${opts.delete ? "DELETE" : "dry-run"})`);
-		console.log(`Databases in organisation: ${databases.length} (${otherCount} not CI backup branches; never touched)`);
-		console.log(`Live production Worker DB identified: ${liveProduction.identified ? "yes" : "no"} (${liveProduction.note})`);
-		console.log(`Live staging Worker DB identified: ${liveStaging.identified ? "yes" : "no"} (${liveStaging.note})`);
-		console.log(`Local backup records read: ${records.length}`);
-		for (const n of unmatchedProtect) console.log(`WARNING: --protect ${n} is not a database in the organisation (typo?)`);
+		io.out(`Turso backup retention (${opts.delete ? "DELETE" : "dry-run"})`);
+		io.out(`Databases in organisation: ${databases.length} (${otherCount} not CI backup branches; never touched)`);
+		io.out(`Live production Worker DB identified: ${liveProduction.identified ? "yes" : "no"} (${liveProduction.note})`);
+		io.out(`Live staging Worker DB identified: ${liveStaging.identified ? "yes" : "no"} (${liveStaging.note})`);
+		io.out(`Local backup records read: ${records.length}`);
+		for (const n of unmatchedProtect) io.out(`WARNING: --protect ${n} is not a database in the organisation (typo?)`);
 		for (const s of summary) {
-			console.log(`\n${s.prefix}* [${s.environment}] ${s.policy}`);
-			console.log(`  total ${s.total}, keep ${s.keep}, would delete ${s.wouldDelete}; ages ${fmtAge(s.newestAgeDays)} .. ${fmtAge(s.oldestAgeDays)}`);
+			io.out(`\n${s.prefix}* [${s.environment}] ${s.policy}`);
+			io.out(`  total ${s.total}, keep ${s.keep}, would delete ${s.wouldDelete}; ages ${fmtAge(s.newestAgeDays)} .. ${fmtAge(s.oldestAgeDays)}`);
 			for (const e of plan.filter((p) => p.prefix === s.prefix)) {
 				const local =
 					e.action === "delete"
@@ -869,14 +921,14 @@ async function main(argv) {
 							? "  [local .db present; checked before delete, branch kept if it does not verify]"
 							: "  [no local .db yet; exported before delete]"
 						: "";
-				console.log(`  ${e.action === "delete" ? "DELETE" : "keep  "}  ${e.name}  ${fmtAge(e.ageDays)}  ${e.reasons.join("; ")}${local}`);
+				io.out(`  ${e.action === "delete" ? "DELETE" : "keep  "}  ${e.name}  ${fmtAge(e.ageDays)}  ${e.reasons.join("; ")}${local}`);
 			}
 		}
 	}
 
 	const toDelete = plan.filter((e) => e.action === "delete");
 	if (!opts.delete) {
-		console.error(`\nDry-run: ${toDelete.length} branch(es) would be deleted. Nothing was deleted.`);
+		io.err(`\nDry-run: ${toDelete.length} branch(es) would be deleted. Nothing was deleted.`);
 		return 0;
 	}
 	const refusals = deleteRefusals({
@@ -891,7 +943,7 @@ async function main(argv) {
 		maxDelete: opts.maxDelete,
 	});
 	if (refusals.length) {
-		for (const r of refusals) console.error(`Refusing to delete: ${r}`);
+		for (const r of refusals) io.err(`Refusing to delete: ${r}`);
 		return 2;
 	}
 	if (opts.ciStagingOnly) {
@@ -901,22 +953,22 @@ async function main(argv) {
 			if (!isCiStagingCandidate(e.name)) throw new Error(`refusing ${e.name}`);
 			await deleteDatabase(org, token, e.name);
 			n++;
-			console.error(`Deleted ${e.name} (${fmtAge(e.ageDays)}): ${e.reasons.join("; ")}`);
+			io.err(`Deleted ${e.name} (${fmtAge(e.ageDays)}): ${e.reasons.join("; ")}`);
 		}
-		console.error(`--ci-staging-only: deleted ${n} staging-rollback branch(es).`);
+		io.err(`--ci-staging-only: deleted ${n} staging-rollback branch(es).`);
 		return 0;
 	}
 	if (opts.allowUnverifiedStaging && !liveStaging.identified && toDelete.some((e) => e.environment === "staging")) {
-		console.error("WARNING: deleting staging branches without the staging Worker's provenance (--allow-unverified-staging).");
+		io.err("WARNING: deleting staging branches without the staging Worker's provenance (--allow-unverified-staging).");
 	}
 	const backupsDir = opts.backupsDir;
 	const deps = await realLocalCopyDeps();
 	const { deleted, skipped } = await deleteWithLocalCopies(toDelete, {
 		ensure: (e) => ensureLocalCopy(e, backupsDir, deps),
 		del: (name) => deleteDatabase(org, token, name),
-		log: (line) => console.error(line),
+		log: (line) => io.err(line),
 	});
-	console.error(`Deleted ${deleted.length} branch(es); ${skipped.length} kept because the local copy failed.`);
+	io.err(`Deleted ${deleted.length} branch(es); ${skipped.length} kept because the local copy failed.`);
 	return skipped.length ? 3 : 0;
 }
 

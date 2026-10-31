@@ -1117,6 +1117,25 @@ process.exit($($case.Code));
         Assert-True ($threw -eq $case.Throws) "Assert-TursoDatabaseHeadroom exit $($case.Code) -> throws=$($case.Throws)"
         if ($case.Code -eq 4) { Assert-True ($msg -match 'TURSO DATABASE LIMIT' -and $msg -match '--delete --expect-count N') "limit failure names the MSI retention command" }
     }
+    # PR #176: under PSNativeCommandUseErrorActionPreference = $true the operator message still surfaces.
+    $prevNative = $PSNativeCommandUseErrorActionPreference
+    $prevEap = $ErrorActionPreference
+    try {
+        $PSNativeCommandUseErrorActionPreference = $true
+        $ErrorActionPreference = "Stop"
+        $msg = ""
+        try { $null = Assert-TursoDatabaseHeadroom -RepoRoot $headroomTmp 6>$null } catch { $msg = "$_" }
+        Assert-True ($msg -match 'TURSO DATABASE LIMIT') "exit 4 with PSNativeCommandUseErrorActionPreference=`$true still gives the limit message"
+        $ErrorActionPreference = "Continue"
+        $global:LASTEXITCODE = 0
+        $threw = $false
+        try { $null = Assert-TursoDatabaseHeadroom -RepoRoot $headroomTmp -NodeCommand "ft-no-such-node-binary" 6>$null 2>$null } catch { $threw = $true }
+        Assert-True $threw "missing node fails closed (no stale `$LASTEXITCODE 0)"
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $prevNative
+        $ErrorActionPreference = $prevEap
+    }
 }
 finally {
     Remove-Item -LiteralPath $headroomTmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -1131,6 +1150,8 @@ foreach ($pair in @(
     $createIdx = $t.IndexOf($pair.Create, [Math]::Max($guardIdx, 0))
     Assert-True ($guardIdx -gt 0 -and $createIdx -gt $guardIdx) "$($pair.File) checks Turso database headroom before db create"
 }
+$commonText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "Deploy-EnvironmentCommon.ps1")
+Assert-True ($commonText -match 'Assert-TursoDatabaseHeadroom -RepoRoot \(Split-Path \$PSScriptRoot -Parent\) -Threshold 90') "staging backup create stops at 90 databases (production keeps 95)"
 $wfText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "../.github/workflows/deploy-worker.yml")
 $pruneIdx = $wfText.IndexOf("turso-backup-retention.mjs --ci-staging-only --delete")
 $stagingDeployIdx = $wfText.IndexOf("deploy-staging-local.ps1 -WorkerOnly -TursoBranchBackup")
