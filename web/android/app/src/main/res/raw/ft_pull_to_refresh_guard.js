@@ -69,6 +69,22 @@
     return list;
   }
 
+  var TEXT_INPUT_TYPES = {
+    '': true, text: true, search: true, email: true, url: true, tel: true, password: true,
+    number: true, date: true, 'datetime-local': true, month: true, time: true, week: true,
+  };
+
+  // Someone is typing (editor, form field): a reload would lose their unsaved work.
+  function editingFocused() {
+    var active = doc.activeElement;
+    if (!active || active === doc.body || active === doc.documentElement) return false;
+    if (active.isContentEditable) return true;
+    var tag = String(active.tagName || '').toUpperCase();
+    if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'IFRAME') return true;
+    if (tag === 'INPUT') return !!TEXT_INPUT_TYPES[String(active.type || '').toLowerCase()];
+    return false;
+  }
+
   function hasTextSelection() {
     var selection = typeof win.getSelection === 'function' ? win.getSelection() : null;
     return !!(selection && selection.isCollapsed === false);
@@ -76,7 +92,7 @@
 
   function pullAllowed(event) {
     if (!event || !event.touches || event.touches.length !== 1) return false;
-    if (pageScrolled() || doc.fullscreenElement || hasTextSelection()) return false;
+    if (pageScrolled() || doc.fullscreenElement || hasTextSelection() || editingFocused()) return false;
     var elements = elementsUnder(event);
     for (var i = 0; i < elements.length; i++) {
       if (blockedBy(elements[i])) return false;

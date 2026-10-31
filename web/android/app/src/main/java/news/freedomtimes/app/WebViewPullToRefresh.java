@@ -235,7 +235,13 @@ final class WebViewPullToRefresh {
 		}
 	}
 
-	/** Called by the page guard from the WebView's JS thread. Only ever stores allowed/blocked. */
+	/**
+	 * Called by the page guard from the WebView's JS thread. Only ever stores allowed/blocked.
+	 * {@code addJavascriptInterface} exposes this to every frame (cross-origin embeds included), so
+	 * keep it to this one harmless setter: a forged "allowed" still needs the WebView at its top,
+	 * and the worst it can do is let a pull reload the page. Never add a method that reads or
+	 * changes anything else.
+	 */
 	static final class GuardBridge {
 		private final AtomicInteger state;
 

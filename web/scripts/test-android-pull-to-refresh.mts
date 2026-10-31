@@ -56,6 +56,7 @@ function setup(options: { top?: 'self' | 'other'; bridge?: boolean; throwStyle?:
     scrollingElement: html,
     body,
     fullscreenElement: null as unknown,
+    activeElement: null as unknown,
     addEventListener(type: string, fn: (event: unknown) => void, opts: unknown) {
       listeners.push({ type, fn, opts });
     },
@@ -155,6 +156,26 @@ test('multi-touch, fullscreen, a text selection or a guard error block the pull'
   page.selection.isCollapsed = false;
   assert.equal(page.touch(el('P', page.body)), false);
   assert.equal(setup({ throwStyle: true }).touch(el('P', el('DIV', null))), false);
+});
+
+test('no reload while an editor or form field has focus (unsaved work)', () => {
+  const page = setup();
+  const toolbar = el('DIV', page.body);
+  for (const focused of [
+    el('TEXTAREA', page.body),
+    el('INPUT', page.body, { type: 'text' }),
+    el('INPUT', page.body, { type: 'email' }),
+    el('SELECT', page.body),
+    el('DIV', page.body, { isContentEditable: true }),
+    el('IFRAME', page.body),
+  ]) {
+    page.doc.activeElement = focused;
+    assert.equal(page.touch(el('BUTTON', toolbar)), false, `focused ${focused.tagName} ${focused.type ?? ''}`);
+  }
+  for (const focused of [page.body, el('BUTTON', page.body), el('INPUT', page.body, { type: 'checkbox' }), null]) {
+    page.doc.activeElement = focused;
+    assert.equal(page.touch(el('BUTTON', toolbar)), true);
+  }
 });
 
 test('native wiring matches the guard', () => {

@@ -67,6 +67,8 @@ In the Android app, pulling down at the very top of any page reloads it and show
   - an element with `touch-action` that doesn't allow vertical panning;
   - full screen, a text selection, or an element marked `data-ft-no-pull-refresh`.
 
+  A pull is also blocked while an editor or form field has focus (text inputs, textarea, select, contenteditable, a focused iframe), so a reload can't throw away unsaved work.
+
   With no report (for example a touch inside a cross-origin embed), the WebView keeps the gesture. A gesture that starts mid-page never turns into a refresh.
 - **Offline:** if Android reports no network, the page stays as it is and a short "You're offline" message appears (needs `ACCESS_NETWORK_STATE`, a normal permission with no prompt). If a reload never reports loaded, the spinner stops after 15 s.
 - **Opt out:** add `data-ft-no-pull-refresh` to an element whose own vertical drag should never refresh (for example a future drag-to-reorder list).
