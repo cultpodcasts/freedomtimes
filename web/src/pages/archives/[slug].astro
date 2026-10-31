@@ -13,6 +13,8 @@ import { rethrowLookupFailure } from '../../lib/content-store-guard';
 import { assertContentStoreReady } from '../../lib/content-store-guard-db';
 import { isExpectedLookupMiss } from '../../lib/not-found';
 import { archivePdfCacheControl, checkArchivePdf, type ArchivePdfStatus, type MediaHead } from '../../lib/content/archive-pdf';
+import { ARCHIVE_GONE_CACHE_CONTROL, ARCHIVE_GONE_STATUS, checkArchiveWithdrawn } from '../../lib/content/archive-withdrawn';
+import { lookupArchiveRowState } from '../../lib/content/archive-withdrawn-db';
 import { buildContentEntryViewModel } from '../../lib/content/contentEntry';
 
 const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
@@ -52,6 +54,7 @@ const slug = Astro.params.slug;
 let entry: Awaited<ReturnType<typeof getEmDashEntry>>['entry'] = null;
 let isPreview = false;
 let notFound = false;
+let withdrawn = false;
 
 if (!slug) {
 	notFound = true;
@@ -76,7 +79,15 @@ if (!slug) {
 		// A 404 only on a live database: an unmigrated / empty one is a 503 (#128).
 		await assertContentStoreReady();
 		notFound = true;
-		Astro.response.status = 404;
+		// #151: an issue that was published and has since been unpublished or trashed is 410 Gone
+		// (same noindex page). no-store so a republish is visible at once (`archive-withdrawn.ts`).
+		withdrawn = await checkArchiveWithdrawn(slug, lookupArchiveRowState, console);
+		if (withdrawn) {
+			Astro.response.status = ARCHIVE_GONE_STATUS;
+			Astro.response.headers.set('Cache-Control', ARCHIVE_GONE_CACHE_CONTROL);
+		} else {
+			Astro.response.status = 404;
+		}
 	}
 }
 
@@ -96,7 +107,9 @@ if (entry) {
 }
 ---
 
-{notFound || !entry ? (
+{notFound && withdrawn ? (
+	<NotFoundView eyebrow="410" heading="Archive issue withdrawn" summary="This archive issue has been withdrawn and is no longer available." />
+) : notFound || !entry ? (
 	<NotFoundView eyebrow="Archive" heading="Archive not found" summary="The requested archive issue may have been unpublished, moved, or removed." />
 ) : (
 	<EmDashContentView
