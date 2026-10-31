@@ -63,7 +63,7 @@ describe('component frontmatter database calls degrade, never throw mid-stream (
 	// purpose; a new one must catch its errors and fall back, then be added to this list.
 	const ALLOWED_COMPONENT_AWAITS: Record<string, { call: string; why: string }[]> = {
 		'src/components/EmDashContentView.astro': [
-			{ call: 'resolveSocialImageSrc', why: 'media / _emdash_seo lookups catch and fall back to the hero image' },
+			{ call: 'resolveSocialImageSrc', why: 'never rejects: client creation and every lookup are caught, then fall back to the hero image (#125, test-social-image.mts)' },
 			{ call: 'getWeeklySummaries', why: 'weekly prev/next is wrapped in try/catch' },
 		],
 	};
