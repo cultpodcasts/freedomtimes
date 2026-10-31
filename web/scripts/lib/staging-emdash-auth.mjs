@@ -22,6 +22,9 @@ export const STAGING_DEFAULT_URL = "https://staging.freedomtimes.news";
 export const STAGING_TOKEN_ENV_KEYS = Object.freeze(["EMDASH_STAGING_PAT", "EMDASH_STAGING_TOKEN"]);
 export const AUTH_JSON_SOURCE = "~/.config/emdash/auth.json";
 
+const UNREACHABLE_HINT =
+	" Retry when staging answers, or back up without the compare: backup-production-emdash.ps1 -SkipStagingCompare.";
+
 export const STAGING_TOKEN_FIX =
 	"Fix: put EMDASH_STAGING_PAT=<staging EmDash API token (ec_pat_...)> in the repo-root .env.dev " +
 	"(create the token in the staging EmDash admin under API tokens; it is the same token the staging " +
@@ -126,7 +129,7 @@ export async function checkStagingAuth(
 	} catch (e) {
 		throw new StagingAuthError(
 			"staging_unreachable",
-			`Could not reach staging EmDash at ${normaliseOrigin(baseUrl)} to check ${source}: ${e?.message ?? e}`,
+			`Could not reach staging EmDash at ${normaliseOrigin(baseUrl)} to check ${source}: ${e?.message ?? e}.${UNREACHABLE_HINT}`,
 			{ tokenSource: source },
 		);
 	}
@@ -134,7 +137,7 @@ export async function checkStagingAuth(
 	if (r.status < 200 || r.status >= 300) {
 		throw new StagingAuthError(
 			"staging_unreachable",
-			`Staging EmDash answered HTTP ${r.status} at ${url} while checking ${source}; the staging compare cannot run.`,
+			`Staging EmDash answered HTTP ${r.status} at ${url} while checking ${source}; the staging compare cannot run.${UNREACHABLE_HINT}`,
 			{ status: r.status, tokenSource: source },
 		);
 	}

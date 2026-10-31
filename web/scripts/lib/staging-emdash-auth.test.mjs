@@ -149,3 +149,18 @@ describe("checkStagingAuth", () => {
 		);
 	});
 });
+
+it("staging_unreachable says how to proceed (retry or -SkipStagingCompare)", async () => {
+	const err = await checkStagingAuth("https://staging.example", {
+		env: { EMDASH_STAGING_PAT: "ec_pat_secret" },
+		readAuthJson: () => null,
+		fetchImpl: async () => ({ status: 503, ok: false }),
+	}).then(
+		() => null,
+		(e) => e,
+	);
+	assert.ok(err, "expected a throw");
+	assert.equal(err.kind, "staging_unreachable");
+	assert.match(err.message, /-SkipStagingCompare/);
+	assert.doesNotMatch(err.message, /ec_pat_secret/);
+});
