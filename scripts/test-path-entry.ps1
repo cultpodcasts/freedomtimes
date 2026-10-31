@@ -118,10 +118,15 @@ try {
         Assert-True ($text -notmatch '\.turso/turso"\)?\s*\r?\n\s*if \(Test-Path') "$name has no hand-rolled ~/.turso fallback left"
     }
     # Windows-only scripts may keep $env:Path (case-insensitive there); everything else must use $env:PATH.
+    $pathAssign = '\$env:Path\s*\+?='
+    Assert-True ('$env:Path = "x"' -cmatch $pathAssign) "guard regex matches `$env:Path ="
+    Assert-True ('$env:Path += ";x"' -cmatch $pathAssign) "guard regex matches `$env:Path +="
+    Assert-True ('$env:Path+=":x"' -cmatch $pathAssign) "guard regex matches `$env:Path+="
+    Assert-True (-not ('$env:PATH = "x"' -cmatch $pathAssign)) "guard regex allows `$env:PATH ="
     $windowsOnly = @("build-android-capacitor.ps1", "ensure-windows-cli-path.ps1")
     $offenders = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter *.ps1 -Recurse |
         Where-Object { $windowsOnly -notcontains $_.Name -and $_.Name -ne "test-path-entry.ps1" } |
-        Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -cmatch '\$env:Path\s*=' } |
+        Where-Object { (Get-Content -Raw -LiteralPath $_.FullName) -cmatch $pathAssign } |
         ForEach-Object { $_.Name })
     Assert-True ($offenders.Count -eq 0) "no cross-platform script assigns `$env:Path (found: $($offenders -join ', '))"
 }
