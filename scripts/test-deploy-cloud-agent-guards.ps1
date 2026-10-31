@@ -9,7 +9,34 @@ Remove-Item Env:GITHUB_ACTIONS, Env:GITHUB_STEP_SUMMARY -ErrorAction SilentlyCon
 
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 . "$PSScriptRoot/resolve-turso-build-credentials.ps1"
-Initialize-DeployEnvironment -Environment production
+
+# #147: several functions under test warn on purpose (a 31-char stub CLOUDFLARE_API_TOKEN, a
+# production-looking process TURSO_DATABASE_URL), and a runner without nvm 22.22.2 warns from
+# Initialize-DeployEnvironment. Printed as "WARNING:" in the No-secrets guards step of a
+# production deploy they look like real config problems. Capture the warning stream instead:
+# expected warnings are asserted on, incidental ones are echoed as a plain "[guard test env]" line.
+function Invoke-GuardCapturingWarnings {
+    param([Parameter(Mandatory = $true)][scriptblock]$ScriptBlock)
+    $warnings = [System.Collections.Generic.List[string]]::new()
+    $output = & $ScriptBlock 3>&1 | ForEach-Object {
+        if ($_ -is [System.Management.Automation.WarningRecord]) { $warnings.Add($_.Message) } else { $_ }
+    }
+    [pscustomobject]@{ Output = $output; Warnings = @($warnings) }
+}
+
+function Write-GuardIncidentalWarnings {
+    param([string[]]$Warnings)
+    foreach ($w in @($Warnings)) {
+        Write-Host "[guard test env] $w" -ForegroundColor DarkGray
+    }
+}
+
+function Test-GuardWarned {
+    param([string[]]$Warnings, [string]$Pattern)
+    return @(@($Warnings) | Where-Object { $_ -match $Pattern }).Count -eq 1
+}
+
+Write-GuardIncidentalWarnings (Invoke-GuardCapturingWarnings { Initialize-DeployEnvironment -Environment production }).Warnings
 
 $script:Failed = 0
 $script:Passed = 0
@@ -41,13 +68,15 @@ try {
     $env:CLOUDFLARE_ACCOUNT_ID = "a" * 32
     $env:CLOUDFLARE_API_TOKEN = "F" * 31
     $env:TF_VAR_CLOUDFLARE_API_TOKEN = "c" * 53
-    Ensure-DeployCloudflareWranglerAuthFromEnv
+    $stubWarnings = (Invoke-GuardCapturingWarnings { Ensure-DeployCloudflareWranglerAuthFromEnv }).Warnings
     Assert-True ($env:CLOUDFLARE_API_TOKEN -eq ("c" * 53)) "replaces short stub with TF_VAR token"
+    Assert-True (Test-GuardWarned -Warnings $stubWarnings -Pattern '^CLOUDFLARE_API_TOKEN is not usable for Wrangler \(length 31\); using TF_VAR_CLOUDFLARE_API_TOKEN\.$') "warns once about the stub (captured, not printed: #147)"
 
     $env:CLOUDFLARE_API_TOKEN = "d" * 53
     $env:TF_VAR_CLOUDFLARE_API_TOKEN = "c" * 53
-    Ensure-DeployCloudflareWranglerAuthFromEnv
+    $plausibleWarnings = (Invoke-GuardCapturingWarnings { Ensure-DeployCloudflareWranglerAuthFromEnv }).Warnings
     Assert-True ($env:CLOUDFLARE_API_TOKEN -eq ("d" * 53)) "keeps a plausible process token"
+    Assert-True (@($plausibleWarnings).Count -eq 0) "no warning for a plausible process token"
 
     $env:CLOUDFLARE_API_TOKEN = "F" * 31
     $env:TF_VAR_CLOUDFLARE_API_TOKEN = ""
@@ -109,16 +138,19 @@ Assert-True (-not (Test-DeployRollbackSourceMatchesProductionEmDash `
 Write-Host "=== Select-StagingEmdashTursoUrl ignores process production shadow ==="
 $prodUrl = "libsql://example-emdash-production-abc123.aws-eu-west-1.turso.io"
 $stagingUrl = "libsql://example-emdash-staging-abc123.aws-eu-west-1.turso.io"
-$selected = Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint $prodUrl
+$shadowWarning = '^Process TURSO_DATABASE_URL is production EmDash\.'
+$capture = Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint $prodUrl }
+$selected = $capture.Output
+Assert-True (Test-GuardWarned -Warnings $capture.Warnings -Pattern $shadowWarning) "warns once about the process production shadow (captured, not printed: #147)"
 Assert-True ($selected.Value -eq $stagingUrl) "uses .env.dev staging URL when process URL is production"
 Assert-True ($selected.IgnoredProcessProductionShadow -eq $true) "flags process production shadow"
 Assert-True ($selected.Source -match "\.env\.dev") "source is .env.dev"
 
-$tfSelected = Select-StagingEmdashTursoUrl -TerraformUrl $stagingUrl -ProcessUrl $prodUrl -FileUrl $prodUrl -ProductionHint $prodUrl
+$tfSelected = (Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl $stagingUrl -ProcessUrl $prodUrl -FileUrl $prodUrl -ProductionHint $prodUrl }).Output
 Assert-True ($tfSelected.Value -eq $stagingUrl) "prefers terraform staging URL over process production"
 Assert-True ($tfSelected.IgnoredProcessProductionShadow -eq $true) "flags process production shadow even when terraform URL wins"
 
-$noHint = Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint ""
+$noHint = (Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint "" }).Output
 Assert-True ($noHint.Value -eq $stagingUrl) "skips process production URL when TURSO_PRODUCTION_EMDASH_DB_URL is unset"
 Assert-True ($noHint.IgnoredProcessProductionShadow -eq $true) "flags process production shadow without a production hint"
 
@@ -127,7 +159,7 @@ Assert-True ($tokenAfterTfUrl.Value -eq "file-staging-jwt") "with terraform URL 
 
 $tfUrlProdThrew = $false
 try {
-    Select-StagingEmdashTursoUrl -TerraformUrl $prodUrl -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint $prodUrl | Out-Null
+    Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl $prodUrl -ProcessUrl $prodUrl -FileUrl $stagingUrl -ProductionHint $prodUrl } | Out-Null
 }
 catch {
     $tfUrlProdThrew = $true
@@ -136,14 +168,16 @@ Assert-True $tfUrlProdThrew "refuses terraform URL that is production EmDash"
 
 $threw = $false
 try {
-    Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $prodUrl -ProductionHint $prodUrl | Out-Null
+    Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $prodUrl -FileUrl $prodUrl -ProductionHint $prodUrl } | Out-Null
 }
 catch {
     $threw = $true
 }
 Assert-True $threw "refuses when process and file URLs are both production"
 
-$processStaging = Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $stagingUrl -FileUrl $prodUrl -ProductionHint $prodUrl
+$capture = Invoke-GuardCapturingWarnings { Select-StagingEmdashTursoUrl -TerraformUrl "" -ProcessUrl $stagingUrl -FileUrl $prodUrl -ProductionHint $prodUrl }
+$processStaging = $capture.Output
+Assert-True (@($capture.Warnings).Count -eq 0) "no production-shadow warning for a staging process URL"
 Assert-True ($processStaging.Value -eq $stagingUrl) "uses process URL when it is staging"
 Assert-True ($processStaging.IgnoredProcessProductionShadow -eq $false) "does not flag a staging process URL as a production shadow"
 
@@ -297,7 +331,7 @@ catch {
 Assert-True (-not $skipBackupThrew) "SkipTursoBackup returns without requiring a fresh export"
 
 Write-Host "=== WorkerOnly -SkipTursoBackup skips emdash migrate ==="
-Initialize-DeployEnvironment -Environment production
+Write-GuardIncidentalWarnings (Invoke-GuardCapturingWarnings { Initialize-DeployEnvironment -Environment production }).Warnings
 Set-DeploySkipTursoMutate -SkipTursoBackup -WorkerOnly
 Assert-True ([bool]$script:DeploySkipTursoMutate) "WorkerOnly + SkipTursoBackup sets DeploySkipTursoMutate"
 $migrateThrew = $false
@@ -310,7 +344,7 @@ catch {
 }
 Assert-True (-not $migrateThrew) "migrate apply/check no-op when DeploySkipTursoMutate is set"
 
-Initialize-DeployEnvironment -Environment production
+Write-GuardIncidentalWarnings (Invoke-GuardCapturingWarnings { Initialize-DeployEnvironment -Environment production }).Warnings
 Set-DeploySkipTursoMutate
 Assert-True (-not [bool]$script:DeploySkipTursoMutate) "full deploy without SkipTursoBackup still migrates"
 
