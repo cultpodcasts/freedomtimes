@@ -13,16 +13,16 @@
  * - `ContentStoreUnavailableError` (#128: unmigrated, empty or unreachable EmDash database, see
  *   src/lib/content-store-guard.ts): 503 + `Retry-After` and NO robots meta, so crawlers treat it
  *   as "try again later" and nothing in the body can ever read as a noindex for a live URL.
- *   Astro forces this page's status to 500, so it sets the `CONTENT_STORE_UNAVAILABLE_HEADER`
- *   marker and src/middleware.ts turns the response into the 503 (and strips the marker). If
+ *   Astro forces this page's status to 500, so it flags the request locals
+ *   (`markContentStoreUnavailable`) and src/middleware.ts turns the response into the 503. If
  *   Astro had to render this page without middleware (middleware itself threw), the answer stays
  *   a 500 with `Retry-After`: still a temporary 5xx, never a 404.
  */
 import Layout from '../layouts/Layout.astro';
 import {
 	CONTENT_STORE_RETRY_AFTER_SECONDS,
-	CONTENT_STORE_UNAVAILABLE_HEADER,
 	isContentStoreUnavailable,
+	markContentStoreUnavailable,
 } from '../lib/content-store-guard';
 
 export const prerender = false;
@@ -32,7 +32,7 @@ Astro.response.status = 500;
 Astro.response.headers.set('Cache-Control', 'no-store');
 if (storeUnavailable) {
 	Astro.response.headers.set('Retry-After', String(CONTENT_STORE_RETRY_AFTER_SECONDS));
-	Astro.response.headers.set(CONTENT_STORE_UNAVAILABLE_HEADER, '1');
+	markContentStoreUnavailable(Astro.locals);
 }
 ---
 

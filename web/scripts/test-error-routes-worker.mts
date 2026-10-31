@@ -248,10 +248,13 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 		after(() => stopWorker(w));
 
 		for (const path of ['/', '/about-us', '/some-real-looking-page', '/posts/some-real-looking-post', '/archives/some-real-looking-issue']) {
-			it(`${path} → 503 page, never a 404 or an empty 200`, async () => {
-				const r = await get(w!, path);
-				assertStoreUnavailablePage(r, path);
-				assert.notEqual(r.headers.get('x-ft-cache'), 'MISS', `${path}: a 503 was offered to the page cache`);
+			it(`${path} → 503 page on every request, never a 404, an empty 200 or a page-cache HIT`, async () => {
+				for (let i = 0; i < 3; i += 1) {
+					const r = await get(w!, path);
+					assertStoreUnavailablePage(r, `${path} (request ${i + 1})`);
+					assert.notEqual(r.headers.get('x-ft-cache'), 'HIT', `${path} (request ${i + 1}): served from cache`);
+					assert.notEqual(r.headers.get('x-ft-cache'), 'MISS', `${path} (request ${i + 1}): a 503 was offered to the cache`);
+				}
 			});
 		}
 		it(`${SITE_SITEMAP} → 503, never a thin sitemap`, async () => {

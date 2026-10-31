@@ -175,7 +175,7 @@ async function maybeInjectNativeShellBridge(path: string, response: Response): P
 // #128: a 500.astro render marked "content store unavailable" leaves as a 503 + Retry-After (Astro
 // pins 500.astro to status 500). Wraps every return path, including the error-page render.
 export const onRequest = defineMiddleware(async (context, next) => {
-  return promoteContentStoreUnavailable(await handleSiteRequest(context, next));
+  return promoteContentStoreUnavailable(await handleSiteRequest(context, next), context.locals);
 });
 
 async function handleSiteRequest(context: APIContext, next: MiddlewareNext): Promise<Response> {

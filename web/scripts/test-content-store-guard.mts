@@ -14,11 +14,11 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
-	CONTENT_STORE_UNAVAILABLE_HEADER,
 	ContentStoreUnavailableError,
 	createContentStoreGuard,
 	diagnoseContentStore,
 	isContentStoreUnavailable,
+	markContentStoreUnavailable,
 	promoteContentStoreUnavailable,
 	REQUIRED_CONTENT_TABLES,
 	rethrowLookupFailure,
@@ -66,6 +66,28 @@ describe('createContentStoreGuard', () => {
 		await guard();
 		assert.equal(calls(), 1);
 		assert.deepEqual(logs, []);
+	});
+
+	it('concurrent first misses share one probe (cold isolate under a burst)', async () => {
+		const { guard, calls } = countingGuard([LIVE]);
+		await Promise.all(Array.from({ length: 8 }, () => guard()));
+		assert.equal(calls(), 1);
+	});
+
+	it('a failed shared probe rejects every waiter once and is not remembered', async () => {
+		const { guard, calls, logs } = countingGuard([{ tables: [], hasPublishedPost: false }, LIVE]);
+		const settled = await Promise.allSettled(Array.from({ length: 5 }, () => guard()));
+		assert.ok(settled.every((s) => s.status === 'rejected' && isContentStoreUnavailable(s.reason)));
+		assert.equal(calls(), 1);
+		assert.equal(logs.length, 1);
+		await guard();
+		assert.equal(calls(), 2);
+	});
+
+	it('fresh callers do not join the shared probe', async () => {
+		const { guard, calls } = countingGuard([LIVE]);
+		await Promise.all([guard(), guard({ fresh: true }), guard({ fresh: true })]);
+		assert.equal(calls(), 3);
 	});
 
 	it('unmigrated: throws ContentStoreUnavailableError and logs loudly', async () => {
@@ -144,36 +166,40 @@ describe('isContentStoreUnavailable', () => {
 });
 
 describe('promoteContentStoreUnavailable (500.astro → 503)', () => {
-	it('a marked 500 becomes a 503 with the same body, Retry-After and no-store, marker stripped', async () => {
-		const marked = new Response('<p>down</p>', {
+	const flagged = () => {
+		const locals = {};
+		markContentStoreUnavailable(locals);
+		return locals;
+	};
+	it('a 500 on a flagged request becomes a 503 with the same body, Retry-After and no-store', async () => {
+		const page = new Response('<p>down</p>', {
 			status: 500,
-			headers: { 'content-type': 'text/html', 'retry-after': '300', 'cache-control': 'no-store', [CONTENT_STORE_UNAVAILABLE_HEADER]: '1', 'x-other': 'kept' },
+			headers: { 'content-type': 'text/html', 'retry-after': '300', 'cache-control': 'no-store', 'x-other': 'kept' },
 		});
-		const r = promoteContentStoreUnavailable(marked);
+		const r = promoteContentStoreUnavailable(page, flagged());
 		assert.equal(r.status, 503);
 		assert.equal(r.headers.get('retry-after'), '300');
 		assert.equal(r.headers.get('cache-control'), 'no-store');
 		assert.equal(r.headers.get('x-other'), 'kept');
 		assert.equal(r.headers.get('content-type'), 'text/html');
-		assert.equal(r.headers.has(CONTENT_STORE_UNAVAILABLE_HEADER), false);
 		assert.equal(await r.text(), '<p>down</p>');
 	});
-	it('a marked 500 without Retry-After still gets one', () => {
-		const r = promoteContentStoreUnavailable(new Response('x', { status: 500, headers: { [CONTENT_STORE_UNAVAILABLE_HEADER]: '1' } }));
+	it('a flagged 500 without Retry-After still gets one', () => {
+		const r = promoteContentStoreUnavailable(new Response('x', { status: 500 }), flagged());
 		assert.equal(r.status, 503);
 		assert.equal(r.headers.get('retry-after'), '300');
 	});
-	it('unmarked responses and non-500s are returned untouched (the same object)', () => {
-		for (const res of [
-			new Response('x', { status: 500 }),
-			new Response('x', { status: 404 }),
-			new Response('x', { status: 200, headers: { [CONTENT_STORE_UNAVAILABLE_HEADER]: '1' } }),
-		]) {
-			assert.equal(promoteContentStoreUnavailable(res), res);
+	it('unflagged requests and non-500s are returned untouched (the same object)', () => {
+		for (const [res, locals] of [
+			[new Response('x', { status: 500 }), {}],
+			[new Response('x', { status: 404 }), flagged()],
+			[new Response('x', { status: 200 }), flagged()],
+		] as const) {
+			assert.equal(promoteContentStoreUnavailable(res, locals), res);
 		}
 	});
 	it('src/middleware.ts wraps every return path with it', () => {
-		assert.match(read('src/middleware.ts'), /export const onRequest = defineMiddleware\(async \(context, next\) => \{\s*return promoteContentStoreUnavailable\(await handleSiteRequest\(context, next\)\);\s*\}\);/);
+		assert.match(read('src/middleware.ts'), /export const onRequest = defineMiddleware\(async \(context, next\) => \{\s*return promoteContentStoreUnavailable\(await handleSiteRequest\(context, next\), context\.locals\);\s*\}\);/);
 	});
 });
 

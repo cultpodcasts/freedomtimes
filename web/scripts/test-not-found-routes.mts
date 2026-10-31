@@ -188,7 +188,7 @@ describe('error routes', () => {
 		// Astro pins 500.astro to 500; src/middleware.ts promotes the marked variant to 503.
 		assert.match(page, /Astro\.response\.status = 500;/);
 		assert.match(page, /Cache-Control', 'no-store'/);
-		assert.match(page, /if \(storeUnavailable\) \{\s*Astro\.response\.headers\.set\('Retry-After', String\(CONTENT_STORE_RETRY_AFTER_SECONDS\)\);\s*Astro\.response\.headers\.set\(CONTENT_STORE_UNAVAILABLE_HEADER, '1'\);/);
+		assert.match(page, /if \(storeUnavailable\) \{\s*Astro\.response\.headers\.set\('Retry-After', String\(CONTENT_STORE_RETRY_AFTER_SECONDS\)\);\s*markContentStoreUnavailable\(Astro\.locals\);/);
 		assert.match(page, /<Layout\s[^>]*canonicalUrl=\{null\}[^>]*noindex=\{!storeUnavailable\}[^>]*omitRobotsMeta=\{storeUnavailable\}/);
 		const imports = [...page.matchAll(/^import [^;]*? from '([^']+)';$/gm)].map((m) => m[1]);
 		assert.deepEqual(imports, ['../layouts/Layout.astro', '../lib/content-store-guard']);

@@ -19,7 +19,7 @@
  * the URL and retries instead of dropping it. Each failure is logged loudly.
  *
  * Cost: a healthy result is remembered for the life of the isolate, so a healthy site probes once
- * per isolate, and only on its first miss. Failures are never remembered: the next miss probes
+ * per isolate, and only on its first miss (concurrent first misses share that one probe). Failures are never remembered: the next miss probes
  * again, so the site recovers as soon as the database is fixed. After a lookup *error* (not a miss)
  * the route forces a fresh probe to decide between 503 (store down) and 500 (anything else).
  *
@@ -98,8 +98,11 @@ export function createContentStoreGuard(
 		console.error(message, JSON.stringify(details)),
 ): AssertContentStoreReady {
 	let healthy = false;
-	return async function assertContentStoreReady(options: ContentStoreGuardOptions = {}): Promise<void> {
-		if (healthy && !options.fresh) return;
+	// One shared probe for concurrent non-`fresh` callers (a cold isolate under a burst of misses);
+	// cleared when it settles, so a failure is still never remembered.
+	let pending: Promise<void> | null = null;
+
+	async function check(): Promise<void> {
 		let result: ContentStoreProbeResult;
 		try {
 			result = await probe();
@@ -116,6 +119,15 @@ export function createContentStoreGuard(
 			throw new ContentStoreUnavailableError(problem);
 		}
 		healthy = true;
+	}
+
+	return async function assertContentStoreReady(options: ContentStoreGuardOptions = {}): Promise<void> {
+		if (options.fresh) return check();
+		if (healthy) return;
+		pending ??= check().finally(() => {
+			pending = null;
+		});
+		return pending;
 	};
 }
 
@@ -129,22 +141,26 @@ export async function rethrowLookupFailure(error: unknown, assertReady: AssertCo
 	throw error;
 }
 
-/**
- * Marker header src/pages/500.astro sets on its content-store-unavailable variant. Astro forces
- * every render of 500.astro to status 500 (runtime/server/render/page.js), so the page cannot
- * answer 503 itself; src/middleware.ts promotes the marked response with
- * {@link promoteContentStoreUnavailable} and strips the marker.
- */
-export const CONTENT_STORE_UNAVAILABLE_HEADER = 'x-ft-content-store-unavailable';
+/** Request-locals key 500.astro sets on its content-store-unavailable variant (no response header). */
+const UNAVAILABLE_LOCALS_FLAG = 'ftContentStoreUnavailable';
 
 /**
- * A 500 page marked with {@link CONTENT_STORE_UNAVAILABLE_HEADER} → the same body as a 503
- * (`Retry-After` and `Cache-Control` kept, marker removed). Any other response is returned as is.
+ * Called by src/pages/500.astro on its content-store-unavailable variant. Astro forces every
+ * render of 500.astro to status 500 (runtime/server/render/page.js), so the page cannot answer 503
+ * itself: it flags the request locals, which the error render shares with the middleware, and
+ * src/middleware.ts promotes the response with {@link promoteContentStoreUnavailable}.
  */
-export function promoteContentStoreUnavailable(response: Response): Response {
-	if (response.status !== 500 || !response.headers.has(CONTENT_STORE_UNAVAILABLE_HEADER)) return response;
+export function markContentStoreUnavailable(locals: object): void {
+	Reflect.set(locals, UNAVAILABLE_LOCALS_FLAG, true);
+}
+
+/**
+ * A 500 whose request was flagged by {@link markContentStoreUnavailable} → the same body as a 503
+ * (`Retry-After` and `Cache-Control: no-store` ensured). Any other response is returned as is.
+ */
+export function promoteContentStoreUnavailable(response: Response, locals: object): Response {
+	if (response.status !== 500 || Reflect.get(locals, UNAVAILABLE_LOCALS_FLAG) !== true) return response;
 	const headers = new Headers(response.headers);
-	headers.delete(CONTENT_STORE_UNAVAILABLE_HEADER);
 	if (!headers.has('retry-after')) headers.set('Retry-After', String(CONTENT_STORE_RETRY_AFTER_SECONDS));
 	headers.set('Cache-Control', 'no-store');
 	return new Response(response.body, { status: 503, statusText: 'Service Unavailable', headers });
