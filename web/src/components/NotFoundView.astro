@@ -3,8 +3,9 @@
  * The site's standard "not found" page body (HTTP 404). Used by every reader 404:
  * `src/pages/404.astro` (any URL no route matches, e.g. `/2026/10/11/`, `/category/x`),
  * `[slug].astro` (no EmDash page or post with that slug), `posts/[slug].astro` and
- * `archives/[slug].astro` (with their own heading). The caller sets the 404 status.
- * noindex and no canonical / og:url: a 404 must never be indexed or point anywhere.
+ * `archives/[slug].astro` (with their own heading). The caller sets the status: 404, or 410 for a
+ * withdrawn archive issue (#151, `lib/content/archive-withdrawn.ts`).
+ * noindex and no canonical / og:url: a 404 or 410 must never be indexed or point anywhere.
  * Public page: no CMS links.
  */
 import Layout from '../layouts/Layout.astro';

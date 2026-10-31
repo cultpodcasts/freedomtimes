@@ -42,6 +42,7 @@ const {
 	isPreview = false,
 	isAdmin = false,
 	isSignedIn,
+	pdfStatus = "unknown",
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
 	collectionLabel: string;
@@ -51,6 +52,8 @@ const {
 	isPreview?: boolean;
 	isAdmin?: boolean;
 	isSignedIn?: boolean;
+	/** Archives only (#151): `missing` replaces the PDF link with an unavailable notice. */
+	pdfStatus?: "available" | "missing" | "unknown";
 };
 
 const resolvedIsSignedIn = isSignedIn ?? false;
@@ -226,6 +229,7 @@ const jsonLd: Record<string, unknown>[] = isPost
 					volumeNumber={volumeNumber}
 					regionalVariant={regionalVariant}
 					pdfLink={pdfLink}
+					pdfStatus={pdfStatus}
 					featuredImageSrc={featuredImageSrc}
 					featuredImageAlt={featuredImageAlt}
 					featuredImageCaption={featuredImageCaption}

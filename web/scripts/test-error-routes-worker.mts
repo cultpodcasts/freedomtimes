@@ -32,6 +32,9 @@
  *   - FT_TEST_ARCHIVE_SLUG (optional): a published archive issue that must render 200 at both
  *     `/archives/<slug>` and `/archives/<id>` (EmDash's loader matches slug OR id; the id is read
  *     from the local database's `ec_archives` row)
+ *   - FT_TEST_WITHDRAWN_ARCHIVE_SLUG (optional, #151): an archive issue that was published and then
+ *     unpublished or trashed → 410 at `/archives/<slug>`, the noindex NotFoundView ("withdrawn"),
+ *     `Cache-Control: no-store`, no canonical; with PAGE_CACHE=on never `x-ft-cache: HIT`
  *   FT_TEST_LIBSQL_URL needs at least one published post: with none, the content-store guard
  *   (#128) rightly answers 503 for `/` and every miss.
  * With FT_TEST_EMPTY_LIBSQL_URL (a LOCAL libsql URL, migrated with `npx emdash migrate`, no posts;
@@ -67,6 +70,7 @@ const unmigratedDb = process.env.FT_TEST_UNMIGRATED_LIBSQL_URL?.trim() || '';
 const postSlug = process.env.FT_TEST_POST_SLUG?.trim() || '';
 const pageSlug = process.env.FT_TEST_PAGE_SLUG?.trim() || '';
 const archiveSlug = process.env.FT_TEST_ARCHIVE_SLUG?.trim() || '';
+const withdrawnArchiveSlug = process.env.FT_TEST_WITHDRAWN_ARCHIVE_SLUG?.trim() || '';
 const SITE_SITEMAP = '/sitemap-site-pages.xml';
 
 for (const [name, url] of [['FT_TEST_LIBSQL_URL', localDb], ['FT_TEST_EMPTY_LIBSQL_URL', emptyDb], ['FT_TEST_UNMIGRATED_LIBSQL_URL', unmigratedDb]]) {
@@ -134,6 +138,16 @@ function assertNotFoundPage(r: { status: number; body: string }, path: string) {
 	assert.match(r.body, /data-ft-not-found/, `${path}: standard NotFoundView`);
 	assert.match(r.body, /<meta name="robots" content="noindex,nofollow"/, `${path}: noindex`);
 	assert.doesNotMatch(r.body, /rel="canonical"/, `${path}: no canonical on a 404`);
+}
+
+/** #151: a withdrawn archive issue → 410, the same noindex NotFoundView as a 404, never stored. */
+function assertGonePage(r: { status: number; headers: Headers; body: string }, path: string) {
+	assert.equal(r.status, 410, `${path}: status`);
+	assert.equal(r.headers.get('cache-control'), 'no-store', `${path}: no-store`);
+	assert.match(r.body, /data-ft-not-found/, `${path}: standard NotFoundView`);
+	assert.match(r.body, /Archive issue withdrawn/, `${path}: withdrawn heading`);
+	assert.match(r.body, /<meta name="robots" content="noindex,nofollow"/, `${path}: noindex`);
+	assert.doesNotMatch(r.body, /rel="canonical"/, `${path}: no canonical on a 410`);
 }
 
 function assertServerErrorPage(r: { status: number; headers: Headers; body: string }, path: string) {
@@ -368,6 +382,25 @@ describe('error routes in the built Worker', { skip: !existsSync(`${webRoot}${bu
 				assert.match(r.body, /<\/html>\s*$/i, `${path}: complete document`);
 			}
 		});
+	});
+
+	describe('withdrawn archive issue (#151)', { skip: (!localDb || !withdrawnArchiveSlug) && 'set FT_TEST_LIBSQL_URL and FT_TEST_WITHDRAWN_ARCHIVE_SLUG' }, () => {
+		let w: Worker | undefined;
+		before(async () => {
+			w = await startWorker('production', { SITE_ACCESS_MODE: 'public', PAGE_CACHE: 'on', TURSO_DATABASE_URL: localDb, TURSO_AUTH_TOKEN: 'local-test' });
+		});
+		after(() => stopWorker(w));
+
+		it('/archives/<withdrawn> → 410 noindex page, no-store, never a page-cache HIT', async () => {
+			const path = `/archives/${withdrawnArchiveSlug}`;
+			for (let i = 0; i < 2; i += 1) {
+				const r = await get(w!, path);
+				assertGonePage(r, path);
+				assert.notEqual(r.headers.get('x-ft-cache'), 'HIT', `${path}: request ${i + 1} must not be a cache HIT`);
+			}
+		});
+		it('an unknown archive slug is still a plain 404', async () =>
+			assertNotFoundPage(await get(w!, '/archives/does-not-exist-xyz'), '/archives/does-not-exist-xyz'));
 	});
 
 	describe('local database reachable, PAGE_CACHE on (production cache config)', { skip: !localDb && 'set FT_TEST_LIBSQL_URL to a local migrated libsql URL' }, () => {
