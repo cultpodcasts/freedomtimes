@@ -53,7 +53,11 @@ const homePath = getHomePath();
 			)}
 			{/* Sign in: Capacitor native only (hidden until client reveals). Sign out / Admin stay on web. */}
 			{isSignedIn ? (
-				<a href="/auth/logout">Sign out</a>
+				<>
+					{/* #149: Android app only (revealed below). The page itself is gated to admin/editor. */}
+					<a class="nav-app-environment" href="/app-environment" hidden>App environment</a>
+					<a href="/auth/logout">Sign out</a>
+				</>
 			) : (
 				<a
 					class="nav-sign-in"
@@ -255,14 +259,24 @@ const homePath = getHomePath();
 <script>
 	import { Capacitor } from '@capacitor/core';
 
+	import { shouldRevealAppEnvironmentLink } from '../lib/app-environment-switch';
+
 	const nav = document.querySelector('.main-nav');
 	const toggle = document.querySelector('#mobile-nav-toggle');
 	const content = document.querySelector('#mobile-nav-content');
 	const signInLink = document.querySelector('.nav-sign-in');
+	const appEnvironmentLink = document.querySelector('.nav-app-environment');
 
 	// Browser / PWA: leave Sign in hidden. Capacitor native: show it (same flag Layout uses for data-native-shell).
 	if (signInLink instanceof HTMLAnchorElement && Capacitor.isNativePlatform()) {
 		signInLink.hidden = false;
+	}
+
+	if (
+		appEnvironmentLink instanceof HTMLAnchorElement
+		&& shouldRevealAppEnvironmentLink(Capacitor.isNativePlatform(), Capacitor.getPlatform())
+	) {
+		appEnvironmentLink.hidden = false;
 	}
 
 	if (nav instanceof HTMLElement && toggle instanceof HTMLButtonElement && content instanceof HTMLElement) {

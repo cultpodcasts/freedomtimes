@@ -1,7 +1,8 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { PushNotifications } from '@capacitor/push-notifications';
 
 import { isIosWebKitBrowser, isStandalonePwa } from './browser-platform';
+import { nativeAppConfig } from './native-app-config';
 import type { LastTestNotification } from './notification-diagnostics-server';
 import { SITE_DISPLAY_NAME } from './site-brand';
 
@@ -127,10 +128,6 @@ const BUTTON_DISABLED_REASON = {
   iosRequiresHomeScreen: 'On iPhone and iPad, add this site to your Home Screen first',
 } as const;
 
-type NativeAppConfigPlugin = {
-  getFirebaseStatus: () => Promise<{ firebaseConfigured: boolean }>;
-};
-
 type RegistrationWaiter = {
   resolve: (token: string) => void;
   reject: (error: Error) => void;
@@ -147,7 +144,6 @@ const registrationWaiters: RegistrationWaiter[] = [];
 let nativeRegistrationPromise: Promise<void> | null = null;
 let listenersAttached = false;
 let nativeAutoRegistrationPromise: Promise<void> | null = null;
-const nativeAppConfig = registerPlugin<NativeAppConfigPlugin>('NativeAppConfig');
 
 export async function getNotificationSupportState(publicKey: string): Promise<NotificationSupportState> {
   if (isNativeNotificationPlatform()) {

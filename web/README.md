@@ -90,7 +90,7 @@ Secrets (`AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, Turso tokens,
 
 ## Capacitor (mobile)
 
-The site runs as a Cloudflare Worker SSR app, not a static export. Capacitor wraps a **live URL** (default `https://staging.freedomtimes.news`) rather than packaging the Worker runtime.
+The site runs as a Cloudflare Worker SSR app, not a static export. Capacitor wraps a **live URL** rather than packaging the Worker runtime. `CAPACITOR_SERVER_URL` defaults to `https://staging.freedomtimes.news` at sync time, but the Android app opens production until an editor switches it (see [docs/ANDROID_CAPACITOR_BUILD.md](docs/ANDROID_CAPACITOR_BUILD.md), #149).
 
 ```powershell
 cd web

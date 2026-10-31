@@ -151,6 +151,8 @@ dependencies {
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:$androidxSwipeRefreshLayoutVersion"
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    // #149: delete the FCM token on a staging/production switch (same version as @capacitor/push-notifications).
+    implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
