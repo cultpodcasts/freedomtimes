@@ -93,7 +93,11 @@
 				"PAGE_VIEWS_DATASET": "freedomtimes_page_views",
 				// Anonymous reader HTML cache (src/lib/page-cache.ts). "on" enables it; anything else = off.
 				"PAGE_CACHE": "on",
-				"PAGE_CACHE_TTL_SECONDS": "120"
+				"PAGE_CACHE_TTL_SECONDS": "120",
+				// Stage A: email an X intent link when a post is published. Flip to "api" for Stage B.
+				"X_AUTO_POST_MODE": "intent",
+				"X_AUTO_POST_ALLOW_SEND": "yes",
+				"X_AUTO_POST_NOTIFY_TO": "socialmedia@freedomtimes.news"
 			}
 		},
 		"staging": {
@@ -148,7 +152,9 @@
 				"PAGE_VIEWS_DATASET": "freedomtimes_staging_page_views",
 				// Staging is locked (Auth0): every content response is per-session, so the anonymous
 				// page cache must stay off here. Never set "on" for staging.
-				"PAGE_CACHE": "off"
+				"PAGE_CACHE": "off",
+				// Staging never sends. The allow flag is production-only, and the handler dry-runs without it.
+				"X_AUTO_POST_MODE": "dry-run"
 			}
 		}
 	}

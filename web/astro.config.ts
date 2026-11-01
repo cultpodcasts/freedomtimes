@@ -29,6 +29,10 @@ const pageCachePurgePluginPath = fileURLToPath(
 const socialSharePluginPath = fileURLToPath(
   new URL('./src/plugins/social-share.ts', import.meta.url),
 ).replace(/\\/g, '/');
+// Site-local native plugin: on production publish, email an X intent link (or post via the API).
+const xAutoPostPluginPath = fileURLToPath(
+  new URL('./src/plugins/x-auto-post.ts', import.meta.url),
+).replace(/\\/g, '/');
 const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
 // Build-time Turso is required for `.emdash/migrations.json` + `emdash migrate`.
@@ -221,6 +225,17 @@ export default defineConfig({
           options: {},
           capabilities: ['content:read', 'network:request'],
           allowedHosts: ['bsky.social', 'api.x.com'],
+        },
+        // Production publish → X intent email, or the X API when X_AUTO_POST_MODE=api.
+        // Staging dry-runs (no X_AUTO_POST_ALLOW_SEND). See web/docs/X_AUTO_POST.md.
+        {
+          id: 'ft-x-auto-post',
+          version: '1.0.0',
+          entrypoint: xAutoPostPluginPath,
+          format: 'native',
+          options: {},
+          capabilities: ['content:read', 'email:send', 'network:request'],
+          allowedHosts: ['api.x.com'],
         },
       ] as PluginDescriptor[],
     }),

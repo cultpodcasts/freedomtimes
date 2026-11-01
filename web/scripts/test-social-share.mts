@@ -332,7 +332,7 @@ describe('admin-only access', () => {
 				const full = join(dir, name);
 				const rel = relative(root, full).replace(/\\/g, '/');
 				if (statSync(full).isDirectory()) {
-					if (rel === 'src/lib/social-share') continue;
+					if (rel === 'src/lib/social-share' || rel === 'src/lib/x-auto') continue;
 					walk(full);
 				} else if (/\.(astro|ts|tsx|js|mjs|jsx|html|json|webmanifest|css)$/.test(name) && !allowed.has(rel)) {
 					const text = readFileSync(full, 'utf8');
