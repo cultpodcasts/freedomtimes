@@ -284,12 +284,14 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 
 	const key = shareRecordKey(provider.network, postId, mode);
 	const record = await deps.kv.getVersioned<ShareRecord>(key);
+	/** Where a real post goes: the test account on staging, the network itself in production. */
+	const target = mode === 'staging' ? `the ${provider.label} test account` : provider.label;
 
 	if (record?.value.status === 'posted') {
 		const r = record.value;
 		const blocks: PanelBlock[] = [
 			banner(
-				`Shared to ${provider.label}`,
+				`Shared to ${target}`,
 				`Posted on ${ukTime(r.postedAt)} by ${r.claimedBy}. A post can only be shared once per network.`,
 			),
 		];
@@ -307,7 +309,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 			...blocked([
 				banner(
 					'Last attempt may or may not have posted',
-					`${r.claimedBy} tried to post on ${ukTime(r.claimedAt)}${r.error ? ` (${r.error})` : ''}. Check the ${provider.label} profile first. If the post isn't there, release the lock to try again.`,
+					`${r.claimedBy} tried to post on ${ukTime(r.claimedAt)}${r.error ? ` (${r.error})` : ''}. Check ${target === provider.label ? `the ${provider.label} profile` : `${target}'s profile`} first. If the post isn't there, release the lock to try again.`,
 					'error',
 				),
 				{
@@ -334,7 +336,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 	}
 	if (record) {
 		return {
-			...blocked([banner('Posting in progress', `${record.value.claimedBy} is posting this to ${provider.label} right now.`)]),
+			...blocked([banner('Posting in progress', `${record.value.claimedBy} is posting this to ${target} right now.`)]),
 			record,
 		};
 	}

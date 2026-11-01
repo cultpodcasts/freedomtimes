@@ -790,7 +790,7 @@ describe('staging test accounts and dry run (#178)', () => {
 		const posted = await act({ ...deps, env }, 'bluesky_post', button?.value, STAGING_URL);
 		assert.equal(posted.toast?.message, 'Posted to the Bluesky test account.');
 		assert.equal(posted.blocks[0].title, 'Staging: posting to test account @ft-test.bsky.social');
-		assert.equal(posted.blocks[1].title, 'Shared to Bluesky');
+		assert.equal(posted.blocks[1].title, 'Shared to the Bluesky test account');
 		const session = JSON.parse(String(bsky.calls[0].init?.body));
 		assert.deepEqual(session, { identifier: 'ft-test.bsky.social', password: 'test-only-pass' });
 		assert.equal(bsky.creates(), 1);
@@ -856,6 +856,7 @@ describe('staging test accounts and dry run (#178)', () => {
 		await kv.set('share-test:bluesky:p1', { network: 'bluesky', postId: 'p1', status: 'uncertain', text: 't', claimedAt: '2026-10-31T22:00:00Z', claimedBy: 'Ada' });
 		const res = await load(deps, { url: STAGING_URL });
 		assert.ok(findButton(res.blocks, 'bluesky_release'));
+		assert.match(String(res.blocks[1].description), /Check the Bluesky test account's profile first/);
 		const released = await act(deps, 'bluesky_release', undefined, STAGING_URL);
 		assert.equal(released.toast?.message, 'Lock released. Check the preview before posting again.');
 		assert.equal(kv.data.size, 0);
