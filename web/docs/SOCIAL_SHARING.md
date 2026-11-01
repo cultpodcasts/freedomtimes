@@ -4,7 +4,9 @@ Admins can share a published post to the Freedom Times **Bluesky** account
 ([#21](https://github.com/cultpodcasts/freedomtimes/issues/21)) and **X** account
 ([#20](https://github.com/cultpodcasts/freedomtimes/issues/20)) from the EmDash admin. Nothing posts
 automatically. An admin opens the post, checks the preview, presses the button and confirms. Each network is
-shared separately.
+shared separately. Only production posts to the real accounts. On staging the panels can be tested
+([#178](https://github.com/cultpodcasts/freedomtimes/issues/178)): as a **dry run** that sends nothing, or against
+separate **test accounts** ([§ Testing on staging](#testing-on-staging)).
 
 ## Where it is
 
@@ -38,7 +40,9 @@ shared separately.
 
 | Situation | Panel |
 |---|---|
-| Staging, local dev, or any host other than `freedomtimes.news` / `www.freedomtimes.news` | "Disabled outside production". No button. Staging can never post to the real accounts. |
+| Staging, that network's test secrets not set | Banner **"Staging: dry run"**, then the dry-run preview (below). Button **Dry run: Post to `<Network>`**. Nothing is sent or recorded. |
+| Staging, that network's test secrets set | Banner **"Staging: posting to test account `<account>`"**, then the states below as in production, but every post goes to the test account. Button **Post to `<Network>` test account**. |
+| Local dev, or any host other than `freedomtimes.news` / `www.freedomtimes.news` / `staging.freedomtimes.news` | Banner **"Local: dry run"** and the dry-run preview. Nothing is ever sent or recorded, and no secret is read. |
 | Production, that network's secrets not set | "`<Network>` sharing isn't configured", naming the secrets below. No button. |
 | Draft, scheduled or unpublished post | "Publish this post first". No button. |
 | Ready | The exact post text (title, blank line, article link) and the extra rows below, then **Post to `<Network>`**. The confirm dialog repeats the text and the account. |
@@ -49,7 +53,12 @@ shared separately.
 Extra preview rows: Bluesky shows the link card title and description. X shows the post's length as X counts it.
 
 "Production" means the Worker runs with `SITE_ACCESS_MODE=public` (only the `production` env in
-`wrangler.jsonc`) **and** the request host is `freedomtimes.news` or `www.freedomtimes.news`.
+`wrangler.jsonc`) **and** the request host is `freedomtimes.news` or `www.freedomtimes.news`. "Staging" means
+`SITE_ACCESS_MODE=locked` **and** the host `staging.freedomtimes.news`. Anything else (local dev, which is also
+`locked`; preview hosts; a public Worker on another host) counts as local (`socialShareMode` in
+`src/lib/social-share/policy.ts`).
+
+The production panels show no mode banner and behave exactly as before #178.
 
 ## What gets posted
 
@@ -88,7 +97,10 @@ shows the new preview.
 ## No double posting
 
 Each share is recorded in the plugin's KV under `share:<network>:<post id>` (`share:bluesky:…` or `share:x:…`).
-A post shared to Bluesky can still be shared to X once, and the other way round.
+A post shared to Bluesky can still be shared to X once, and the other way round. Staging test-account shares use
+`share-test:<network>:<post id>` in the staging database, so a production record copied into staging never blocks
+a test post, and a test post is never counted as a real one. A dry run records nothing, so it never blocks a later
+real or test post.
 
 1. Before calling the network, the panel claims the key atomically. Only one click can win, even if two admins
    click at once.
@@ -103,7 +115,8 @@ A post shared to Bluesky can still be shared to X once, and the other way round.
 
 ## Setting the secrets (Jon)
 
-Credentials are Worker secrets on the **production** Worker only. They are never committed, and none are
+The real accounts' credentials are Worker secrets on the **production** Worker only (staging has its own
+test-account names: [§ Testing on staging](#testing-on-staging)). They are never committed, and none are
 set in GitHub, `.env.dev` or Terraform. Each network works on its own: set only Bluesky's, and only the
 Bluesky panel goes live.
 
@@ -160,8 +173,8 @@ To revoke: regenerate (or revoke) the access token on the app's **Keys and token
 Open a published post in the production EmDash admin. The panel for that network should show the preview and
 the button. Secrets take effect without a redeploy.
 
-Do **not** set these on staging. Staging can't post even if they are set, but keeping them off staging means a
-staging copy never holds the credentials.
+Do **not** set these on staging. Staging never reads them (it reads only the `*_TEST_*` names below), and keeping
+them off staging means a staging copy never holds the credentials.
 
 **Keeping the secrets.** The normal production deploy (`wrangler deploy`, run when a PR merges) keeps Worker
 secrets. A production **Terraform apply** re-uploads the Worker's Terraform-owned `secret_text` bindings and
@@ -170,6 +183,87 @@ can drop secrets set by hand (see
 Terraform apply, open the panels. If one says "isn't configured", run that network's commands again. Wiring
 these names into Terraform or `set-github-secrets.ps1` would make them survive, but it needs new GitHub or
 `.env` secrets, so it is left for Jon to decide.
+
+## Testing on staging
+
+Open a published post in the staging EmDash admin (`https://staging.freedomtimes.news/_emdash/admin`, behind the
+Auth0 lock as usual).
+
+### Dry run (no setup)
+
+With no test secrets on the staging Worker, each panel shows **"Staging: dry run"**. It shows the exact post text,
+the preview rows, and the request a real post would send, with credentials left out:
+
+- Bluesky: the `com.atproto.repo.createRecord` body, with the `app.bsky.feed.post` record, its link facet and the
+  `app.bsky.embed.external` link card (title, description, link; no image);
+- X: the `POST /2/tweets` body `{"text": …}`. X builds the link card itself from the article page's Open Graph tags.
+
+**Dry run: Post to `<Network>`** checks everything a real post checks (published, the preview hasn't changed),
+rebuilds the post and shows *"Dry run: … Nothing was sent and nothing was recorded."* No network call, no
+KV record, no confirm dialog. Local dev (`npm run dev`) always behaves like this, even with test secrets in
+`.dev.vars`.
+
+### Posting to test accounts (Jon)
+
+Set staging-only test-account secrets on the **staging** Worker (`freedomtimes-staging`, wrangler env `staging`).
+They use their own names, so staging can never read or use a production secret, and production never reads these.
+Each network works on its own.
+
+| Staging secret | Value |
+|---|---|
+| `BLUESKY_TEST_HANDLE` | The test account's handle, e.g. `freedomtimes-test.bsky.social`. |
+| `BLUESKY_TEST_APP_PASSWORD` | An app password for the test account. |
+| `X_TEST_API_KEY` | The test X app's API Key. |
+| `X_TEST_API_KEY_SECRET` | The test X app's API Key Secret. |
+| `X_TEST_ACCESS_TOKEN` | The test X account's Access Token (starts with its numeric user id). |
+| `X_TEST_ACCESS_TOKEN_SECRET` | The matching Access Token Secret. |
+
+**Bluesky test account.**
+
+1. Sign up a separate account at [bsky.app](https://bsky.app) (e.g. `freedomtimes-test.bsky.social`), with its own
+   email address. Bluesky has no private accounts, so its posts are public; say "test account" in its bio.
+2. As that account: **Settings** → **Privacy and security** → **App passwords** → **Add App Password**, e.g.
+   `freedomtimes-staging`, no direct-message access.
+3. From `web/` (Wrangler prompts for each value):
+
+   ```powershell
+   npx wrangler secret put BLUESKY_TEST_HANDLE --config wrangler.jsonc --env staging
+   npx wrangler secret put BLUESKY_TEST_APP_PASSWORD --config wrangler.jsonc --env staging
+   ```
+
+**X test account.**
+
+1. Create a separate X account for testing (its own email or phone), and protect its posts if you like
+   (**Settings** → **Privacy and safety** → **Audience** → **Protect your posts**).
+2. Sign in at [console.x.com](https://console.x.com) **as the test account**, accept the developer agreement and
+   buy a small amount of credits (set a low spending limit). Create an app, set **App permissions** to **Read and
+   write**, then on **Keys and tokens** copy the API Key and Secret and generate the Access Token and Secret
+   (after setting Read and write, as above).
+3. From `web/`:
+
+   ```powershell
+   npx wrangler secret put X_TEST_API_KEY --config wrangler.jsonc --env staging
+   npx wrangler secret put X_TEST_API_KEY_SECRET --config wrangler.jsonc --env staging
+   npx wrangler secret put X_TEST_ACCESS_TOKEN --config wrangler.jsonc --env staging
+   npx wrangler secret put X_TEST_ACCESS_TOKEN_SECRET --config wrangler.jsonc --env staging
+   ```
+
+**Cost.** Every real test post to X contains the article link, so it costs about **$0.20** in the test developer
+account's X credits (Post: Create with URL, $0.200 per request; see [§ X](#x)). Dry runs and Bluesky are free.
+
+**What the test post contains.** Exactly what production would post, including the
+`https://freedomtimes.news/posts/<slug>` link (never a staging link: staging is behind the Auth0 lock, so a card
+can't be built from it). If the post exists only on staging, that link is a 404 on production, and X shows no card.
+
+The panel then shows **"Staging: posting to test account `<account>`"**, and the button, confirm dialog and
+toast all say "test account". A staging test share is recorded under `share-test:…` (see
+[§ No double posting](#no-double-posting)), so each post can be shared once per network to the test account;
+use **Release lock** only as described there.
+
+To stop: `npx wrangler secret delete BLUESKY_TEST_APP_PASSWORD --config wrangler.jsonc --env staging` (or
+`X_TEST_ACCESS_TOKEN_SECRET`) and the panel goes back to the dry run. Revoke the app password or token in the
+network as well. As for production, a staging **Terraform apply** can drop hand-set Worker secrets; set them again
+if a panel goes back to the dry run.
 
 ## Tests
 
@@ -180,7 +274,13 @@ real account. It covers:
 - the static check that both routes stay private with the default Admin permission;
 - that `astro.config.ts` grants exactly the plugin's hosts;
 - the scan of public files;
-- staging and missing-secret states;
+- the mode (production, staging, local) from `SITE_ACCESS_MODE` and the host;
+- the staging dry run (exact text and request, nothing sent or recorded, no credential shown) and local dev always
+  dry-running, even with test secrets;
+- choosing the test account on staging (only the `*_TEST_*` names are read; posts go to the test credentials and
+  are recorded under `share-test:`), and a dry run not blocking a later test post;
+- production unchanged (no banner, same text, production names only, test names ignored);
+- the missing-secret state;
 - the preview and confirm dialog;
 - Bluesky: the UTF-8 byte offsets of the link facet, and the 300-character limit;
 - X: the OAuth 1.0a signature against X's published worked example, the signed request, and the 280 weighted

@@ -14,6 +14,8 @@ import { SOCIAL_SHARE_ALLOWED_HOSTS, SOCIAL_SHARE_CAPABILITIES } from '../src/li
 import {
 	BLUESKY_MAX_GRAPHEMES,
 	blueskyProvider,
+	BLUESKY_SECRET_NAMES,
+	BLUESKY_TEST_SECRET_NAMES,
 	blueskyWebUrl,
 	buildBlueskyDraft,
 	buildBlueskyRecord,
@@ -24,7 +26,9 @@ import {
 import {
 	assertSharePanelAccess,
 	handleSharePanel,
+	readShareConfig,
 	ShareAccessError,
+	shareSecretNames,
 	type ShareKv,
 	type SharePanelDeps,
 	STALE_PENDING_MS,
@@ -34,7 +38,9 @@ import {
 	graphemeLength,
 	isSocialShareEnvironment,
 	ShareNetworkError,
+	shareRecordKey,
 	snapshotFromContentItem,
+	socialShareMode,
 	type SharePostSnapshot,
 	truncateGraphemes,
 } from '../src/lib/social-share/policy.ts';
@@ -47,6 +53,8 @@ import {
 	readXConfig,
 	truncateXWeighted,
 	X_MAX_WEIGHTED_LENGTH,
+	X_SECRET_NAMES,
+	X_TEST_SECRET_NAMES,
 	xAccountLabel,
 	xProvider,
 	xTextWeight,
@@ -344,22 +352,40 @@ describe('admin-only access', () => {
 });
 
 describe('Post to Bluesky panel', () => {
-	it('is disabled outside production, with no button and no network call', async () => {
-		const { deps, bsky } = harness();
-		for (const [url, env] of [
-			[STAGING_URL, { ...PROD_ENV, SITE_ACCESS_MODE: 'locked' }],
-			[STAGING_URL, PROD_ENV],
-			[PROD_URL, { ...PROD_ENV, SITE_ACCESS_MODE: 'locked' }],
-			['http://localhost:4321/_emdash/x', PROD_ENV],
+	it('staging without test secrets, and every other host, is a dry run that sends and records nothing (#178)', async () => {
+		const { deps, kv, bsky } = harness();
+		const LOCAL = 'http://localhost:4321/_emdash/x';
+		const TEST_SECRETS = { BLUESKY_TEST_HANDLE: 'ft-test.bsky.social', BLUESKY_TEST_APP_PASSWORD: 'test-pass' };
+		for (const [url, env, title] of [
+			// Production secret names on the staging Worker are ignored: staging reads only *_TEST_* names.
+			[STAGING_URL, { ...PROD_ENV, SITE_ACCESS_MODE: 'locked' }, 'Staging: dry run'],
+			[STAGING_URL, PROD_ENV, 'Local: dry run'],
+			[PROD_URL, { ...PROD_ENV, SITE_ACCESS_MODE: 'locked' }, 'Local: dry run'],
+			[LOCAL, PROD_ENV, 'Local: dry run'],
+			// Local dev never posts, even with test secrets in .dev.vars.
+			[LOCAL, { SITE_ACCESS_MODE: 'locked', ...TEST_SECRETS }, 'Local: dry run'],
 		] as const) {
 			const res = await load({ ...deps, env }, { url });
 			assert.equal(res.blocks[0].type, 'banner');
-			assert.equal(res.blocks[0].title, 'Disabled outside production');
-			assert.equal(findButton(res.blocks, 'bluesky_post'), undefined);
-			const clicked = await act({ ...deps, env }, 'bluesky_post', 'anything', url);
-			assert.equal(clicked.toast?.type, 'error');
+			assert.equal(res.blocks[0].title, title, url);
+			assert.equal(res.blocks.find((b) => b.type === 'code')?.code, 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly');
+			const request = JSON.parse(String(res.blocks.filter((b) => b.type === 'code')[1]?.code));
+			assert.equal(request.collection, 'app.bsky.feed.post');
+			assert.equal(request.record.embed.$type, 'app.bsky.embed.external');
+			assert.equal(request.record.embed.external.uri, 'https://freedomtimes.news/posts/cult-news-weekly');
+			assert.doesNotMatch(JSON.stringify(res), /test-app-pass|test-pass/, 'no credential in the panel');
+			const button = findButton(res.blocks, 'bluesky_post');
+			assert.equal(button?.label, 'Dry run: Post to Bluesky');
+			assert.equal(button?.confirm, undefined, 'a dry run needs no confirm: it sends nothing');
+			const clicked = await act({ ...deps, env }, 'bluesky_post', button?.value, url);
+			assert.equal(clicked.toast?.type, 'info');
+			assert.match(String(clicked.toast?.message), /^Dry run: .*Nothing was sent and nothing was recorded\.$/);
+			assert.equal(clicked.blocks[0].title, title);
+			const stale = await act({ ...deps, env }, 'bluesky_post', 'anything', url);
+			assert.equal(stale.toast?.type, 'error');
 		}
 		assert.equal(bsky.calls.length, 0);
+		assert.equal(kv.data.size, 0, 'a dry run records nothing');
 	});
 
 	it('explains missing secrets instead of failing', async () => {
@@ -634,8 +660,8 @@ describe('Post to X panel', () => {
 		await assert.rejects(load(deps, { user: undefined, url: X_URL }), (e: unknown) => e instanceof ShareAccessError && e.status === 401);
 		await assert.rejects(load(deps, { user: { ...ADMIN, role: 40 }, url: X_URL }), (e: unknown) => e instanceof ShareAccessError && e.status === 403);
 		const staging = await xLoad({ ...deps, env: { ...X_ENV, SITE_ACCESS_MODE: 'locked' } }, STAGING_URL.replace(/bluesky$/, 'x'));
-		assert.equal(staging.blocks[0].title, 'Disabled outside production');
-		assert.equal(findButton(staging.blocks, 'x_post'), undefined);
+		assert.equal(staging.blocks[0].title, 'Staging: dry run', 'production X names on staging are ignored');
+		assert.equal(findButton(staging.blocks, 'x_post')?.label, 'Dry run: Post to X');
 		const missing = await xLoad({ ...deps, env: { SITE_ACCESS_MODE: 'public', X_API_KEY: 'k' } });
 		assert.equal(missing.blocks[0].title, "X sharing isn't configured");
 		assert.match(String(missing.blocks[0].description), /X_API_KEY, X_API_KEY_SECRET, X_ACCESS_TOKEN, and X_ACCESS_TOKEN_SECRET/);
@@ -682,5 +708,156 @@ describe('Post to X panel', () => {
 		const after = await xLoad(unknown.deps);
 		assert.equal(findButton(after.blocks, 'x_post'), undefined);
 		assert.ok(findButton(after.blocks, 'x_release'));
+	});
+});
+
+describe('staging test accounts and dry run (#178)', () => {
+	const STAGING_X_URL = STAGING_URL.replace(/bluesky$/, 'x');
+	const BSKY_TEST = { SITE_ACCESS_MODE: 'locked', BLUESKY_TEST_HANDLE: '@ft-test.bsky.social', BLUESKY_TEST_APP_PASSWORD: 'test-only-pass' };
+	const X_TEST = {
+		SITE_ACCESS_MODE: 'locked',
+		X_TEST_API_KEY: 'stg-consumer-key',
+		X_TEST_API_KEY_SECRET: 'stg-consumer-secret',
+		X_TEST_ACCESS_TOKEN: '999000111-stg-access-token',
+		X_TEST_ACCESS_TOKEN_SECRET: 'stg-token-secret',
+	};
+
+	/** Env that records every key the code reads. */
+	function trackedEnv(env: Record<string, unknown>) {
+		const read = new Set<string>();
+		const proxy = new Proxy(env, {
+			get(target, key) {
+				if (typeof key === 'string') read.add(key);
+				return Reflect.get(target, key);
+			},
+		});
+		return { proxy, read };
+	}
+
+	it('picks the mode from the Worker access mode and the host', () => {
+		assert.equal(socialShareMode({ siteAccessMode: 'public', hostname: 'freedomtimes.news' }), 'production');
+		assert.equal(socialShareMode({ siteAccessMode: 'public', hostname: 'www.freedomtimes.news' }), 'production');
+		assert.equal(socialShareMode({ siteAccessMode: 'locked', hostname: 'staging.freedomtimes.news' }), 'staging');
+		assert.equal(socialShareMode({ siteAccessMode: 'LOCKED ', hostname: 'Staging.FreedomTimes.news' }), 'staging');
+		for (const [siteAccessMode, hostname] of [
+			['public', 'staging.freedomtimes.news'],
+			['locked', 'freedomtimes.news'],
+			['locked', 'localhost'],
+			[undefined, 'staging.freedomtimes.news'],
+			['locked', 'freedomtimes-staging.example.workers.dev'],
+		] as const) {
+			assert.equal(socialShareMode({ siteAccessMode, hostname }), 'local', `${siteAccessMode} ${hostname}`);
+		}
+	});
+
+	it('staging uses only distinct *_TEST_* secret names; production never reads them; local reads none', () => {
+		for (const [provider, prod, test] of [
+			[blueskyProvider, BLUESKY_SECRET_NAMES, BLUESKY_TEST_SECRET_NAMES],
+			[xProvider, X_SECRET_NAMES, X_TEST_SECRET_NAMES],
+		] as const) {
+			assert.deepEqual(shareSecretNames(provider as never, 'production'), prod);
+			assert.deepEqual(shareSecretNames(provider as never, 'staging'), test);
+			assert.deepEqual(shareSecretNames(provider as never, 'local'), []);
+			assert.equal(test.length, prod.length);
+			for (const name of test) {
+				assert.match(name, /^(BLUESKY|X)_TEST_/);
+				assert.ok(!(prod as readonly string[]).includes(name));
+			}
+			const both = { ...PROD_ENV, ...X_ENV, ...BSKY_TEST, ...X_TEST };
+			for (const mode of ['production', 'staging', 'local'] as const) {
+				const { proxy, read } = trackedEnv(both);
+				readShareConfig(provider as never, proxy, mode);
+				const allowed = mode === 'production' ? prod : mode === 'staging' ? test : [];
+				assert.deepEqual([...read].sort(), [...allowed].sort(), `${provider.network} ${mode}`);
+			}
+		}
+	});
+
+	it('staging with test secrets posts to the Bluesky test account only, recorded apart from production', async () => {
+		const { deps, kv, bsky } = harness({ env: { ...PROD_ENV, ...BSKY_TEST } });
+		// A production record copied into the staging DB must not block a test post.
+		await kv.set('share:bluesky:p1', { status: 'posted', postedAt: '2026-10-01T00:00:00Z', claimedBy: 'prod' });
+		const { proxy, read } = trackedEnv(deps.env);
+		const env = proxy as Record<string, unknown>;
+		const res = await load({ ...deps, env }, { url: STAGING_URL });
+		assert.equal(res.blocks[0].title, 'Staging: posting to test account @ft-test.bsky.social');
+		assert.match(String(res.blocks[0].description), /BLUESKY_TEST_HANDLE and BLUESKY_TEST_APP_PASSWORD/);
+		const button = findButton(res.blocks, 'bluesky_post');
+		assert.equal(button?.label, 'Post to Bluesky test account');
+		assert.equal((button?.confirm as { title: string }).title, 'Post to Bluesky as the test account @ft-test.bsky.social?');
+		assert.equal(bsky.calls.length, 0, 'nothing posts on load');
+
+		const posted = await act({ ...deps, env }, 'bluesky_post', button?.value, STAGING_URL);
+		assert.equal(posted.toast?.message, 'Posted to the Bluesky test account.');
+		assert.equal(posted.blocks[0].title, 'Staging: posting to test account @ft-test.bsky.social');
+		assert.equal(posted.blocks[1].title, 'Shared to Bluesky');
+		const session = JSON.parse(String(bsky.calls[0].init?.body));
+		assert.deepEqual(session, { identifier: 'ft-test.bsky.social', password: 'test-only-pass' });
+		assert.equal(bsky.creates(), 1);
+		assert.equal(shareRecordKey('bluesky', 'p1', 'staging'), 'share-test:bluesky:p1');
+		assert.equal((await kv.getVersioned<Record<string, unknown>>('share-test:bluesky:p1'))?.value.status, 'posted');
+		assert.equal((await kv.getVersioned<Record<string, unknown>>('share:bluesky:p1'))?.value.claimedBy, 'prod', 'production record untouched');
+		for (const name of [...BLUESKY_SECRET_NAMES, ...X_SECRET_NAMES]) assert.ok(!read.has(name), `staging read ${name}`);
+	});
+
+	it('staging with test secrets posts to the X test account; a dry run never blocks a later real post', async () => {
+		const x = mockX();
+		const { deps, kv } = harness({ provider: xProvider as never, env: { ...X_ENV, SITE_ACCESS_MODE: 'locked' }, fetch: x.fetch });
+		const ui = { ...PANEL_UI, extensionId: 'x' };
+		const go = (env: Record<string, unknown>, input: Record<string, unknown>) =>
+			handleSharePanel({ input, ui, user: ADMIN, requestUrl: STAGING_X_URL }, { ...deps, env } as never);
+
+		const dry = await go({ ...X_ENV, SITE_ACCESS_MODE: 'locked' }, { type: 'panel_load' });
+		assert.equal(dry.blocks[0].title, 'Staging: dry run');
+		assert.deepEqual(JSON.parse(String(dry.blocks.filter((b) => b.type === 'code')[1]?.code)), {
+			text: 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly',
+		});
+		const dryClick = await go({ ...X_ENV, SITE_ACCESS_MODE: 'locked' }, { type: 'block_action', action_id: 'x_post', value: findButton(dry.blocks, 'x_post')?.value });
+		assert.equal(dryClick.toast?.type, 'info');
+		assert.equal(kv.data.size, 0);
+
+		const ready = await go(X_TEST, { type: 'panel_load' });
+		assert.equal(ready.blocks[0].title, 'Staging: posting to test account the X account with user id 999000111');
+		const button = findButton(ready.blocks, 'x_post');
+		assert.equal(button?.label, 'Post to X test account');
+		const posted = await go(X_TEST, { type: 'block_action', action_id: 'x_post', value: button?.value });
+		assert.equal(posted.toast?.message, 'Posted to the X test account.');
+		assert.equal(x.calls.length, 1);
+		const oauth = parseOAuthHeader(String((x.calls[0].init?.headers as Record<string, string>).authorization));
+		assert.equal(oauth.oauth_consumer_key, 'stg-consumer-key');
+		assert.equal(oauth.oauth_token, '999000111-stg-access-token');
+		assert.equal((await kv.getVersioned<Record<string, unknown>>('share-test:x:p1'))?.value.status, 'posted');
+		assert.equal(await kv.getVersioned('share:x:p1'), null);
+	});
+
+	it('production is unchanged: real names only, no mode banner, test names ignored', async () => {
+		const testOnly = harness({ env: { ...BSKY_TEST, SITE_ACCESS_MODE: 'public' } });
+		const missing = await load(testOnly.deps);
+		assert.equal(missing.blocks[0].title, "Bluesky sharing isn't configured", 'production never falls back to test names');
+		assert.equal(findButton(missing.blocks, 'bluesky_post'), undefined);
+
+		const { deps, kv, bsky } = harness({ env: { ...BSKY_TEST, ...PROD_ENV } });
+		const res = await load(deps);
+		assert.equal(res.blocks[0].type, 'context');
+		assert.equal(res.blocks[0].text, 'Preview. Nothing is posted until you press the button and confirm. Posts as @freedomtimes.news.');
+		assert.ok(!res.blocks.some((b) => b.type === 'banner'));
+		const button = findButton(res.blocks, 'bluesky_post');
+		assert.equal(button?.label, 'Post to Bluesky');
+		const posted = await act(deps, 'bluesky_post', button?.value);
+		assert.equal(posted.toast?.message, 'Posted to Bluesky.');
+		assert.equal(JSON.parse(String(bsky.calls[0].init?.body)).identifier, 'freedomtimes.news');
+		assert.equal((await kv.getVersioned<Record<string, unknown>>('share:bluesky:p1'))?.value.status, 'posted');
+		assert.equal(await kv.getVersioned('share-test:bluesky:p1'), null);
+		assert.equal(shareRecordKey('x', 'p1'), 'share:x:p1');
+	});
+
+	it('the release lock on staging works on the test record', async () => {
+		const { deps, kv } = harness({ env: BSKY_TEST });
+		await kv.set('share-test:bluesky:p1', { network: 'bluesky', postId: 'p1', status: 'uncertain', text: 't', claimedAt: '2026-10-31T22:00:00Z', claimedBy: 'Ada' });
+		const res = await load(deps, { url: STAGING_URL });
+		assert.ok(findButton(res.blocks, 'bluesky_release'));
+		const released = await act(deps, 'bluesky_release', undefined, STAGING_URL);
+		assert.equal(released.toast?.message, 'Lock released. Check the preview before posting again.');
+		assert.equal(kv.data.size, 0);
 	});
 });
