@@ -89,7 +89,7 @@ export async function handleXAutoPublish(
 	const snapshot = snapshotFromContentItem({ id, slug, status, data, seo });
 	if (!snapshot.title) return { action: 'skip', reason: 'no-headline', networks: [] };
 
-	const input = { title: snapshot.title, description: snapshot.description, url: articleUrl(slug) };
+	const input = { title: snapshot.title, description: snapshot.description, url: articleUrl(slug), groups: snapshot.groups };
 	const networks = [
 		await runNetwork(xProvider, id, input, mode, deps),
 		await runNetwork(blueskyProvider, id, input, mode, deps),
@@ -101,7 +101,7 @@ export async function handleXAutoPublish(
 async function runNetwork<TConfig, TDraft extends ShareDraftBase>(
 	provider: ShareProvider<TConfig, TDraft>,
 	postId: string,
-	post: { title: string; description: string; url: string },
+	post: { title: string; description: string; url: string; groups?: readonly string[] },
 	mode: 'dry-run' | 'api',
 	deps: XAutoDeps,
 ): Promise<SocialAutoNetworkResult> {

@@ -7,6 +7,7 @@
  * It posts only from the production admin (real account) or the staging admin
  * with the staging-only test-account secrets (#178); elsewhere it is a dry run.
  */
+import { socialHashtagLine } from './hashtags';
 import type { FetchLike, ShareProvider } from './panel';
 import { graphemeLength, readSecret, ShareNetworkError, type SharedPost, truncateGraphemes } from './policy';
 
@@ -52,19 +53,21 @@ export function readBlueskyConfig(
 }
 
 export interface BlueskyPostDraft {
-	/** Exact post text: title, blank line, article URL. */
+	/** Exact post text: title, blank line, article URL, blank line, hashtags. */
 	text: string;
 	url: string;
 	cardTitle: string;
 	cardDescription: string;
 }
 
-/** Title + blank line + URL, with the title trimmed so the whole post fits 300 graphemes. */
-export function buildBlueskyDraft(input: { title: string; description: string; url: string }): BlueskyPostDraft {
+/** Title, blank line, URL, blank line, hashtags. The title is trimmed so the whole post fits 300 graphemes. */
+export function buildBlueskyDraft(input: { title: string; description: string; url: string; groups?: readonly string[] }): BlueskyPostDraft {
 	const separator = '\n\n';
-	const room = BLUESKY_MAX_GRAPHEMES - graphemeLength(input.url) - graphemeLength(separator);
-	const title = truncateGraphemes(input.title.trim(), room);
-	const text = title ? `${title}${separator}${input.url}` : input.url;
+	const hashtags = socialHashtagLine(input.title, input.url, input.groups ?? []);
+	const tail = `${separator}${input.url}${separator}${hashtags}`;
+	const room = BLUESKY_MAX_GRAPHEMES - graphemeLength(tail);
+	const title = truncateGraphemes(input.title.trim(), Math.max(0, room));
+	const text = title ? `${title}${tail}` : `${input.url}${separator}${hashtags}`;
 	return {
 		text,
 		url: input.url,
@@ -84,15 +87,21 @@ export function utf8ByteRange(text: string, needle: string): { byteStart: number
 
 /** The app.bsky.feed.post record for a draft. */
 export function buildBlueskyRecord(draft: BlueskyPostDraft, createdAt: Date): Record<string, unknown> {
-	const range = utf8ByteRange(draft.text, draft.url);
+	const facets: Array<Record<string, unknown>> = [];
+	const link = utf8ByteRange(draft.text, draft.url);
+	if (link) facets.push({ index: link, features: [{ $type: 'app.bsky.richtext.facet#link', uri: draft.url }] });
+	for (const match of draft.text.matchAll(/(^|\s)(#[A-Za-z0-9]+)/g)) {
+		const tag = match[2];
+		const range = utf8ByteRange(draft.text, tag);
+		if (!range || !tag) continue;
+		facets.push({ index: range, features: [{ $type: 'app.bsky.richtext.facet#tag', tag: tag.slice(1) }] });
+	}
 	return {
 		$type: 'app.bsky.feed.post',
 		text: draft.text,
 		createdAt: createdAt.toISOString(),
 		langs: ['en'],
-		...(range
-			? { facets: [{ index: range, features: [{ $type: 'app.bsky.richtext.facet#link', uri: draft.url }] }] }
-			: {}),
+		...(facets.length > 0 ? { facets } : {}),
 		embed: {
 			$type: 'app.bsky.embed.external',
 			external: { uri: draft.url, title: draft.cardTitle, description: draft.cardDescription },

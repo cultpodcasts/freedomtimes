@@ -8,6 +8,7 @@
  * production admin (real account) or the staging admin with the staging-only
  * test-account secrets (#178); elsewhere it is a dry run.
  */
+import { socialHashtagLine } from './hashtags';
 import type { FetchLike, ShareProvider } from './panel';
 import { readSecret, ShareNetworkError, type SharedPost } from './policy';
 
@@ -127,7 +128,7 @@ export function truncateXWeighted(text: string, max: number): string {
 }
 
 export interface XPostDraft {
-	/** Exact post text: title, blank line, article URL. */
+	/** Exact post text: title, blank line, article URL, blank line, hashtags. */
 	text: string;
 	url: string;
 	/** X's weighted length of `text` (URLs counted as 23). */
@@ -136,11 +137,13 @@ export interface XPostDraft {
 
 const SEPARATOR = '\n\n';
 
-/** Title + blank line + URL, with the title trimmed so the post fits 280 (URL counted as 23). */
-export function buildXDraft(input: { title: string; description: string; url: string }): XPostDraft {
-	const room = X_MAX_WEIGHTED_LENGTH - X_URL_WEIGHT - xTextWeight(SEPARATOR);
-	const title = truncateXWeighted(input.title.trim(), room);
-	const text = title ? `${title}${SEPARATOR}${input.url}` : input.url;
+/** Title, blank line, URL, blank line, hashtags. The title is trimmed so the post fits 280 (URL counted as 23). */
+export function buildXDraft(input: { title: string; description: string; url: string; groups?: readonly string[] }): XPostDraft {
+	const hashtags = socialHashtagLine(input.title, input.url, input.groups ?? []);
+	const tail = `${SEPARATOR}${input.url}${SEPARATOR}${hashtags}`;
+	const room = X_MAX_WEIGHTED_LENGTH - xWeightedLength(tail);
+	const title = truncateXWeighted(input.title.trim(), Math.max(0, room));
+	const text = title ? `${title}${tail}` : `${input.url}${SEPARATOR}${hashtags}`;
 	return { text, url: input.url, weightedLength: xWeightedLength(text) };
 }
 

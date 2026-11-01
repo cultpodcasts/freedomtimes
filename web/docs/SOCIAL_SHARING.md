@@ -4,7 +4,7 @@ Admins can share a published post to the Freedom Times **Bluesky** account
 ([#21](https://github.com/cultpodcasts/freedomtimes/issues/21)) and **X** account
 ([#20](https://github.com/cultpodcasts/freedomtimes/issues/20)) from the EmDash admin. Nothing posts
 automatically from the button. An admin opens the post, checks the preview, presses the button and confirms. Each network is
-shared separately. The panels offer the post, including an intent link that opens in a new tab when secrets are not set. Publishing does not post. An agent may offer to post after the article has been live for 30 minutes ([X_AUTO_POST.md](./X_AUTO_POST.md)). Only production posts to the real accounts. On staging the panels can be tested
+shared separately. The text is the social title, the article link, then `#Cult` and a hashtag for each name in the post's organisations field. The panels offer the post, including an intent link that opens in a new tab when secrets are not set. Publishing does not post. An agent may offer to post after the article has been live for 30 minutes ([X_AUTO_POST.md](./X_AUTO_POST.md)). Only production posts to the real accounts. On staging the panels can be tested
 ([#178](https://github.com/cultpodcasts/freedomtimes/issues/178)): as a **dry run** that sends nothing, or against
 separate **test accounts** ([§ Testing on staging](#testing-on-staging)).
 
