@@ -122,7 +122,7 @@ describe('publish hook', () => {
 		const result = await handleXAutoPublish(post(), 'posts', deps);
 		assert.equal(result.action, 'dry-run');
 		assert.deepEqual(result.networks.map((n) => n.action), ['dry-run', 'dry-run']);
-		assert.equal(result.networks[0]?.text, `Cult news this week\n\n${ARTICLE}\n\n#Cult`);
+		assert.equal(result.networks[0]?.text, `Cult news this week\n\n#Cult\n\n${ARTICLE}`);
 		assert.match(result.networks[0]?.intentUrl ?? '', /^https:\/\/x\.com\/intent\/post\?text=/);
 		assert.match(result.networks[1]?.intentUrl ?? '', /^https:\/\/bsky\.app\/intent\/compose\?text=/);
 		assert.match(logs[0] ?? '', /^info:dry-run x post-1 \(\d+ weighted\) https:\/\/x\.com\/intent\/post\?text=/);

@@ -1,13 +1,10 @@
 /**
  * Hashtags for an X or Bluesky post. #Cult is always first. Each name in the
- * post's organisations field becomes one tag, in that order, dropped from the
- * end when the headline and the link leave no room.
+ * post's organisations field becomes one tag, in that order. A tag that does
+ * not fit is skipped so a shorter later tag can still use the room. Each
+ * network passes its own length function, so X can carry more tags than Bluesky.
  */
-import { graphemeLength } from './policy';
-import { X_MAX_WEIGHTED_LENGTH, xWeightedLength } from './x';
-
 export const HOUSE_HASHTAG = '#Cult';
-const BLUESKY_MAX = 300;
 const SEPARATOR = '\n\n';
 
 /** `#InternationalShekinahGlory` from "International Shekinah Glory". */
@@ -26,18 +23,13 @@ export function hashtagFromName(name: string): string | null {
 	return `#${body}`;
 }
 
-function composed(title: string, url: string, hashtags: string): string {
-	const head = title ? `${title}${SEPARATOR}${url}` : url;
-	return `${head}${SEPARATOR}${hashtags}`;
+/** Title, blank line, hashtags, blank line, URL. The URL is last. */
+export function composeSocialText(title: string, hashtags: string, url: string): string {
+	return [title, hashtags, url].filter((part) => part.length > 0).join(SEPARATOR);
 }
 
-function fitsBoth(title: string, url: string, hashtags: string): boolean {
-	const text = composed(title, url, hashtags);
-	return graphemeLength(text) <= BLUESKY_MAX && xWeightedLength(text) <= X_MAX_WEIGHTED_LENGTH;
-}
-
-/** The hashtag line both networks use, so the posts match. */
-export function socialHashtagLine(title: string, url: string, groups: readonly string[]): string {
+/** #Cult, then one tag per organisation name, duplicates removed. */
+export function organisationHashtags(groups: readonly string[]): string[] {
 	const tags = [HOUSE_HASHTAG];
 	const seen = new Set(['cult']);
 	for (const name of groups) {
@@ -48,6 +40,24 @@ export function socialHashtagLine(title: string, url: string, groups: readonly s
 		seen.add(key);
 		tags.push(tag);
 	}
-	while (tags.length > 1 && !fitsBoth(title.trim(), url, tags.join(' '))) tags.pop();
-	return tags.join(' ');
+	return tags;
+}
+
+/**
+ * The hashtag line for one network. Tags are kept in order. A tag that would
+ * push the title, the line and the URL over `max` is skipped.
+ */
+export function socialHashtagLine(
+	title: string,
+	url: string,
+	groups: readonly string[],
+	length: (text: string) => number,
+	max: number,
+): string {
+	const kept: string[] = [];
+	for (const tag of organisationHashtags(groups)) {
+		const next = [...kept, tag].join(' ');
+		if (length(composeSocialText(title.trim(), next, url)) <= max) kept.push(tag);
+	}
+	return kept.length > 0 ? kept.join(' ') : HOUSE_HASHTAG;
 }

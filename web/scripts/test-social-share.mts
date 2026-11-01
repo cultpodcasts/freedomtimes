@@ -212,8 +212,8 @@ describe('Bluesky client (mocked)', () => {
 		const url = articleUrl('a-very-long-slug');
 		const draft = buildBlueskyDraft({ title: '“Quoted” 🚨 '.repeat(60), description: 'd', url });
 		assert.ok(graphemeLength(draft.text) <= BLUESKY_MAX_GRAPHEMES);
-		assert.ok(draft.text.includes(`\n\n${url}\n\n#Cult`));
-		assert.ok(draft.text.endsWith('#Cult'));
+		assert.ok(draft.text.includes(`\n\n#Cult\n\n${url}`));
+		assert.ok(draft.text.endsWith(url));
 		assert.ok(draft.text.includes('…'));
 	});
 
@@ -393,7 +393,7 @@ describe('Post to Bluesky panel', () => {
 			const res = await load({ ...deps, env }, { url });
 			assert.equal(res.blocks[0].type, 'banner');
 			assert.equal(res.blocks[0].title, title, url);
-			assert.equal(res.blocks.find((b) => b.type === 'code')?.code, 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly\n\n#Cult');
+			assert.equal(res.blocks.find((b) => b.type === 'code')?.code, 'Cult news this week\n\n#Cult\n\nhttps://freedomtimes.news/posts/cult-news-weekly');
 			const request = JSON.parse(String(res.blocks.filter((b) => b.type === 'code')[1]?.code));
 			assert.equal(request.collection, 'app.bsky.feed.post');
 			assert.equal(request.record.embed.$type, 'app.bsky.embed.external');
@@ -442,7 +442,7 @@ describe('Post to Bluesky panel', () => {
 		const { deps, bsky } = harness();
 		const res = await load(deps);
 		const code = res.blocks.find((b) => b.type === 'code');
-		assert.equal(code?.code, 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly\n\n#Cult');
+		assert.equal(code?.code, 'Cult news this week\n\n#Cult\n\nhttps://freedomtimes.news/posts/cult-news-weekly');
 		assert.equal('language' in (code ?? {}), false, 'plain text, no syntax highlighting');
 		const fields = (res.blocks.find((b) => b.type === 'fields')?.fields ?? []) as Array<{ label: string; value: string }>;
 		assert.deepEqual(fields.map((f) => f.label), ['Link card title', 'Link card description']);
@@ -618,8 +618,8 @@ describe('X client (mocked)', () => {
 		const draft = buildXDraft({ title: '“Quoted” 🚨 日本 '.repeat(40), description: 'ignored', url });
 		assert.ok(draft.weightedLength <= X_MAX_WEIGHTED_LENGTH);
 		assert.ok(draft.weightedLength > X_MAX_WEIGHTED_LENGTH - 4, 'uses the room');
-		assert.ok(draft.text.includes(`\n\n${url}\n\n#Cult`), 'the full link is always kept');
-		assert.ok(draft.text.endsWith('#Cult'));
+		assert.ok(draft.text.includes(`\n\n#Cult\n\n${url}`), 'the full link is always kept');
+		assert.ok(draft.text.endsWith(url));
 		assert.ok(draft.text.includes('…'));
 		assert.equal(xWeightedLength(`Cult news\n\n${url}`), 9 + 2 + 23);
 		assert.equal(xWeightedLength('Read freedomtimes.news or bit.ly/x today'), 5 + 23 + 4 + 23 + 6);
@@ -628,8 +628,29 @@ describe('X client (mocked)', () => {
 		assert.ok(linky.weightedLength <= X_MAX_WEIGHTED_LENGTH, 'a domain in the title is counted as 23, never under-counted');
 		assert.equal(linky.weightedLength, xWeightedLength(linky.text));
 		const short = buildXDraft({ title: 'Cult news', description: '', url });
-		assert.equal(short.text, `Cult news\n\n${url}\n\n#Cult`);
-		assert.equal(short.weightedLength, 9 + 2 + 23 + 2 + 5);
+		assert.equal(short.text, `Cult news\n\n#Cult\n\n${url}`);
+		assert.equal(short.weightedLength, 9 + 2 + 5 + 2 + 23);
+	});
+
+	it('puts the link last and fills each limit, skipping a tag that does not fit', () => {
+		const url = articleUrl('weekly-summary-1-november-2026');
+		const title = 'Hamburg cult leader on trial again; Swiss prosecutors investigate Ivo Sasek';
+		const groups = ['Z'.repeat(220), ...Array.from({ length: 40 }, (_, i) => `G${i}`)];
+		const x = buildXDraft({ title, description: '', url, groups });
+		const bluesky = buildBlueskyDraft({ title, description: '', url, groups });
+		assert.ok(x.text.startsWith(`${title}\n\n#Cult `));
+		assert.ok(bluesky.text.startsWith(`${title}\n\n#Cult `));
+		assert.ok(x.text.endsWith(`\n\n${url}`));
+		assert.ok(bluesky.text.endsWith(`\n\n${url}`));
+		assert.equal(x.text.includes('ZZZ'), false);
+		assert.equal(bluesky.text.includes('ZZZ'), false);
+		assert.ok(x.text.includes('#G0'));
+		assert.ok(bluesky.text.includes('#G0'));
+		assert.ok(x.text.split('#').length > bluesky.text.split('#').length, 'X counts the link as 23, so it keeps more tags');
+		assert.ok(x.weightedLength <= X_MAX_WEIGHTED_LENGTH);
+		assert.ok(X_MAX_WEIGHTED_LENGTH - x.weightedLength < 12);
+		assert.ok(graphemeLength(bluesky.text) <= BLUESKY_MAX_GRAPHEMES);
+		assert.ok(BLUESKY_MAX_GRAPHEMES - graphemeLength(bluesky.text) < 12);
 	});
 
 	it('makes one signed POST /2/tweets with only the text, and returns the post URL', async () => {
@@ -708,7 +729,7 @@ describe('Post to X panel', () => {
 		const { deps, kv, x } = xHarness();
 		await kv.set('share:bluesky:p1', { status: 'posted' });
 		const res = await xLoad(deps);
-		assert.equal(res.blocks.find((b) => b.type === 'code')?.code, 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly\n\n#Cult');
+		assert.equal(res.blocks.find((b) => b.type === 'code')?.code, 'Cult news this week\n\n#Cult\n\nhttps://freedomtimes.news/posts/cult-news-weekly');
 		const fields = (res.blocks.find((b) => b.type === 'fields')?.fields ?? []) as Array<{ label: string; value: string }>;
 		assert.equal(fields[0].value, `${xTextWeight('Cult news this week') + 2 + 23 + 2 + xTextWeight('#Cult')} / 280`);
 		const button = findButton(res.blocks, 'x_post');
@@ -845,7 +866,7 @@ describe('staging test accounts and dry run (#178)', () => {
 		const dry = await go({ ...X_ENV, SITE_ACCESS_MODE: 'locked' }, { type: 'panel_load' });
 		assert.equal(dry.blocks[0].title, 'Staging: dry run');
 		assert.deepEqual(JSON.parse(String(dry.blocks.filter((b) => b.type === 'code')[1]?.code)), {
-			text: 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly\n\n#Cult',
+			text: 'Cult news this week\n\n#Cult\n\nhttps://freedomtimes.news/posts/cult-news-weekly',
 		});
 		const dryClick = await go({ ...X_ENV, SITE_ACCESS_MODE: 'locked' }, { type: 'block_action', action_id: 'x_post', value: findButton(dry.blocks, 'x_post')?.value });
 		assert.equal(dryClick.toast?.type, 'info');

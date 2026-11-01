@@ -8,7 +8,7 @@
  * production admin (real account) or the staging admin with the staging-only
  * test-account secrets (#178); elsewhere it is a dry run.
  */
-import { socialHashtagLine } from './hashtags';
+import { composeSocialText, socialHashtagLine } from './hashtags';
 import type { FetchLike, ShareProvider } from './panel';
 import { readSecret, ShareNetworkError, type SharedPost } from './policy';
 
@@ -128,7 +128,7 @@ export function truncateXWeighted(text: string, max: number): string {
 }
 
 export interface XPostDraft {
-	/** Exact post text: title, blank line, article URL, blank line, hashtags. */
+	/** Exact post text: title, blank line, hashtags, blank line, article URL. */
 	text: string;
 	url: string;
 	/** X's weighted length of `text` (URLs counted as 23). */
@@ -137,13 +137,14 @@ export interface XPostDraft {
 
 const SEPARATOR = '\n\n';
 
-/** Title, blank line, URL, blank line, hashtags. The title is trimmed so the post fits 280 (URL counted as 23). */
+/** Title, blank line, hashtags, blank line, URL. Tags fill 280 (URL counted as 23). The title is trimmed only when the tags and the link leave no room. */
 export function buildXDraft(input: { title: string; description: string; url: string; groups?: readonly string[] }): XPostDraft {
-	const hashtags = socialHashtagLine(input.title, input.url, input.groups ?? []);
-	const tail = `${SEPARATOR}${input.url}${SEPARATOR}${hashtags}`;
+	const title0 = input.title.trim();
+	const hashtags = socialHashtagLine(title0, input.url, input.groups ?? [], xWeightedLength, X_MAX_WEIGHTED_LENGTH);
+	const tail = `${SEPARATOR}${hashtags}${SEPARATOR}${input.url}`;
 	const room = X_MAX_WEIGHTED_LENGTH - xWeightedLength(tail);
-	const title = truncateXWeighted(input.title.trim(), Math.max(0, room));
-	const text = title ? `${title}${tail}` : `${input.url}${SEPARATOR}${hashtags}`;
+	const title = truncateXWeighted(title0, Math.max(0, room));
+	const text = composeSocialText(title, hashtags, input.url);
 	return { text, url: input.url, weightedLength: xWeightedLength(text) };
 }
 
