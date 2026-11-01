@@ -7,6 +7,7 @@
  * It posts only from the production admin (real account) or the staging admin
  * with the staging-only test-account secrets (#178); elsewhere it is a dry run.
  */
+import { composeSocialText, socialHashtagLine } from './hashtags';
 import type { FetchLike, ShareProvider } from './panel';
 import { graphemeLength, readSecret, ShareNetworkError, type SharedPost, truncateGraphemes } from './policy';
 
@@ -52,23 +53,24 @@ export function readBlueskyConfig(
 }
 
 export interface BlueskyPostDraft {
-	/** Exact post text: title, blank line, article URL. */
+	/** Exact post text: title, blank line, hashtags, blank line, article URL. */
 	text: string;
 	url: string;
 	cardTitle: string;
 	cardDescription: string;
 }
 
-/** Title + blank line + URL, with the title trimmed so the whole post fits 300 graphemes. */
-export function buildBlueskyDraft(input: { title: string; description: string; url: string }): BlueskyPostDraft {
-	const separator = '\n\n';
-	const room = BLUESKY_MAX_GRAPHEMES - graphemeLength(input.url) - graphemeLength(separator);
-	const title = truncateGraphemes(input.title.trim(), room);
-	const text = title ? `${title}${separator}${input.url}` : input.url;
+/** Title, blank line, hashtags, blank line, URL. Tags fill 300 graphemes. The title is trimmed only when the tags and the link leave no room. */
+export function buildBlueskyDraft(input: { title: string; description: string; url: string; groups?: readonly string[] }): BlueskyPostDraft {
+	const title0 = input.title.trim();
+	const hashtags = socialHashtagLine(title0, input.url, input.groups ?? [], graphemeLength, BLUESKY_MAX_GRAPHEMES);
+	const tail = `\n\n${hashtags}\n\n${input.url}`;
+	const room = BLUESKY_MAX_GRAPHEMES - graphemeLength(tail);
+	const title = truncateGraphemes(title0, Math.max(0, room));
 	return {
-		text,
+		text: composeSocialText(title, hashtags, input.url),
 		url: input.url,
-		cardTitle: input.title.trim() || input.url,
+		cardTitle: title0 || input.url,
 		cardDescription: truncateGraphemes(input.description.trim(), CARD_DESCRIPTION_MAX),
 	};
 }
@@ -84,15 +86,21 @@ export function utf8ByteRange(text: string, needle: string): { byteStart: number
 
 /** The app.bsky.feed.post record for a draft. */
 export function buildBlueskyRecord(draft: BlueskyPostDraft, createdAt: Date): Record<string, unknown> {
-	const range = utf8ByteRange(draft.text, draft.url);
+	const facets: Array<Record<string, unknown>> = [];
+	const link = utf8ByteRange(draft.text, draft.url);
+	if (link) facets.push({ index: link, features: [{ $type: 'app.bsky.richtext.facet#link', uri: draft.url }] });
+	for (const match of draft.text.matchAll(/(^|\s)(#[A-Za-z0-9]+)/g)) {
+		const tag = match[2];
+		const range = utf8ByteRange(draft.text, tag);
+		if (!range || !tag) continue;
+		facets.push({ index: range, features: [{ $type: 'app.bsky.richtext.facet#tag', tag: tag.slice(1) }] });
+	}
 	return {
 		$type: 'app.bsky.feed.post',
 		text: draft.text,
 		createdAt: createdAt.toISOString(),
 		langs: ['en'],
-		...(range
-			? { facets: [{ index: range, features: [{ $type: 'app.bsky.richtext.facet#link', uri: draft.url }] }] }
-			: {}),
+		...(facets.length > 0 ? { facets } : {}),
 		embed: {
 			$type: 'app.bsky.embed.external',
 			external: { uri: draft.url, title: draft.cardTitle, description: draft.cardDescription },

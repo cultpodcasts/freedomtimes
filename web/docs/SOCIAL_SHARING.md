@@ -4,7 +4,7 @@ Admins can share a published post to the Freedom Times **Bluesky** account
 ([#21](https://github.com/cultpodcasts/freedomtimes/issues/21)) and **X** account
 ([#20](https://github.com/cultpodcasts/freedomtimes/issues/20)) from the EmDash admin. Nothing posts
 automatically from the button. An admin opens the post, checks the preview, presses the button and confirms. Each network is
-shared separately. The panels offer the post, including an intent link that opens in a new tab when secrets are not set. Publishing does not post. An agent may offer to post after the article has been live for 30 minutes ([X_AUTO_POST.md](./X_AUTO_POST.md)). Only production posts to the real accounts. On staging the panels can be tested
+shared separately. The text is the social title, then `#Cult` and a hashtag for each name in the post's organisations field, then the article link. Each network fills its own limit, so X can carry more tags than Bluesky. A tag that does not fit is skipped. The panels offer the post, including an intent link that opens in a new tab when secrets are not set. Publishing does not post. An agent may offer to post after the article has been live for 30 minutes ([X_AUTO_POST.md](./X_AUTO_POST.md)). Only production posts to the real accounts. On staging the panels can be tested
 ([#178](https://github.com/cultpodcasts/freedomtimes/issues/178)): as a **dry run** that sends nothing, or against
 separate **test accounts** ([§ Testing on staging](#testing-on-staging)).
 
@@ -62,9 +62,11 @@ The production panels show no mode banner and behave exactly as before #178.
 
 ## What gets posted
 
-Both networks get the same text: the post's social title (else its SEO title, else its title), a blank line,
-then `https://freedomtimes.news/posts/<slug>`. The title is shortened with "…" to fit the network's limit. The
-link is always complete. If the post text changed after the panel loaded, the click is refused and the panel
+Each network gets the post's social title (else its SEO title, else its title), a blank line, `#Cult` and one
+hashtag per organisations name that fits, a blank line, then `https://freedomtimes.news/posts/<slug>`. The link
+is last and always complete. X fills 280 weighted characters (a link counts as 23). Bluesky fills 300 graphemes
+(a link counts in full), so its hashtag line can be shorter. The title is shortened with "…" only when the tags
+and the link leave no room. If the post text changed after the panel loaded, the click is refused and the panel
 shows the new preview.
 
 ### Bluesky

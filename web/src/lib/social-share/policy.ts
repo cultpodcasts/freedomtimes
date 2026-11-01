@@ -103,6 +103,8 @@ export interface SharePostSnapshot {
 	status: string;
 	title: string;
 	description: string;
+	/** Organisation names on the post. Each one becomes a hashtag. */
+	groups: string[];
 }
 
 /**
@@ -119,7 +121,23 @@ export function snapshotFromContentItem(item: {
 	const data = item.data ?? {};
 	const title = str(data.social_title) ?? str(item.seo?.title) ?? str(data.title) ?? '';
 	const description = str(item.seo?.description) ?? str(data.lede) ?? str(data.excerpt) ?? '';
-	return { id: item.id, slug: item.slug, status: item.status, title, description };
+	return { id: item.id, slug: item.slug, status: item.status, title, description, groups: organisationNames(data) };
+}
+
+function organisationNames(data: Record<string, unknown>): string[] {
+	const value = data.organisations ?? data.organizations;
+	if (!Array.isArray(value)) return [];
+	const names: string[] = [];
+	for (const item of value) {
+		if (typeof item === 'string') {
+			const name = item.trim();
+			if (name) names.push(name);
+		} else if (item && typeof item === 'object' && typeof (item as { name?: unknown }).name === 'string') {
+			const name = (item as { name: string }).name.trim();
+			if (name) names.push(name);
+		}
+	}
+	return names;
 }
 
 /** Short stable fingerprint of the preview, so a stale confirm can't post changed text. */

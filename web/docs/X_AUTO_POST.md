@@ -2,7 +2,7 @@
 
 Publishing does not post to X or Bluesky. The post editor offers the exact text and an **Open X to post** or **Open Bluesky to post** link as soon as the post is open. An agent does not post, and does not offer to post, in the publish step. After the article has been live for **30 minutes** (the same wait the production push scheduler uses), the agent may offer to post it. The post uses the same clients, the same text, and the same KV keys as the admin panels ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)).
 
-The text is the social title (or the SEO title, or the post title), a blank line, and `https://freedomtimes.news/posts/<slug>`. X counts a link as 23 and stops at 280. Bluesky stops at 300 graphemes and attaches the article card.
+The text is the social title (or the SEO title, or the post title), a blank line, `#Cult` and the organisation hashtags that fit, a blank line, and `https://freedomtimes.news/posts/<slug>` last. X counts a link as 23 and fills 280. Bluesky fills 300 graphemes and attaches the article card. The two hashtag lines can differ.
 
 A network posts only when its production secrets are already on the Worker (the same names as the panels). If they are not, that network is skipped. The post editor shows the exact text and an **Open X to post** or **Open Bluesky to post** link. EmDash renders that link with `target="_blank"`. Opening it does not post; the person signed in as the Freedom Times account presses Post on that site. Nothing is emailed.
 

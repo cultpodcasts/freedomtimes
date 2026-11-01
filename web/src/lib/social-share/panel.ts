@@ -58,7 +58,7 @@ export interface ShareProvider<TConfig, TDraft extends ShareDraftBase> {
 	configFromSecrets(values: readonly string[]): TConfig;
 	/** Account shown in the confirm dialog, e.g. `@freedomtimes.news`. */
 	accountLabel(config: TConfig): string;
-	buildDraft(post: { title: string; description: string; url: string }): TDraft;
+	buildDraft(post: { title: string; description: string; url: string; groups?: readonly string[] }): TDraft;
 	/** Extra preview rows besides the post text (e.g. the link card). */
 	previewFields(draft: TDraft): Array<{ label: string; value: string }>;
 	publish(config: TConfig, draft: TDraft, deps: { fetch: FetchLike; now: () => Date }): Promise<SharedPost>;
@@ -286,7 +286,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 		if (post.status !== 'published' || !post.slug) {
 			return blocked([{ type: 'context', text: `Publish this post first. Only published posts can be shared to ${provider.label}.` }]);
 		}
-		const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug) });
+		const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug), groups: post.groups });
 		const fingerprint = await previewFingerprint(['dry-run', provider.network, post.id, draft.text, ...provider.previewFields(draft).map((f) => f.value)]);
 		return { kind: 'ready', mode, config: null, draft, fingerprint, key: '', post, record: null };
 	}
@@ -297,7 +297,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 		if (post.status !== 'published' || !post.slug) {
 			return blocked([{ type: 'context', text: `Publish this post first. Only published posts can be shared to ${provider.label}.` }]);
 		}
-		const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug) });
+		const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug), groups: post.groups });
 		return blocked([
 			banner(
 				`${provider.label} sharing isn't configured`,
@@ -375,7 +375,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 		return blocked([{ type: 'context', text: `Publish this post first. Only published posts can be shared to ${provider.label}.` }]);
 	}
 
-	const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug) });
+	const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug), groups: post.groups });
 	const fingerprint = await previewFingerprint([provider.network, post.id, draft.text, ...provider.previewFields(draft).map((f) => f.value)]);
 	return { kind: 'ready', mode, config, draft, fingerprint, key, post, record: null };
 }
