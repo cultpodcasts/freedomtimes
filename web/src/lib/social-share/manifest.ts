@@ -5,6 +5,7 @@
  * can't be allowed in one place and blocked in the other.
  */
 import { BLUESKY_HOST } from './bluesky';
+import { X_HOST } from './x';
 
 export const SOCIAL_SHARE_CAPABILITIES = ['content:read', 'network:request'] as const;
-export const SOCIAL_SHARE_ALLOWED_HOSTS = [BLUESKY_HOST] as const;
+export const SOCIAL_SHARE_ALLOWED_HOSTS = [BLUESKY_HOST, X_HOST] as const;

@@ -1,6 +1,6 @@
 /**
- * Admin-only "Post to Bluesky" panel (#21): Bluesky client, panel states,
- * double-post lock and admin-only placement. Every network call is mocked;
+ * Admin-only "Post to Bluesky" (#21) and "Post to X" (#20) panels: clients,
+ * panel states, double-post lock and admin-only placement. Every network call is mocked;
  * nothing here can reach a real account.
  */
 import assert from 'node:assert/strict';
@@ -38,6 +38,20 @@ import {
 	type SharePostSnapshot,
 	truncateGraphemes,
 } from '../src/lib/social-share/policy.ts';
+import {
+	buildXDraft,
+	oauth1Header,
+	oauth1Signature,
+	oauthPercentEncode,
+	postToX,
+	readXConfig,
+	truncateXWeighted,
+	X_MAX_WEIGHTED_LENGTH,
+	xAccountLabel,
+	xProvider,
+	xTextWeight,
+	xWeightedLength,
+} from '../src/lib/social-share/x.ts';
 
 const PROD_URL = 'https://freedomtimes.news/_emdash/api/content/posts/p1/extensions/panel/ft-social-share/bluesky';
 const STAGING_URL = 'https://staging.freedomtimes.news/_emdash/api/content/posts/p1/extensions/panel/ft-social-share/bluesky';
@@ -259,10 +273,18 @@ describe('admin-only access', () => {
 
 	it('plugin route stays private with the default Admin permission, inside the admin editor only', () => {
 		const src = readFileSync(new URL('../src/plugins/social-share.ts', import.meta.url), 'utf8');
-		assert.match(src, /'editor\/bluesky':\s*\{/);
+		assert.match(src, /'editor\/bluesky': sharePanelRoute\(blueskyProvider\),/);
+		assert.match(src, /'editor\/x': sharePanelRoute\(xProvider\),/);
 		assert.doesNotMatch(src, /public\s*:\s*true/);
 		assert.doesNotMatch(src, /permission\s*:/, 'no permission override: EmDash defaults to plugins:manage (Admin)');
-		assert.match(src, /editorPanels:\s*\[\{ id: 'bluesky', title: 'Post to Bluesky', route: 'editor\/bluesky', collections: \['posts'\] \}\]/);
+		const panels = /editorPanels: \[([\s\S]*?)\],\s*\},/.exec(src)?.[1] ?? '';
+		assert.deepEqual(
+			panels.split('\n').map((l) => l.trim()).filter(Boolean),
+			[
+				"{ id: 'bluesky', title: 'Post to Bluesky', route: 'editor/bluesky', collections: ['posts'] },",
+				"{ id: 'x', title: 'Post to X', route: 'editor/x', collections: ['posts'] },",
+			],
+		);
 		assert.doesNotMatch(src, /\b(pages|widgets|entry)\s*:/, 'no admin pages, widgets or React entry');
 		assert.doesNotMatch(src, /hooks\s*:/, 'nothing posts automatically');
 		const config = readFileSync(new URL('../astro.config.ts', import.meta.url), 'utf8');
@@ -284,7 +306,18 @@ describe('admin-only access', () => {
 	it('no public page, layout, component, script or static file renders the button or the route', () => {
 		const root = fileURLToPath(new URL('..', import.meta.url));
 		const allowed = new Set(['src/plugins/social-share.ts']);
-		const needles = ['ft-social-share', 'editor/bluesky', 'Post to Bluesky', 'social-share', 'BLUESKY_APP_PASSWORD'];
+		const needles = [
+			'ft-social-share',
+			'editor/bluesky',
+			'editor/x',
+			'Post to Bluesky',
+			'Post to X',
+			'social-share',
+			'BLUESKY_APP_PASSWORD',
+			'X_API_KEY_SECRET',
+			'X_ACCESS_TOKEN_SECRET',
+			'api.x.com/2/tweets',
+		];
 		const hits: string[] = [];
 		const walk = (dir: string) => {
 			for (const name of readdirSync(dir)) {
@@ -306,6 +339,7 @@ describe('admin-only access', () => {
 
 	it('the plugin route is never stored in the anonymous page cache', () => {
 		assert.equal(isCacheablePath('/_emdash/api/plugins/ft-social-share/editor/bluesky'), false);
+		assert.equal(isCacheablePath('/_emdash/api/plugins/ft-social-share/editor/x'), false);
 	});
 });
 
@@ -441,5 +475,212 @@ describe('Post to Bluesky panel', () => {
 		assert.ok(findButton((await load(deps)).blocks, 'bluesky_release'));
 		await act(deps, 'bluesky_release');
 		assert.equal(kv.data.size, 0);
+	});
+});
+
+const X_ENV = {
+	SITE_ACCESS_MODE: 'public',
+	X_API_KEY: 'test-consumer-key',
+	X_API_KEY_SECRET: 'test-consumer-secret',
+	X_ACCESS_TOKEN: '1234567890-test-access-token',
+	X_ACCESS_TOKEN_SECRET: 'test-token-secret',
+};
+const X_CONFIG = readXConfig(X_ENV)!;
+
+/** Mock X: POST /2/tweets only. */
+function mockX(create?: () => Response | Promise<Response>) {
+	const calls: Call[] = [];
+	const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
+		calls.push({ url, init });
+		if (url === 'https://api.x.com/2/tweets') {
+			return create ? create() : json(201, { data: { id: '1851234567890123456', text: 'echo' } });
+		}
+		throw new Error(`unexpected fetch ${url}`);
+	};
+	return { calls, fetch };
+}
+
+function parseOAuthHeader(header: string): Record<string, string> {
+	assert.match(header, /^OAuth /);
+	return Object.fromEntries(
+		header
+			.slice(6)
+			.split(', ')
+			.map((pair) => {
+				const m = /^([^=]+)="([^"]*)"$/.exec(pair);
+				assert.ok(m, pair);
+				return [decodeURIComponent(m[1]), decodeURIComponent(m[2])];
+			}),
+	);
+}
+
+describe('X client (mocked)', () => {
+	it('needs all four secrets and names the account from the access token', () => {
+		assert.equal(readXConfig({}), null);
+		assert.equal(readXConfig({ ...X_ENV, X_ACCESS_TOKEN_SECRET: ' ' }), null);
+		assert.deepEqual(X_CONFIG, {
+			apiKey: 'test-consumer-key',
+			apiKeySecret: 'test-consumer-secret',
+			accessToken: '1234567890-test-access-token',
+			accessTokenSecret: 'test-token-secret',
+		});
+		assert.equal(xAccountLabel(X_CONFIG), 'the X account with user id 1234567890');
+		assert.equal(xAccountLabel({ ...X_CONFIG, accessToken: 'opaque' }), 'the X account that owns the access token');
+	});
+
+	it('signs exactly like the worked example in X\'s OAuth 1.0a guide', async () => {
+		// docs.x.com/fundamentals/authentication/oauth-1-0a/creating-a-signature (sample keys, invalid for real use).
+		const signature = await oauth1Signature({
+			method: 'POST',
+			url: 'https://api.x.com/1.1/statuses/update.json',
+			params: {
+				status: 'Hello Ladies + Gentlemen, a signed OAuth request!',
+				include_entities: 'true',
+				oauth_consumer_key: 'xvz1evFS4wEEPTGEFPHBog',
+				oauth_nonce: 'kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg',
+				oauth_signature_method: 'HMAC-SHA1',
+				oauth_timestamp: '1318622958',
+				oauth_token: '370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb',
+				oauth_version: '1.0',
+			},
+			consumerSecret: 'kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw',
+			tokenSecret: 'LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE',
+		});
+		assert.equal(signature, 'Ls93hJiZbQ3akF3HF3x1Bz8/zU4=');
+		assert.equal(oauthPercentEncode("a b!*'()~"), 'a%20b%21%2A%27%28%29~');
+	});
+
+	it('counts like X: 280 weighted, emoji and CJK count 2, the link counts 23', () => {
+		assert.equal(xTextWeight('abc é “q”'), 9);
+		assert.equal(xTextWeight('🚨'), 2);
+		assert.equal(xTextWeight('👩‍👩‍👧'), 2);
+		assert.equal(xTextWeight('日本'), 4);
+		assert.equal(truncateXWeighted('abcdef', 5), 'abc…');
+		const url = articleUrl(`a-${'very-'.repeat(40)}long-slug`);
+		const draft = buildXDraft({ title: '“Quoted” 🚨 日本 '.repeat(40), description: 'ignored', url });
+		assert.ok(draft.weightedLength <= X_MAX_WEIGHTED_LENGTH);
+		assert.ok(draft.weightedLength > X_MAX_WEIGHTED_LENGTH - 4, 'uses the room');
+		assert.ok(draft.text.endsWith(`\n\n${url}`), 'the full link is always kept');
+		assert.ok(draft.text.includes('…'));
+		assert.equal(xWeightedLength(`Cult news\n\n${url}`), 9 + 2 + 23);
+		assert.equal(xWeightedLength('Read freedomtimes.news or bit.ly/x today'), 5 + 23 + 4 + 23 + 6);
+		assert.equal(xWeightedLength('e.g. U.S. news'), 14, 'abbreviations are not links');
+		const linky = buildXDraft({ title: `${'word '.repeat(40)}see freedomtimes.news ${'more '.repeat(10)}`, description: '', url });
+		assert.ok(linky.weightedLength <= X_MAX_WEIGHTED_LENGTH, 'a domain in the title is counted as 23, never under-counted');
+		assert.equal(linky.weightedLength, xWeightedLength(linky.text));
+		const short = buildXDraft({ title: 'Cult news', description: '', url });
+		assert.equal(short.text, `Cult news\n\n${url}`);
+		assert.equal(short.weightedLength, 9 + 2 + 23);
+	});
+
+	it('makes one signed POST /2/tweets with only the text, and returns the post URL', async () => {
+		const x = mockX();
+		const draft = buildXDraft({ title: 'T', description: '', url: articleUrl('s') });
+		const now = new Date('2026-10-31T22:00:00Z');
+		const shared = await postToX(X_CONFIG, draft, { fetch: x.fetch, now: () => now });
+		assert.deepEqual(shared, { id: '1851234567890123456', url: 'https://x.com/i/web/status/1851234567890123456' });
+		assert.equal(x.calls.length, 1);
+		const { init } = x.calls[0];
+		assert.equal(init?.method, 'POST');
+		assert.deepEqual(JSON.parse(String(init?.body)), { text: draft.text });
+		const headers = init?.headers as Record<string, string>;
+		assert.equal(headers['content-type'], 'application/json');
+		const oauth = parseOAuthHeader(headers.authorization);
+		assert.equal(oauth.oauth_consumer_key, 'test-consumer-key');
+		assert.equal(oauth.oauth_token, '1234567890-test-access-token');
+		assert.equal(oauth.oauth_signature_method, 'HMAC-SHA1');
+		assert.equal(oauth.oauth_timestamp, String(now.getTime() / 1000));
+		assert.equal(oauth.oauth_version, '1.0');
+		assert.match(oauth.oauth_nonce, /^[0-9a-f]{32}$/);
+		const expected = await oauth1Header({ method: 'POST', url: 'https://api.x.com/2/tweets', config: X_CONFIG, nonce: oauth.oauth_nonce, timestamp: now.getTime() / 1000 });
+		assert.equal(headers.authorization, expected, 'signature covers the oauth_* params only (JSON body is not signed)');
+		assert.ok(!headers.authorization.includes('test-consumer-secret') && !headers.authorization.includes('test-token-secret'));
+	});
+
+	it('says whether a failure definitely did not post', async () => {
+		const draft = buildXDraft({ title: 'T', description: '', url: articleUrl('s') });
+		const run = (create: () => Response | Promise<Response>) =>
+			postToX(X_CONFIG, draft, { fetch: mockX(create).fetch, now: () => new Date() }).then(
+				() => assert.fail('expected failure'),
+				(e: unknown) => {
+					assert.ok(e instanceof ShareNetworkError);
+					assert.ok(!e.message.includes('test-consumer-secret') && !e.message.includes('test-token-secret'));
+					return e.definitelyNotPosted;
+				},
+			);
+		assert.equal(await run(() => json(401, { title: 'Unauthorized', detail: 'Unauthorized', status: 401 })), true);
+		assert.equal(await run(() => json(403, { detail: 'You are not permitted to perform this action.' })), true);
+		assert.equal(await run(() => json(400, { title: 'Invalid Request' })), true);
+		assert.equal(await run(() => json(429, { title: 'Too Many Requests' })), true);
+		assert.equal(await run(() => json(503, {})), false);
+		assert.equal(await run(() => Promise.reject(new Error('socket hang up'))), false);
+		assert.equal(await run(() => json(201, { errors: [{ message: 'odd' }] })), false);
+	});
+});
+
+describe('Post to X panel', () => {
+	const X_URL = 'https://freedomtimes.news/_emdash/api/content/posts/p1/extensions/panel/ft-social-share/x';
+	const xHarness = (create?: () => Response | Promise<Response>, env: Record<string, unknown> = X_ENV) => {
+		const x = mockX(create);
+		const { deps, kv } = harness({ provider: xProvider as never, env, fetch: x.fetch });
+		return { deps, kv, x };
+	};
+	const xLoad = (deps: SharePanelDeps<never, never>, url = X_URL) => load(deps, { url, ui: { ...PANEL_UI, extensionId: 'x' } });
+	const xAct = (deps: SharePanelDeps<never, never>, action_id: string, value?: unknown, url = X_URL) =>
+		handleSharePanel({ input: { type: 'block_action', action_id, value }, ui: { ...PANEL_UI, extensionId: 'x' }, user: ADMIN, requestUrl: url }, deps);
+
+	it('is admin-only, production-only and explains missing secrets', async () => {
+		const { deps, x } = xHarness();
+		await assert.rejects(load(deps, { user: undefined, url: X_URL }), (e: unknown) => e instanceof ShareAccessError && e.status === 401);
+		await assert.rejects(load(deps, { user: { ...ADMIN, role: 40 }, url: X_URL }), (e: unknown) => e instanceof ShareAccessError && e.status === 403);
+		const staging = await xLoad({ ...deps, env: { ...X_ENV, SITE_ACCESS_MODE: 'locked' } }, STAGING_URL.replace(/bluesky$/, 'x'));
+		assert.equal(staging.blocks[0].title, 'Disabled outside production');
+		assert.equal(findButton(staging.blocks, 'x_post'), undefined);
+		const missing = await xLoad({ ...deps, env: { SITE_ACCESS_MODE: 'public', X_API_KEY: 'k' } });
+		assert.equal(missing.blocks[0].title, "X sharing isn't configured");
+		assert.match(String(missing.blocks[0].description), /X_API_KEY, X_API_KEY_SECRET, X_ACCESS_TOKEN, and X_ACCESS_TOKEN_SECRET/);
+		assert.equal(findButton(missing.blocks, 'x_post'), undefined);
+		assert.equal(x.calls.length, 0);
+	});
+
+	it('previews the exact text, posts once on confirm and records it separately from Bluesky', async () => {
+		const { deps, kv, x } = xHarness();
+		await kv.set('share:bluesky:p1', { status: 'posted' });
+		const res = await xLoad(deps);
+		assert.equal(res.blocks.find((b) => b.type === 'code')?.code, 'Cult news this week\n\nhttps://freedomtimes.news/posts/cult-news-weekly');
+		const fields = (res.blocks.find((b) => b.type === 'fields')?.fields ?? []) as Array<{ label: string; value: string }>;
+		assert.equal(fields[0].value, `${xTextWeight('Cult news this week') + 2 + 23} / 280`);
+		const button = findButton(res.blocks, 'x_post');
+		assert.ok(button, 'a Bluesky share does not block X');
+		assert.equal((button.confirm as { title: string }).title, 'Post to X as the X account with user id 1234567890?');
+		assert.equal(x.calls.length, 0, 'nothing posts on load');
+
+		const posted = await xAct(deps, 'x_post', button.value);
+		assert.equal(posted.toast?.type, 'success');
+		assert.equal(posted.blocks[0].title, 'Shared to X');
+		const record = (await kv.getVersioned<Record<string, unknown>>('share:x:p1'))?.value;
+		assert.equal(record?.status, 'posted');
+		assert.equal(record?.remoteUrl, 'https://x.com/i/web/status/1851234567890123456');
+
+		const again = await xAct(deps, 'x_post', button.value);
+		assert.equal(again.toast?.type, 'error');
+		assert.equal(x.calls.length, 1);
+		assert.equal(findButton(again.blocks, 'bluesky_post'), undefined);
+	});
+
+	it('releases the lock on a 4xx and keeps it when the outcome is unknown', async () => {
+		const refused = xHarness(() => json(403, { detail: 'read-only app' }));
+		const value = findButton((await xLoad(refused.deps)).blocks, 'x_post')?.value;
+		const res = await xAct(refused.deps, 'x_post', value);
+		assert.match(String(res.toast?.message), /^Not posted: X refused the post \(HTTP 403: read-only app\)/);
+		assert.equal(refused.kv.data.size, 0);
+
+		const unknown = xHarness(() => json(503, {}));
+		const value2 = findButton((await xLoad(unknown.deps)).blocks, 'x_post')?.value;
+		await xAct(unknown.deps, 'x_post', value2);
+		assert.equal((await unknown.kv.getVersioned<Record<string, unknown>>('share:x:p1'))?.value.status, 'uncertain');
+		const after = await xLoad(unknown.deps);
+		assert.equal(findButton(after.blocks, 'x_post'), undefined);
+		assert.ok(findButton(after.blocks, 'x_release'));
 	});
 });

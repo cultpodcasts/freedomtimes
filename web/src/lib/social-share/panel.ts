@@ -33,7 +33,7 @@ export interface ShareDraftBase {
 	url: string;
 }
 
-/** One social network (Bluesky in #21, X in #20). */
+/** One social network (Bluesky, X). */
 export interface ShareProvider<TConfig, TDraft extends ShareDraftBase> {
 	/** KV / action id prefix, e.g. `bluesky`. */
 	network: string;
@@ -198,7 +198,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 		return blocked([
 			banner(
 				`${provider.label} sharing isn't configured`,
-				`Set the Worker secrets ${provider.secretNames.join(' and ')} on the production Worker (see web/docs/SOCIAL_SHARING.md). Nothing can be posted until then.`,
+				`Set the Worker secrets ${new Intl.ListFormat('en', { type: 'conjunction' }).format(provider.secretNames)} on the production Worker (see web/docs/SOCIAL_SHARING.md). Nothing can be posted until then.`,
 				'alert',
 			),
 		]);
