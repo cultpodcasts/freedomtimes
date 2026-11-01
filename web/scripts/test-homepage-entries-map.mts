@@ -56,6 +56,18 @@ describe('homepage: posts load in the page frontmatter, before rendering starts 
 	}
 });
 
+describe('homepage story card images are decorative (#134)', () => {
+	it('thumbnails use an empty alt because the headline and the link name already say the title', () => {
+		const images = homepageView.match(/<img class="story-image"[^>]*>/g) ?? [];
+		assert.equal(images.length, 3);
+		for (const image of images) assert.match(image, /alt=""/);
+		assert.doesNotMatch(homepageView, /alt=\{(lead|secondLead|story)\.title\}/);
+		assert.match(homepageView, /aria-label=\{`Read: \$\{lead\.title\}`\}/);
+		assert.match(homepageView, /aria-label=\{`Read: \$\{secondLead\.title\}`\}/);
+		assert.match(homepageView, /aria-label=\{`Read: \$\{story\.title\}`\}/);
+	});
+});
+
 describe('component frontmatter database calls degrade, never throw mid-stream (#123)', () => {
 	// Component frontmatter runs after the 200 headers are sent, so an uncaught database failure
 	// there cuts the page off (the page cache body check then refuses to store it, but the reader
