@@ -19,8 +19,6 @@ import { effectiveXAutoMode } from './mode.ts';
 /** How long a crashed attempt blocks a retry. After this, a republish can try again. */
 export const X_AUTO_STALE_PENDING_MS = 2 * 60 * 1000;
 
-const NETWORKS = [xProvider, blueskyProvider] as const;
-
 export interface SocialAutoNetworkResult {
 	network: string;
 	action: 'dry-run' | 'posted' | 'skipped' | 'failed';
@@ -91,23 +89,29 @@ export async function handleXAutoPublish(
 	const snapshot = snapshotFromContentItem({ id, slug, status, data, seo });
 	if (!snapshot.title) return { action: 'skip', reason: 'no-headline', networks: [] };
 
-	const networks: SocialAutoNetworkResult[] = [];
-	for (const provider of NETWORKS) {
-		const draft = provider.buildDraft({
-			title: snapshot.title,
-			description: snapshot.description,
-			url: articleUrl(slug),
-		});
-		if (mode === 'dry-run') {
-			const intentUrl = provider.intentUrl(draft);
-			deps.log('info', `dry-run ${provider.network} ${id} (${lengthLabel(provider.network, draft)}) ${intentUrl}`);
-			networks.push({ network: provider.network, action: 'dry-run', text: draft.text, intentUrl });
-			continue;
-		}
-		networks.push(await postNetwork(provider, id, draft, deps));
-	}
+	const input = { title: snapshot.title, description: snapshot.description, url: articleUrl(slug) };
+	const networks = [
+		await runNetwork(xProvider, id, input, mode, deps),
+		await runNetwork(blueskyProvider, id, input, mode, deps),
+	];
 
 	return { action: mode === 'dry-run' ? 'dry-run' : 'api', networks };
+}
+
+async function runNetwork<TConfig, TDraft extends ShareDraftBase>(
+	provider: ShareProvider<TConfig, TDraft>,
+	postId: string,
+	post: { title: string; description: string; url: string },
+	mode: 'dry-run' | 'api',
+	deps: XAutoDeps,
+): Promise<SocialAutoNetworkResult> {
+	const draft = provider.buildDraft(post);
+	if (mode === 'dry-run') {
+		const intentUrl = provider.intentUrl(draft);
+		deps.log('info', `dry-run ${provider.network} ${postId} (${lengthLabel(provider.network, draft)}) ${intentUrl}`);
+		return { network: provider.network, action: 'dry-run', text: draft.text, intentUrl };
+	}
+	return postNetwork(provider, postId, draft, deps);
 }
 
 async function postNetwork<TConfig, TDraft extends ShareDraftBase>(

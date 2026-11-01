@@ -32,7 +32,9 @@ Dry-run log line, once per network: `dry-run <network> <post id> (<length>) <int
 
 ## When the X developer account exists
 
-The @_freedomtimes developer signup is blocked. The support thread is [Developer signup blocked](https://devcommunity.x.com/t/developer-signup-blocked-your-account-has-been-flagged-and-cannot-proceed/279836). Do not open a second thread, app, or account.
+The @_freedomtimes developer signup is blocked (“Your account has been flagged and cannot proceed”). The account is not suspended. The recent developer-forum thread for this same flag, where X is still taking the request, is [Developer Console onboarding blocked](https://devcommunity.x.com/t/developer-console-onboarding-blocked-your-account-has-been-flagged-and-cannot-proceed-account-not-suspended/277865). Stay with that thread. Do not open a second thread, app, or account.
+
+[Topic 278836](https://devcommunity.x.com/t/developer-console-signup-blocked-your-account-has-been-flagged-and-cannot-proceed/278836) is a different person’s post from 20 Oct 2026. X closed it and sent them to the Help Center. That is not this request.
 
 When that flag is lifted, set the four production X secrets already documented in [SOCIAL_SHARING.md](./SOCIAL_SHARING.md) (`X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`). The next production publish then posts to X. There is no separate OAuth 2.0 client and no email step.
 
