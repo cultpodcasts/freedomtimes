@@ -490,6 +490,22 @@ test("--ci-staging-only keeps the newest 10 whatever their age and deletes only 
 	assert.throws(() => ciStagingOnlyRules({ stagingKeepDays: 6 }));
 });
 
+test("--ci-staging-only does not purge a branch in the middle of later clean deploys", () => {
+	const ci = ciStagingOnlyRules();
+	const newest = Array.from({ length: 10 }, (_, i) => db(`staging-rollback-${stamp(0.2 + i * 0.2)}`));
+	const middle = Array.from({ length: 4 }, (_, i) => db(`staging-rollback-${stamp(3 + i)}`));
+	const oldest = Array.from({ length: 3 }, (_, i) => db(`staging-rollback-${stamp(20 + i)}`));
+	const plan = planRetention({ databases: [...newest, ...middle, ...oldest], rules: ci, now: NOW });
+	const byName = new Map(plan.map((e) => [e.name, e]));
+	for (const d of middle) assert.equal(byName.get(d.Name).action, "keep", d.Name);
+	for (const d of oldest) assert.equal(byName.get(d.Name).action, "delete", d.Name);
+	let seenDelete = false;
+	for (const e of [...plan].sort((a, b) => (a.ageDays ?? 0) - (b.ageDays ?? 0))) {
+		if (e.action === "delete") seenDelete = true;
+		else if (seenDelete) assert.fail(`kept ${e.name} after a newer branch was already marked for deletion`);
+	}
+});
+
 test("--ci-staging-only delete is allowed on Actions but capped and staging-only", () => {
 	const del = (name, extra = {}) => ({ name, prefix: "staging-rollback-", environment: "staging", action: "delete", ...extra });
 	const LS = { identified: true, note: "test" };

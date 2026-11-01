@@ -102,8 +102,9 @@ export const DEFAULT_DATABASE_LIMIT_THRESHOLD = 95;
 /** --ci-staging-only: most branches one CI run may delete. */
 export const DEFAULT_CI_MAX_DELETE = 20;
 export const CI_STAGING_PREFIX = "staging-rollback-";
-/** --ci-staging-only floors. Newest-N always holds. The age floor is pending Jon's decision
- *  (PR #176 thread 1): set CI_STAGING_MIN_KEEP_DAYS to 0 for a count-only CI policy. */
+/** --ci-staging-only floors. Newest 10 always stay. Jon, 1 Nov 2026 (PR #176):
+ *  do not purge a branch in the middle of later deploys that had no known issue.
+ *  The 7-day floor is that rule. Deletes are only the oldest tail past both floors. */
 export const CI_STAGING_MIN_KEEP_NEWEST = 10;
 export const CI_STAGING_MIN_KEEP_DAYS = 7;
 export const DEFAULT_STAGING_DATABASE_NAME = "freedomtimes-emdash-staging";
