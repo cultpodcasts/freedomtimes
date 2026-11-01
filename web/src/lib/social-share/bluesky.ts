@@ -13,6 +13,15 @@ import { graphemeLength, readSecret, ShareNetworkError, type SharedPost, truncat
 export const BLUESKY_NETWORK = 'bluesky';
 export const BLUESKY_SERVICE_ORIGIN = 'https://bsky.social';
 export const BLUESKY_HOST = 'bsky.social';
+export const BLUESKY_INTENT_COMPOSE_URL = 'https://bsky.app/intent/compose';
+
+/** Ready-to-send compose link. Opening it does not post; the person presses Post on Bluesky. */
+export function blueskyIntentUrl(text: string): string {
+	const url = new URL(BLUESKY_INTENT_COMPOSE_URL);
+	url.searchParams.set('text', text);
+	return url.toString();
+}
+
 /** Worker secret names (set by Jon on the production Worker; never committed). */
 export const BLUESKY_SECRET_NAMES = ['BLUESKY_HANDLE', 'BLUESKY_APP_PASSWORD'] as const;
 /** Staging-only test-account secret names, same order (#178; set by Jon on the staging Worker only). */
@@ -183,6 +192,7 @@ export const blueskyProvider: ShareProvider<BlueskyConfig, BlueskyPostDraft> = {
 		...(draft.cardDescription ? [{ label: 'Link card description', value: draft.cardDescription }] : []),
 	],
 	publish: postToBluesky,
+	intentUrl: (draft) => blueskyIntentUrl(draft.text),
 	dryRunRequest: (draft, now) => ({
 		method: 'POST',
 		url: `${BLUESKY_SERVICE_ORIGIN}/xrpc/com.atproto.repo.createRecord`,

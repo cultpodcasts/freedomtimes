@@ -147,6 +147,15 @@ function findButton(blocks: Array<Record<string, unknown>>, actionId: string) {
 	return undefined;
 }
 
+function findExternalLink(blocks: Array<Record<string, unknown>>) {
+	for (const b of blocks) {
+		for (const el of (b.elements as Array<Record<string, unknown>> | undefined) ?? []) {
+			if (el.type === 'link') return el;
+		}
+	}
+	return undefined;
+}
+
 describe('social share policy', () => {
 	it('only the production Worker on a production host can share', () => {
 		assert.equal(isSocialShareEnvironment({ siteAccessMode: 'public', hostname: 'freedomtimes.news' }), true);
@@ -332,7 +341,7 @@ describe('admin-only access', () => {
 				const full = join(dir, name);
 				const rel = relative(root, full).replace(/\\/g, '/');
 				if (statSync(full).isDirectory()) {
-					if (rel === 'src/lib/social-share') continue;
+					if (rel === 'src/lib/social-share' || rel === 'src/lib/x-auto') continue;
 					walk(full);
 				} else if (/\.(astro|ts|tsx|js|mjs|jsx|html|json|webmanifest|css)$/.test(name) && !allowed.has(rel)) {
 					const text = readFileSync(full, 'utf8');
@@ -343,6 +352,11 @@ describe('admin-only access', () => {
 		walk(join(root, 'src'));
 		walk(join(root, 'public'));
 		assert.deepEqual(hits, []);
+	});
+
+	it('an external editor link opens in a new tab', () => {
+		const blocks = readFileSync(new URL('../node_modules/@emdash-cms/blocks/dist/index.js', import.meta.url), 'utf8');
+		assert.match(blocks, /target: external \? "_blank"/);
 	});
 
 	it('the plugin route is never stored in the anonymous page cache', () => {
@@ -376,6 +390,9 @@ describe('Post to Bluesky panel', () => {
 			assert.doesNotMatch(JSON.stringify(res), /test-app-pass|test-pass/, 'no credential in the panel');
 			const button = findButton(res.blocks, 'bluesky_post');
 			assert.equal(button?.label, 'Dry run: Post to Bluesky');
+			const link = findExternalLink(res.blocks);
+			assert.equal((link?.target as { kind?: string })?.kind, 'external');
+			assert.match(String((link?.target as { url?: string })?.url), /^https:\/\/bsky\.app\/intent\/compose\?text=/);
 			assert.equal(button?.confirm, undefined, 'a dry run needs no confirm: it sends nothing');
 			const clicked = await act({ ...deps, env }, 'bluesky_post', button?.value, url);
 			assert.equal(clicked.toast?.type, 'info');
@@ -394,6 +411,10 @@ describe('Post to Bluesky panel', () => {
 		assert.equal(res.blocks[0].title, "Bluesky sharing isn't configured");
 		assert.match(String(res.blocks[0].description), /BLUESKY_HANDLE and BLUESKY_APP_PASSWORD/);
 		assert.equal(findButton(res.blocks, 'bluesky_post'), undefined);
+		const link = findExternalLink(res.blocks);
+		assert.equal(link?.label, 'Open Bluesky to post');
+		assert.equal((link?.target as { kind?: string })?.kind, 'external');
+		assert.match(String((link?.target as { url?: string })?.url), /^https:\/\/bsky\.app\/intent\/compose\?text=/);
 		assert.equal(bsky.calls.length, 0);
 	});
 
@@ -662,10 +683,12 @@ describe('Post to X panel', () => {
 		const staging = await xLoad({ ...deps, env: { ...X_ENV, SITE_ACCESS_MODE: 'locked' } }, STAGING_URL.replace(/bluesky$/, 'x'));
 		assert.equal(staging.blocks[0].title, 'Staging: dry run', 'production X names on staging are ignored');
 		assert.equal(findButton(staging.blocks, 'x_post')?.label, 'Dry run: Post to X');
+		assert.match(String((findExternalLink(staging.blocks)?.target as { url?: string })?.url), /^https:\/\/x\.com\/intent\/post\?text=/);
 		const missing = await xLoad({ ...deps, env: { SITE_ACCESS_MODE: 'public', X_API_KEY: 'k' } });
 		assert.equal(missing.blocks[0].title, "X sharing isn't configured");
 		assert.match(String(missing.blocks[0].description), /X_API_KEY, X_API_KEY_SECRET, X_ACCESS_TOKEN, and X_ACCESS_TOKEN_SECRET/);
 		assert.equal(findButton(missing.blocks, 'x_post'), undefined);
+		assert.equal(findExternalLink(missing.blocks)?.label, 'Open X to post');
 		assert.equal(x.calls.length, 0);
 	});
 

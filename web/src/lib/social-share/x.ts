@@ -15,6 +15,15 @@ export const X_NETWORK = 'x';
 export const X_API_ORIGIN = 'https://api.x.com';
 export const X_HOST = 'api.x.com';
 export const X_CREATE_POST_URL = `${X_API_ORIGIN}/2/tweets`;
+export const X_INTENT_POST_URL = 'https://x.com/intent/post';
+
+/** Ready-to-send compose link. Opening it does not post; the person presses Post on X. */
+export function xIntentUrl(text: string): string {
+	const url = new URL(X_INTENT_POST_URL);
+	url.searchParams.set('text', text);
+	return url.toString();
+}
+
 /** Worker secret names (set by Jon on the production Worker; never committed). */
 export const X_SECRET_NAMES = ['X_API_KEY', 'X_API_KEY_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET'] as const;
 /** Staging-only test-account secret names, same order (#178; set by Jon on the staging Worker only). */
@@ -268,4 +277,5 @@ export const xProvider: ShareProvider<XConfig, XPostDraft> = {
 	previewFields: (draft) => [{ label: 'Length (X counting, link = 23)', value: `${draft.weightedLength} / ${X_MAX_WEIGHTED_LENGTH}` }],
 	publish: postToX,
 	dryRunRequest: (draft) => ({ method: 'POST', url: X_CREATE_POST_URL, body: { text: draft.text } }),
+	intentUrl: (draft) => xIntentUrl(draft.text),
 };

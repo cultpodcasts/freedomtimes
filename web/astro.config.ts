@@ -29,6 +29,10 @@ const pageCachePurgePluginPath = fileURLToPath(
 const socialSharePluginPath = fileURLToPath(
   new URL('./src/plugins/social-share.ts', import.meta.url),
 ).replace(/\\/g, '/');
+// Site-local native plugin: on production publish, post to X and Bluesky when secrets exist.
+const xAutoPostPluginPath = fileURLToPath(
+  new URL('./src/plugins/x-auto-post.ts', import.meta.url),
+).replace(/\\/g, '/');
 const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.url).href;
 
 // Build-time Turso is required for `.emdash/migrations.json` + `emdash migrate`.
@@ -221,6 +225,17 @@ export default defineConfig({
           options: {},
           capabilities: ['content:read', 'network:request'],
           allowedHosts: ['bsky.social', 'api.x.com'],
+        },
+        // Publish logs the X and Bluesky intent links and does not post.
+        // The editor offers the links. See web/docs/X_AUTO_POST.md.
+        {
+          id: 'ft-x-auto-post',
+          version: '1.0.0',
+          entrypoint: xAutoPostPluginPath,
+          format: 'native',
+          options: {},
+          capabilities: ['content:read', 'network:request'],
+          allowedHosts: ['api.x.com', 'bsky.social'],
         },
       ] as PluginDescriptor[],
     }),
