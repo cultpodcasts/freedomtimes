@@ -33,6 +33,16 @@ export function genericHeroImageAlt(title: string): string {
 	return `${title} featured image`;
 }
 
+/**
+ * The hero alt to use for `og:image:alt` when the social image fell back to the hero (#132).
+ * The generic `"<title> featured image"` is not a description of the photo, so it returns null.
+ */
+export function storedHeroImageAlt(alt: string, title: string): string | null {
+	const stored = alt.trim();
+	if (!stored || stored === genericHeroImageAlt(title)) return null;
+	return stored;
+}
+
 const OTHER_FIELD: Record<HeroImageField, HeroImageField> = {
 	featured_image: 'cover_image',
 	cover_image: 'featured_image',

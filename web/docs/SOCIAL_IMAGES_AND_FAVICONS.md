@@ -40,6 +40,7 @@ Tags are rendered in `web/src/layouts/Layout.astro`.
 Notes:
 
 - `og:image` values are absolute URLs at render time.
+- On a post, `og:image:alt` / `twitter:image:alt` are the social title when the image is a social card. When `og:image` falls back to the hero, the alt is the hero's stored alt, not the social title and not the generic `"<title> featured image"` ([#132](https://github.com/cultpodcasts/freedomtimes/issues/132)).
 - `og:image:width` and `og:image:height` are configurable per page via `Layout` props.
 - Posts pass `ogImageWidth={1200}` and `ogImageHeight={675}`.
 

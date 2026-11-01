@@ -192,13 +192,26 @@ function readHeroFallback(data: Record<string, unknown>): string | null {
 	return readFeaturedImageSrc(data.featured_image) ?? readFeaturedImageSrc(data.cover_image) ?? null;
 }
 
+/** Where the OG image came from. `hero` means there was no social image, so the featured/cover photo is used. */
+export type SocialImageSource = 'social' | 'hero';
+
+export type SocialImageResolution = {
+	src: string | null;
+	/** True only when `src` is the featured/cover hero because no social image resolved. */
+	fellBackToHero: boolean;
+};
+
+function resolution(src: string | null, source: SocialImageSource | null): SocialImageResolution {
+	return { src, fellBackToHero: source === 'hero' && src !== null };
+}
+
 async function resolveSocialImageSrcUnguarded(
 	getClient: () => SocialImageQueryClient | null,
 	data: Record<string, unknown>,
 	seo: Record<string, unknown> | null | undefined,
 	options: ResolveSocialImageSrcOptions | undefined,
 	heroFallback: string | null,
-): Promise<string | null> {
+): Promise<SocialImageResolution> {
 	let fromSeo = seo ? readFeaturedImageSrc(seo.image) : null;
 	if (!fromSeo && seo) {
 		const seoMediaId = extractImageFieldMediaIdForLookup(seo.image);
@@ -209,25 +222,25 @@ async function resolveSocialImageSrcUnguarded(
 		const raw = await fetchEmdashSeoImageFromTable(getClient, lu.collection, lu.contentId, lu.slug);
 		if (raw) fromSeo = readFeaturedImageSrc(raw);
 	}
-	if (fromSeo) return fromSeo;
+	if (fromSeo) return resolution(fromSeo, 'social');
 
 	const direct =
 		readFeaturedImageSrc(data.social_image) ?? readFeaturedImageSrc(data.socialImage) ?? null;
-	if (direct) return direct;
+	if (direct) return resolution(direct, 'social');
 
 	const socialMediaId =
 		extractImageFieldMediaIdForLookup(data.social_image)
 		?? extractImageFieldMediaIdForLookup(data.socialImage);
 	if (socialMediaId) {
 		const fromSocial = await resolveMediaIdToPublicPath(getClient, socialMediaId, options);
-		if (fromSocial) return fromSocial;
+		if (fromSocial) return resolution(fromSocial, 'social');
 	}
 
 	/**
 	 * Bare `seo.image` ids may fail lookup if Turso is unset and media API is auth-only. Fall back to the
 	 * hero so `og:image` / `twitter:image` are not empty when the post has a featured image.
 	 */
-	return heroFallback;
+	return resolution(heroFallback, heroFallback ? 'hero' : null);
 }
 
 /**
@@ -235,18 +248,28 @@ async function resolveSocialImageSrcUnguarded(
  * then `social_image`, then the featured / cover hero. **Never rejects** (see the module comment):
  * any failure is logged and resolves to the hero fallback (or `null` when there is no hero).
  */
-export async function resolveSocialImageSrcWith(
+export async function resolveSocialImageWith(
 	createClient: SocialImageClientFactory,
 	data: Record<string, unknown>,
 	seo?: Record<string, unknown> | null,
 	options?: ResolveSocialImageSrcOptions,
-): Promise<string | null> {
+): Promise<SocialImageResolution> {
 	let heroFallback: string | null = null;
 	try {
 		heroFallback = readHeroFallback(data);
 		return await resolveSocialImageSrcUnguarded(lazyClient(createClient), data, seo, options, heroFallback);
 	} catch (err) {
 		console.error(`${LOG_PREFIX}: unexpected failure; using the hero image`, err);
-		return heroFallback;
+		return resolution(heroFallback, heroFallback ? 'hero' : null);
 	}
+}
+
+/** `src` from {@link resolveSocialImageWith}. Existing callers only need the URL. */
+export async function resolveSocialImageSrcWith(
+	createClient: SocialImageClientFactory,
+	data: Record<string, unknown>,
+	seo?: Record<string, unknown> | null,
+	options?: ResolveSocialImageSrcOptions,
+): Promise<string | null> {
+	return (await resolveSocialImageWith(createClient, data, seo, options)).src;
 }

@@ -18,8 +18,9 @@ import {
 import {
 	buildContentEntryViewModel,
 	readEntrySeoRecord,
-	resolveSocialImageSrc,
+	resolveSocialImage,
 } from "../lib/content/contentEntry";
+import { storedHeroImageAlt } from "../lib/content/heroImage";
 import { SITE_DISPLAY_NAME } from "../lib/site-brand";
 import { getWeeklySummaries } from "../lib/seo/weekly-list";
 import {
@@ -89,7 +90,7 @@ const {
 );
 const entryRecord = entry as Record<string, unknown>;
 const seoRecord = readEntrySeoRecord(entryRecord);
-const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
+const socialImage = await resolveSocialImage(entry.data, seoRecord, {
 	origin: Astro.url.origin,
 	emdashSeoLookup: {
 		collection: emdashCollection,
@@ -97,6 +98,7 @@ const socialImageSrc = await resolveSocialImageSrc(entry.data, seoRecord, {
 		slug: typeof entry.slug === "string" ? entry.slug : undefined,
 	},
 });
+const socialImageSrc = socialImage.src;
 // EmDash PortableText merges: defaults < plugin-embeds < user overrides.
 // - image: FT ImageWithLink (figcaption + open full media in new tab)
 // - link: EmDash defaults
@@ -129,6 +131,12 @@ const meta = resolveArticleMeta({
 	fields: structuredFields,
 	fallbackDescription: `Read "${title}" on ${SITE_DISPLAY_NAME}.`,
 });
+const heroAltForOg = storedHeroImageAlt(featuredImageAlt, title);
+const ogImageAlt = socialImageSrc
+	? socialImage.fellBackToHero && heroAltForOg
+		? heroAltForOg
+		: meta.socialTitle
+	: undefined;
 const absoluteCanonicalUrl = new URL(meta.canonical, Astro.url).toString();
 const entrySlug = typeof entry.slug === "string" ? entry.slug : String(entry.id ?? "");
 const showReaderDataProvenance = entrySlug === "privacy-policy";
@@ -197,7 +205,7 @@ const jsonLd: Record<string, unknown>[] = isPost
 	ogImage={socialImageSrc ?? null}
 	ogImageWidth={1200}
 	ogImageHeight={675}
-	ogImageAlt={socialImageSrc ? meta.socialTitle : undefined}
+	ogImageAlt={ogImageAlt}
 	publishedTime={publishedAt}
 	modifiedTime={updatedAt}
 	author={primaryByline}
