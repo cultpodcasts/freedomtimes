@@ -1,16 +1,12 @@
-# Automatic X post when an article publishes
+# Automatic X and Bluesky posts when an article publishes
 
-When a **production** post is published, Freedom Times prepares an X post for **@_freedomtimes**: the headline, a short hook, and `https://freedomtimes.news/posts/<slug>` (so X can show the article card). The text is at most 280 on X's scale, where every link counts as 23.
+When a **production** post is published, Freedom Times posts it to **X** and **Bluesky** through the same clients, the same text, and the same KV keys as the admin panels ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)).
 
-Staging publishes never send. A republish or an edit of a post that already sent does not send again.
+The text is the social title (or the SEO title, or the post title), a blank line, and `https://freedomtimes.news/posts/<slug>`. X counts a link as 23 and stops at 280. Bluesky stops at 300 graphemes and attaches the article card.
 
-The admin **Post to X** button ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)) is separate. It still posts only when an admin confirms, and it uses OAuth 1.0a. This path does not press that button.
+A network posts only when its production secrets are already on the Worker (the same names as the panels). If they are not, that network is skipped. The post editor shows the exact text and an **Open X to post** or **Open Bluesky to post** link. EmDash renders that link with `target="_blank"`. Opening it does not post; the person signed in as the Freedom Times account presses Post on that site. Nothing is emailed.
 
-## Why a publish hook
-
-EmDash runs `content:afterPublish` after a post is published, including when the scheduled-publish sweep promotes one. The hook runs in the web Worker, which already has Cloudflare Email (`EMAIL`, From `noreply@freedomtimes.news`). The plugin records the post id in its own KV only after a successful send.
-
-A poll of `/api/recent-published-posts.json` is how push notifications work, but that feed is anonymous only on production. On locked staging it returns 401, and the scheduler Worker has no email binding. The hook sees the published item directly, on both hosts, and the production-only gate below decides whether anything is sent.
+Staging publishes never send. A republish of a post that already went out on a network does not send that network again. One network failing does not stop the other, and a failure does not fail the publish.
 
 ## Modes
 
@@ -19,75 +15,44 @@ A poll of `/api/recent-published-posts.json` is how push notifications work, but
 | Value | What happens |
 |---|---|
 | `off` | Nothing. |
-| `dry-run` | Builds the text and the intent link and writes them to the Worker log. No email, no X call, no KV record. **This is the staging value.** |
-| `intent` | **Stage A (on now in production).** Emails the intent link. |
-| `api` | **Stage B.** Posts with OAuth 2.0 user context, then emails the X status URL. |
+| `dry-run` | Builds both texts and intent links and writes them to the Worker log. No network call, no KV record. **This is the staging value.** |
+| `api` | **Production.** Posts to each network whose secrets are set. |
 
-`intent` and `api` run only when **both** are true:
+`api` runs only when **both** are true:
 
 - `SITE_ACCESS_MODE=public` (the production Worker)
 - `X_AUTO_POST_ALLOW_SEND=yes` (set only in the production env block)
 
-Locked staging, local dev, and a staging smoke test that flips `SITE_ACCESS_MODE` to `public` all dry-run, because they do not have the allow flag. To stop production without a code change, set `X_AUTO_POST_MODE` to `off` or remove `X_AUTO_POST_ALLOW_SEND`.
+Locked staging, local dev, and a staging smoke test that flips `SITE_ACCESS_MODE` to `public` all dry-run, because they do not have the allow flag. A leftover `intent` value (the retired email path) also dry-runs. To stop production without a code change, set `X_AUTO_POST_MODE` to `off` or remove `X_AUTO_POST_ALLOW_SEND`.
 
-The email goes to `X_AUTO_POST_NOTIFY_TO` (`socialmedia@freedomtimes.news`, which routes to the newsroom inbox).
+Dry-run log line, once per network: `dry-run <network> <post id> (<length>) <intent URL>`.
 
-## Stage A — what Jon receives
+- X: `https://x.com/intent/post?text=<url-encoded text>`
+- Bluesky: `https://bsky.app/intent/compose?text=<url-encoded text>`
 
-Subject `Post this on X: <headline>`. The body is the exact post, then:
+## When the X developer account exists
 
-`https://x.com/intent/post?text=<url-encoded text>`
+The @_freedomtimes developer signup is blocked. The support thread is [Developer signup blocked](https://devcommunity.x.com/t/developer-signup-blocked-your-account-has-been-flagged-and-cannot-proceed/279836). Do not open a second thread, app, or account.
 
-Open it while signed in as @_freedomtimes, check the card, and press Post. The site has not posted.
+When that flag is lifted, set the four production X secrets already documented in [SOCIAL_SHARING.md](./SOCIAL_SHARING.md) (`X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`). The next production publish then posts to X. There is no separate OAuth 2.0 client and no email step.
 
-Worker log line (dry-run and intent): the post id, the weighted length, and the intent URL. Dry-run does not email.
+Each X post that includes the article link is a paid API call (about $0.20). Set a spending limit in the developer console. Bluesky app passwords are not metered the same way.
 
-## Stage B — flip this on after X lifts the developer flag
-
-Do this only once the @_freedomtimes developer signup works. Do not create a second app or account to get around the flag.
-
-1. In the [X developer console](https://console.x.com), signed in as @_freedomtimes, create one app with OAuth 2.0, a confidential client, and User authentication. Set a redirect URI you control (an `http://127.0.0.1` URI is enough for the one-time script). Scopes: `tweet.read`, `tweet.write`, `users.read`, `offline.access`.
-2. From `web/`, print the authorize URL and a code verifier (nothing is posted):
-
-   ```powershell
-   npx tsx scripts/x-oauth2-pkce.mts --client-id <client id> --redirect-uri <the redirect URI>
-   ```
-
-3. Open the URL as @_freedomtimes, approve, and copy the `code` query parameter from the redirect.
-4. Exchange it. The script prints a refresh token once:
-
-   ```powershell
-   npx tsx scripts/x-oauth2-pkce.mts --client-id <client id> --client-secret <client secret> --redirect-uri <the same URI> --code <code> --verifier <verifier from step 2>
-   ```
-
-5. Store the three values as **production** Worker secrets (Wrangler prompts, so they are not in shell history). Never commit them. Staging does not get these.
-
-   ```powershell
-   npx wrangler secret put X_OAUTH2_CLIENT_ID --config wrangler.jsonc --env production
-   npx wrangler secret put X_OAUTH2_CLIENT_SECRET --config wrangler.jsonc --env production
-   npx wrangler secret put X_OAUTH2_REFRESH_TOKEN --config wrangler.jsonc --env production
-   ```
-
-6. Change the production var `X_AUTO_POST_MODE` from `intent` to `api` and deploy the production Worker. Leave `X_AUTO_POST_ALLOW_SEND` as `yes`. That is the whole switch: the same publish hook then calls `POST https://api.x.com/2/tweets` with `Authorization: Bearer` after `POST /2/oauth2/token` (`grant_type=refresh_token`).
-
-X rotates the refresh token. The plugin saves the new one in plugin KV (`oauth2-refresh-token`) before it posts. The secret is only the first token. If a KV save fails after a rotation, the log says to run the PKCE script again. If the connection drops during the tweet call, the post is left pending for 2 minutes so it is not sent twice blindly; check the profile before republishing.
-
-Each post that includes the article link is a paid X API call (about $0.20; see [SOCIAL_SHARING.md](./SOCIAL_SHARING.md)). Set a spending limit in the developer console.
-
-To go back to the intent email, set `X_AUTO_POST_MODE` to `intent` and deploy. Already-sent post ids stay recorded either way.
+Bluesky posts as soon as `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` are on the production Worker. Until either network's secrets exist, use the intent link on that post.
 
 ## Dry run locally
 
-This does not email and does not call X, even if the arguments say `api`:
+This does not call X or Bluesky, even if the mode argument would be `api` on production:
 
 ```powershell
-npx tsx scripts/x-auto-dry-run.mts --title "Headline" --hook "One sentence." --slug my-article
+npx tsx scripts/x-auto-dry-run.mts --title "Headline" --slug my-article
 ```
 
-It prints the text, the weighted length, and the intent link. Staging is the same mode: the hook logs that line and stops.
+It prints both texts and both intent links. Staging is the same mode: the hook logs those lines and stops.
 
 ## Code
 
 - `src/plugins/x-auto-post.ts` — `ft-x-auto-post`, hook `content:afterPublish`
-- `src/lib/x-auto/` — text, the production gate, dedupe, OAuth 2.0 client
-- Tests: `npm run test:x-auto`
+- `src/lib/x-auto/` — the production gate and the publish hook
+- `src/lib/social-share/` — the shared drafts, clients, and the editor intent link
+- Tests: `npm run test:x-auto` and `npm run test:social-share`

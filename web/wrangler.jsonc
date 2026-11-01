@@ -94,10 +94,9 @@
 				// Anonymous reader HTML cache (src/lib/page-cache.ts). "on" enables it; anything else = off.
 				"PAGE_CACHE": "on",
 				"PAGE_CACHE_TTL_SECONDS": "120",
-				// Stage A: email an X intent link when a post is published. Flip to "api" for Stage B.
-				"X_AUTO_POST_MODE": "intent",
-				"X_AUTO_POST_ALLOW_SEND": "yes",
-				"X_AUTO_POST_NOTIFY_TO": "socialmedia@freedomtimes.news"
+				// Post to X and Bluesky on publish when that network's secrets exist. No email.
+				"X_AUTO_POST_MODE": "api",
+				"X_AUTO_POST_ALLOW_SEND": "yes"
 			}
 		},
 		"staging": {

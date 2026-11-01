@@ -1,9 +1,9 @@
 /**
- * On publish of a production post, email Jon a ready-to-send X intent link,
- * or (when X_AUTO_POST_MODE=api) post it. Staging and local always dry-run.
- * See web/docs/X_AUTO_POST.md.
+ * On publish, post the article to X and Bluesky when that network's secrets
+ * are set. Otherwise the post editor's intent link is the fallback. Staging
+ * and local always dry-run. Nothing is emailed. See web/docs/X_AUTO_POST.md.
  *
- * The manual X panel is a different plugin and is unchanged.
+ * The admin panels are a different plugin and use the same clients and KV keys.
  */
 import { env as cfEnv } from 'cloudflare:workers';
 import type { ResolvedPlugin } from 'emdash';
@@ -29,10 +29,6 @@ export function createPlugin(): ResolvedPlugin {
 						env: cfEnv as unknown as Record<string, unknown>,
 						kv: ctx.kv,
 						now: () => new Date(),
-						sendEmail: async (message) => {
-							if (!ctx.email) throw new Error('Email sending is not available on this Worker.');
-							await ctx.email.send(message);
-						},
 						fetch: async (url, init) => {
 							if (!ctx.http) throw new Error('Network access is not available to this plugin.');
 							return ctx.http.fetch(url, init);

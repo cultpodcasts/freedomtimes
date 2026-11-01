@@ -1,8 +1,8 @@
 /**
- * Build the X post for one article and print the text and intent link.
- * Always dry-run: it does not email and does not call X.
+ * Build the X and Bluesky posts for one article and print the text and intent links.
+ * Always dry-run: it does not call either network.
  *
- *   npx tsx scripts/x-auto-dry-run.mts --title "Headline" --hook "One sentence." --slug my-article
+ *   npx tsx scripts/x-auto-dry-run.mts --title "Headline" --slug my-article
  */
 import { handleXAutoPublish } from '../src/lib/x-auto/run.ts';
 import type { ShareKv } from '../src/lib/social-share/panel.ts';
@@ -30,38 +30,35 @@ const kv: ShareKv = {
 };
 
 const title = arg('title');
-const hook = arg('hook');
 const slug = arg('slug');
 const result = await handleXAutoPublish(
 	{
 		id: slug,
 		slug,
 		status: 'published',
-		data: { title, lede: hook },
+		data: { title },
 	},
 	'posts',
 	{
 		env: { SITE_ACCESS_MODE: 'locked', X_AUTO_POST_MODE: 'api', X_AUTO_POST_ALLOW_SEND: 'yes' },
 		kv,
 		now: () => new Date(),
-		sendEmail: async () => {
-			throw new Error('dry-run script must not email');
-		},
 		fetch: async () => {
-			throw new Error('dry-run script must not call X');
+			throw new Error('dry-run script must not call a network');
 		},
 		log: () => {},
 	},
 );
 
-if (result.action !== 'dry-run' || !result.draft) {
-	throw new Error(`Expected a dry run, got ${result.action} ${result.reason ?? ''}`);
+if (result.action !== 'dry-run' || result.networks.length !== 2) {
+	throw new Error(`Expected a dry run of both networks, got ${result.action} ${result.reason ?? ''}`);
 }
 
 console.log(JSON.stringify({
 	action: result.action,
-	weightedLength: result.draft.weightedLength,
-	text: result.draft.text,
-	intentUrl: result.draft.intentUrl,
-	articleUrl: result.draft.url,
+	networks: result.networks.map((network) => ({
+		network: network.network,
+		text: network.text,
+		intentUrl: network.intentUrl,
+	})),
 }, null, 2));

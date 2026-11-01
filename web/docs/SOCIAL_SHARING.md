@@ -3,8 +3,8 @@
 Admins can share a published post to the Freedom Times **Bluesky** account
 ([#21](https://github.com/cultpodcasts/freedomtimes/issues/21)) and **X** account
 ([#20](https://github.com/cultpodcasts/freedomtimes/issues/20)) from the EmDash admin. Nothing posts
-automatically. An admin opens the post, checks the preview, presses the button and confirms. Each network is
-shared separately. Publishing a post can also email a ready-to-send X link (or post via the API once it is switched on); that path is [X_AUTO_POST.md](./X_AUTO_POST.md), not these buttons. Only production posts to the real accounts. On staging the panels can be tested
+automatically from the button. An admin opens the post, checks the preview, presses the button and confirms. Each network is
+shared separately. Publishing a production post also posts through the same clients when that network's secrets are set; until then the panel shows an intent link that opens in a new tab. That path is [X_AUTO_POST.md](./X_AUTO_POST.md). Only production posts to the real accounts. On staging the panels can be tested
 ([#178](https://github.com/cultpodcasts/freedomtimes/issues/178)): as a **dry run** that sends nothing, or against
 separate **test accounts** ([§ Testing on staging](#testing-on-staging)).
 
@@ -43,7 +43,7 @@ separate **test accounts** ([§ Testing on staging](#testing-on-staging)).
 | Staging, that network's test secrets not set | Banner **"Staging: dry run"**, then the dry-run preview (below). Button **Dry run: Post to `<Network>`**. Nothing is sent or recorded. |
 | Staging, that network's test secrets set | Banner **"Staging: posting to test account `<account>`"**, then the states below as in production, but every post goes to the test account. Button **Post to `<Network>` test account**. |
 | Local dev, or any host other than `freedomtimes.news` / `www.freedomtimes.news` / `staging.freedomtimes.news` | Banner **"Local: dry run"** and the dry-run preview. Nothing is ever sent or recorded, and no secret is read. |
-| Production, that network's secrets not set | "`<Network>` sharing isn't configured", naming the secrets below. No button. |
+| Production, that network's secrets not set | "`<Network>` sharing isn't configured", naming the secrets below. No post button. The exact text and an **Open `<Network>` to post** link, which opens that network's compose page in a new tab. |
 | Draft, scheduled or unpublished post | "Publish this post first". No button. |
 | Ready | The exact post text (title, blank line, article link) and the extra rows below, then **Post to `<Network>`**. The confirm dialog repeats the text and the account. |
 | Already shared to that network | "Shared to `<Network>`", with the date, who posted it and a link to the post. No button. |

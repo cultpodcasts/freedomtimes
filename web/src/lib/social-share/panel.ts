@@ -64,6 +64,11 @@ export interface ShareProvider<TConfig, TDraft extends ShareDraftBase> {
 	publish(config: TConfig, draft: TDraft, deps: { fetch: FetchLike; now: () => Date }): Promise<SharedPost>;
 	/** The request `publish` would send to create the post, without credentials (dry-run preview). */
 	dryRunRequest(draft: TDraft, now: Date): { method: string; url: string; body: unknown };
+	/**
+	 * Hand-post fallback. EmDash renders an external block link with
+	 * `target="_blank"` (`@emdash-cms/blocks` LinkElementComponent).
+	 */
+	intentUrl(draft: TDraft): string;
 }
 
 /** Where the credentials come from, by mode: none in local, test names on staging, production names in production. */
@@ -203,6 +208,20 @@ function banner(title: string, description: string, variant: 'default' | 'alert'
 	return { type: 'banner', title, description, variant };
 }
 
+/** Opens the network's compose page in a new tab. Nothing is sent from here. */
+function intentLink<TConfig, TDraft extends ShareDraftBase>(provider: ShareProvider<TConfig, TDraft>, draft: TDraft): PanelBlock {
+	return {
+		type: 'actions',
+		elements: [
+			{
+				type: 'link',
+				label: `Open ${provider.label} to post`,
+				target: { kind: 'external', url: provider.intentUrl(draft) },
+			},
+		],
+	};
+}
+
 function isStalePending(record: ShareRecord, now: Date): boolean {
 	const claimed = Date.parse(record.claimedAt);
 	return record.status === 'pending' && (Number.isNaN(claimed) || now.getTime() - claimed > STALE_PENDING_MS);
@@ -273,12 +292,21 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 	}
 
 	if (!config) {
+		const post = await deps.getPost(postId);
+		if (!post) throw new ShareAccessError(404, 'NOT_FOUND', 'Post not found.');
+		if (post.status !== 'published' || !post.slug) {
+			return blocked([{ type: 'context', text: `Publish this post first. Only published posts can be shared to ${provider.label}.` }]);
+		}
+		const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug) });
 		return blocked([
 			banner(
 				`${provider.label} sharing isn't configured`,
-				`Set the Worker secrets ${new Intl.ListFormat('en', { type: 'conjunction' }).format(provider.secretNames)} on the production Worker (see web/docs/SOCIAL_SHARING.md). Nothing can be posted until then.`,
+				`Set the Worker secrets ${new Intl.ListFormat('en', { type: 'conjunction' }).format(provider.secretNames)} on the production Worker (see web/docs/SOCIAL_SHARING.md). Until then, open ${provider.label} and press Post yourself. Publishing does not email anyone.`,
 				'alert',
 			),
+			{ type: 'context', text: 'Post text, exactly as it will be posted:' },
+			{ type: 'code', code: draft.text },
+			intentLink(provider, draft),
 		]);
 	}
 
@@ -383,6 +411,11 @@ function readyBlocks<TConfig, TDraft extends ShareDraftBase>(
 						label: `Dry run: Post to ${provider.label}`,
 						style: 'primary',
 						value: state.fingerprint,
+					},
+					{
+						type: 'link',
+						label: `Open ${provider.label} to post`,
+						target: { kind: 'external', url: provider.intentUrl(state.draft) },
 					},
 				],
 			},
