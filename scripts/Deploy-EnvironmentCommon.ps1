@@ -33,6 +33,7 @@ $script:DeployCommonScriptRoot = $PSScriptRoot
 . "$PSScriptRoot/assert-push-secrets-ready.ps1"
 . "$PSScriptRoot/lib/EnvFile.ps1"
 . "$PSScriptRoot/lib/WorkerSettingsVerification.ps1"
+. "$PSScriptRoot/lib/TursoHeadroom.ps1"
 # Set when a Terraform apply starts / when wrangler deploy succeeds; read by
 # Write-DeployIncompleteAfterTerraformWarning in the deploy scripts' finally blocks.
 $script:DeployTerraformApplyStarted = $false
@@ -1486,6 +1487,8 @@ function Invoke-DeployStagingTursoBranchBackup {
 
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
     $branchName = "staging-rollback-$stamp"
+    # Staging stops at 90 so the production backup keeps ~5 slots (PR #176).
+    Assert-TursoDatabaseHeadroom -RepoRoot (Split-Path $PSScriptRoot -Parent) -Threshold 90
     Write-DeployStep "Creating staging EmDash backup branch '$branchName' from '$databaseName' (no .db export)"
 
     $createArgs = @("db", "create", $branchName, "--from-db", $databaseName)

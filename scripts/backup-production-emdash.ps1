@@ -388,6 +388,7 @@ try {
     }
 
     if (-not $SkipBranch) {
+        Assert-TursoDatabaseHeadroom -RepoRoot $repoRoot
         Write-Host "Creating Turso backup branch '$branchName' from '$sourceDatabase'…" -ForegroundColor Cyan
         if ($UseWslTurso) {
             $bashLine = '$HOME/.turso/turso db create ' + (Escape-BashSingleQuoted $branchName) +

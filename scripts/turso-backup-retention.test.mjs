@@ -3,14 +3,19 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import {
+	ciStagingDeleteRefusals,
+	ciStagingOnlyRules,
+	databaseLimitCheck,
 	databasesMatchingHostHash,
 	databasesMatchingUrls,
 	defaultRules,
 	deleteRefusals,
 	deleteWithLocalCopies,
 	ensureLocalCopy,
+	isCiStagingCandidate,
 	localBackupPath,
 	matchRule,
+	run,
 	parseNameStamp,
 	planRetention,
 	protectedFromBackupRecords,
@@ -413,4 +418,193 @@ test("localBackupPath: new names map to the same emdash-<env>-<stamp>.db files",
 		localBackupPath({ name: "staging-rollback-20261031-090000", prefix: "staging-rollback-", environment: "staging" }, DIR),
 		path.join(DIR, "emdash-staging-20261031-090000.db"),
 	);
+});
+
+// --- #limit: CI staging-only pruning, old-style names, database-count guard ---
+
+test("old-style prod-rollback-YYYYMMDD-HHMM names match and parse (production rules only)", () => {
+	const r = matchRule("prod-rollback-20260430-2115", rules);
+	assert.equal(r?.prefix, "prod-rollback-");
+	assert.equal(parseNameStamp("prod-rollback-20260430-2115", r).toISOString(), "2026-04-30T21:15:00.000Z");
+	for (const n of ["staging-rollback-20260430-2115", "prod-backup-20260430-2115", "ci-rollback-20260430-2115", "prod-rollback-20260430-211", "prod-rollback-20261332-2115", "prod-rollback-20260430-2575"]) {
+		const m = matchRule(n, rules);
+		assert.ok(m === null || parseNameStamp(n, m) === null, n);
+	}
+	assert.equal(
+		localBackupPath({ name: "prod-rollback-20260430-2115", prefix: "prod-rollback-", environment: "production" }, DIR),
+		path.join(DIR, "emdash-production-20260430-2115.db"),
+	);
+});
+
+test("old-style prod-rollback names stay under the production keep rules", () => {
+	const dbs = [
+		db("prod-rollback-20260430-2115"),
+		db("prod-rollback-20260507-1645"),
+		db(`prod-rollback-${stamp(1)}`),
+		db(`prod-rollback-${stamp(2)}`),
+		db(`prod-rollback-${stamp(3)}`),
+	];
+	const plan = byName(planRetention({ databases: dbs, rules, now: NOW }));
+	// 5 in the family; the two April/May ones are > 30d and above the floor of 3.
+	assert.equal(plan["prod-rollback-20260430-2115"].action, "delete");
+	assert.equal(plan["prod-rollback-20260507-1645"].action, "delete");
+	assert.equal(plan[`prod-rollback-${stamp(1)}`].action, "keep");
+	// Alone, an old-style one is the newest prod backup and is kept.
+	const solo = planRetention({ databases: [db("prod-rollback-20260430-2115")], rules, now: NOW });
+	assert.equal(solo[0].action, "keep");
+});
+
+test("--ci-staging-only rules never select prod-*, ci-*, staging-backup-* or named DBs", () => {
+	const ci = ciStagingOnlyRules();
+	const dbs = [
+		"freedomtimes-emdash-production",
+		"freedomtimes-emdash-staging",
+		"prod-work-embeds",
+		"staging-prerollback",
+		"prod-rollback-20250101-000000",
+		"prod-rollback-20250101-0000",
+		"prod-backup-20250101-000000",
+		"ci-rollback-20250101-000000",
+		"ci-staging-backup-20250101-000000",
+		"staging-backup-20250101-000000",
+		"staging-backup-20250101-000000-pre-x",
+		"staging-rollback-manual",
+		"staging-rollback-20250101-0000",
+	].map((n) => db(n));
+	assert.deepEqual(planRetention({ databases: dbs, rules: ci, now: NOW }), []);
+	for (const d of dbs) assert.equal(isCiStagingCandidate(d.Name), false, d.Name);
+	assert.equal(isCiStagingCandidate("staging-rollback-20250101-000000"), true);
+});
+
+test("--ci-staging-only keeps the newest 10 whatever their age and deletes only > 7 days", () => {
+	const ci = ciStagingOnlyRules();
+	const young = Array.from({ length: 15 }, (_, i) => db(`staging-rollback-${stamp(0.1 + i * 0.1)}`));
+	assert.equal(planRetention({ databases: young, rules: ci, now: NOW }).filter((e) => e.action === "delete").length, 0);
+	const old = Array.from({ length: 14 }, (_, i) => db(`staging-rollback-${stamp(40 + i)}`));
+	const plan = planRetention({ databases: [...old, db("prod-backup-20250101-000000")], rules: ci, now: NOW });
+	assert.equal(plan.length, 14);
+	const del = plan.filter((e) => e.action === "delete");
+	assert.equal(del.length, 4);
+	assert.ok(del.every((e) => e.ageDays > 49));
+	assert.throws(() => ciStagingOnlyRules({ stagingKeepNewest: 9 }));
+	assert.throws(() => ciStagingOnlyRules({ stagingKeepDays: 6 }));
+});
+
+test("--ci-staging-only does not purge a branch in the middle of later clean deploys", () => {
+	const ci = ciStagingOnlyRules();
+	const newest = Array.from({ length: 10 }, (_, i) => db(`staging-rollback-${stamp(0.2 + i * 0.2)}`));
+	const middle = Array.from({ length: 4 }, (_, i) => db(`staging-rollback-${stamp(3 + i)}`));
+	const oldest = Array.from({ length: 3 }, (_, i) => db(`staging-rollback-${stamp(20 + i)}`));
+	const plan = planRetention({ databases: [...newest, ...middle, ...oldest], rules: ci, now: NOW });
+	const byName = new Map(plan.map((e) => [e.name, e]));
+	for (const d of middle) assert.equal(byName.get(d.Name).action, "keep", d.Name);
+	for (const d of oldest) assert.equal(byName.get(d.Name).action, "delete", d.Name);
+	let seenDelete = false;
+	for (const e of [...plan].sort((a, b) => (a.ageDays ?? 0) - (b.ageDays ?? 0))) {
+		if (e.action === "delete") seenDelete = true;
+		else if (seenDelete) assert.fail(`kept ${e.name} after a newer branch was already marked for deletion`);
+	}
+});
+
+test("--ci-staging-only delete is allowed on Actions but capped and staging-only", () => {
+	const del = (name, extra = {}) => ({ name, prefix: "staging-rollback-", environment: "staging", action: "delete", ...extra });
+	const LS = { identified: true, note: "test" };
+	assert.match(ciStagingDeleteRefusals({ plan: [] }).join(" "), /staging target was not identified/);
+	const ok = [del("staging-rollback-20250101-000000")];
+	assert.deepEqual(deleteRefusals({ plan: ok, env: { GITHUB_ACTIONS: "true" }, ciStagingOnly: true, liveStaging: LS }), []);
+	assert.equal(ciStagingDeleteRefusals({ plan: ok, maxDelete: 0, liveStaging: LS }).length, 1);
+	const many = Array.from({ length: 21 }, (_, i) => del(`staging-rollback-2025010${1 + (i % 9)}-0000${String(i).padStart(2, "0")}`));
+	assert.match(ciStagingDeleteRefusals({ plan: many, liveStaging: LS }).join(" "), /above --max-delete 20/);
+	for (const bad of [
+		del("prod-rollback-20250101-000000", { prefix: "prod-rollback-", environment: "production" }),
+		del("freedomtimes-emdash-staging"),
+		del("staging-backup-20250101-000000", { prefix: "staging-backup-" }),
+	]) {
+		assert.equal(ciStagingDeleteRefusals({ plan: [bad], liveStaging: LS }).length, 1, bad.name);
+	}
+	// Every other mode still refuses on GitHub Actions.
+	const r = deleteRefusals({ plan: ok, expectCount: 1, env: { GITHUB_ACTIONS: "true" }, liveProduction: { identified: true }, liveStaging: { identified: true } });
+	assert.ok(r.some((x) => /never run on GitHub Actions/.test(x)));
+});
+
+test("databaseLimitCheck fails at 95+ with the MSI retention command", () => {
+	assert.equal(databaseLimitCheck(94).ok, true);
+	const at = databaseLimitCheck(95);
+	assert.equal(at.ok, false);
+	assert.match(at.message, /node scripts\/turso-backup-retention\.mjs --delete --expect-count N/);
+	assert.equal(databaseLimitCheck(100).ok, false);
+	assert.equal(databaseLimitCheck(86, 80).ok, false);
+	assert.throws(() => databaseLimitCheck(-1));
+	assert.throws(() => databaseLimitCheck(10, 0));
+});
+
+// --- PR #176 cycle 1: main() end to end via run() with a stubbed fetch ---
+
+function stubTurso(names, { listStatus = 200 } = {}) {
+	const calls = [];
+	const fetch = async (url, init = {}) => {
+		const u = String(url);
+		calls.push({ method: init.method || "GET", url: u });
+		if (u.includes("deploy-provenance")) return { ok: false, status: 401, json: async () => ({}) };
+		if ((init.method || "GET") === "DELETE") return { ok: true, status: 200, json: async () => ({}) };
+		if (listStatus !== 200) return { ok: false, status: listStatus, json: async () => ({}) };
+		return { ok: true, status: 200, json: async () => ({ databases: names.map((n) => db(n)) }) };
+	};
+	return { fetch, calls, deletes: () => calls.filter((c) => c.method === "DELETE").map((c) => decodeURIComponent(c.url.split("/").pop())) };
+}
+const CI_ENV = { GITHUB_ACTIONS: "true", TURSO_API_TOKEN: "test-token", TF_VAR_TURSO_ORGANIZATION: ORG };
+const quiet = { out: () => {}, err: () => {} };
+const realStamp = (daysAgo) => {
+	const d = new Date(Date.now() - daysAgo * 86_400_000);
+	const p = (n) => String(n).padStart(2, "0");
+	return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}-${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`;
+};
+const emptyDirs = ["--metadata-dir", "/nonexistent-ft-meta", "--agents-dir", "/nonexistent-ft-agents"];
+
+test("run --ci-staging-only --delete on Actions deletes only old staging-rollback-<stamp> beyond the newest 10", async () => {
+	const old = Array.from({ length: 13 }, (_, i) => `staging-rollback-${realStamp(20 + i)}`);
+	const others = [
+		"freedomtimes-emdash-production", "freedomtimes-emdash-staging", "prod-work-embeds",
+		`prod-rollback-${realStamp(60)}`, "prod-rollback-20260430-2115", `prod-backup-${realStamp(60)}`,
+		`staging-backup-${realStamp(60)}`, `ci-rollback-${realStamp(60)}`, "staging-rollback-manual",
+	];
+	const t = stubTurso([...others, ...old]);
+	const code = await run(["--ci-staging-only", "--delete", ...emptyDirs], { env: CI_ENV, fetch: t.fetch, ...quiet });
+	assert.equal(code, 0);
+	assert.deepEqual(t.deletes().sort(), old.slice(10).sort());
+});
+
+test("run --ci-staging-only refuses above --max-delete and when the staging target is missing", async () => {
+	const old = Array.from({ length: 13 }, (_, i) => `staging-rollback-${realStamp(20 + i)}`);
+	const t = stubTurso(["freedomtimes-emdash-staging", ...old]);
+	assert.equal(await run(["--ci-staging-only", "--delete", "--max-delete", "2", ...emptyDirs], { env: CI_ENV, fetch: t.fetch, ...quiet }), 2);
+	assert.deepEqual(t.deletes(), []);
+	const t2 = stubTurso(old);
+	assert.equal(await run(["--ci-staging-only", "--delete", ...emptyDirs], { env: CI_ENV, fetch: t2.fetch, ...quiet }), 2);
+	assert.deepEqual(t2.deletes(), []);
+	// TF_VAR_TURSO_DATABASE_NAME_STAGING names (and protects) a DR-retargeted branch.
+	const t3 = stubTurso(old);
+	const env = { ...CI_ENV, TF_VAR_TURSO_DATABASE_NAME_STAGING: old[12] };
+	assert.equal(await run(["--ci-staging-only", "--delete", ...emptyDirs], { env, fetch: t3.fetch, ...quiet }), 0);
+	assert.deepEqual(t3.deletes().sort(), old.slice(10, 12).sort());
+});
+
+test("run --ci-staging-only rejects loose or production rule options", async () => {
+	const t = stubTurso(["freedomtimes-emdash-staging"]);
+	for (const extra of [["--prod-keep-days", "30"], ["--max-age-days", "30"], ["--staging-keep-newest", "5"], ["--staging-keep-days", "1"]]) {
+		await assert.rejects(() => run(["--ci-staging-only", ...extra, ...emptyDirs], { env: CI_ENV, fetch: t.fetch, ...quiet }), extra.join(" "));
+	}
+	assert.deepEqual(t.deletes(), []);
+});
+
+test("run --check-limit: no token skips locally, fails closed on Actions; non-200 list fails", async () => {
+	const t = stubTurso([]);
+	assert.equal(await run(["--check-limit"], { env: {}, fetch: t.fetch, ...quiet }), 0);
+	assert.equal(await run(["--check-limit"], { env: { GITHUB_ACTIONS: "true" }, fetch: t.fetch, ...quiet }), 1);
+	assert.equal(await run(["--check-limit"], { env: { GITHUB_ACTIONS: "true", TURSO_API_TOKEN: "x" }, fetch: t.fetch, ...quiet }), 1);
+	const bad = stubTurso([], { listStatus: 500 });
+	await assert.rejects(() => run(["--check-limit"], { env: CI_ENV, fetch: bad.fetch, ...quiet }), /HTTP 500/);
+	const full = stubTurso(Array.from({ length: 95 }, (_, i) => `db-${i}`));
+	assert.equal(await run(["--check-limit"], { env: CI_ENV, fetch: full.fetch, ...quiet }), 4);
+	assert.equal(await run(["--check-limit", "--limit-threshold", "96"], { env: CI_ENV, fetch: full.fetch, ...quiet }), 0);
 });
