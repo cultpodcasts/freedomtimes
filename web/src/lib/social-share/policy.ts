@@ -5,7 +5,7 @@
  * Pure functions only (no Astro / Worker / EmDash imports) so
  * scripts/test-social-share.mts can test them directly.
  */
-import { isProductionPublicHostname } from '../homepage-host';
+import { isProductionPublicHostname, isStagingHostname } from '../homepage-host';
 import { contentCanonicalPath } from '../seo/article-seo';
 
 /** EmDash RBAC level for Admin (@emdash-cms/auth Role.ADMIN). */
@@ -18,13 +18,32 @@ export const PRODUCTION_SITE_ORIGIN = 'https://freedomtimes.news';
 export const SHAREABLE_COLLECTION = 'posts';
 
 /**
- * Sharing only works on the production Worker serving a production public
- * host. Staging (`SITE_ACCESS_MODE=locked`, staging.freedomtimes.news),
- * local dev and preview hosts can never post to the real accounts.
+ * Where the panel runs, which decides what a press of the button does (#178):
+ * - `production`: the production Worker (`SITE_ACCESS_MODE=public`) on a
+ *   production public host. Posts to the real accounts with the production
+ *   secret names. Nothing else can.
+ * - `staging`: the locked staging Worker on staging.freedomtimes.news. Posts
+ *   only to the TEST accounts, read from the separate `*_TEST_*` secret names;
+ *   without them it is a dry run.
+ * - `local`: anything else (local dev, previews, unknown hosts). Always a dry
+ *   run; no secret is ever read.
+ */
+export type SocialShareMode = 'production' | 'staging' | 'local';
+
+export function socialShareMode(input: { siteAccessMode?: unknown; hostname: string }): SocialShareMode {
+	const mode = typeof input.siteAccessMode === 'string' ? input.siteAccessMode.trim().toLowerCase() : '';
+	if (mode === 'public' && isProductionPublicHostname(input.hostname)) return 'production';
+	if (mode === 'locked' && isStagingHostname(input.hostname)) return 'staging';
+	return 'local';
+}
+
+/**
+ * Posting to the real accounts only works on the production Worker serving a
+ * production public host. Staging posts only to test accounts (or dry-runs);
+ * local dev and preview hosts only dry-run.
  */
 export function isSocialShareEnvironment(input: { siteAccessMode?: unknown; hostname: string }): boolean {
-	const mode = typeof input.siteAccessMode === 'string' ? input.siteAccessMode.trim().toLowerCase() : '';
-	return mode === 'public' && isProductionPublicHostname(input.hostname);
+	return socialShareMode(input) === 'production';
 }
 
 /** Absolute public article URL for a post slug. */
@@ -32,9 +51,14 @@ export function articleUrl(slug: string): string {
 	return `${PRODUCTION_SITE_ORIGIN}${contentCanonicalPath(SHAREABLE_COLLECTION, slug)}`;
 }
 
-/** Plugin KV key holding the share record for one network and post. */
-export function shareRecordKey(network: string, postId: string): string {
-	return `share:${network}:${postId}`;
+/**
+ * Plugin KV key holding the share record for one network and post. Staging
+ * test-account shares use their own prefix, so a production record copied
+ * into staging never blocks a test post and a test post is never mistaken for
+ * a real one. Dry runs write nothing.
+ */
+export function shareRecordKey(network: string, postId: string, mode: SocialShareMode = 'production'): string {
+	return `${mode === 'production' ? 'share' : 'share-test'}:${network}:${postId}`;
 }
 
 /** A trimmed non-empty string, or undefined. */

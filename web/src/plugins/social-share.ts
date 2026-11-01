@@ -10,8 +10,10 @@
  *   (403) and cookie requests without the `X-EmDash-Request: 1` CSRF header
  *   before the handler runs. The handler re-checks the Admin role and that it
  *   was dispatched from the editor panel for a saved post.
- * - Production only: on staging/local it shows a "disabled" note and has no
- *   button. Missing secrets show "not configured", never an error.
+ * - Real accounts from production only. Staging posts only to the test
+ *   accounts set in its staging-only `*_TEST_*` secrets, or dry-runs without
+ *   them; local dev and other hosts always dry-run (#178). Missing production
+ *   secrets show "not configured", never an error.
  * Nothing is posted until an admin presses the button and confirms.
  */
 import { env as cfEnv } from 'cloudflare:workers';

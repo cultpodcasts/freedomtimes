@@ -11,17 +11,25 @@
  * is recorded in plugin KV (claimed atomically first), so the same post can't
  * be shared twice to the same network. Dependencies are injected so
  * scripts/test-social-share.mts can drive every state with mocks.
+ *
+ * Mode (#178, policy.ts `socialShareMode`): production posts to the real
+ * accounts with the production secret names; staging posts only to the test
+ * accounts with the `*_TEST_*` names, or dry-runs without them; anything else
+ * always dry-runs. A dry run builds the exact request, shows it, and sends and
+ * records nothing.
  */
 import {
 	articleUrl,
 	EMDASH_ADMIN_ROLE,
-	isSocialShareEnvironment,
 	previewFingerprint,
+	readSecret,
 	SHAREABLE_COLLECTION,
 	ShareNetworkError,
 	type SharedPost,
 	type SharePostSnapshot,
+	type SocialShareMode,
 	shareRecordKey,
+	socialShareMode,
 } from './policy';
 
 /** A pending claim older than this is treated as an interrupted attempt. */
@@ -39,15 +47,51 @@ export interface ShareProvider<TConfig, TDraft extends ShareDraftBase> {
 	network: string;
 	/** Human name, e.g. `Bluesky`. */
 	label: string;
-	/** Worker secret names, listed in the "not configured" message. */
+	/** Production Worker secret names, listed in the "not configured" message. */
 	secretNames: readonly string[];
-	readConfig(env: Record<string, unknown>): TConfig | null;
+	/**
+	 * Staging-only test-account secret names, in the same order as
+	 * `secretNames` (#178). Staging reads only these; production never does.
+	 */
+	testSecretNames: readonly string[];
+	/** Config from the secret values, in `secretNames` order (all present and non-empty). */
+	configFromSecrets(values: readonly string[]): TConfig;
 	/** Account shown in the confirm dialog, e.g. `@freedomtimes.news`. */
 	accountLabel(config: TConfig): string;
 	buildDraft(post: { title: string; description: string; url: string }): TDraft;
 	/** Extra preview rows besides the post text (e.g. the link card). */
 	previewFields(draft: TDraft): Array<{ label: string; value: string }>;
 	publish(config: TConfig, draft: TDraft, deps: { fetch: FetchLike; now: () => Date }): Promise<SharedPost>;
+	/** The request `publish` would send to create the post, without credentials (dry-run preview). */
+	dryRunRequest(draft: TDraft, now: Date): { method: string; url: string; body: unknown };
+}
+
+/** Where the credentials come from, by mode: none in local, test names on staging, production names in production. */
+export function shareSecretNames(provider: Pick<ShareProvider<unknown, ShareDraftBase>, 'secretNames' | 'testSecretNames'>, mode: SocialShareMode): readonly string[] {
+	if (mode === 'production') return provider.secretNames;
+	if (mode === 'staging') return provider.testSecretNames;
+	return [];
+}
+
+/**
+ * The provider config for this mode, or null. Reads only the names for the
+ * mode (so staging never touches a production secret name, and local reads
+ * nothing).
+ */
+export function readShareConfig<TConfig>(
+	provider: Pick<ShareProvider<TConfig, ShareDraftBase>, 'secretNames' | 'testSecretNames' | 'configFromSecrets'>,
+	env: Record<string, unknown>,
+	mode: SocialShareMode,
+): TConfig | null {
+	const names = shareSecretNames(provider, mode);
+	if (names.length === 0) return null;
+	const values: string[] = [];
+	for (const name of names) {
+		const value = readSecret(env, name);
+		if (!value) return null;
+		values.push(value);
+	}
+	return provider.configFromSecrets(values);
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -168,12 +212,41 @@ type PanelState<TConfig, TDraft extends ShareDraftBase> =
 	| { kind: 'blocked'; response: PanelResponse }
 	| {
 			kind: 'ready';
-			config: TConfig;
+			mode: SocialShareMode;
+			/** Null: dry run (nothing is sent or recorded). */
+			config: TConfig | null;
 			draft: TDraft;
 			fingerprint: string;
 			key: string;
 			post: SharePostSnapshot;
 	  };
+
+function listNames(names: readonly string[]): string {
+	return new Intl.ListFormat('en', { type: 'conjunction' }).format(names);
+}
+
+/** Banner at the top of every staging / local panel, so nobody mistakes it for production. */
+function modeBanner<TConfig, TDraft extends ShareDraftBase>(
+	mode: SocialShareMode,
+	provider: ShareProvider<TConfig, TDraft>,
+	config: TConfig | null,
+): PanelBlock | null {
+	if (mode === 'production') return null;
+	if (mode === 'staging' && config) {
+		return banner(
+			`Staging: posting to test account ${provider.accountLabel(config)}`,
+			`This posts for real, but only to the ${provider.label} test account set in the staging secrets ${listNames(provider.testSecretNames)}. Never the Freedom Times account.`,
+			'alert',
+		);
+	}
+	if (mode === 'staging') {
+		return banner(
+			'Staging: dry run',
+			`Nothing is sent to ${provider.label} and nothing is recorded. To post to a test account, set the staging secrets ${listNames(provider.testSecretNames)} (see web/docs/SOCIAL_SHARING.md).`,
+		);
+	}
+	return banner('Local: dry run', `Not staging or production, so nothing is ever sent to ${provider.label} or recorded.`);
+}
 
 async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 	postId: string,
@@ -184,16 +257,21 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 	const blocked = (blocks: PanelBlock[]) => ({ kind: 'blocked' as const, response: { blocks } });
 
 	const hostname = new URL(req.requestUrl).hostname;
-	if (!isSocialShareEnvironment({ siteAccessMode: deps.env.SITE_ACCESS_MODE, hostname })) {
-		return blocked([
-			banner(
-				'Disabled outside production',
-				`Posting to ${provider.label} only works in the production admin (freedomtimes.news). Staging and local sites can never post to the real accounts.`,
-			),
-		]);
+	const mode = socialShareMode({ siteAccessMode: deps.env.SITE_ACCESS_MODE, hostname });
+	const config = readShareConfig(provider, deps.env, mode);
+
+	if (mode !== 'production' && !config) {
+		// Dry run: no secret, no KV, no network. Same draft and checks as a real post.
+		const post = await deps.getPost(postId);
+		if (!post) throw new ShareAccessError(404, 'NOT_FOUND', 'Post not found.');
+		if (post.status !== 'published' || !post.slug) {
+			return blocked([{ type: 'context', text: `Publish this post first. Only published posts can be shared to ${provider.label}.` }]);
+		}
+		const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug) });
+		const fingerprint = await previewFingerprint(['dry-run', provider.network, post.id, draft.text, ...provider.previewFields(draft).map((f) => f.value)]);
+		return { kind: 'ready', mode, config: null, draft, fingerprint, key: '', post, record: null };
 	}
 
-	const config = provider.readConfig(deps.env);
 	if (!config) {
 		return blocked([
 			banner(
@@ -204,13 +282,16 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 		]);
 	}
 
-	const key = shareRecordKey(provider.network, postId);
+	const key = shareRecordKey(provider.network, postId, mode);
 	const record = await deps.kv.getVersioned<ShareRecord>(key);
+	/** Where a real post goes: the test account on staging, the network itself in production. */
+	const target = mode === 'staging' ? `the ${provider.label} test account` : provider.label;
+
 	if (record?.value.status === 'posted') {
 		const r = record.value;
 		const blocks: PanelBlock[] = [
 			banner(
-				`Shared to ${provider.label}`,
+				`Shared to ${target}`,
 				`Posted on ${ukTime(r.postedAt)} by ${r.claimedBy}. A post can only be shared once per network.`,
 			),
 		];
@@ -228,7 +309,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 			...blocked([
 				banner(
 					'Last attempt may or may not have posted',
-					`${r.claimedBy} tried to post on ${ukTime(r.claimedAt)}${r.error ? ` (${r.error})` : ''}. Check the ${provider.label} profile first. If the post isn't there, release the lock to try again.`,
+					`${r.claimedBy} tried to post on ${ukTime(r.claimedAt)}${r.error ? ` (${r.error})` : ''}. Check ${target === provider.label ? `the ${provider.label} profile` : `${target}'s profile`} first. If the post isn't there, release the lock to try again.`,
 					'error',
 				),
 				{
@@ -255,7 +336,7 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 	}
 	if (record) {
 		return {
-			...blocked([banner('Posting in progress', `${record.value.claimedBy} is posting this to ${provider.label} right now.`)]),
+			...blocked([banner('Posting in progress', `${record.value.claimedBy} is posting this to ${target} right now.`)]),
 			record,
 		};
 	}
@@ -268,32 +349,62 @@ async function resolveState<TConfig, TDraft extends ShareDraftBase>(
 
 	const draft = provider.buildDraft({ title: post.title, description: post.description, url: articleUrl(post.slug) });
 	const fingerprint = await previewFingerprint([provider.network, post.id, draft.text, ...provider.previewFields(draft).map((f) => f.value)]);
-	return { kind: 'ready', config, draft, fingerprint, key, post, record: null };
+	return { kind: 'ready', mode, config, draft, fingerprint, key, post, record: null };
 }
 
 function readyBlocks<TConfig, TDraft extends ShareDraftBase>(
 	state: Extract<PanelState<TConfig, TDraft>, { kind: 'ready' }>,
 	provider: ShareProvider<TConfig, TDraft>,
+	now: Date,
 ): PanelBlock[] {
-	const account = provider.accountLabel(state.config);
 	const extra = provider.previewFields(state.draft);
-	return [
-		{ type: 'context', text: `Preview. Nothing is posted until you press the button and confirm. Posts as ${account}.` },
+	const preview: PanelBlock[] = [
 		// A code block keeps line breaks and never truncates (a fields value is one truncated line).
 		{ type: 'context', text: 'Post text, exactly as it will be posted:' },
 		{ type: 'code', code: state.draft.text },
 		...(extra.length > 0 ? [{ type: 'fields', fields: extra }] : []),
+	];
+	if (!state.config) {
+		const request = provider.dryRunRequest(state.draft, now);
+		return [
+			{
+				type: 'context',
+				text: `Dry run. Pressing the button builds the post again and shows it here. Nothing is sent to ${provider.label} and nothing is recorded.`,
+			},
+			...preview,
+			{ type: 'context', text: `Request a real post would send (${request.method} ${request.url}; credentials left out):` },
+			{ type: 'code', code: JSON.stringify(request.body, null, 2) },
+			{
+				type: 'actions',
+				elements: [
+					{
+						type: 'button',
+						action_id: `${provider.network}_post`,
+						label: `Dry run: Post to ${provider.label}`,
+						style: 'primary',
+						value: state.fingerprint,
+					},
+				],
+			},
+		];
+	}
+	const account = provider.accountLabel(state.config);
+	const testAccount = state.mode === 'staging';
+	const who = testAccount ? `the test account ${account}` : account;
+	return [
+		{ type: 'context', text: `Preview. Nothing is posted until you press the button and confirm. Posts as ${who}.` },
+		...preview,
 		{
 			type: 'actions',
 			elements: [
 				{
 					type: 'button',
 					action_id: `${provider.network}_post`,
-					label: `Post to ${provider.label}`,
+					label: testAccount ? `Post to ${provider.label} test account` : `Post to ${provider.label}`,
 					style: 'primary',
 					value: state.fingerprint,
 					confirm: {
-						title: `Post to ${provider.label} as ${account}?`,
+						title: `Post to ${provider.label} as ${who}?`,
 						text: `This posts publicly, once:\n\n${state.draft.text}`,
 						confirm: 'Post',
 						deny: 'Cancel',
@@ -314,12 +425,17 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 	const { provider } = deps;
 	const input = isRecord(req.input) ? req.input : {};
 	const action = input.type === 'block_action' && typeof input.action_id === 'string' ? input.action_id : null;
-
-	const render = async (toast?: PanelResponse['toast']): Promise<PanelResponse> => {
-		const state = await resolveState(postId, req, deps);
-		const blocks = state.kind === 'ready' ? readyBlocks(state, provider) : state.response.blocks;
-		return toast ? { blocks, toast } : { blocks };
+	const mode = socialShareMode({ siteAccessMode: deps.env.SITE_ACCESS_MODE, hostname: new URL(req.requestUrl).hostname });
+	const top = modeBanner(mode, provider, readShareConfig(provider, deps.env, mode));
+	const respond = (blocks: PanelBlock[], toast?: PanelResponse['toast']): PanelResponse => {
+		const all = top ? [top, ...blocks] : blocks;
+		return toast ? { blocks: all, toast } : { blocks: all };
 	};
+	const blocksOf = (state: PanelState<TConfig, TDraft>) =>
+		state.kind === 'ready' ? readyBlocks(state, provider, deps.now()) : state.response.blocks;
+
+	const render = async (toast?: PanelResponse['toast']): Promise<PanelResponse> =>
+		respond(blocksOf(await resolveState(postId, req, deps)), toast);
 
 	if (action === `${provider.network}_release`) {
 		const state = await resolveState(postId, req, deps);
@@ -327,7 +443,7 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 		const releasable =
 			record && (record.value.status === 'uncertain' || isStalePending(record.value, deps.now()));
 		if (!record || !releasable) return render({ message: 'Nothing to release.', type: 'info' });
-		await deps.kv.compareAndDelete(shareRecordKey(provider.network, postId), record.revision);
+		await deps.kv.compareAndDelete(shareRecordKey(provider.network, postId, mode), record.revision);
 		return render({ message: 'Lock released. Check the preview before posting again.', type: 'info' });
 	}
 
@@ -336,14 +452,23 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 	// Re-check everything server-side at click time; the button value is only a preview fingerprint.
 	const state = await resolveState(postId, req, deps);
 	if (state.kind !== 'ready') {
-		return { ...state.response, toast: { message: `Not posted to ${provider.label}.`, type: 'error' } };
+		return respond(state.response.blocks, { message: `Not posted to ${provider.label}.`, type: 'error' });
 	}
 	if (input.value !== state.fingerprint) {
-		return {
-			blocks: readyBlocks(state, provider),
-			toast: { message: 'The post changed since the preview. Check the new preview, then post again.', type: 'error' },
-		};
+		return respond(blocksOf(state), {
+			message: 'The post changed since the preview. Check the new preview, then post again.',
+			type: 'error',
+		});
 	}
+
+	if (!state.config) {
+		// Dry run: no claim, no record, no network call.
+		return respond(blocksOf(state), {
+			message: `Dry run: built the ${provider.label} post shown here. Nothing was sent and nothing was recorded.`,
+			type: 'info',
+		});
+	}
+	const config = state.config;
 
 	const claimedAt = deps.now().toISOString();
 	const pending: ShareRecord = {
@@ -359,8 +484,9 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 		return render({ message: `Already shared (or being shared) to ${provider.label}.`, type: 'info' });
 	}
 
+	const where = state.mode === 'staging' ? `the ${provider.label} test account` : provider.label;
 	try {
-		const shared = await provider.publish(state.config, state.draft, { fetch: deps.fetch, now: deps.now });
+		const shared = await provider.publish(config, state.draft, { fetch: deps.fetch, now: deps.now });
 		const posted: ShareRecord = {
 			...pending,
 			status: 'posted',
@@ -370,7 +496,7 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 		};
 		const saved = await deps.kv.compareAndSet(state.key, claim.revision, posted);
 		if (!saved.applied) await deps.kv.set(state.key, posted);
-		return render({ message: `Posted to ${provider.label}.`, type: 'success' });
+		return render({ message: `Posted to ${where}.`, type: 'success' });
 	} catch (error) {
 		const message = error instanceof Error ? error.message : `Posting to ${provider.label} failed.`;
 		if (error instanceof ShareNetworkError && error.definitelyNotPosted) {

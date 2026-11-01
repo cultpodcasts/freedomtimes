@@ -4,8 +4,9 @@
  * One call: POST https://api.x.com/2/tweets {"text": …}, signed with OAuth
  * 1.0a user context (HMAC-SHA1 over the app's API key/secret and the
  * account's access token/secret). The JSON body is not part of the OAuth
- * signature. `fetch` is injected so tests mock it; nothing here ever runs
- * outside the production admin panel.
+ * signature. `fetch` is injected so tests mock it. It posts only from the
+ * production admin (real account) or the staging admin with the staging-only
+ * test-account secrets (#178); elsewhere it is a dry run.
  */
 import type { FetchLike, ShareProvider } from './panel';
 import { readSecret, ShareNetworkError, type SharedPost } from './policy';
@@ -16,6 +17,13 @@ export const X_HOST = 'api.x.com';
 export const X_CREATE_POST_URL = `${X_API_ORIGIN}/2/tweets`;
 /** Worker secret names (set by Jon on the production Worker; never committed). */
 export const X_SECRET_NAMES = ['X_API_KEY', 'X_API_KEY_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET'] as const;
+/** Staging-only test-account secret names, same order (#178; set by Jon on the staging Worker only). */
+export const X_TEST_SECRET_NAMES = [
+	'X_TEST_API_KEY',
+	'X_TEST_API_KEY_SECRET',
+	'X_TEST_ACCESS_TOKEN',
+	'X_TEST_ACCESS_TOKEN_SECRET',
+] as const;
 /** X's weighted post limit. */
 export const X_MAX_WEIGHTED_LENGTH = 280;
 /** Every URL is wrapped in t.co and counts as 23. */
@@ -28,14 +36,16 @@ export interface XConfig {
 	accessTokenSecret: string;
 }
 
-/** All four secrets present, or null (the panel then says it isn't configured). */
-export function readXConfig(env: Record<string, unknown>): XConfig | null {
-	const apiKey = readSecret(env, 'X_API_KEY');
-	const apiKeySecret = readSecret(env, 'X_API_KEY_SECRET');
-	const accessToken = readSecret(env, 'X_ACCESS_TOKEN');
-	const accessTokenSecret = readSecret(env, 'X_ACCESS_TOKEN_SECRET');
-	if (!apiKey || !apiKeySecret || !accessToken || !accessTokenSecret) return null;
+/** Config from `[apiKey, apiKeySecret, accessToken, accessTokenSecret]`. */
+export function xConfigFromSecrets([apiKey, apiKeySecret, accessToken, accessTokenSecret]: readonly string[]): XConfig {
 	return { apiKey, apiKeySecret, accessToken, accessTokenSecret };
+}
+
+/** All four secrets present (by default the production names), or null (the panel then says it isn't configured). */
+export function readXConfig(env: Record<string, unknown>, names: readonly string[] = X_SECRET_NAMES): XConfig | null {
+	const values = names.map((name) => readSecret(env, name));
+	if (values.length !== 4 || values.some((v) => !v)) return null;
+	return xConfigFromSecrets(values as string[]);
 }
 
 /**
@@ -251,9 +261,11 @@ export const xProvider: ShareProvider<XConfig, XPostDraft> = {
 	network: X_NETWORK,
 	label: 'X',
 	secretNames: X_SECRET_NAMES,
-	readConfig: readXConfig,
+	testSecretNames: X_TEST_SECRET_NAMES,
+	configFromSecrets: xConfigFromSecrets,
 	accountLabel: xAccountLabel,
 	buildDraft: buildXDraft,
 	previewFields: (draft) => [{ label: 'Length (X counting, link = 23)', value: `${draft.weightedLength} / ${X_MAX_WEIGHTED_LENGTH}` }],
 	publish: postToX,
+	dryRunRequest: (draft) => ({ method: 'POST', url: X_CREATE_POST_URL, body: { text: draft.text } }),
 };

@@ -3,8 +3,9 @@
  *
  * Flow: com.atproto.server.createSession (handle + app password) →
  * com.atproto.repo.createRecord (app.bsky.feed.post with a link facet and an
- * app.bsky.embed.external link card). `fetch` is injected so tests mock it;
- * nothing here ever runs outside the production admin panel.
+ * app.bsky.embed.external link card). `fetch` is injected so tests mock it.
+ * It posts only from the production admin (real account) or the staging admin
+ * with the staging-only test-account secrets (#178); elsewhere it is a dry run.
  */
 import type { FetchLike, ShareProvider } from './panel';
 import { graphemeLength, readSecret, ShareNetworkError, type SharedPost, truncateGraphemes } from './policy';
@@ -14,6 +15,8 @@ export const BLUESKY_SERVICE_ORIGIN = 'https://bsky.social';
 export const BLUESKY_HOST = 'bsky.social';
 /** Worker secret names (set by Jon on the production Worker; never committed). */
 export const BLUESKY_SECRET_NAMES = ['BLUESKY_HANDLE', 'BLUESKY_APP_PASSWORD'] as const;
+/** Staging-only test-account secret names, same order (#178; set by Jon on the staging Worker only). */
+export const BLUESKY_TEST_SECRET_NAMES = ['BLUESKY_TEST_HANDLE', 'BLUESKY_TEST_APP_PASSWORD'] as const;
 /** app.bsky.feed.post text limit. */
 export const BLUESKY_MAX_GRAPHEMES = 300;
 const CARD_DESCRIPTION_MAX = 300;
@@ -23,12 +26,20 @@ export interface BlueskyConfig {
 	appPassword: string;
 }
 
-/** Both secrets present, or null (the panel then says it isn't configured). */
-export function readBlueskyConfig(env: Record<string, unknown>): BlueskyConfig | null {
-	const handle = readSecret(env, 'BLUESKY_HANDLE');
-	const appPassword = readSecret(env, 'BLUESKY_APP_PASSWORD');
-	if (!handle || !appPassword) return null;
+/** Config from `[handle, appPassword]` (a leading `@` on the handle is dropped). */
+export function blueskyConfigFromSecrets([handle, appPassword]: readonly string[]): BlueskyConfig {
 	return { handle: handle.replace(/^@/, ''), appPassword };
+}
+
+/** Both secrets present (by default the production names), or null (the panel then says it isn't configured). */
+export function readBlueskyConfig(
+	env: Record<string, unknown>,
+	names: readonly string[] = BLUESKY_SECRET_NAMES,
+): BlueskyConfig | null {
+	const handle = readSecret(env, names[0]);
+	const appPassword = readSecret(env, names[1]);
+	if (!handle || !appPassword) return null;
+	return blueskyConfigFromSecrets([handle, appPassword]);
 }
 
 export interface BlueskyPostDraft {
@@ -163,7 +174,8 @@ export const blueskyProvider: ShareProvider<BlueskyConfig, BlueskyPostDraft> = {
 	network: BLUESKY_NETWORK,
 	label: 'Bluesky',
 	secretNames: BLUESKY_SECRET_NAMES,
-	readConfig: readBlueskyConfig,
+	testSecretNames: BLUESKY_TEST_SECRET_NAMES,
+	configFromSecrets: blueskyConfigFromSecrets,
 	accountLabel: (config) => `@${config.handle}`,
 	buildDraft: buildBlueskyDraft,
 	previewFields: (draft) => [
@@ -171,4 +183,9 @@ export const blueskyProvider: ShareProvider<BlueskyConfig, BlueskyPostDraft> = {
 		...(draft.cardDescription ? [{ label: 'Link card description', value: draft.cardDescription }] : []),
 	],
 	publish: postToBluesky,
+	dryRunRequest: (draft, now) => ({
+		method: 'POST',
+		url: `${BLUESKY_SERVICE_ORIGIN}/xrpc/com.atproto.repo.createRecord`,
+		body: { repo: '<the account DID from createSession>', collection: 'app.bsky.feed.post', record: buildBlueskyRecord(draft, now) },
+	}),
 };
