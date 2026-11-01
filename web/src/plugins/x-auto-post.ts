@@ -1,7 +1,7 @@
 /**
- * On publish, post the article to X and Bluesky when that network's secrets
- * are set. Otherwise the post editor's intent link is the fallback. Staging
- * and local always dry-run. Nothing is emailed. See web/docs/X_AUTO_POST.md.
+ * On publish, log the X and Bluesky intent links. Do not post. The editor
+ * offers the links, and an agent may offer to post after 30 minutes.
+ * Nothing is emailed. See web/docs/X_AUTO_POST.md.
  *
  * The admin panels are a different plugin and use the same clients and KV keys.
  */

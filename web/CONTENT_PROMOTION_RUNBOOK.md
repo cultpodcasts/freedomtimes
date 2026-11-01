@@ -416,7 +416,7 @@ After metadata is aligned, reload admin and re-test the collection route.
 8. No mojibake signatures appear in production content or on the rendered public route.
 9. **Request Google indexing** for the live public URL(s) (§7) — do not treat promote as complete until this is done (or explicitly deferred by the operator).
 10. **Weekly archive HARD RULE:** prior Sunday’s weekly still **published**; no default 302 prior→new (§3 HARD RULE).
-11. **Social post:** production publish posts to X and Bluesky when that network’s secrets are on the Worker ([X_AUTO_POST.md](docs/X_AUTO_POST.md)). Confirm the Worker log (`posted x` / `posted bluesky`) or, when a network is not configured, open the post in EmDash and use **Open X to post** / **Open Bluesky to post** (new tab). Do not email the text. Do not post from staging.
+11. **Social post, after a delay:** do not post, and do not offer to post, in the publish step. The post editor already offers **Open X to post** / **Open Bluesky to post** (new tab). After the article has been live for 30 minutes, the agent may offer to post ([X_AUTO_POST.md](docs/X_AUTO_POST.md)). Do not email the text. Do not post from staging.
 
 ## 7. Request indexing (Google Search Console)
 

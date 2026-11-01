@@ -226,8 +226,8 @@ export default defineConfig({
           capabilities: ['content:read', 'network:request'],
           allowedHosts: ['bsky.social', 'api.x.com'],
         },
-        // Production publish → X and Bluesky when that network's secrets exist.
-        // Staging dry-runs (no X_AUTO_POST_ALLOW_SEND). See web/docs/X_AUTO_POST.md.
+        // Publish logs the X and Bluesky intent links and does not post.
+        // The editor offers the links. See web/docs/X_AUTO_POST.md.
         {
           id: 'ft-x-auto-post',
           version: '1.0.0',

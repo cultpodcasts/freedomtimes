@@ -215,12 +215,12 @@ describe('plugin registration', () => {
 		assert.deepEqual(list('allowedHosts'), [...X_AUTO_ALLOWED_HOSTS]);
 	});
 
-	it('production wrangler posts when secrets exist, and staging cannot send', () => {
+	it('neither environment posts on publish', () => {
 		const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 		const production = /"production": \{[\s\S]*?\n\t\t\}/.exec(wrangler)?.[0] ?? '';
 		const staging = /"staging": \{[\s\S]*$/.exec(wrangler)?.[0] ?? '';
-		assert.match(production, /"X_AUTO_POST_MODE": "api"/);
-		assert.match(production, /"X_AUTO_POST_ALLOW_SEND": "yes"/);
+		assert.match(production, /"X_AUTO_POST_MODE": "dry-run"/);
+		assert.doesNotMatch(production, /X_AUTO_POST_ALLOW_SEND/);
 		assert.doesNotMatch(production, /X_AUTO_POST_NOTIFY_TO/);
 		assert.match(staging, /"X_AUTO_POST_MODE": "dry-run"/);
 		assert.doesNotMatch(staging, /X_AUTO_POST_ALLOW_SEND/);

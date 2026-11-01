@@ -1,6 +1,6 @@
 # Automatic X and Bluesky posts when an article publishes
 
-When a **production** post is published, Freedom Times posts it to **X** and **Bluesky** through the same clients, the same text, and the same KV keys as the admin panels ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)).
+Publishing does not post to X or Bluesky. The post editor offers the exact text and an **Open X to post** or **Open Bluesky to post** link as soon as the post is open. An agent does not post, and does not offer to post, in the publish step. After the article has been live for **30 minutes** (the same wait the production push scheduler uses), the agent may offer to post it. The post uses the same clients, the same text, and the same KV keys as the admin panels ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)).
 
 The text is the social title (or the SEO title, or the post title), a blank line, and `https://freedomtimes.news/posts/<slug>`. X counts a link as 23 and stops at 280. Bluesky stops at 300 graphemes and attaches the article card.
 
@@ -16,9 +16,9 @@ Staging publishes never send. A republish of a post that already went out on a n
 |---|---|
 | `off` | Nothing. |
 | `dry-run` | Builds both texts and intent links and writes them to the Worker log. No network call, no KV record. **This is the staging value.** |
-| `api` | **Production.** Posts to each network whose secrets are set. |
+| `api` | Posts to each network whose secrets are set. **Not set on publish.** Use it only when an agent is carrying out the offer after the 30-minute delay. |
 
-`api` runs only when **both** are true:
+Production `X_AUTO_POST_MODE` is `dry-run`, so a publish only logs the intent links. `api` runs only when **both** are true:
 
 - `SITE_ACCESS_MODE=public` (the production Worker)
 - `X_AUTO_POST_ALLOW_SEND=yes` (set only in the production env block)
@@ -36,11 +36,11 @@ The @_freedomtimes developer signup is blocked (“Your account has been flagged
 
 [Topic 278836](https://devcommunity.x.com/t/developer-console-signup-blocked-your-account-has-been-flagged-and-cannot-proceed/278836) is a different person’s post from 20 Oct 2026. X closed it and sent them to the Help Center. That is not this request.
 
-When that flag is lifted, set the four production X secrets already documented in [SOCIAL_SHARING.md](./SOCIAL_SHARING.md) (`X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`). The next production publish then posts to X. There is no separate OAuth 2.0 client and no email step.
+When that flag is lifted, set the four production X secrets already documented in [SOCIAL_SHARING.md](./SOCIAL_SHARING.md) (`X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`). Publishing still does not post. After the 30-minute delay, the agent may offer to post, and the panel can post with those secrets. There is no separate OAuth 2.0 client and no email step.
 
 Each X post that includes the article link is a paid API call (about $0.20). Set a spending limit in the developer console. Bluesky app passwords are not metered the same way.
 
-Bluesky posts as soon as `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` are on the production Worker. Until either network's secrets exist, use the intent link on that post.
+Until a network's secrets exist, the offer is the intent link on that post.
 
 ## Dry run locally
 
