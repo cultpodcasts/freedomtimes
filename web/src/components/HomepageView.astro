@@ -231,7 +231,7 @@ const homeCanonicalPath = getHomeCanonicalPath({
             <a class="story-card-link" href={`/posts/${lead.slug}`} aria-label={`Read: ${lead.title}`}>
               {lead.imageSrc && (
                 <div class="story-image-wrap lead-ratio">
-                  <img class="story-image" src={toCfImageUrl(lead.imageSrc, 1200, 675)} alt={lead.title} loading="lazy" decoding="async" />
+                  <img class="story-image" src={toCfImageUrl(lead.imageSrc, 1200, 675)} alt="" loading="lazy" decoding="async" />
                 </div>
               )}
               {formatPublicationDate(lead.publishDate) && <p class="kicker">{formatPublicationDate(lead.publishDate)}</p>}
@@ -255,7 +255,7 @@ const homeCanonicalPath = getHomeCanonicalPath({
               <a class="story-card-link" href={`/posts/${secondLead.slug}`} aria-label={`Read: ${secondLead.title}`}>
                 {secondLead.imageSrc && (
                   <div class="story-image-wrap secondary-ratio">
-                    <img class="story-image" src={toCfImageUrl(secondLead.imageSrc, 960, 540)} alt={secondLead.title} loading="lazy" decoding="async" />
+                    <img class="story-image" src={toCfImageUrl(secondLead.imageSrc, 960, 540)} alt="" loading="lazy" decoding="async" />
                   </div>
                 )}
                 {formatPublicationDate(secondLead.publishDate) && <p class="kicker">{formatPublicationDate(secondLead.publishDate)}</p>}
@@ -288,7 +288,7 @@ const homeCanonicalPath = getHomeCanonicalPath({
                   <a class="story-card-link" href={`/posts/${story.slug}`} aria-label={`Read: ${story.title}`}>
                     {story.imageSrc && (
                       <div class="story-image-wrap rail-ratio">
-                        <img class="story-image" src={toCfImageUrl(story.imageSrc, 720, 405)} alt={story.title} loading="lazy" decoding="async" />
+                        <img class="story-image" src={toCfImageUrl(story.imageSrc, 720, 405)} alt="" loading="lazy" decoding="async" />
                       </div>
                     )}
                     {formatPublicationDate(story.publishDate) && <p class="kicker">{formatPublicationDate(story.publishDate)}</p>}
