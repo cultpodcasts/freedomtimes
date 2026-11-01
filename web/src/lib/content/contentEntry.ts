@@ -11,10 +11,13 @@ import {
 } from './emdashTimestamps';
 import { readMediaLibraryFileUrl as readMediaFileUrl } from './mediaFileUrl';
 import {
-	resolveSocialImageSrcWith,
+	resolveSocialImageWith,
 	type ResolveSocialImageSrcOptions,
 	type SocialImageQueryClient,
+	type SocialImageResolution,
 } from './socialImage';
+
+export type { SocialImageResolution } from './socialImage';
 
 export type { ResolveSocialImageSrcOptions } from './socialImage';
 
@@ -349,7 +352,7 @@ function workerSafeFetch():
 /**
  * Try **`TURSO_DATABASE_URL`** first (matches Astro/emdash), then **`EMDASH_DATABASE_URL`** + same token.
  * `createClient` can throw synchronously (malformed URL, or a `file:` scheme the web client rejects);
- * {@link resolveSocialImageSrcWith} calls this inside its error handling (#125).
+ * {@link resolveSocialImageWith} calls this inside its error handling (#125).
  */
 function createLibsqlClientForContentQueries(): SocialImageQueryClient | null {
 	const attempts: [string, string][] = [
@@ -373,12 +376,20 @@ function createLibsqlClientForContentQueries(): SocialImageQueryClient | null {
  * OG image for an entry. Never rejects: safe to await from component frontmatter after the headers
  * are sent (#125). Resolution order and fallbacks: `./socialImage.ts`.
  */
-export function resolveSocialImageSrc(
+export function resolveSocialImage(
+	data: Record<string, unknown>,
+	seo?: Record<string, unknown> | null,
+	options?: ResolveSocialImageSrcOptions,
+): Promise<SocialImageResolution> {
+	return resolveSocialImageWith(createLibsqlClientForContentQueries, data, seo, options);
+}
+
+export async function resolveSocialImageSrc(
 	data: Record<string, unknown>,
 	seo?: Record<string, unknown> | null,
 	options?: ResolveSocialImageSrcOptions,
 ): Promise<string | null> {
-	return resolveSocialImageSrcWith(createLibsqlClientForContentQueries, data, seo, options);
+	return (await resolveSocialImage(data, seo, options)).src;
 }
 
 export function buildContentEntryViewModel(entry: { slug?: string; data: Record<string, unknown> } & Record<string, unknown>): ContentEntryViewModel {

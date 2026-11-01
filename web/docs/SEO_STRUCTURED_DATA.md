@@ -35,9 +35,10 @@ placeholder). Editing alt in the media library does **not** update posts that al
 Set the alt on the post's image field, or re-pick the image
 ([#133](https://github.com/cultpodcasts/freedomtimes/issues/133)).
 
-`og:image:alt` / `twitter:image:alt` are separate and unchanged: they are the social title whenever
-there is an `og:image`. When a post has no social image (`seo.image` / `social_image`), `og:image`
-falls back to the hero image, but `og:image:alt` is still the social title, not the hero alt
+`og:image:alt` / `twitter:image:alt` are the social title when the post has its own social image
+(`seo.image` / `social_image`). When that image is missing, `og:image` falls back to the hero, and
+the alt is the hero's stored alt. The generic `"<title> featured image"` is not used; the social
+title stays in that case
 ([#132](https://github.com/cultpodcasts/freedomtimes/issues/132)).
 
 Test: `npm run test:hero-image-alt` (also in `npm test`). See

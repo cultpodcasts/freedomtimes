@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { genericHeroImageAlt, resolveHeroImage } from '../src/lib/content/heroImage.ts';
+import { genericHeroImageAlt, resolveHeroImage, storedHeroImageAlt } from '../src/lib/content/heroImage.ts';
 import { readImageAlt } from '../src/lib/content/imageAlt.ts';
 import { readImageCaption } from '../src/lib/content/imageCaption.ts';
 import { asMediaRecord, readMediaValueSrc, readTrimmedString } from '../src/lib/content/mediaValue.ts';
@@ -179,6 +179,12 @@ describe('resolveHeroImage (#108)', () => {
 	it('blank stored alt falls back to the generic text', () => {
 		assert.equal(resolveHeroImage({ featured_image: imageValue('  ') }, title).alt, generic);
 		assert.equal(genericHeroImageAlt(title), generic);
+	});
+
+	it('og:image:alt uses a stored hero alt and skips the generic one (#132)', () => {
+		assert.equal(storedHeroImageAlt('Court sketch', title), 'Court sketch');
+		assert.equal(storedHeroImageAlt(`  ${generic}  `, title), null);
+		assert.equal(storedHeroImageAlt('   ', title), null);
 	});
 });
 

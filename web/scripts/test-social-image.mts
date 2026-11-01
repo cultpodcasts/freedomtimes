@@ -11,6 +11,7 @@ import { createClient } from '@libsql/client/web';
 import {
 	extractImageFieldMediaIdForLookup,
 	resolveSocialImageSrcWith,
+	resolveSocialImageWith,
 	type SocialImageClientFactory,
 	type SocialImageQueryClient,
 } from '../src/lib/content/socialImage.ts';
@@ -215,13 +216,35 @@ describe('resolveSocialImageSrcWith: healthy lookups are unchanged', () => {
 	});
 });
 
+describe('resolveSocialImageWith reports a hero fallback (#132)', () => {
+	it('a real social image is not a hero fallback', async () => {
+		const image = await resolveSocialImageWith(
+			() => null,
+			data,
+			{ image: '/_emdash/api/media/file/seo.png' },
+			lookup,
+		);
+		assert.deepEqual(image, { src: '/_emdash/api/media/file/seo.png', fellBackToHero: false });
+	});
+
+	it('no social image uses the hero and says so', async () => {
+		const image = await resolveSocialImageWith(() => null, data, null, lookup);
+		assert.deepEqual(image, { src: HERO_PATH, fellBackToHero: true });
+	});
+
+	it('no social image and no hero resolves to nothing', async () => {
+		const image = await resolveSocialImageWith(() => null, {}, null, lookup);
+		assert.deepEqual(image, { src: null, fellBackToHero: false });
+	});
+});
+
 describe('wiring (#125)', () => {
 	const contentEntry = read('../src/lib/content/contentEntry.ts');
 
-	it('contentEntry.resolveSocialImageSrc delegates to the guarded resolver with the real factory', () => {
+	it('contentEntry.resolveSocialImage delegates to the guarded resolver with the real factory', () => {
 		assert.match(
 			contentEntry,
-			/resolveSocialImageSrcWith\(createLibsqlClientForContentQueries, data, seo, options\)/,
+			/resolveSocialImageWith\(createLibsqlClientForContentQueries, data, seo, options\)/,
 		);
 	});
 
