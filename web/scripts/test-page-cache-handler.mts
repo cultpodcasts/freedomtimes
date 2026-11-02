@@ -362,7 +362,7 @@ describe('page cache handler: request bypass', () => {
 		assert.equal(cookie.headers.get('cache-control'), 'private');
 	});
 
-	it('non-reader paths, non-GET and disabled cache return next() untouched (same Response object)', async () => {
+	it('anonymous / non-credentialed non-reader paths, non-GET and disabled cache return next() untouched (same Response object)', async () => {
 		for (const [deps, path, method] of [
 			[{}, '/_emdash/api/mcp', 'POST'],
 			[{}, '/_emdash/admin', 'GET'],

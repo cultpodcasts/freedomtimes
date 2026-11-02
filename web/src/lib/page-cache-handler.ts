@@ -129,8 +129,10 @@ export function ensurePrivateCacheControl(response: Response): Response {
 /**
  * Returns a Response on a hit; otherwise calls `next()` and stores an eligible
  * 200 whose body turns out complete (storeIfComplete). Reader-candidate
- * bypasses are labelled `x-ft-cache: BYPASS-<reason>`; disabled / method /
- * path bypasses return `next()` untouched.
+ * bypasses are labelled `x-ft-cache: BYPASS-<reason>`; anonymous /
+ * non-credentialed disabled / method / path bypasses return `next()` untouched.
+ * Credentialed requests still get `ensurePrivateCacheControl` on those silent
+ * bypasses (#187).
  */
 export async function handlePageCache(deps: PageCacheDeps, call: PageCacheCall): Promise<Response> {
   const { request, url, next } = call;
@@ -145,8 +147,9 @@ export async function handlePageCache(deps: PageCacheDeps, call: PageCacheCall):
   if (!decision.cacheable) {
     const response = await next();
     // Personalized HTML (session cookie or Authorization) must be private even when the
-    // page cache is disabled (staging PAGE_CACHE=off) — Workers Caching would otherwise
-    // share the anonymous copy. #187
+    // page cache is disabled (staging PAGE_CACHE=off) — otherwise Workers Caching could
+    // store this credentialed response as a shareable public edge object. Does not by
+    // itself stop an anonymous public HIT from being served to Cookie requests. #187
     const credentialed =
       Boolean(request.headers.get('authorization'))
       || !hasOnlyNonSessionCookies(request.headers.get('cookie'));

@@ -216,7 +216,7 @@ That is strictly better for HIT latency outside Europe.
 | Question | Finding |
 | --- | --- |
 | Staging / wrangler proof? | Public docs (Oct–Nov 2026) show **no beta gate** for `"cache": {"enabled": true}` (Wrangler ≥ 4.69). Repo has `@astrojs/cloudflare` ^14.4.3, which ships `cacheCloudflare()`. **Not proven** here: `wrangler` `cache.enabled` was **not tried** on this Worker/account; no staging deploy proof in this evaluation. |
-| Signed-in safety | Unchanged blocker. Cache key ignores `Cookie`. Request-side "any session cookie → miss" only works inside the Worker. Workers Caching HITs skip the Worker, so editors/admins need `Cache-Control: private` on signed-in renders (or a non-`__cf_bm`-fragmenting auth signal). **`Vary: Cookie` is rejected** (bot-management cookie churn). Prefer proving private/signed-in responses on **staging** (temporary public smoke test — see Recommendation) before any enable. |
+| Signed-in safety | Still an **open enable gate**. Cache key ignores `Cookie`. Request-side "any session cookie → miss" only works inside the Worker; Workers Caching HITs skip the Worker. `Cache-Control: private` on credentialed Worker responses (#187) only blocks storing *personalized* HTML as a shared edge object — it does **not** stop a prior anonymous `public` Workers Caching entry from being served to requests that differ only by `Cookie`. **`Vary: Cookie` is rejected** (bot-management cookie churn). Close this gate only after a **WC-on** staging probe shows session-cookie requests miss/bypass the anonymous entry (or adopt a non-`__cf_bm`-fragmenting auth signal). The #187 smoke (WC **not** enabled) only proved the Worker-path `private` header. |
 | Analytics | Unchanged blocker. A **Workers Caching** HIT (skips the Worker) never runs `recordPageView` — unlike today's Cache API hits, which still call it. Need Web Analytics, a client beacon, or accept under-count before enabling. |
 | Purge | EmDash `@emdash-cms/cloudflare` can purge Astro cache tags; Free-tier purge rate limits still apply. Our KV epoch purge would **not** clear Workers Caching entries — tag/path purge must be wired and tested. |
 | Query strings | Keep fail-closed: no shared entry for query-bearing URLs (same rule as today's Cache API path). |
@@ -226,9 +226,9 @@ That is strictly better for HIT latency outside Europe.
 
 #### Recommendation
 
-**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` on staging or production until analytics and purge for Workers Caching are closed. Signed-in safety for a future enable is addressed by `Cache-Control: private` on cookie/Authorization bypasses (#187). US/APAC HIT TTFB samples remain nice-to-have baselines, not an enable gate. Tracked by [#187](https://github.com/cultpodcasts/freedomtimes/issues/187).
+**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` on staging or production until analytics and purge for Workers Caching are closed. `Cache-Control: private` on cookie/Authorization Worker responses (#187) only stops storing *personalized* HTML as a shared edge object — it does **not** stop a prior anonymous `public` Workers Caching entry from being served to requests that differ only by `Cookie` (key ignores Cookie; HIT skips the Worker). The #187 staging smoke (WC **not** enabled) only proves the Worker-path header. Signed-in safety therefore remains an **open enable gate** until a WC-on staging probe shows session-cookie requests miss/bypass the anonymous entry (or we adopt a non-`__cf_bm`-fragmenting auth signal). US/APAC HIT TTFB samples remain nice-to-have baselines, not an enable gate. Tracked by [#187](https://github.com/cultpodcasts/freedomtimes/issues/187).
 
-Staging smoke procedure (done for #187; reuse if re-checking): temporary public per [STAGING_ACCESS.md](./STAGING_ACCESS.md) → prove signed-in/cookie responses are `private` → **revert to `locked`**. Do not leave staging public; do not enable Workers Caching on production from the evaluation alone.
+Staging smoke procedure (done for #187; reuse if re-checking): temporary public per [STAGING_ACCESS.md](./STAGING_ACCESS.md) → prove signed-in/cookie responses are `private` on the Worker path → **revert to `locked`**. Closing the signed-in enable gate additionally needs a WC-on staging probe (session-cookie miss/bypass of any anonymous entry). Do not leave staging public; do not enable Workers Caching on production from the evaluation alone.
 
 **Why not enable yet (updated 2 Nov 2026; supersedes the #111 `Vary: Cookie` sketch):**
 
@@ -237,12 +237,14 @@ Staging smoke procedure (done for #187; reuse if re-checking): temporary public 
    cached response", [cache keys](https://developers.cloudflare.com/workers/cache/cache-keys/)).
    Our fail-closed rule is request-side (any session cookie → never served from
    cache) and only works inside the Worker. Workers Caching HITs skip the Worker,
-   so signed-in editors/admins would be served the anonymous copy unless every
-   signed-in render emits **`Cache-Control: private`** (or an equivalent
-   non-`__cf_bm`-fragmenting auth signal) — **prove that on staging before any
-   enable**. **`Vary: Cookie` is rejected**: it fragments the anonymous variant
-   by bot-management cookie churn. Only an `Authorization` header bypasses
-   automatically
+   so a prior anonymous `public` entry can still be served to Cookie requests
+   even when credentialed Worker responses emit **`Cache-Control: private`**
+   (#187 — that header only blocks storing *this* personalized HTML as a shared
+   object). Treat signed-in safety as closed only after a **WC-on staging probe**
+   shows session-cookie requests miss/bypass the anonymous entry (or adopt a
+   non-`__cf_bm`-fragmenting auth signal). **`Vary: Cookie` is rejected**: it
+   fragments the anonymous variant by bot-management cookie churn. Only an
+   `Authorization` header bypasses automatically
    ([configuration](https://developers.cloudflare.com/workers/cache/configuration/)).
 2. **Analytics.** A Workers Caching HIT never runs the Worker, so
    `recordPageView` would stop counting cached views.
