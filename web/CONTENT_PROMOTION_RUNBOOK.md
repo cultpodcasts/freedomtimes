@@ -10,6 +10,7 @@ This runbook documents the repeatable process for getting verified staging conte
 - [Step 0 before content promote](#0-step-0-verified-production-backup-mandatory)
 - [HARD RULE — weekly promote: keep prior weeklies published](#hard-rule-14-sep-2026--weekly-promote-keep-prior-weeklies-published)
 - [Archive entry operations](#41-archive-entry-operations-add-take-down-remove-backfill) — add, take down, remove, backfill, missing PDF
+- [Archives metadata model](#411-archives-metadata-model-169) — checksum, file size, edition, source attribution, publish states
 - [Disaster recovery](#disaster-recovery) — **canonical:** sibling `freedomtimes-agents/docs/DISASTER_RECOVERY.md` (retarget Worker; do not overwrite named production)
 
 ## Scope
@@ -379,6 +380,42 @@ Every production write below follows [Step 0](#0-step-0-verified-production-back
 - **Take down (reversible):** `npx --prefix web emdash content unpublish archives <id-or-slug> -u <url> -t <token>`. The page then returns **410 Gone** ("Archive issue withdrawn", noindex like a 404, `Cache-Control: no-store`) and drops out of `/archives` and the sitemap ([#151](https://github.com/cultpodcasts/freedomtimes/issues/151)). Republish with `emdash content publish`; the next request renders the issue again. A slug that never matched an entry, or an entry that was never published, stays a plain **404**.
 - **Remove:** `emdash content delete archives <id-or-slug>` moves the entry to trash (`emdash content restore` brings it back); while it is in trash the page returns **410 Gone**, as above. Once an entry is permanently purged from trash nothing is left to tell, so the page becomes a plain **404**. Delete the PDF with `emdash media delete <media-id>` only when no other entry uses it.
 - **Missing PDF:** if a published entry's PDF is gone from the `MEDIA` R2 bucket, `/archives/<slug>` still renders but shows "The original PDF for this issue is currently unavailable" instead of the link, and the Worker logs `ft.archives.pdf_missing` with the slug and storage key. A failed R2 lookup logs `ft.archives.pdf_check_failed` and keeps the link. To find them, search Workers Logs (observability is enabled in `wrangler.jsonc`) for those tags, or run `npx wrangler tail --env <env> --search ft.archives` from `web/` (read-only). To fix one, re-upload the file per §4 and, if the new upload has a different media ID, save the entry with the new `pdf_file`. The "unavailable" page is sent with `Cache-Control: no-store`, so it is never page-cached and the next request after the fix shows the link again. These logs are the whole signal: by decision (31 Oct 2026, [#151](https://github.com/cultpodcasts/freedomtimes/issues/151)) no alerting channel is wired to them, so check them after archive work or when a reader reports a missing PDF. A failed withdrawn-entry lookup logs `ft.archives.withdrawn_check_failed` and answers a plain 404.
+
+#### 4.1.1 Archives metadata model ([#169](https://github.com/cultpodcasts/freedomtimes/issues/169))
+
+This is the **single standards home** for archive field semantics (no separate archives standards doc). Gap coverage from [#34](https://github.com/cultpodcasts/freedomtimes/issues/34) / [#151](https://github.com/cultpodcasts/freedomtimes/issues/151) gap 3.
+
+**Do not** add EmDash entry columns that duplicate media library facts. File **size** and **checksum** live on the EmDash media row for `pdf_file` (`size`, `contentHash`, e.g. `sha1:…`). The archive page may show a humanized size next to **Open original PDF** when the availability check returns `available` with bytes from R2 `head` `size` (`checkArchivePdf` → `byteSize`); media-row `size` / `contentHash` remain operator-verification via MCP `media_get` / admin media detail (checksum already has no page label).
+
+| Concern | Where it lives | Required to publish? |
+| --- | --- | --- |
+| Title | `archives.title` | Yes (existing) |
+| Cover / page images / PDF | `cover_image`, `page_images`, `pdf_file` | Cover + PDF yes (existing) |
+| Issue date | `archives.date` | Yes (existing) |
+| Edition | `volume_number` + `regional_variant` + `date` (no separate `edition` field) | No — set when known; volume shown on the page when present |
+| File size | Media `size` for `pdf_file` (derived; never an entry column) | n/a |
+| Checksum | Media `contentHash` for `pdf_file` (derived; never an entry column) | n/a |
+| Source attribution | `archives.source_attribution` (optional string) | **No** — set when provenance is known; leave blank on legacy rows rather than guessing |
+| Abstract | `archives.abstract` | No |
+
+**Publish-state matrix** (EmDash entry lifecycle — no custom status field):
+
+| Entry state | Public `/archives/<slug>` | Index / sitemap |
+| --- | --- | --- |
+| Published | 200 (or 200 with missing-PDF notice) | Listed when published |
+| Draft / scheduled (never published) | **404** (do not reveal unreleased issues) | Not listed |
+| Was published, then unpublished or in trash | **410 Gone** (§4.1 take down / remove) | Not listed |
+| Permanently purged from trash / unknown slug | **404** | Not listed |
+
+**Add / backfill checklist** (extends the §4.1 add bullet):
+
+1. Upload the PDF (and page images) with `emdash media upload` on the **target** environment.
+2. Confirm media `size` and `contentHash` on the new media id (`media_get` / admin).
+3. Create or update the `archives` entry: `pdf_file`, `cover_image`, `page_images`, `date`, `volume_number`, `regional_variant` when applicable.
+4. Set `source_attribution` when the provenance is known (for example a third-party scan credit). Do **not** bulk-fill legacy rows with a guessed string.
+5. Publish; run the §4 archives media preflight; open `/archives/<slug>` and confirm **Open original PDF** (and size label when bytes are known).
+
+Schema: add `source_attribution` on staging first (`schema_create_field`), then production only after [Step 0](#0-step-0-verified-production-backup-mandatory) and an explicit operator go-ahead. Keep [`web/.emdash/seed.json`](.emdash/seed.json) in sync for new environments.
 
 ## 5. Recover From "Collection not found" Admin Issues
 

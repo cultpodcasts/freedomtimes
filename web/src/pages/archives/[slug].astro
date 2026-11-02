@@ -95,7 +95,9 @@ if (!slug) {
 }
 
 // #151: a published entry whose PDF is gone from R2 says so instead of linking a 404.
+// #169: R2 head also supplies byteSize for the PDF link label when available.
 let pdfStatus: ArchivePdfStatus = 'unknown';
+let pdfByteSize: number | null = null;
 if (entry) {
 	const { pdfLink } = buildContentEntryViewModel(
 		entry as unknown as { slug?: string; data: Record<string, unknown> } & Record<string, unknown>,
@@ -103,7 +105,9 @@ if (entry) {
 	if (pdfLink) {
 		const media = (cfEnv as { MEDIA?: { head?: (key: string) => Promise<unknown> } }).MEDIA;
 		const head: MediaHead | null = typeof media?.head === 'function' ? (key) => media.head!(key) : null;
-		pdfStatus = (await checkArchivePdf(pdfLink, head, console, { slug })).status;
+		const pdfCheck = await checkArchivePdf(pdfLink, head, console, { slug });
+		pdfStatus = pdfCheck.status;
+		pdfByteSize = pdfCheck.byteSize;
 		const cacheControl = archivePdfCacheControl(pdfStatus);
 		if (cacheControl) Astro.response.headers.set('Cache-Control', cacheControl);
 	}
@@ -125,6 +129,7 @@ if (entry) {
 		isSignedIn={isSignedIn}
 		isEditor={isEditor}
 		pdfStatus={pdfStatus}
+		pdfByteSize={pdfByteSize}
 	/>
 )}
 
