@@ -12,7 +12,10 @@ export function readTrimmedString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-/** Non-blank string returned as stored (not trimmed). Used where existing src output must not change. */
+/**
+ * Non-blank string returned as stored (not trimmed). Used for media src keys and for CMS text
+ * fields (title / excerpt / byline / date / slug) that must not trim on render.
+ */
 export function readNonBlankString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }

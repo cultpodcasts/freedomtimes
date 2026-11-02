@@ -379,9 +379,14 @@ describe('hero image wiring (source guard)', () => {
 
 	it('contentEntry shares string/JSON readers with mediaValue (#135)', () => {
 		const contentEntry = read('../src/lib/content/contentEntry.ts');
+		assert.match(contentEntry, /from '\.\/mediaValue'/);
 		assert.match(contentEntry, /readNonBlankString/);
 		assert.match(contentEntry, /tryParseJsonString/);
-		assert.match(contentEntry, /const readString = readNonBlankString/);
+		// Alias may be `const readString = readNonBlankString` or `import { … as readString }`.
+		assert.match(
+			contentEntry,
+			/(?:const readString = readNonBlankString|readNonBlankString as readString)/,
+		);
 		assert.doesNotMatch(contentEntry, /function readString\(/);
 		assert.doesNotMatch(contentEntry, /function tryParseJsonString\(/);
 	});
