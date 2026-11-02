@@ -188,10 +188,13 @@ several regions and confirm `x-ft-cache: HIT` with `curl -sI`.
 
 ### Decision record: Cache API + KV epoch vs Workers Caching / `cacheCloudflare()`
 
-*Decided 27 Oct 2026 for PR #111; revisit in the follow-up issue.*
+*Decided 27 Oct 2026 for PR #111; evaluated again 2 Nov 2026 for
+[#112](https://github.com/cultpodcasts/freedomtimes/issues/112). Still do **not**
+enable Workers Caching / `cacheCloudflare()` on staging or production from this
+evaluation.*
 
-**Chosen:** Workers Cache API (`caches.default`) inside the outer middleware, a
-KV epoch for global purge.
+**Chosen (still):** Workers Cache API (`caches.default`) inside the outer
+middleware, a KV epoch for global purge. Placement stays `aws:eu-west-1`.
 
 **Alternative:** [Workers Caching](https://developers.cloudflare.com/workers/cache/)
 (`"cache": {"enabled": true}` in wrangler, wrangler ≥ 4.69) driven by Astro route
@@ -201,10 +204,27 @@ caching + `@astrojs/cloudflare` `cacheCloudflare()` (sets
 Worker runs and before placement is consulted ("The cache is always consulted
 before Smart Placement is considered"), collapses concurrent misses, and
 Cloudflare recommends it for new Workers
-([limitations](https://developers.cloudflare.com/workers/cache/limitations/)).
+([limitations](https://developers.cloudflare.com/workers/cache/limitations/),
+[configuration](https://developers.cloudflare.com/workers/cache/configuration/)).
 That is strictly better for HIT latency outside Europe.
 
-**Why not in this PR:**
+#### #112 evaluation (2 Nov 2026) — open questions
+
+| Question | Finding |
+| --- | --- |
+| Available on the account? | Public docs (Oct–Nov 2026) show **no beta gate** for `"cache": {"enabled": true}` (Wrangler ≥ 4.69). Repo has `@astrojs/cloudflare` ^14.4.3, which ships `cacheCloudflare()`. **Not proven** on this Cloudflare account: no staging enablement in this evaluation. |
+| Signed-in safety | Unchanged blocker. Cache key ignores `Cookie`. Request-side "any session cookie → miss" only works inside the Worker. Workers Caching HITs skip the Worker, so editors/admins would need `Cache-Control: private` on signed-in renders **or** a non-`__cf_bm`-fragmenting auth signal. `Vary: Cookie` is unsafe (bot-management cookie churn). Prefer proving private/signed-in responses on **staging** before any enable. |
+| Analytics | Unchanged blocker. A HIT never runs `recordPageView`. Need Web Analytics, a client beacon, or accept under-count before enabling. |
+| Purge | EmDash `@emdash-cms/cloudflare` can purge Astro cache tags; Free-tier purge rate limits still apply. Our KV epoch purge would **not** clear Workers Caching entries — tag/path purge must be wired and tested. |
+| Query strings | Keep fail-closed: no shared entry for query-bearing URLs (same rule as today's Cache API path). |
+| Dedicated KV for epoch | Still deferred. Only needed while we keep the Cache API + epoch design. |
+| Baseline HIT TTFB | From this operator machine (LHR / Europe, 2 Nov 2026): anonymous `/` showed `x-ft-cache: HIT` on a warm request after a `BYPASS-response` miss (~1.2 s TTFB on that miss). US East / APAC samples were **not** taken here; still needed before claiming eyeball-tier gains. Estimate from #111 (HIT still pays eyeball↔Dublin) remains ~0.2–0.25 s US East / ~0.4–0.6 s APAC until Workers Caching is tried. |
+
+#### Recommendation
+
+**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` until a dedicated staging experiment answers signed-in safety and analytics. When that experiment runs: staging only, anonymous routes first, measure HIT TTFB from US and APAC, prove editors never see the anonymous HTML, then decide on production.
+
+**Why not in #111 (unchanged):**
 
 1. **Signed-in safety.** The Workers Caching key does not include `Cookie`
    ("Requests that differ only in … `Cookie`, or `Authorization` return the same
@@ -221,8 +241,9 @@ That is strictly better for HIT latency outside Europe.
    publish (EmDash's `@emdash-cms/cloudflare` scheduled handler already purges
    tags through the Astro cache provider), and staging validation. Purges use
    Free-tier rate limits.
-4. **Availability.** The docs (updated 12 Oct 2026) show no beta gating; this
-   was not verified on the account and has not been tried on staging.
+4. **Availability.** Docs no longer describe private beta for the wrangler
+   `cache` block; account enablement and staging proof are still outstanding
+   (#112).
 
 **Also considered:** a dedicated KV namespace for the epoch. Rejected for now: it
 needs a Terraform-managed namespace and a new binding in both envs; the epoch is
