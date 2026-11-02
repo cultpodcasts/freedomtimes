@@ -31,9 +31,14 @@ whitespace-only alt counts as unset.
 The stored alt is a snapshot. In EmDash 1.3.1 the admin picker copies the media library item's alt
 onto the post's image value when the image is chosen. On save, EmDash fills an empty alt from the
 media item only when it also has to look up other metadata (dimensions, storage key, file info or
-placeholder). Editing alt in the media library does **not** update posts that already use the image.
-Set the alt on the post's image field, or re-pick the image
+placeholder). Editing alt in the media library does **not** change a non-empty snapshot on the post —
+set the alt on the post's image field, or re-pick the image. When the snapshot is empty, the reader
+looks up `media.alt` by the rendered field's media id (Turso, then the same-origin media API) and
+keeps the generic `"<title> featured image"` if that fails
 ([#133](https://github.com/cultpodcasts/freedomtimes/issues/133)).
+
+Hero caption comes from the same rendered field as the hero `src` / alt
+([#135](https://github.com/cultpodcasts/freedomtimes/issues/135)).
 
 `og:image:alt` / `twitter:image:alt` are the social title when the post has its own social image
 (`seo.image` / `social_image`). When that image is missing, `og:image` falls back to the hero, and

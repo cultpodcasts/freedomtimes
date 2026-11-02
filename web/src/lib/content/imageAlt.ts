@@ -5,8 +5,8 @@
  * It is a snapshot: the admin picker copies the media library item's alt when the image is chosen,
  * and save-time normalisation fills an empty `alt` from the media item only when EmDash also has to
  * look up other metadata (`mergeProviderData` behind `needsLookup` in `media/normalize.ts`). Editing
- * alt in the media library does not update posts that already use the image; set it on the post's
- * image field or re-pick the image (#133).
+ * alt in the media library does not update a non-empty snapshot on the post. When the snapshot is
+ * empty, the reader looks up `media.alt` at render time (#133, `resolveHeroImageAltFromMediaWith`).
  */
 import { asMediaRecord, readTrimmedString } from './mediaValue';
 

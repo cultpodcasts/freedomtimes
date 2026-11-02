@@ -17,6 +17,7 @@ import {
 } from "../lib/content/contentBlocks";
 import {
 	buildContentEntryViewModel,
+	enrichHeroImageAlt,
 	readEntrySeoRecord,
 	resolveSocialImage,
 } from "../lib/content/contentEntry";
@@ -61,13 +62,18 @@ const {
 };
 
 const resolvedIsSignedIn = isSignedIn ?? false;
+const viewModel = buildContentEntryViewModel(
+	entry as { slug?: string; data: Record<string, unknown> } & Record<
+		string,
+		unknown
+	>,
+);
 const {
 	title,
 	summaryParagraphs,
 	portableContent,
 	textContent,
 	featuredImageSrc,
-	featuredImageAlt,
 	featuredImageCaption,
 	volumeNumber,
 	regionalVariant,
@@ -82,11 +88,13 @@ const {
 	updatedAt,
 	primaryByline,
 	primaryBylineUrl,
-} = buildContentEntryViewModel(
-	entry as { slug?: string; data: Record<string, unknown> } & Record<
-		string,
-		unknown
-	>,
+} = viewModel;
+// #133: empty snapshot alt → media library alt (never throws).
+const featuredImageAlt = await enrichHeroImageAlt(
+	entry.data,
+	title,
+	viewModel.featuredImageAlt,
+	{ origin: Astro.url.origin },
 );
 const entryRecord = entry as Record<string, unknown>;
 const seoRecord = readEntrySeoRecord(entryRecord);
