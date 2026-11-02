@@ -182,11 +182,12 @@ Dublin for every request, so a HIT still pays one eyeball ↔ Dublin round trip:
 | APAC (SYD) | ~0.4–0.6 s | SYD 9026 ms |
 
 These are **estimates** from RTTs until US/APAC samples exist. Cache API HITs
-are already measurable on production without enabling Workers Caching: confirm
-`x-ft-cache: HIT` with `curl -sI`, then time TTFB with
-`curl -so /dev/null -w '%{time_starttransfer}\n' https://freedomtimes.news/`
-from US East and APAC (and other regions as needed). LHR alone does not close
-the #112 baseline checklist item.
+are already measurable on production without enabling Workers Caching: use a
+**GET** (not `HEAD` — HEAD often returns `x-ft-cache: BYPASS-response` because
+the body is not stored), confirm `x-ft-cache: HIT`, then time TTFB with
+`curl -s -o NUL -w "%{time_starttransfer}\n" https://freedomtimes.news/`
+from US East and APAC (and other regions as needed). LHR alone does not replace
+remote eyeball samples.
 
 ### Decision record: Cache API + KV epoch vs Workers Caching / `cacheCloudflare()`
 
@@ -220,13 +221,14 @@ That is strictly better for HIT latency outside Europe.
 | Purge | EmDash `@emdash-cms/cloudflare` can purge Astro cache tags; Free-tier purge rate limits still apply. Our KV epoch purge would **not** clear Workers Caching entries — tag/path purge must be wired and tested. |
 | Query strings | Keep fail-closed: no shared entry for query-bearing URLs (same rule as today's Cache API path). |
 | Dedicated KV for epoch | Still deferred. Only needed while we keep the Cache API + epoch design. |
-| Baseline HIT TTFB | From this operator machine (LHR / Europe, 2 Nov 2026): anonymous `/` showed `x-ft-cache: HIT` on a warm request after a `BYPASS-response` miss (~1.2 s TTFB on that **miss**). **HIT header observed; HIT TTFB not timed.** US East / APAC Cache API HIT samples were **not** taken here — still needed for the #112 baseline (measurable now without Workers Caching). Estimate from #111 (HIT still pays eyeball↔Dublin) remains ~0.2–0.25 s US East / ~0.4–0.6 s APAC until measured; Workers Caching compare stays later. |
+| Baseline HIT TTFB | **LHR measured 2 Nov 2026** (operator machine, colo `LHR`, anonymous GET `/`): after a MISS (~1.4 s TTFB), ten consecutive `x-ft-cache: HIT` samples — **min 0.102 s, avg 0.424 s, max 1.269 s** (`time_starttransfer`). `HEAD` probes stayed `BYPASS-response` (not a HIT signal). **US East / APAC eyeball HIT TTFB still not measured from this machine** (estimates unchanged: ~0.2–0.25 s US East / ~0.4–0.6 s APAC). |
+| #187 staging smoke (2 Nov 2026) | Temporary `SITE_ACCESS_MODE=public` on `freedomtimes-staging` (API var flip; wrangler.jsonc stayed `locked`). Session-cookie / `Authorization` page-cache bypasses now force **`Cache-Control: private`** (no `Vary: Cookie`) in `ensurePrivateCacheControl` / `handlePageCache`. **Workers Caching was not enabled** — analytics (`recordPageView` skipped on CDN HIT) and tag/path purge remain open. Staging reverted to **`locked`**. |
 
 #### Recommendation
 
-**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` until a dedicated staging experiment answers signed-in safety and analytics. Follow-up work (staging experiment + US/APAC baseline HIT TTFB) is tracked in [#187](https://github.com/cultpodcasts/freedomtimes/issues/187).
+**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` on staging or production until analytics and purge for Workers Caching are closed. Signed-in safety for a future enable is addressed by `Cache-Control: private` on cookie/Authorization bypasses (#187). US/APAC HIT TTFB samples remain nice-to-have baselines, not an enable gate. Tracked by [#187](https://github.com/cultpodcasts/freedomtimes/issues/187).
 
-When that experiment runs: **staging only**. Locked staging has no anonymous reader HTML (`PAGE_CACHE` requires `SITE_ACCESS_MODE=public`; see [STAGING_ACCESS.md](./STAGING_ACCESS.md)). Use the **Temporary smoke test (staging → public)** there: flip staging to `public` briefly → prove signed-in responses emit `Cache-Control: private` (or equivalent) and editors/admins never see anonymous HTML → measure HIT TTFB from US and APAC on anonymous routes → **revert to `locked`**. Do not leave staging public; do not enable on production from this evaluation.
+Staging smoke procedure (done for #187; reuse if re-checking): temporary public per [STAGING_ACCESS.md](./STAGING_ACCESS.md) → prove signed-in/cookie responses are `private` → **revert to `locked`**. Do not leave staging public; do not enable Workers Caching on production from the evaluation alone.
 
 **Why not enable yet (updated 2 Nov 2026; supersedes the #111 `Vary: Cookie` sketch):**
 

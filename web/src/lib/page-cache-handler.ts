@@ -106,6 +106,26 @@ async function storeIfComplete(
 }
 
 /**
+ * Signed-in / credentialed reader HTML must not be shared at the edge (#187).
+ * Cache API already bypasses on session cookies; Workers Caching would still store
+ * the response unless it is `private` / `no-store` / `no-cache`. Never set
+ * `Vary: Cookie` (bot-management churn).
+ */
+export function ensurePrivateCacheControl(response: Response): Response {
+  const cc = (response.headers.get('cache-control') ?? '').toLowerCase();
+  if (/(^|[\s,])(private|no-store|no-cache)([\s,=]|$)/.test(cc)) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set('Cache-Control', 'private');
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
  * Returns a Response on a hit; otherwise calls `next()` and stores an eligible
  * 200 whose body turns out complete (storeIfComplete). Reader-candidate
  * bypasses are labelled `x-ft-cache: BYPASS-<reason>`; disabled / method /
@@ -123,7 +143,13 @@ export async function handlePageCache(deps: PageCacheDeps, call: PageCacheCall):
   });
   if (!decision.cacheable) {
     if (isSilentBypass(decision.reason)) return next();
-    return withCacheHeader(await next(), `BYPASS-${decision.reason}`);
+    const response = await next();
+    // Cookie / Authorization bypasses are personalized — mark private for Workers Caching safety.
+    const gated =
+      decision.reason === 'cookie' || decision.reason === 'authorization'
+        ? ensurePrivateCacheControl(response)
+        : response;
+    return withCacheHeader(gated, `BYPASS-${decision.reason}`);
   }
 
   const cache = deps.cache;
