@@ -12,12 +12,19 @@ export function readTrimmedString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 }
 
-/** Non-blank string returned as stored (not trimmed). Used where existing src output must not change. */
+/**
+ * Non-blank string returned as stored (not trimmed). Used for media src keys and for CMS text
+ * fields (title / excerpt / byline / date / slug) that must not trim on render.
+ */
 export function readNonBlankString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
-function tryParseJsonString(value: string): unknown {
+/**
+ * Parse a string that looks like a JSON object or array. Used for EmDash values that arrive
+ * JSON-encoded. Returns `null` when the string is not JSON-shaped or does not parse.
+ */
+export function tryParseJsonString(value: string): unknown {
 	const trimmed = value.trim();
 	if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
 		return null;

@@ -15,7 +15,9 @@ import {
 	asMediaRecord,
 	readImageFieldMediaId,
 	readMediaValueSrc,
+	readNonBlankString,
 	readTrimmedString,
+	tryParseJsonString,
 } from '../src/lib/content/mediaValue.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
@@ -43,6 +45,19 @@ describe('mediaValue helpers', () => {
 		assert.equal(readTrimmedString('  a  '), 'a');
 		assert.equal(readTrimmedString('   '), null);
 		assert.equal(readTrimmedString(3), null);
+	});
+
+	it('readNonBlankString keeps surrounding whitespace when non-blank (#135)', () => {
+		assert.equal(readNonBlankString('  a  '), '  a  ');
+		assert.equal(readNonBlankString('   '), null);
+		assert.equal(readNonBlankString(3), null);
+	});
+
+	it('tryParseJsonString parses object/array strings and rejects other shapes (#135)', () => {
+		assert.deepEqual(tryParseJsonString(' {"a":1} '), { a: 1 });
+		assert.deepEqual(tryParseJsonString('[1]'), [1]);
+		assert.equal(tryParseJsonString('x'), null);
+		assert.equal(tryParseJsonString('{bad'), null);
 	});
 
 	it('asMediaRecord accepts objects and JSON-object strings only', () => {
@@ -360,6 +375,20 @@ describe('hero image wiring (source guard)', () => {
 		const contentEntry = read('../src/lib/content/contentEntry.ts');
 		assert.match(contentEntry, /from '\.\/heroImage'/);
 		assert.match(contentEntry, /resolveHeroImage\(data, title\)/);
+	});
+
+	it('contentEntry shares string/JSON readers with mediaValue (#135)', () => {
+		const contentEntry = read('../src/lib/content/contentEntry.ts');
+		assert.match(contentEntry, /from '\.\/mediaValue'/);
+		assert.match(contentEntry, /readNonBlankString/);
+		assert.match(contentEntry, /tryParseJsonString/);
+		// Alias may be `const readString = readNonBlankString` or `import { … as readString }`.
+		assert.match(
+			contentEntry,
+			/(?:const readString = readNonBlankString|readNonBlankString as readString)/,
+		);
+		assert.doesNotMatch(contentEntry, /function readString\(/);
+		assert.doesNotMatch(contentEntry, /function tryParseJsonString\(/);
 	});
 
 	it('the hero <img> renders featuredImageAlt', () => {

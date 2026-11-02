@@ -4,7 +4,11 @@ import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
 import { readImageCaption } from './imageCaption';
 import { resolveHeroImage, resolveHeroImageAltFromMediaWith } from './heroImage';
-import { readMediaValueSrc as readFeaturedImageSrc } from './mediaValue';
+import {
+	readMediaValueSrc as readFeaturedImageSrc,
+	readNonBlankString,
+	tryParseJsonString,
+} from './mediaValue';
 import {
 	readEmDashPublishedOrCreatedAt,
 	readEmDashUpdatedAt,
@@ -53,9 +57,11 @@ export type ContentEntryViewModel = {
 	primaryBylineUrl: string | null;
 };
 
-function readString(value: unknown): string | null {
-	return typeof value === 'string' && value.trim().length > 0 ? value : null;
-}
+/**
+ * Title / excerpt / byline / PDF path reads. Same as {@link readNonBlankString}: non-blank, not
+ * trimmed on return, so surrounding whitespace in stored CMS text is unchanged (#135).
+ */
+const readString = readNonBlankString;
 
 function readNumber(value: unknown): number | null {
 	if (typeof value === 'number' && Number.isFinite(value)) {
@@ -68,19 +74,6 @@ function readNumber(value: unknown): number | null {
 	}
 
 	return null;
-}
-
-function tryParseJsonString(value: string): unknown {
-	const trimmed = value.trim();
-	if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) {
-		return null;
-	}
-
-	try {
-		return JSON.parse(trimmed);
-	} catch {
-		return null;
-	}
 }
 
 function normalizeEmdashMediaFileUrl(value: string): string | null {
