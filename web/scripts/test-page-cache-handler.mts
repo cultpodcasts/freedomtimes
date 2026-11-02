@@ -6,7 +6,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { ORIG_CACHE_CONTROL_HEADER, handlePageCache, type PageCacheDeps } from '../src/lib/page-cache-handler.ts';
+import {
+	ORIG_CACHE_CONTROL_HEADER,
+	ensurePrivateCacheControl,
+	handlePageCache,
+	type PageCacheDeps,
+} from '../src/lib/page-cache-handler.ts';
 import { PAGE_CACHE_MAX_STORE_BYTES, pageCacheKeyUrl } from '../src/lib/page-cache-policy.ts';
 import { createPurgeHooks } from '../src/plugins/page-cache-purge-hooks.ts';
 
@@ -318,9 +323,22 @@ describe('page cache handler: request bypass', () => {
 		await h.run('/');
 		const cookie = await h.run('/', { headers: { cookie: 'astro-session=abc' } });
 		assert.equal(cookie.headers.get('x-ft-cache'), 'BYPASS-cookie');
+		assert.equal(cookie.headers.get('cache-control'), 'private', '#187 Workers Caching safety');
+		assert.equal(cookie.headers.get('vary'), null, 'Vary: Cookie rejected');
 		const auth = await h.run('/', { headers: { authorization: 'Bearer x' } });
 		assert.equal(auth.headers.get('x-ft-cache'), 'BYPASS-authorization');
+		assert.equal(auth.headers.get('cache-control'), 'private');
 		assert.equal(h.renders(), 3, 'signed-in requests always render');
+	});
+
+	it('ensurePrivateCacheControl leaves no-store alone and does not set Vary (#187)', () => {
+		const noStore = ensurePrivateCacheControl(
+			new Response('x', { status: 200, headers: { 'cache-control': 'no-store' } }),
+		);
+		assert.equal(noStore.headers.get('cache-control'), 'no-store');
+		const bare = ensurePrivateCacheControl(new Response('x', { status: 200, headers: HTML }));
+		assert.equal(bare.headers.get('cache-control'), 'private');
+		assert.equal(bare.headers.get('vary'), null);
 	});
 
 	it('no cache or no epoch (KV unavailable) → BYPASS-unavailable, nothing stored', async () => {
@@ -337,7 +355,14 @@ describe('page cache handler: request bypass', () => {
 		assert.equal((await throws.run('/')).headers.get('x-ft-cache'), 'BYPASS-unavailable');
 	});
 
-	it('non-reader paths, non-GET and disabled cache return next() untouched (same Response object)', async () => {
+	it('disabled cache still marks credentialed responses private (#187)', async () => {
+		const h = harness({ env: { ...PROD, PAGE_CACHE: 'off', SITE_ACCESS_MODE: 'public' } });
+		const cookie = await h.run('/', { headers: { cookie: 'astro-session=abc' } });
+		assert.equal(cookie.headers.get('x-ft-cache'), null, 'silent bypass when disabled');
+		assert.equal(cookie.headers.get('cache-control'), 'private');
+	});
+
+	it('anonymous / non-credentialed non-reader paths, non-GET and disabled cache return next() untouched (same Response object)', async () => {
 		for (const [deps, path, method] of [
 			[{}, '/_emdash/api/mcp', 'POST'],
 			[{}, '/_emdash/admin', 'GET'],

@@ -182,11 +182,12 @@ Dublin for every request, so a HIT still pays one eyeball ↔ Dublin round trip:
 | APAC (SYD) | ~0.4–0.6 s | SYD 9026 ms |
 
 These are **estimates** from RTTs until US/APAC samples exist. Cache API HITs
-are already measurable on production without enabling Workers Caching: confirm
-`x-ft-cache: HIT` with `curl -sI`, then time TTFB with
-`curl -so /dev/null -w '%{time_starttransfer}\n' https://freedomtimes.news/`
-from US East and APAC (and other regions as needed). LHR alone does not close
-the #112 baseline checklist item.
+are already measurable on production without enabling Workers Caching: use a
+**GET** (not `HEAD` — HEAD often returns `x-ft-cache: BYPASS-response` because
+the body is not stored), confirm `x-ft-cache: HIT`, then time TTFB with
+`curl -s -o NUL -w "%{time_starttransfer}\n" https://freedomtimes.news/`
+from US East and APAC (and other regions as needed). LHR alone does not replace
+remote eyeball samples.
 
 ### Decision record: Cache API + KV epoch vs Workers Caching / `cacheCloudflare()`
 
@@ -215,18 +216,19 @@ That is strictly better for HIT latency outside Europe.
 | Question | Finding |
 | --- | --- |
 | Staging / wrangler proof? | Public docs (Oct–Nov 2026) show **no beta gate** for `"cache": {"enabled": true}` (Wrangler ≥ 4.69). Repo has `@astrojs/cloudflare` ^14.4.3, which ships `cacheCloudflare()`. **Not proven** here: `wrangler` `cache.enabled` was **not tried** on this Worker/account; no staging deploy proof in this evaluation. |
-| Signed-in safety | Unchanged blocker. Cache key ignores `Cookie`. Request-side "any session cookie → miss" only works inside the Worker. Workers Caching HITs skip the Worker, so editors/admins need `Cache-Control: private` on signed-in renders (or a non-`__cf_bm`-fragmenting auth signal). **`Vary: Cookie` is rejected** (bot-management cookie churn). Prefer proving private/signed-in responses on **staging** (temporary public smoke test — see Recommendation) before any enable. |
+| Signed-in safety | Still an **open enable gate**. Cache key ignores `Cookie`. Request-side "any session cookie → miss" only works inside the Worker; Workers Caching HITs skip the Worker. `Cache-Control: private` on credentialed Worker responses (#187) only blocks storing *personalized* HTML as a shared edge object — it does **not** stop a prior anonymous `public` Workers Caching entry from being served to requests that differ only by `Cookie`. **`Vary: Cookie` is rejected** (bot-management cookie churn). Close this gate only after a **WC-on** staging probe shows session-cookie requests miss/bypass the anonymous entry (or adopt a non-`__cf_bm`-fragmenting auth signal). The #187 smoke (WC **not** enabled) only proved the Worker-path `private` header. |
 | Analytics | Unchanged blocker. A **Workers Caching** HIT (skips the Worker) never runs `recordPageView` — unlike today's Cache API hits, which still call it. Need Web Analytics, a client beacon, or accept under-count before enabling. |
 | Purge | EmDash `@emdash-cms/cloudflare` can purge Astro cache tags; Free-tier purge rate limits still apply. Our KV epoch purge would **not** clear Workers Caching entries — tag/path purge must be wired and tested. |
 | Query strings | Keep fail-closed: no shared entry for query-bearing URLs (same rule as today's Cache API path). |
 | Dedicated KV for epoch | Still deferred. Only needed while we keep the Cache API + epoch design. |
-| Baseline HIT TTFB | From this operator machine (LHR / Europe, 2 Nov 2026): anonymous `/` showed `x-ft-cache: HIT` on a warm request after a `BYPASS-response` miss (~1.2 s TTFB on that **miss**). **HIT header observed; HIT TTFB not timed.** US East / APAC Cache API HIT samples were **not** taken here — still needed for the #112 baseline (measurable now without Workers Caching). Estimate from #111 (HIT still pays eyeball↔Dublin) remains ~0.2–0.25 s US East / ~0.4–0.6 s APAC until measured; Workers Caching compare stays later. |
+| Baseline HIT TTFB | **LHR measured 2 Nov 2026** (operator machine, colo `LHR`, anonymous GET `/`): after a MISS (~1.4 s TTFB), ten consecutive `x-ft-cache: HIT` samples — **min 0.102 s, avg 0.424 s, max 1.269 s** (`time_starttransfer`). `HEAD` probes stayed `BYPASS-response` (not a HIT signal). **US East / APAC eyeball HIT TTFB still not measured from this machine** (estimates unchanged: ~0.2–0.25 s US East / ~0.4–0.6 s APAC). |
+| #187 staging smoke (2 Nov 2026) | Temporary `SITE_ACCESS_MODE=public` on `freedomtimes-staging` (Cloudflare settings multipart PATCH; wrangler.jsonc stayed `locked`). Anonymous `/` returned 200 reader HTML. Requests with `Cookie: astro-session=…` or `Authorization: Bearer …` returned **`Cache-Control: private`** (no `Vary: Cookie`) after deploying `ensurePrivateCacheControl` / credentialed `handlePageCache` path (works with staging `PAGE_CACHE=off`). **Workers Caching not enabled** — analytics (`recordPageView` skipped on CDN HIT) and tag/path purge remain open. Staging reverted to **`locked`** (Secure Access wall verified). |
 
 #### Recommendation
 
-**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` until a dedicated staging experiment answers signed-in safety and analytics. Follow-up work (staging experiment + US/APAC baseline HIT TTFB) is tracked in [#187](https://github.com/cultpodcasts/freedomtimes/issues/187).
+**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` on staging or production until analytics and purge for Workers Caching are closed. `Cache-Control: private` on cookie/Authorization Worker responses (#187) only stops storing *personalized* HTML as a shared edge object — it does **not** stop a prior anonymous `public` Workers Caching entry from being served to requests that differ only by `Cookie` (key ignores Cookie; HIT skips the Worker). The #187 staging smoke (WC **not** enabled) only proves the Worker-path header. Signed-in safety therefore remains an **open enable gate** until a WC-on staging probe shows session-cookie requests miss/bypass the anonymous entry (or we adopt a non-`__cf_bm`-fragmenting auth signal). US/APAC HIT TTFB samples remain nice-to-have baselines, not an enable gate. Tracked by [#187](https://github.com/cultpodcasts/freedomtimes/issues/187).
 
-When that experiment runs: **staging only**. Locked staging has no anonymous reader HTML (`PAGE_CACHE` requires `SITE_ACCESS_MODE=public`; see [STAGING_ACCESS.md](./STAGING_ACCESS.md)). Use the **Temporary smoke test (staging → public)** there: flip staging to `public` briefly → prove signed-in responses emit `Cache-Control: private` (or equivalent) and editors/admins never see anonymous HTML → measure HIT TTFB from US and APAC on anonymous routes → **revert to `locked`**. Do not leave staging public; do not enable on production from this evaluation.
+Staging smoke procedure (done for #187; reuse if re-checking): temporary public per [STAGING_ACCESS.md](./STAGING_ACCESS.md) → prove signed-in/cookie responses are `private` on the Worker path → **revert to `locked`**. Closing the signed-in enable gate additionally needs a WC-on staging probe (session-cookie miss/bypass of any anonymous entry). Do not leave staging public; do not enable Workers Caching on production from the evaluation alone.
 
 **Why not enable yet (updated 2 Nov 2026; supersedes the #111 `Vary: Cookie` sketch):**
 
@@ -235,12 +237,14 @@ When that experiment runs: **staging only**. Locked staging has no anonymous rea
    cached response", [cache keys](https://developers.cloudflare.com/workers/cache/cache-keys/)).
    Our fail-closed rule is request-side (any session cookie → never served from
    cache) and only works inside the Worker. Workers Caching HITs skip the Worker,
-   so signed-in editors/admins would be served the anonymous copy unless every
-   signed-in render emits **`Cache-Control: private`** (or an equivalent
-   non-`__cf_bm`-fragmenting auth signal) — **prove that on staging before any
-   enable**. **`Vary: Cookie` is rejected**: it fragments the anonymous variant
-   by bot-management cookie churn. Only an `Authorization` header bypasses
-   automatically
+   so a prior anonymous `public` entry can still be served to Cookie requests
+   even when credentialed Worker responses emit **`Cache-Control: private`**
+   (#187 — that header only blocks storing *this* personalized HTML as a shared
+   object). Treat signed-in safety as closed only after a **WC-on staging probe**
+   shows session-cookie requests miss/bypass the anonymous entry (or adopt a
+   non-`__cf_bm`-fragmenting auth signal). **`Vary: Cookie` is rejected**: it
+   fragments the anonymous variant by bot-management cookie churn. Only an
+   `Authorization` header bypasses automatically
    ([configuration](https://developers.cloudflare.com/workers/cache/configuration/)).
 2. **Analytics.** A Workers Caching HIT never runs the Worker, so
    `recordPageView` would stop counting cached views.
