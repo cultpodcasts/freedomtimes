@@ -385,7 +385,7 @@ Every production write below follows [Step 0](#0-step-0-verified-production-back
 
 This is the **single standards home** for archive field semantics (no separate archives standards doc). Gap coverage from [#34](https://github.com/cultpodcasts/freedomtimes/issues/34) / [#151](https://github.com/cultpodcasts/freedomtimes/issues/151) gap 3.
 
-**Do not** add EmDash entry columns that duplicate media library facts. File **size** and **checksum** live on the EmDash media row for `pdf_file` (`size`, `contentHash`, e.g. `sha1:…`). The archive page may show a humanized size next to **Open original PDF** when R2 `head` (or the media row) reports bytes; operators verify checksum via MCP `media_get` / admin media detail.
+**Do not** add EmDash entry columns that duplicate media library facts. File **size** and **checksum** live on the EmDash media row for `pdf_file` (`size`, `contentHash`, e.g. `sha1:…`). The archive page may show a humanized size next to **Open original PDF** when the availability check returns `available` with bytes from R2 `head` `size` (`checkArchivePdf` → `byteSize`); media-row `size` / `contentHash` remain operator-verification via MCP `media_get` / admin media detail (checksum already has no page label).
 
 | Concern | Where it lives | Required to publish? |
 | --- | --- | --- |

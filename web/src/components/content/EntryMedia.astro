@@ -76,31 +76,18 @@ const pdfSizeLabel = formatArchivePdfByteSize(pdfByteSize);
 				)}
 			</p>
 		)}
-		{sourceAttribution && (
-			<p class="source-attribution">
-				<span class="source-attribution-label">Source: </span>
-				<span>{sourceAttribution}</span>
-			</p>
-		)}
 	</section>
 ) : featuredImageSrc ? (
-	<>
-		<figure class="hero">
-			<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
-			{featuredImageCaption && (
-				<figcaption class="fig-caption">{featuredImageCaption}</figcaption>
-			)}
-		</figure>
-		{sourceAttribution && (
-			<p class="source-attribution">
-				<span class="source-attribution-label">Source: </span>
-				<span>{sourceAttribution}</span>
-			</p>
+	<figure class="hero">
+		<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
+		{featuredImageCaption && (
+			<figcaption class="fig-caption">{featuredImageCaption}</figcaption>
 		)}
-	</>
-) : sourceAttribution ? (
+	</figure>
+) : null}
+{sourceAttribution && (
 	<p class="source-attribution">
 		<span class="source-attribution-label">Source: </span>
 		<span>{sourceAttribution}</span>
 	</p>
-) : null}
+)}
