@@ -13,16 +13,25 @@
  *   F --> ALT
  *   C --> ALT
  *   N --> ALT
- *   ALT["alt = field.alt → legacy &lt;field&gt;_alt → other legacy _alt → media.alt (#133) → '&lt;title&gt; featured image'"]
+ *   ALT["sync resolveHeroImage alt = field.alt → legacy &lt;field&gt;_alt → other legacy _alt → '&lt;title&gt; featured image'"]
+ *   ALT -. empty/generic only .-> ASYNC["async resolveHeroImageAltFromMediaWith: Turso media.alt → same-origin media API (#133)"]
  * ```
  *
- * The post stores a snapshot of alt when the image is picked. When that snapshot is empty,
+ * The post stores a snapshot of alt when the image is picked. Sync {@link resolveHeroImage}
+ * never reads the media library. When that snapshot is empty/generic,
  * {@link resolveHeroImageAltFromMediaWith} can fill from the media library row (#133). That
  * lookup must never reject: it runs from component frontmatter after the 200 headers (#123).
  */
 import { readImageAlt } from './imageAlt';
 import { readImageFieldMediaId, readMediaValueSrc, readTrimmedString } from './mediaValue';
-import type { SocialImageClientFactory, SocialImageQueryClient } from './socialImage';
+
+/** Slice of a libsql client used for the hero media.alt lookup (`@libsql/client/web` satisfies it). */
+export type HeroImageQueryClient = {
+	execute(statement: { sql: string; args: string[] }): Promise<{ rows: unknown[] }>;
+};
+
+/** Builds the client, or returns `null` when Turso is not configured. May throw (bad URL / scheme). */
+export type HeroImageClientFactory = () => HeroImageQueryClient | null;
 
 export type HeroImageField = 'featured_image' | 'cover_image';
 
@@ -95,7 +104,7 @@ async function fetchMediaAltFromApi(origin: string, mediaId: string): Promise<st
  * by the rendered field's media id (#133). Never rejects: failures keep `currentAlt`.
  */
 export async function resolveHeroImageAltFromMediaWith(
-	createClient: SocialImageClientFactory,
+	createClient: HeroImageClientFactory,
 	data: Record<string, unknown>,
 	title: string,
 	currentAlt: string,
@@ -109,7 +118,7 @@ export async function resolveHeroImageAltFromMediaWith(
 		const mediaId = readImageFieldMediaId(data[field]);
 		if (!mediaId) return currentAlt;
 
-		let client: SocialImageQueryClient | null = null;
+		let client: HeroImageQueryClient | null = null;
 		try {
 			client = createClient();
 		} catch (err) {

@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
 	genericHeroImageAlt,
+	type HeroImageClientFactory,
 	resolveHeroImage,
 	resolveHeroImageAltFromMediaWith,
 	storedHeroImageAlt,
@@ -16,7 +17,6 @@ import {
 	readMediaValueSrc,
 	readTrimmedString,
 } from '../src/lib/content/mediaValue.ts';
-import type { SocialImageClientFactory } from '../src/lib/content/socialImage.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
@@ -211,17 +211,30 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 
 	it('keeps a non-empty snapshot and does not query media', async () => {
 		let calls = 0;
-		const factory: SocialImageClientFactory = () => {
+		let fetchCalls = 0;
+		const factory: HeroImageClientFactory = () => {
 			calls += 1;
 			throw new Error('must not create a client');
 		};
 		const data = { featured_image: imageValue('Court photo') };
 		const current = resolveHeroImage(data, title).alt;
-		assert.equal(
-			await resolveHeroImageAltFromMediaWith(factory, data, title, current),
-			'Court photo',
-		);
-		assert.equal(calls, 0);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () => {
+			fetchCalls += 1;
+			throw new Error('must not fetch');
+		}) as typeof fetch;
+		try {
+			assert.equal(
+				await resolveHeroImageAltFromMediaWith(factory, data, title, current, {
+					origin: 'https://freedomtimes.news',
+				}),
+				'Court photo',
+			);
+			assert.equal(calls, 0);
+			assert.equal(fetchCalls, 0);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 
 	it('fills an empty snapshot from media.alt', async () => {
@@ -239,7 +252,7 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 		assert.equal(alt, libraryAlt);
 	});
 
-	it('keeps the generic alt when the client or query fails', async () => {
+	it('keeps the generic alt when the client or query fails without origin', async () => {
 		const data = { featured_image: imageValue() };
 		const current = resolveHeroImage(data, title).alt;
 		assert.equal(
@@ -261,6 +274,62 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 			),
 			generic,
 		);
+	});
+
+	it('falls through to the same-origin media API when Turso fails', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		assert.equal(current, generic);
+		const mediaId = '01M2DW4H4PB5X0AEC83M40GN7R';
+		const apiAlt = 'Protesters outside the court (API)';
+		let fetchUrl: string | undefined;
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			fetchUrl = String(input);
+			return new Response(JSON.stringify({ data: { item: { alt: apiAlt } } }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}) as typeof fetch;
+		try {
+			const alt = await resolveHeroImageAltFromMediaWith(
+				() => ({
+					execute: async () => {
+						throw new Error('turso down');
+					},
+				}),
+				data,
+				title,
+				current,
+				{ origin: 'https://freedomtimes.news' },
+			);
+			assert.equal(alt, apiAlt);
+			assert.equal(fetchUrl, `https://freedomtimes.news/_emdash/api/media/${mediaId}`);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it('falls through to the media API when the client factory returns null', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		const apiAlt = 'From media API after null client';
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response(JSON.stringify({ data: { item: { alt: apiAlt } } }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})) as typeof fetch;
+		try {
+			assert.equal(
+				await resolveHeroImageAltFromMediaWith(() => null, data, title, current, {
+					origin: 'https://freedomtimes.news',
+				}),
+				apiAlt,
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
 	});
 });
 
