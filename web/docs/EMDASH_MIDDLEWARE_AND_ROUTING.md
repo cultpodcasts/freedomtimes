@@ -181,17 +181,22 @@ Dublin for every request, so a HIT still pays one eyeball ↔ Dublin round trip:
 | US West | ~0.3 s | — |
 | APAC (SYD) | ~0.4–0.6 s | SYD 9026 ms |
 
-These are estimates from RTTs: a real US HIT cannot be measured without a
-deploy. Measure after the first production deploy with
-`curl -so /dev/null -w '%{time_starttransfer}\n' https://freedomtimes.news/` from
-several regions and confirm `x-ft-cache: HIT` with `curl -sI`.
+These are **estimates** from RTTs until US/APAC samples exist. Cache API HITs
+are already measurable on production without enabling Workers Caching: confirm
+`x-ft-cache: HIT` with `curl -sI`, then time TTFB with
+`curl -so /dev/null -w '%{time_starttransfer}\n' https://freedomtimes.news/`
+from US East and APAC (and other regions as needed). LHR alone does not close
+the #112 baseline checklist item.
 
 ### Decision record: Cache API + KV epoch vs Workers Caching / `cacheCloudflare()`
 
-*Decided 27 Oct 2026 for PR #111; revisit in the follow-up issue.*
+*Decided 27 Oct 2026 for PR #111; evaluated again 2 Nov 2026 for
+[#112](https://github.com/cultpodcasts/freedomtimes/issues/112). Still do **not**
+enable Workers Caching / `cacheCloudflare()` on staging or production from this
+evaluation.*
 
-**Chosen:** Workers Cache API (`caches.default`) inside the outer middleware, a
-KV epoch for global purge.
+**Chosen (still):** Workers Cache API (`caches.default`) inside the outer
+middleware, a KV epoch for global purge. Placement stays `aws:eu-west-1`.
 
 **Alternative:** [Workers Caching](https://developers.cloudflare.com/workers/cache/)
 (`"cache": {"enabled": true}` in wrangler, wrangler ≥ 4.69) driven by Astro route
@@ -201,19 +206,41 @@ caching + `@astrojs/cloudflare` `cacheCloudflare()` (sets
 Worker runs and before placement is consulted ("The cache is always consulted
 before Smart Placement is considered"), collapses concurrent misses, and
 Cloudflare recommends it for new Workers
-([limitations](https://developers.cloudflare.com/workers/cache/limitations/)).
+([limitations](https://developers.cloudflare.com/workers/cache/limitations/),
+[configuration](https://developers.cloudflare.com/workers/cache/configuration/)).
 That is strictly better for HIT latency outside Europe.
 
-**Why not in this PR:**
+#### #112 evaluation (2 Nov 2026) — open questions
+
+| Question | Finding |
+| --- | --- |
+| Staging / wrangler proof? | Public docs (Oct–Nov 2026) show **no beta gate** for `"cache": {"enabled": true}` (Wrangler ≥ 4.69). Repo has `@astrojs/cloudflare` ^14.4.3, which ships `cacheCloudflare()`. **Not proven** here: `wrangler` `cache.enabled` was **not tried** on this Worker/account; no staging deploy proof in this evaluation. |
+| Signed-in safety | Unchanged blocker. Cache key ignores `Cookie`. Request-side "any session cookie → miss" only works inside the Worker. Workers Caching HITs skip the Worker, so editors/admins need `Cache-Control: private` on signed-in renders (or a non-`__cf_bm`-fragmenting auth signal). **`Vary: Cookie` is rejected** (bot-management cookie churn). Prefer proving private/signed-in responses on **staging** (temporary public smoke test — see Recommendation) before any enable. |
+| Analytics | Unchanged blocker. A **Workers Caching** HIT (skips the Worker) never runs `recordPageView` — unlike today's Cache API hits, which still call it. Need Web Analytics, a client beacon, or accept under-count before enabling. |
+| Purge | EmDash `@emdash-cms/cloudflare` can purge Astro cache tags; Free-tier purge rate limits still apply. Our KV epoch purge would **not** clear Workers Caching entries — tag/path purge must be wired and tested. |
+| Query strings | Keep fail-closed: no shared entry for query-bearing URLs (same rule as today's Cache API path). |
+| Dedicated KV for epoch | Still deferred. Only needed while we keep the Cache API + epoch design. |
+| Baseline HIT TTFB | From this operator machine (LHR / Europe, 2 Nov 2026): anonymous `/` showed `x-ft-cache: HIT` on a warm request after a `BYPASS-response` miss (~1.2 s TTFB on that **miss**). **HIT header observed; HIT TTFB not timed.** US East / APAC Cache API HIT samples were **not** taken here — still needed for the #112 baseline (measurable now without Workers Caching). Estimate from #111 (HIT still pays eyeball↔Dublin) remains ~0.2–0.25 s US East / ~0.4–0.6 s APAC until measured; Workers Caching compare stays later. |
+
+#### Recommendation
+
+**Stay on Cache API + KV epoch.** Do not flip `"cache": {"enabled": true}` or add `cacheCloudflare()` until a dedicated staging experiment answers signed-in safety and analytics. Follow-up work (staging experiment + US/APAC baseline HIT TTFB) is tracked in [#187](https://github.com/cultpodcasts/freedomtimes/issues/187).
+
+When that experiment runs: **staging only**. Locked staging has no anonymous reader HTML (`PAGE_CACHE` requires `SITE_ACCESS_MODE=public`; see [STAGING_ACCESS.md](./STAGING_ACCESS.md)). Use the **Temporary smoke test (staging → public)** there: flip staging to `public` briefly → prove signed-in responses emit `Cache-Control: private` (or equivalent) and editors/admins never see anonymous HTML → measure HIT TTFB from US and APAC on anonymous routes → **revert to `locked`**. Do not leave staging public; do not enable on production from this evaluation.
+
+**Why not enable yet (updated 2 Nov 2026; supersedes the #111 `Vary: Cookie` sketch):**
 
 1. **Signed-in safety.** The Workers Caching key does not include `Cookie`
    ("Requests that differ only in … `Cookie`, or `Authorization` return the same
    cached response", [cache keys](https://developers.cloudflare.com/workers/cache/cache-keys/)).
    Our fail-closed rule is request-side (any session cookie → never served from
-   cache). With Workers Caching every reader route would have to emit
-   `Vary: Cookie` (which fragments the anonymous variant by `__cf_bm` values) or
-   signed-in editors/admins would be served the anonymous copy; only an
-   `Authorization` header bypasses automatically
+   cache) and only works inside the Worker. Workers Caching HITs skip the Worker,
+   so signed-in editors/admins would be served the anonymous copy unless every
+   signed-in render emits **`Cache-Control: private`** (or an equivalent
+   non-`__cf_bm`-fragmenting auth signal) — **prove that on staging before any
+   enable**. **`Vary: Cookie` is rejected**: it fragments the anonymous variant
+   by bot-management cookie churn. Only an `Authorization` header bypasses
+   automatically
    ([configuration](https://developers.cloudflare.com/workers/cache/configuration/)).
 2. **Analytics.** A Workers Caching HIT never runs the Worker, so
    `recordPageView` would stop counting cached views.
@@ -221,8 +248,9 @@ That is strictly better for HIT latency outside Europe.
    publish (EmDash's `@emdash-cms/cloudflare` scheduled handler already purges
    tags through the Astro cache provider), and staging validation. Purges use
    Free-tier rate limits.
-4. **Availability.** The docs (updated 12 Oct 2026) show no beta gating; this
-   was not verified on the account and has not been tried on staging.
+4. **Availability.** Docs no longer describe private beta for the wrangler
+   `cache` block; **`wrangler` `cache.enabled` was not tried** on this
+   Worker/account and there is no staging proof yet (follow-up to #112).
 
 **Also considered:** a dedicated KV namespace for the epoch. Rejected for now: it
 needs a Terraform-managed namespace and a new binding in both envs; the epoch is
