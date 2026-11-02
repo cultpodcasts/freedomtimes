@@ -6,7 +6,11 @@
  *
  * Kept free of `cloudflare:workers` / `emdash` imports so it can be unit-tested; the page passes
  * a `head` function bound to `env.MEDIA`.
+ *
+ * #169: size/checksum helpers and optional `source_attribution` reader live here for the same reason.
  */
+
+import { readNonBlankString } from './mediaValue';
 
 const MEDIA_FILE_PREFIX = '/_emdash/api/media/file/';
 
@@ -49,6 +53,54 @@ export function archivePdfCacheControl(status: ArchivePdfStatus): string | null 
 export interface ArchivePdfCheck {
 	status: ArchivePdfStatus;
 	storageKey: string | null;
+	/** Byte length from R2 head / media row when known (#169). */
+	byteSize: number | null;
+}
+
+/**
+ * Finite non-negative byte length from an R2 head result or EmDash media row (`size`).
+ */
+export function readArchivePdfByteSize(source: unknown): number | null {
+	if (!source || typeof source !== 'object') return null;
+	const size = (source as { size?: unknown }).size;
+	if (typeof size === 'number' && Number.isFinite(size) && size >= 0) return size;
+	if (typeof size === 'string' && size.trim()) {
+		const parsed = Number(size);
+		if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+	}
+	return null;
+}
+
+/**
+ * EmDash media `contentHash` (e.g. `sha1:…`) from a media row or field meta (#169). Never invent.
+ */
+export function readArchivePdfContentHash(source: unknown): string | null {
+	if (!source || typeof source !== 'object') return null;
+	const row = source as Record<string, unknown>;
+	const meta =
+		row.meta && typeof row.meta === 'object' ? (row.meta as Record<string, unknown>) : null;
+	const hash =
+		(typeof row.contentHash === 'string' && row.contentHash.trim())
+		|| (typeof row.content_hash === 'string' && row.content_hash.trim())
+		|| (typeof meta?.contentHash === 'string' && meta.contentHash.trim())
+		|| (typeof meta?.content_hash === 'string' && meta.content_hash.trim())
+		|| '';
+	return hash || null;
+}
+
+/** Humanized size for the archive PDF link label (e.g. `783 KB`). */
+export function formatArchivePdfByteSize(byteSize: number | null | undefined): string | null {
+	if (typeof byteSize !== 'number' || !Number.isFinite(byteSize) || byteSize < 0) return null;
+	if (byteSize < 1024) return `${Math.round(byteSize)} B`;
+	const kib = byteSize / 1024;
+	if (kib < 1024) return `${kib < 10 ? kib.toFixed(1) : Math.round(kib)} KB`;
+	const mib = kib / 1024;
+	return `${mib < 10 ? mib.toFixed(1) : Math.round(mib)} MB`;
+}
+
+/** Optional provenance credit from the archives entry (#169). Blank → null. */
+export function readArchiveSourceAttribution(data: Record<string, unknown>): string | null {
+	return readNonBlankString(data.source_attribution) ?? readNonBlankString(data.sourceAttribution);
 }
 
 /**
@@ -62,12 +114,14 @@ export async function checkArchivePdf(
 	context: { slug?: string } = {},
 ): Promise<ArchivePdfCheck> {
 	const storageKey = archivePdfStorageKey(pdfLink);
-	if (!storageKey || typeof head !== 'function') return { status: 'unknown', storageKey };
+	if (!storageKey || typeof head !== 'function') return { status: 'unknown', storageKey, byteSize: null };
 	try {
 		const object = await head(storageKey);
-		if (object) return { status: 'available', storageKey };
+		if (object) {
+			return { status: 'available', storageKey, byteSize: readArchivePdfByteSize(object) };
+		}
 		log.warn(ARCHIVE_PDF_MISSING_LOG, JSON.stringify({ slug: context.slug ?? null, storageKey }));
-		return { status: 'missing', storageKey };
+		return { status: 'missing', storageKey, byteSize: null };
 	} catch (error) {
 		log.warn(
 			ARCHIVE_PDF_CHECK_FAILED_LOG,
@@ -77,6 +131,6 @@ export async function checkArchivePdf(
 				error: error instanceof Error ? error.message : String(error),
 			}),
 		);
-		return { status: 'unknown', storageKey };
+		return { status: 'unknown', storageKey, byteSize: null };
 	}
 }

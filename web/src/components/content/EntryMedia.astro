@@ -1,5 +1,6 @@
 ---
 import type { SlideImage } from '../../lib/content/contentEntry';
+import { formatArchivePdfByteSize } from '../../lib/content/archive-pdf';
 
 const {
 	title,
@@ -10,6 +11,8 @@ const {
 	regionalVariant,
 	pdfLink,
 	pdfStatus = 'unknown',
+	pdfByteSize = null,
+	sourceAttribution = null,
 	featuredImageSrc,
 	featuredImageAlt,
 	featuredImageCaption,
@@ -22,10 +25,14 @@ const {
 	regionalVariant: 'Lancaster' | 'Newcastle' | 'Nottingham' | null;
 	pdfLink: string | null;
 	pdfStatus?: 'available' | 'missing' | 'unknown';
+	pdfByteSize?: number | null;
+	sourceAttribution?: string | null;
 	featuredImageSrc: string | null;
 	featuredImageAlt: string;
 	featuredImageCaption: string | null;
 };
+
+const pdfSizeLabel = formatArchivePdfByteSize(pdfByteSize);
 ---
 
 {pageImages.length > 0 ? (
@@ -64,14 +71,36 @@ const {
 		) : pdfLink && (
 			<p class="pdf-link-wrap">
 				<a href={pdfLink} target="_blank" rel="noopener noreferrer">Open original PDF</a>
+				{pdfSizeLabel && (
+					<span class="pdf-size" data-pdf-size={String(pdfByteSize)}>{` (${pdfSizeLabel})`}</span>
+				)}
+			</p>
+		)}
+		{sourceAttribution && (
+			<p class="source-attribution">
+				<span class="source-attribution-label">Source: </span>
+				<span>{sourceAttribution}</span>
 			</p>
 		)}
 	</section>
 ) : featuredImageSrc ? (
-	<figure class="hero">
-		<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
-		{featuredImageCaption && (
-			<figcaption class="fig-caption">{featuredImageCaption}</figcaption>
+	<>
+		<figure class="hero">
+			<img src={featuredImageSrc} alt={featuredImageAlt} loading="eager" decoding="async" />
+			{featuredImageCaption && (
+				<figcaption class="fig-caption">{featuredImageCaption}</figcaption>
+			)}
+		</figure>
+		{sourceAttribution && (
+			<p class="source-attribution">
+				<span class="source-attribution-label">Source: </span>
+				<span>{sourceAttribution}</span>
+			</p>
 		)}
-	</figure>
+	</>
+) : sourceAttribution ? (
+	<p class="source-attribution">
+		<span class="source-attribution-label">Source: </span>
+		<span>{sourceAttribution}</span>
+	</p>
 ) : null}

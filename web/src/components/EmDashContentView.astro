@@ -46,6 +46,7 @@ const {
 	isSignedIn,
 	isEditor = false,
 	pdfStatus = "unknown",
+	pdfByteSize = null,
 } = Astro.props as {
 	entry: { id: string; slug?: string; data: Record<string, unknown> };
 	collectionLabel: string;
@@ -59,6 +60,8 @@ const {
 	isEditor?: boolean;
 	/** Archives only (#151): `missing` replaces the PDF link with an unavailable notice. */
 	pdfStatus?: "available" | "missing" | "unknown";
+	/** Archives only (#169): PDF byte length from R2 head when known. */
+	pdfByteSize?: number | null;
 };
 
 const resolvedIsSignedIn = isSignedIn ?? false;
@@ -81,6 +84,7 @@ const {
 	slidePageNumbers,
 	slidePageTotal,
 	pdfLink,
+	sourceAttribution,
 	subjectChips,
 	subjects,
 	issueDate,
@@ -250,6 +254,8 @@ const jsonLd: Record<string, unknown>[] = isPost
 					regionalVariant={regionalVariant}
 					pdfLink={pdfLink}
 					pdfStatus={pdfStatus}
+					pdfByteSize={pdfByteSize}
+					sourceAttribution={sourceAttribution}
 					featuredImageSrc={featuredImageSrc}
 					featuredImageAlt={featuredImageAlt}
 					featuredImageCaption={featuredImageCaption}
@@ -609,6 +615,28 @@ const jsonLd: Record<string, unknown>[] = isPost
 
 	:global(.pdf-link-wrap a:hover) {
 		text-decoration: underline;
+	}
+
+	:global(.pdf-size) {
+		font-family: "Inter", sans-serif;
+		font-size: 0.8rem;
+		font-weight: 500;
+		letter-spacing: 0.02em;
+		color: #555;
+	}
+
+	:global(.source-attribution) {
+		margin: 0.75rem 0 0;
+		text-align: center;
+		font-family: "Inter", sans-serif;
+		font-size: 0.75rem;
+		font-weight: 500;
+		letter-spacing: 0.02em;
+		color: #555;
+	}
+
+	:global(.source-attribution-label) {
+		font-weight: 700;
 	}
 
 	/* One column measure for PT + legacy body: headings, embeds, and paragraphs share the same edge. */

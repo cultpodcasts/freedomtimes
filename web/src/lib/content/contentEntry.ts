@@ -14,6 +14,7 @@ import {
 	readEmDashUpdatedAt,
 } from './emdashTimestamps';
 import { readMediaLibraryFileUrl as readMediaFileUrl } from './mediaFileUrl';
+import { readArchiveSourceAttribution } from './archive-pdf';
 import {
 	resolveSocialImageWith,
 	type ResolveSocialImageSrcOptions,
@@ -47,6 +48,8 @@ export type ContentEntryViewModel = {
 	slidePageNumbers: number[];
 	slidePageTotal: number;
 	pdfLink: string | null;
+	/** Optional provenance credit for the archive PDF/issue (#169). */
+	sourceAttribution: string | null;
 	subjects: string[];
 	subjectChips: SubjectChip[];
 	issueDate: string | null;
@@ -455,6 +458,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const slidePageNumbers = pageImages.map((item, index) => item.pageNumber ?? index + 1);
 	const slidePageTotal = slidePageNumbers.length > 0 ? Math.max(...slidePageNumbers) : 0;
 	const pdfLink = normalizeEmdashMediaFileUrl(readMediaFileUrl(data.pdf_file) ?? '');
+	const sourceAttribution = readArchiveSourceAttribution(data);
 	const subjects = readSubjects(data.subjects);
 	const issueDate = readString(data.date);
 	const publishedAt = readEmDashPublishedOrCreatedAt(entry);
@@ -484,6 +488,7 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 		slidePageNumbers,
 		slidePageTotal,
 		pdfLink,
+		sourceAttribution,
 		subjects,
 		subjectChips,
 		issueDate,

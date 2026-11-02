@@ -192,6 +192,12 @@
           "slug": "date",
           "label": "Date",
           "type": "datetime"
+        },
+        {
+          "slug": "source_attribution",
+          "label": "Source attribution",
+          "type": "string",
+          "searchable": true
         }
       ]
     }
