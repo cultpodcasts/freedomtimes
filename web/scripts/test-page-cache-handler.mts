@@ -355,6 +355,13 @@ describe('page cache handler: request bypass', () => {
 		assert.equal((await throws.run('/')).headers.get('x-ft-cache'), 'BYPASS-unavailable');
 	});
 
+	it('disabled cache still marks credentialed responses private (#187)', async () => {
+		const h = harness({ env: { ...PROD, PAGE_CACHE: 'off', SITE_ACCESS_MODE: 'public' } });
+		const cookie = await h.run('/', { headers: { cookie: 'astro-session=abc' } });
+		assert.equal(cookie.headers.get('x-ft-cache'), null, 'silent bypass when disabled');
+		assert.equal(cookie.headers.get('cache-control'), 'private');
+	});
+
 	it('non-reader paths, non-GET and disabled cache return next() untouched (same Response object)', async () => {
 		for (const [deps, path, method] of [
 			[{}, '/_emdash/api/mcp', 'POST'],

@@ -8,6 +8,7 @@
  */
 import {
   decidePageCacheRequest,
+  hasOnlyNonSessionCookies,
   isCompleteStorableBody,
   isSilentBypass,
   isStorableResponse,
@@ -142,13 +143,15 @@ export async function handlePageCache(deps: PageCacheDeps, call: PageCacheCall):
     authorization: request.headers.get('authorization'),
   });
   if (!decision.cacheable) {
-    if (isSilentBypass(decision.reason)) return next();
     const response = await next();
-    // Cookie / Authorization bypasses are personalized — mark private for Workers Caching safety.
-    const gated =
-      decision.reason === 'cookie' || decision.reason === 'authorization'
-        ? ensurePrivateCacheControl(response)
-        : response;
+    // Personalized HTML (session cookie or Authorization) must be private even when the
+    // page cache is disabled (staging PAGE_CACHE=off) — Workers Caching would otherwise
+    // share the anonymous copy. #187
+    const credentialed =
+      Boolean(request.headers.get('authorization'))
+      || !hasOnlyNonSessionCookies(request.headers.get('cookie'));
+    const gated = credentialed ? ensurePrivateCacheControl(response) : response;
+    if (isSilentBypass(decision.reason)) return gated;
     return withCacheHeader(gated, `BYPASS-${decision.reason}`);
   }
 
