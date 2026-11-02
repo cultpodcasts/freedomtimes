@@ -2,10 +2,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { genericHeroImageAlt, resolveHeroImage, storedHeroImageAlt } from '../src/lib/content/heroImage.ts';
+import {
+	genericHeroImageAlt,
+	type HeroImageClientFactory,
+	resolveHeroImage,
+	resolveHeroImageAltFromMediaWith,
+	storedHeroImageAlt,
+} from '../src/lib/content/heroImage.ts';
 import { readImageAlt } from '../src/lib/content/imageAlt.ts';
 import { readImageCaption } from '../src/lib/content/imageCaption.ts';
-import { asMediaRecord, readMediaValueSrc, readTrimmedString } from '../src/lib/content/mediaValue.ts';
+import {
+	asMediaRecord,
+	readImageFieldMediaId,
+	readMediaValueSrc,
+	readTrimmedString,
+} from '../src/lib/content/mediaValue.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
@@ -185,6 +196,162 @@ describe('resolveHeroImage (#108)', () => {
 		assert.equal(storedHeroImageAlt('Court sketch', title), 'Court sketch');
 		assert.equal(storedHeroImageAlt(`  ${generic}  `, title), null);
 		assert.equal(storedHeroImageAlt('   ', title), null);
+	});
+
+	it('readImageFieldMediaId keeps the id when a storageKey is already present (#133)', () => {
+		assert.equal(readImageFieldMediaId(imageValue('x')), '01M2DW4H4PB5X0AEC83M40GN7R');
+		assert.equal(readImageFieldMediaId(imageValue('x', null)), '01M2DW4H4PB5X0AEC83M40GN7R');
+		assert.equal(readImageFieldMediaId('01M2DW4H4PB5X0AEC83M40GN7R'), '01M2DW4H4PB5X0AEC83M40GN7R');
+		assert.equal(readImageFieldMediaId({ alt: 'no id' }), null);
+	});
+});
+
+describe('resolveHeroImageAltFromMediaWith (#133)', () => {
+	const libraryAlt = 'Protesters outside the court (library)';
+
+	it('keeps a non-empty snapshot and does not query media', async () => {
+		let calls = 0;
+		let fetchCalls = 0;
+		const factory: HeroImageClientFactory = () => {
+			calls += 1;
+			throw new Error('must not create a client');
+		};
+		const data = { featured_image: imageValue('Court photo') };
+		const current = resolveHeroImage(data, title).alt;
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () => {
+			fetchCalls += 1;
+			throw new Error('must not fetch');
+		}) as typeof fetch;
+		try {
+			assert.equal(
+				await resolveHeroImageAltFromMediaWith(factory, data, title, current, {
+					origin: 'https://freedomtimes.news',
+				}),
+				'Court photo',
+			);
+			assert.equal(calls, 0);
+			assert.equal(fetchCalls, 0);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it('fills an empty snapshot from media.alt', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		assert.equal(current, generic);
+		const alt = await resolveHeroImageAltFromMediaWith(
+			() => ({
+				execute: async () => ({ rows: [{ alt: libraryAlt }] }),
+			}),
+			data,
+			title,
+			current,
+		);
+		assert.equal(alt, libraryAlt);
+	});
+
+	it('keeps the generic alt when the client or query fails without origin', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		assert.equal(
+			await resolveHeroImageAltFromMediaWith(() => {
+				throw new TypeError('URL_SCHEME_NOT_SUPPORTED');
+			}, data, title, current),
+			generic,
+		);
+		assert.equal(
+			await resolveHeroImageAltFromMediaWith(
+				() => ({
+					execute: async () => {
+						throw new Error('turso down');
+					},
+				}),
+				data,
+				title,
+				current,
+			),
+			generic,
+		);
+	});
+
+	it('falls through to the same-origin media API when Turso fails', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		assert.equal(current, generic);
+		const mediaId = '01M2DW4H4PB5X0AEC83M40GN7R';
+		const apiAlt = 'Protesters outside the court (API)';
+		let fetchUrl: string | undefined;
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			fetchUrl = String(input);
+			return new Response(JSON.stringify({ data: { item: { alt: apiAlt } } }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			});
+		}) as typeof fetch;
+		try {
+			const alt = await resolveHeroImageAltFromMediaWith(
+				() => ({
+					execute: async () => {
+						throw new Error('turso down');
+					},
+				}),
+				data,
+				title,
+				current,
+				{ origin: 'https://freedomtimes.news' },
+			);
+			assert.equal(alt, apiAlt);
+			assert.equal(fetchUrl, `https://freedomtimes.news/_emdash/api/media/${mediaId}`);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it('falls through to the media API when the client factory returns null', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		const apiAlt = 'From media API after null client';
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async () =>
+			new Response(JSON.stringify({ data: { item: { alt: apiAlt } } }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})) as typeof fetch;
+		try {
+			assert.equal(
+				await resolveHeroImageAltFromMediaWith(() => null, data, title, current, {
+					origin: 'https://freedomtimes.news',
+				}),
+				apiAlt,
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+});
+
+describe('hero caption follows the rendered field (#135)', () => {
+	it('does not borrow a featured caption when the cover is the hero', () => {
+		const data = {
+			featured_image: { id: '01M2DW4H4PB5X0AEC83M40GN7R', provider: 'local', caption: 'Featured caption' },
+			cover_image: imageValue(undefined, coverKey, {
+				id: '01M2DW4H4PB5X0AEC83M40GN7S',
+				caption: 'Cover caption',
+			}),
+		};
+		const hero = resolveHeroImage(data, title);
+		assert.equal(hero.field, 'cover_image');
+		assert.equal(hero.src, coverPath);
+		assert.equal(hero.field ? readImageCaption(data[hero.field]) : null, 'Cover caption');
+	});
+
+	it('contentEntry takes the caption from resolveHeroImage.field', () => {
+		const contentEntry = read('../src/lib/content/contentEntry.ts');
+		assert.match(contentEntry, /const hero = resolveHeroImage\(data, title\)/);
+		assert.match(contentEntry, /hero\.field \? readImageCaption\(data\[hero\.field\]\) : null/);
 	});
 });
 

@@ -5,6 +5,8 @@
  */
 import { normalizeToPublicMediaFilePath } from './mediaFileUrl';
 
+const MEDIA_ID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{20,36}$/i;
+
 /** Non-blank string, trimmed; otherwise `null`. */
 export function readTrimmedString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -81,4 +83,22 @@ export function readMediaValueSrc(value: unknown): string | null {
 	}
 
 	return null;
+}
+
+/**
+ * Media library row id on an image field value, even when `meta.storageKey` is already present.
+ * Used when looking up library metadata (e.g. alt for #133) that is not snapshotted on the post.
+ */
+export function readImageFieldMediaId(value: unknown): string | null {
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
+		const parsed = asMediaRecord(trimmed);
+		if (parsed) return readImageFieldMediaId(parsed);
+		return MEDIA_ID_PATTERN.test(trimmed) ? trimmed : null;
+	}
+	const candidate = asMediaRecord(value);
+	if (!candidate) return null;
+	const id = readTrimmedString(candidate.id);
+	return id && MEDIA_ID_PATTERN.test(id) ? id : null;
 }

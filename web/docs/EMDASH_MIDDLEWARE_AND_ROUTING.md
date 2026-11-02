@@ -138,7 +138,10 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   prop). **Component** frontmatter runs after the 200 headers are sent, so a database
   call there must catch its errors and degrade, never throw mid-stream: today only
   `EmDashContentView` does this (social image `media` / `_emdash_seo` lookups fall
-  back to the hero image; weekly prev/next is wrapped in try/catch).
+  back to the hero image; empty/generic hero alt may fill from `media.alt` via
+  `enrichHeroImageAlt` / `resolveHeroImageAltFromMediaWith` (#133), never-reject —
+  Turso then same-origin media API — pinned by `scripts/test-hero-image-alt.mts`;
+  weekly prev/next is wrapped in try/catch).
   `scripts/test-homepage-entries-map.mts` lists every component / layout frontmatter
   `await`, so a new one has to be added there on purpose. The body check above is the
   backstop: a page cut off by a component failure is never cached.

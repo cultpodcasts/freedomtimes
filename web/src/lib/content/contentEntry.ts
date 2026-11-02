@@ -3,7 +3,7 @@ import { createClient } from '@libsql/client/web';
 import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
 import { readImageCaption } from './imageCaption';
-import { resolveHeroImage } from './heroImage';
+import { resolveHeroImage, resolveHeroImageAltFromMediaWith } from './heroImage';
 import { readMediaValueSrc as readFeaturedImageSrc } from './mediaValue';
 import {
 	readEmDashPublishedOrCreatedAt,
@@ -392,6 +392,25 @@ export async function resolveSocialImageSrc(
 	return (await resolveSocialImage(data, seo, options)).src;
 }
 
+/**
+ * When the hero alt on the post is empty, fill from the media library row (#133).
+ * Never rejects: safe to await from component frontmatter after the headers are sent (#123).
+ */
+export function enrichHeroImageAlt(
+	data: Record<string, unknown>,
+	title: string,
+	currentAlt: string,
+	options?: { origin?: string },
+): Promise<string> {
+	return resolveHeroImageAltFromMediaWith(
+		createLibsqlClientForContentQueries,
+		data,
+		title,
+		currentAlt,
+		options,
+	);
+}
+
 export function buildContentEntryViewModel(entry: { slug?: string; data: Record<string, unknown> } & Record<string, unknown>): ContentEntryViewModel {
 	const data = entry.data;
 	const entryMeta = entry as Record<string, unknown>;
@@ -416,10 +435,11 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 			.filter((paragraph) => paragraph.length > 0)
 		: [];
 	const { portableContent, textContent } = resolveEntryBody(data);
-	// #108: src and alt come from the same (rendered) field; the generic alt is only a fallback.
-	const { src: featuredImageSrc, alt: featuredImageAlt } = resolveHeroImage(data, title);
-	const featuredImageCaption =
-		readImageCaption(data.featured_image) ?? readImageCaption(data.cover_image);
+	// #108 / #135: src, alt and caption come from the same (rendered) field; the generic alt is only a fallback.
+	const hero = resolveHeroImage(data, title);
+	const featuredImageSrc = hero.src;
+	const featuredImageAlt = hero.alt;
+	const featuredImageCaption = hero.field ? readImageCaption(data[hero.field]) : null;
 	const socialImageSrc =
 		readFeaturedImageSrc(seo?.image)
 		?? readFeaturedImageSrc(data.social_image)

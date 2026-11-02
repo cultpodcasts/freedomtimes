@@ -13,11 +13,25 @@
  *   F --> ALT
  *   C --> ALT
  *   N --> ALT
- *   ALT["alt = field.alt → legacy &lt;field&gt;_alt → other legacy _alt → '&lt;title&gt; featured image'"]
+ *   ALT["sync resolveHeroImage alt = field.alt → legacy &lt;field&gt;_alt → other legacy _alt → '&lt;title&gt; featured image'"]
+ *   ALT -. empty/generic only .-> ASYNC["async resolveHeroImageAltFromMediaWith: Turso media.alt → same-origin media API (#133)"]
  * ```
+ *
+ * The post stores a snapshot of alt when the image is picked. Sync {@link resolveHeroImage}
+ * never reads the media library. When that snapshot is empty/generic,
+ * {@link resolveHeroImageAltFromMediaWith} can fill from the media library row (#133). That
+ * lookup must never reject: it runs from component frontmatter after the 200 headers (#123).
  */
 import { readImageAlt } from './imageAlt';
-import { readMediaValueSrc, readTrimmedString } from './mediaValue';
+import { readImageFieldMediaId, readMediaValueSrc, readTrimmedString } from './mediaValue';
+
+/** Slice of a libsql client used for the hero media.alt lookup (`@libsql/client/web` satisfies it). */
+export type HeroImageQueryClient = {
+	execute(statement: { sql: string; args: string[] }): Promise<{ rows: unknown[] }>;
+};
+
+/** Builds the client, or returns `null` when Turso is not configured. May throw (bad URL / scheme). */
+export type HeroImageClientFactory = () => HeroImageQueryClient | null;
 
 export type HeroImageField = 'featured_image' | 'cover_image';
 
@@ -62,4 +76,76 @@ export function resolveHeroImage(data: Record<string, unknown>, title: string): 
 		?? genericHeroImageAlt(title);
 
 	return { field, src, alt };
+}
+
+const LOG_PREFIX = '[contentEntry] resolveHeroImageAltFromMedia';
+
+async function fetchMediaAltFromApi(origin: string, mediaId: string): Promise<string | null> {
+	const base = origin.replace(/\/$/, '');
+	try {
+		const r = await fetch(`${base}/_emdash/api/media/${encodeURIComponent(mediaId)}`, {
+			headers: { Accept: 'application/json' },
+		});
+		if (!r.ok) return null;
+		const j = (await r.json()) as {
+			data?: { item?: { alt?: string | null } };
+			item?: { alt?: string | null };
+		};
+		const item = j.data?.item ?? j.item;
+		const alt = item && typeof item.alt === 'string' ? item.alt.trim() : '';
+		return alt.length > 0 ? alt : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * When the hero has no stored alt (only the generic `"<title> featured image"`), look up `media.alt`
+ * by the rendered field's media id (#133). Never rejects: failures keep `currentAlt`.
+ */
+export async function resolveHeroImageAltFromMediaWith(
+	createClient: HeroImageClientFactory,
+	data: Record<string, unknown>,
+	title: string,
+	currentAlt: string,
+	options?: { origin?: string },
+): Promise<string> {
+	try {
+		if (storedHeroImageAlt(currentAlt, title)) return currentAlt;
+
+		const { field } = resolveHeroImage(data, title);
+		if (!field) return currentAlt;
+		const mediaId = readImageFieldMediaId(data[field]);
+		if (!mediaId) return currentAlt;
+
+		let client: HeroImageQueryClient | null = null;
+		try {
+			client = createClient();
+		} catch (err) {
+			console.error(`${LOG_PREFIX}: libsql client creation failed; trying media API`, err);
+		}
+
+		if (client) {
+			try {
+				const res = await client.execute({
+					sql: 'select alt from media where id = ? limit 1',
+					args: [mediaId],
+				});
+				const row = res.rows[0] as Record<string, unknown> | undefined;
+				const alt = row && typeof row.alt === 'string' ? row.alt.trim() : '';
+				if (alt.length > 0) return alt;
+			} catch (err) {
+				console.error(`${LOG_PREFIX}: Turso media alt lookup failed`, err);
+			}
+		}
+
+		const origin = options?.origin?.trim();
+		if (origin) {
+			const fromApi = await fetchMediaAltFromApi(origin, mediaId);
+			if (fromApi) return fromApi;
+		}
+	} catch (err) {
+		console.error(`${LOG_PREFIX}: unexpected failure; keeping snapshot/generic alt`, err);
+	}
+	return currentAlt;
 }
