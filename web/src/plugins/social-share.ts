@@ -20,10 +20,16 @@ import { env as cfEnv } from 'cloudflare:workers';
 import type { ResolvedPlugin, RouteContext } from 'emdash';
 import { definePlugin, PluginRouteError } from 'emdash';
 
+import { readArticleNotificationImagePath } from '../lib/content/contentEntry';
 import { blueskyProvider } from '../lib/social-share/bluesky';
 import { SOCIAL_SHARE_ALLOWED_HOSTS, SOCIAL_SHARE_CAPABILITIES } from '../lib/social-share/manifest';
 import { handleSharePanel, ShareAccessError, type ShareDraftBase, type ShareKv, type ShareProvider } from '../lib/social-share/panel';
-import { snapshotFromContentItem } from '../lib/social-share/policy';
+import {
+	absoluteCardImageUrl,
+	PRODUCTION_SITE_ORIGIN,
+	snapshotFromContentItem,
+	socialShareMode,
+} from '../lib/social-share/policy';
 import { xProvider } from '../lib/social-share/x';
 
 export const SOCIAL_SHARE_PLUGIN_ID = 'ft-social-share';
@@ -41,7 +47,24 @@ function sharePanelRoute<TConfig, TDraft extends ShareDraftBase>(provider: Share
 						kv: ctx.kv as unknown as ShareKv,
 						getPost: async (id) => {
 							const item = await ctx.content?.get('posts', id);
-							return item ? snapshotFromContentItem(item) : null;
+							if (!item) return null;
+							const hostname = new URL(ctx.request.url).hostname;
+							const mode = socialShareMode({
+								siteAccessMode: (cfEnv as { SITE_ACCESS_MODE?: unknown }).SITE_ACCESS_MODE,
+								hostname,
+							});
+							const siteOrigin = mode === 'staging' ? new URL(ctx.request.url).origin : PRODUCTION_SITE_ORIGIN;
+							// Same OG pipeline as article pages (bare media ids, `_emdash_seo`, social → hero).
+							const data: Record<string, unknown> = {
+								...((item.data && typeof item.data === 'object' ? item.data : {}) as Record<string, unknown>),
+							};
+							if (item.slug && typeof data.slug !== 'string') data.slug = item.slug;
+							const imagePath = await readArticleNotificationImagePath(
+								{ id: item.id, data, seo: item.seo } as { id: string; data: Record<string, unknown> },
+								siteOrigin,
+							);
+							const cardImageUrl = imagePath ? absoluteCardImageUrl(imagePath, siteOrigin) : null;
+							return snapshotFromContentItem(item, { siteOrigin, cardImageUrl });
 						},
 						fetch: async (url, init) => {
 							if (!ctx.http) throw new Error('Network access is not available to this plugin.');

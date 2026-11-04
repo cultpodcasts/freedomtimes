@@ -72,14 +72,22 @@ shows the new preview.
 ### Bluesky
 
 - Limit: 300 characters (graphemes).
-- The link is a clickable link facet, and the post carries a link card (`app.bsky.embed.external`) with the title
-  and the SEO description (else the lede). The card has no image.
-- AT Protocol calls, both to `https://bsky.social`:
+- The link is a clickable link facet, and the post carries a link card (`app.bsky.embed.external`) with the title,
+  the SEO description (else the lede), and a thumbnail when the post has an OG/social image. The card image uses
+  the same resolver as article `og:image` (`readArticleNotificationImagePath` / `socialImage.ts`: `seo.image`
+  including bare media ids → `_emdash_seo.seo_image` → `social_image` → featured/cover), then only Freedom Times
+  production/staging hosts. Bluesky does not scrape Open Graph for API posts, so the Worker downloads that image
+  (rejecting early on `Content-Length` over 1 MB, otherwise streaming with a hard 1 MB ceiling) and uploads it with
+  `com.atproto.repo.uploadBlob` (`image/*`), then sets `external.thumb` to the blob. If download or upload fails,
+  the text card still posts without a thumb.
+- AT Protocol calls, to `https://bsky.social` (plus a same-origin or production fetch of the card image):
   1. `com.atproto.server.createSession` with the handle and app password;
-  2. `com.atproto.repo.createRecord` (`app.bsky.feed.post`).
+  2. `com.atproto.repo.uploadBlob` when a card image URL is available;
+  3. `com.atproto.repo.createRecord` (`app.bsky.feed.post`).
 - The account must be hosted by Bluesky. A custom-domain handle such as `freedomtimes.news` is fine.
   `bsky.social` forwards the calls to the account's Bluesky server. An account on a self-hosted PDS isn't
-  supported, because the plugin can only reach `bsky.social` and `api.x.com`.
+  supported, because the plugin can only reach `bsky.social` and `api.x.com` (plus Freedom Times media hosts
+  for the card image).
 
 ### X
 
@@ -194,7 +202,9 @@ With no test secrets on the staging Worker, each panel shows **"Staging: dry run
 the preview rows, and the request a real post would send, with credentials left out:
 
 - Bluesky: the `com.atproto.repo.createRecord` body, with the `app.bsky.feed.post` record, its link facet and the
-  `app.bsky.embed.external` link card (title, description, link; no image);
+  `app.bsky.embed.external` link card (title, description, link). Thumb is **omitted in dry-run** —
+  `uploadBlob` needs a live session; the intended image URL (if any) appears only in the preview “Link card image”
+  row until a real or staging test post;
 - X: the `POST /2/tweets` body `{"text": …}`. X builds the link card itself from the article page's Open Graph tags.
 
 **Dry run: Post to `<Network>`** checks everything a real post checks (published, the preview hasn't changed),

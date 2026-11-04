@@ -216,7 +216,13 @@ export interface XPostDraft {
 const SEPARATOR = '\n\n';
 
 /** Title, blank line, hashtags, blank line, URL. Tags fill 280 (URL counted as 23). The title is trimmed only when the tags and the link leave no room. */
-export function buildXDraft(input: { title: string; description: string; url: string; groups?: readonly string[] }): XPostDraft {
+export function buildXDraft(input: {
+	title: string;
+	description: string;
+	url: string;
+	groups?: readonly string[];
+	cardImageUrl?: string | null;
+}): XPostDraft {
 	const title0 = input.title.trim();
 	const hashtags = socialHashtagLine(title0, input.url, input.groups ?? [], xWeightedLength, X_MAX_WEIGHTED_LENGTH);
 	const tail = `${SEPARATOR}${hashtags}${SEPARATOR}${input.url}`;
