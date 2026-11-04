@@ -1,15 +1,20 @@
 /**
- * One-shot OAuth 2.0 + PKCE helper: authorize the Freedom Times X account and
- * print the refresh token to paste into `.env.dev` as X_REFRESH_TOKEN.
+ * One-shot OAuth 2.0 + PKCE helper: authorize an X account and print the refresh
+ * token to paste into `.env.dev`.
  *
- * Prerequisites (console.x.com, signed in as @_freedomtimes):
+ * Production (default): reads X_CLIENT_ID / X_CLIENT_SECRET, prints X_REFRESH_TOKEN.
+ * Staging test (`--test`): reads X_TEST_CLIENT_ID / X_TEST_CLIENT_SECRET, prints
+ * X_TEST_REFRESH_TOKEN. Do not rename test keys onto production names.
+ *
+ * Prerequisites (console.x.com):
  * - OAuth 2.0 enabled on the app (confidential client)
  * - Callback URL exactly: http://127.0.0.1:9876/callback
  *   (8787 is often taken by local proxies on this machine)
- * - X_CLIENT_ID and X_CLIENT_SECRET already in repo-root `.env.dev`
+ * - Matching client id/secret already in repo-root `.env.dev`
  *
  * Usage (from repo root or web/):
  *   npx tsx web/scripts/mint-x-oauth2-refresh-token.mts
+ *   npx tsx web/scripts/mint-x-oauth2-refresh-token.mts --test
  *
  * Does not post tweets. Does not print the client secret.
  */
@@ -54,11 +59,18 @@ function pkce(): { verifier: string; challenge: string } {
 }
 
 async function main(): Promise<void> {
+	const useTest = process.argv.includes('--test');
 	const env = readEnvDev();
-	const clientId = env.X_CLIENT_ID?.trim();
-	const clientSecret = env.X_CLIENT_SECRET?.trim();
+	const clientIdKey = useTest ? 'X_TEST_CLIENT_ID' : 'X_CLIENT_ID';
+	const clientSecretKey = useTest ? 'X_TEST_CLIENT_SECRET' : 'X_CLIENT_SECRET';
+	const refreshKey = useTest ? 'X_TEST_REFRESH_TOKEN' : 'X_REFRESH_TOKEN';
+	const clientId = env[clientIdKey]?.trim();
+	const clientSecret = env[clientSecretKey]?.trim();
 	if (!clientId || !clientSecret) {
-		throw new Error('Set X_CLIENT_ID and X_CLIENT_SECRET in .env.dev first (from console.x.com OAuth 2.0 keys).');
+		throw new Error(
+			`Set ${clientIdKey} and ${clientSecretKey} in .env.dev first (from console.x.com OAuth 2.0 keys).` +
+				(useTest ? '' : ' For the staging test app, pass --test instead of renaming keys.'),
+		);
 	}
 
 	const state = b64url(randomBytes(16));
@@ -72,10 +84,12 @@ async function main(): Promise<void> {
 	authorize.searchParams.set('code_challenge', challenge);
 	authorize.searchParams.set('code_challenge_method', 'S256');
 
+	const who = useTest ? 'the X staging test account' : 'the Freedom Times X account';
+	console.log(`Mode: ${useTest ? 'staging test (--test)' : 'production'}`);
 	console.log('1. In console.x.com → your app → User authentication settings:');
 	console.log(`   Callback URI / Redirect URL: ${CALLBACK}`);
 	console.log('   Type of App: Web App (confidential)');
-	console.log(`2. Open this URL while signed in as the Freedom Times X account:\n\n${authorize.toString()}\n`);
+	console.log(`2. Open this URL while signed in as ${who}:\n\n${authorize.toString()}\n`);
 	console.log(`Waiting for callback on 127.0.0.1:${CALLBACK_PORT} …`);
 
 	const code = await new Promise<string>((resolveCode, reject) => {
@@ -130,9 +144,13 @@ async function main(): Promise<void> {
 		throw new Error('No refresh_token in response — ensure scope includes offline.access');
 	}
 	console.log('\nPaste into .env.dev (do not commit):\n');
-	console.log(`X_REFRESH_TOKEN=${refresh}`);
-	console.log('\nThen sync to the production Worker:');
-	console.log('  pwsh ./scripts/set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction');
+	console.log(`${refreshKey}=${refresh}`);
+	console.log('\nThen sync to the Worker:');
+	if (useTest) {
+		console.log('  pwsh ./scripts/set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets');
+	} else {
+		console.log('  pwsh ./scripts/set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction');
+	}
 }
 
 main().catch((e) => {

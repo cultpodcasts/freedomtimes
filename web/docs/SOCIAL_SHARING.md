@@ -86,9 +86,15 @@ shows the new preview.
 - Limit: 280, counted the way X counts. The link always counts as 23, because X wraps every URL in `t.co`.
   Emoji and CJK characters count 2. Anything in the title that looks like a link (e.g. `freedomtimes.news`) is
   also counted as 23, so the title is never under-counted. At worst it is trimmed slightly more than X needs.
-- Auth: OAuth 2.0 user context. Before each post the Worker refreshes `X_REFRESH_TOKEN` at
+- Auth: OAuth 2.0 user context. Before each post the Worker refreshes the live refresh token at
   `POST https://api.x.com/2/oauth2/token`, then calls `POST https://api.x.com/2/tweets` with
   `Authorization: Bearer <access_token>` and `{"text": …}`. X builds the link card from Open Graph tags.
+- **Refresh-token rotation.** With `offline.access`, X may return a new `refresh_token` on each refresh.
+  Worker secrets are immutable from inside the Worker, so the live token is stored in plugin KV
+  (`x-oauth:refresh-token` in production, `x-oauth-test:refresh-token` on staging). The Worker secret
+  (`X_REFRESH_TOKEN` / `X_TEST_REFRESH_TOKEN`) bootstraps an empty or reminted store; a rotated value is
+  written back to KV immediately after a successful refresh. Reminting the Worker secret (new fingerprint)
+  re-bootstraps from the secret and ignores the previous KV entry.
 - **Cost.** The X API is pay-per-use with prepaid credits and no subscription. X's pricing page
   ([docs.x.com/x-api/getting-started/pricing](https://docs.x.com/x-api/getting-started/pricing), checked
   31 Oct 2026) lists **Post: Create (with URL) at $0.200 per request**, against $0.015 for a post without a
@@ -149,7 +155,8 @@ Canonical source is **`.env.dev`** (same as Auth0 / Turso / push). Sync to the p
    npx tsx web/scripts/mint-x-oauth2-refresh-token.mts
    ```
 
-   Paste the printed `X_REFRESH_TOKEN=…` into `.env.dev`.
+   Paste the printed `X_REFRESH_TOKEN=…` into `.env.dev`. For the staging test app, use `--test` instead
+   ([§ Testing on staging](#testing-on-staging)) — do not rename `X_TEST_*` onto production key names.
 
 ### Sync to Cloudflare
 
@@ -167,6 +174,14 @@ Do **not** put production social values on staging. Staging reads only `*_TEST_*
 **Terraform apply** can drop hand-set Worker `secret_text` bindings
 ([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)); if a panel says
 "isn't configured", sync again from `.env.dev`.
+
+**OAuth 2.0 cutover.** After the OAuth 2.0 secrets are live, delete the obsolete OAuth 1.0a Worker secrets from
+staging and production (`X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`, and the
+matching `X_TEST_*` OAuth 1.0a names) so Terraform drift / console clutter does not leave dead credentials.
+
+**Remint.** If refresh fails with an invalid-grant style error: mint again (`mint-x-oauth2-refresh-token.mts` or
+`--test`), paste into `.env.dev`, sync Worker secrets. The new secret fingerprint re-bootstraps plugin KV; you
+do not need to clear `x-oauth:refresh-token` by hand.
 
 ## Testing on staging
 
@@ -218,9 +233,14 @@ Each network works on its own.
 1. Create a separate X account for testing (its own email or phone), and protect its posts if you like
    (**Settings** → **Privacy and safety** → **Audience** → **Protect your posts**).
 2. Sign in at [console.x.com](https://console.x.com) **as the test account**, create an OAuth 2.0 Web App with
-   callback `http://127.0.0.1:9876/callback`, put `X_TEST_CLIENT_ID` / `X_TEST_CLIENT_SECRET` in `.env.dev`,
-   temporarily rename or copy them to `X_CLIENT_ID` / `X_CLIENT_SECRET` to run
-   `npx tsx web/scripts/mint-x-oauth2-refresh-token.mts`, then store the result as `X_TEST_REFRESH_TOKEN`.
+   callback `http://127.0.0.1:9876/callback`, put `X_TEST_CLIENT_ID` / `X_TEST_CLIENT_SECRET` in `.env.dev`, then
+   mint **without** renaming onto production keys:
+
+   ```powershell
+   npx tsx web/scripts/mint-x-oauth2-refresh-token.mts --test
+   ```
+
+   Paste the printed `X_TEST_REFRESH_TOKEN=…` into `.env.dev`.
 3. Sync:
 
    ```powershell

@@ -32,7 +32,9 @@ Dry-run log line, once per network: `dry-run <network> <post id> (<length>) <int
 
 ## Production secrets (X developer account live)
 
-The Freedom Times X developer account is active with prepaid credits. Put Bluesky and X OAuth 2.0 secrets in **`.env.dev`**, then sync with `set-github-secrets.ps1` ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)): `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REFRESH_TOKEN`. Mint the refresh token with `npx tsx web/scripts/mint-x-oauth2-refresh-token.mts`. Publishing still does not post. After the 30-minute delay, the agent may offer to post, and the admin panels can post with those secrets.
+The Freedom Times X developer account is active with prepaid credits. Put Bluesky and X OAuth 2.0 secrets in **`.env.dev`**, then sync with `set-github-secrets.ps1` ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)): `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REFRESH_TOKEN`. Mint the refresh token with `npx tsx web/scripts/mint-x-oauth2-refresh-token.mts` (use `--test` for staging `X_TEST_*`). Publishing still does not post. After the 30-minute delay, the agent may offer to post, and the admin panels can post with those secrets.
+
+X may rotate the refresh token on each use; the Worker keeps the live value in plugin KV (same store as the admin panel — see [SOCIAL_SHARING.md](./SOCIAL_SHARING.md) § X). Remint + re-sync when the grant is revoked. After cutover, delete obsolete OAuth 1.0a Worker secrets (`X_API_KEY*`, `X_ACCESS_TOKEN*`).
 
 Each X post that includes the article link is a paid API call (about $0.20). Keep a spending limit in the developer console. Bluesky app passwords are not metered the same way.
 

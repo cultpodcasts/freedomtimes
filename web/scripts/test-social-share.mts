@@ -46,6 +46,7 @@ import {
 } from '../src/lib/social-share/policy.ts';
 import {
 	buildXDraft,
+	createXRefreshTokenStore,
 	postToX,
 	readXConfig,
 	refreshXAccessToken,
@@ -57,6 +58,7 @@ import {
 	X_TEST_SECRET_NAMES,
 	xAccountLabel,
 	xProvider,
+	xRefreshTokenKvKey,
 	xTextWeight,
 	xWeightedLength,
 } from '../src/lib/social-share/x.ts';
@@ -570,8 +572,17 @@ describe('X client (mocked)', () => {
 			clientId: 'test-client-id',
 			clientSecret: 'test-client-secret',
 			refreshToken: 'test-refresh-token',
+			accountLabel: 'the authorized Freedom Times X account',
 		});
 		assert.equal(xAccountLabel(X_CONFIG), 'the authorized Freedom Times X account');
+		assert.equal(
+			readXConfig(
+				{ X_TEST_CLIENT_ID: 'a', X_TEST_CLIENT_SECRET: 'b', X_TEST_REFRESH_TOKEN: 'c' },
+				X_TEST_SECRET_NAMES,
+				'staging',
+			)?.accountLabel,
+			'the X staging test account',
+		);
 	});
 
 	it('refreshes the access token with Basic client credentials', async () => {
@@ -585,6 +596,39 @@ describe('X client (mocked)', () => {
 		assert.match(headers.authorization, /^Basic /);
 		assert.equal(String(x.calls[0].init?.body), 'grant_type=refresh_token&refresh_token=test-refresh-token');
 		assert.ok(!headers.authorization.includes('test-client-secret'));
+	});
+
+	it('persists a rotated refresh token in KV so the next refresh uses it', async () => {
+		const kv = new FakeKv();
+		const store = createXRefreshTokenStore(kv, 'test-refresh-token', 'production');
+		assert.equal(xRefreshTokenKvKey('production'), 'x-oauth:refresh-token');
+		assert.equal(xRefreshTokenKvKey('staging'), 'x-oauth-test:refresh-token');
+
+		let refreshN = 0;
+		const x = mockX(undefined, () => {
+			refreshN += 1;
+			return json(200, {
+				token_type: 'bearer',
+				expires_in: 7200,
+				access_token: `access-${refreshN}`,
+				refresh_token: refreshN === 1 ? 'rotated-refresh-token' : undefined,
+				scope: 'tweet.read tweet.write users.read offline.access',
+			});
+		});
+
+		const first = await refreshXAccessToken(X_CONFIG, { fetch: x.fetch, refreshTokenStore: store });
+		assert.equal(first.accessToken, 'access-1');
+		assert.equal(first.refreshToken, 'rotated-refresh-token');
+		assert.equal(await store.get(), 'rotated-refresh-token');
+		assert.equal(String(x.calls[0].init?.body), 'grant_type=refresh_token&refresh_token=test-refresh-token');
+
+		const second = await refreshXAccessToken(X_CONFIG, { fetch: x.fetch, refreshTokenStore: store });
+		assert.equal(second.accessToken, 'access-2');
+		assert.equal(String(x.calls[1].init?.body), 'grant_type=refresh_token&refresh_token=rotated-refresh-token');
+
+		// Reminting the Worker secret re-bootstraps (fingerprint mismatch ignores stale KV).
+		const reminted = createXRefreshTokenStore(kv, 'brand-new-env-refresh', 'production');
+		assert.equal(await reminted.get(), 'brand-new-env-refresh');
 	});
 
 	it('counts like X: 280 weighted, emoji and CJK count 2, the link counts 23', () => {
@@ -845,9 +889,11 @@ describe('staging test accounts and dry run (#178)', () => {
 		assert.equal(kv.data.size, 0);
 
 		const ready = await go(X_TEST, { type: 'panel_load' });
-		assert.equal(ready.blocks[0].title, 'Staging: posting to test account the authorized Freedom Times X account');
+		assert.equal(ready.blocks[0].title, 'Staging: posting to the X staging test account');
 		const button = findButton(ready.blocks, 'x_post');
 		assert.equal(button?.label, 'Post to X test account');
+		assert.equal((button?.confirm as { title: string }).title, 'Post to X as the X staging test account?');
+		assert.match(String(ready.blocks.find((b) => b.type === 'context')?.text), /Posts as the X staging test account/);
 		const posted = await go(X_TEST, { type: 'block_action', action_id: 'x_post', value: button?.value });
 		assert.equal(posted.toast?.message, 'Posted to the X test account.');
 		assert.equal(x.calls.length, 2, 'refresh + create');

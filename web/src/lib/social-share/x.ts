@@ -7,10 +7,15 @@
  * offline.access. `fetch` is injected so tests mock it. It posts only from the
  * production admin (real account) or the staging admin with the staging-only
  * test-account secrets (#178); elsewhere it is a dry run.
+ *
+ * X may rotate the refresh token on each use (`offline.access`). Worker secrets are
+ * immutable from inside the Worker, so the live refresh token is kept in plugin KV
+ * (bootstrap from the env secret; write back on rotation; re-bootstrap when the
+ * Worker secret is reminted). See web/docs/SOCIAL_SHARING.md.
  */
 import { composeSocialText, socialHashtagLine } from './hashtags';
-import type { FetchLike, ShareProvider } from './panel';
-import { readSecret, ShareNetworkError, type SharedPost } from './policy';
+import type { FetchLike, ShareKv, ShareProvider } from './panel';
+import { readSecret, ShareNetworkError, type SharedPost, type SocialShareMode } from './policy';
 
 export const X_NETWORK = 'x';
 export const X_API_ORIGIN = 'https://api.x.com';
@@ -37,27 +42,107 @@ export const X_MAX_WEIGHTED_LENGTH = 280;
 /** Every URL is wrapped in t.co and counts as 23. */
 export const X_URL_WEIGHT = 23;
 
+/** Plugin KV key for the live OAuth 2.0 refresh token (production vs staging test). */
+export function xRefreshTokenKvKey(mode: SocialShareMode = 'production'): string {
+	return mode === 'staging' ? 'x-oauth-test:refresh-token' : 'x-oauth:refresh-token';
+}
+
 export interface XConfig {
 	clientId: string;
 	clientSecret: string;
 	refreshToken: string;
+	/** Confirm-dialog account phrase (production vs staging test). */
+	accountLabel: string;
 }
 
-/** Config from `[clientId, clientSecret, refreshToken]`. */
-export function xConfigFromSecrets([clientId, clientSecret, refreshToken]: readonly string[]): XConfig {
-	return { clientId, clientSecret, refreshToken };
+/** Config from `[clientId, clientSecret, refreshToken]`. Mode picks the account label. */
+export function xConfigFromSecrets(
+	[clientId, clientSecret, refreshToken]: readonly string[],
+	mode: SocialShareMode = 'production',
+): XConfig {
+	return {
+		clientId,
+		clientSecret,
+		refreshToken,
+		accountLabel:
+			mode === 'staging' ? 'the X staging test account' : 'the authorized Freedom Times X account',
+	};
 }
 
 /** All three secrets present (by default the production names), or null. */
-export function readXConfig(env: Record<string, unknown>, names: readonly string[] = X_SECRET_NAMES): XConfig | null {
+export function readXConfig(
+	env: Record<string, unknown>,
+	names: readonly string[] = X_SECRET_NAMES,
+	mode: SocialShareMode = 'production',
+): XConfig | null {
 	const values = names.map((name) => readSecret(env, name));
 	if (values.length !== 3 || values.some((v) => !v)) return null;
-	return xConfigFromSecrets(values as string[]);
+	return xConfigFromSecrets(values as string[], mode);
 }
 
 /** Account named in the confirm dialog (no paid users/me call). */
-export function xAccountLabel(_config: XConfig): string {
-	return 'the authorized Freedom Times X account';
+export function xAccountLabel(config: XConfig): string {
+	return config.accountLabel;
+}
+
+/**
+ * Read/write the live refresh token. Worker secrets cannot be updated from the
+ * Worker; this store is how a rotated token survives until the next post.
+ */
+export interface XRefreshTokenStore {
+	get(): Promise<string>;
+	set(token: string): Promise<void>;
+}
+
+interface StoredXRefreshToken {
+	token: string;
+	/** Fingerprint of the Worker secret that bootstrapped this entry. */
+	fromSecret: string;
+}
+
+async function secretFingerprint(secret: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+	return Array.from(new Uint8Array(digest).slice(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function isStoredRefresh(value: unknown): value is StoredXRefreshToken {
+	if (typeof value !== 'object' || value === null) return false;
+	const rec = value as { token?: unknown; fromSecret?: unknown };
+	return typeof rec.token === 'string' && rec.token.trim().length > 0 && typeof rec.fromSecret === 'string';
+}
+
+/**
+ * Plugin-KV store for the live refresh token.
+ * - Bootstrap from the Worker secret when KV is empty or the secret was reminted
+ *   (fingerprint mismatch).
+ * - On rotation, write the new token back with the current secret fingerprint.
+ */
+export function createXRefreshTokenStore(
+	kv: ShareKv,
+	envBootstrap: string,
+	mode: SocialShareMode = 'production',
+): XRefreshTokenStore {
+	const key = xRefreshTokenKvKey(mode);
+	let fingerprintPromise: Promise<string> | undefined;
+	const fingerprint = () => {
+		fingerprintPromise ??= secretFingerprint(envBootstrap);
+		return fingerprintPromise;
+	};
+	return {
+		async get() {
+			const fp = await fingerprint();
+			const hit = await kv.getVersioned<unknown>(key);
+			if (hit && isStoredRefresh(hit.value) && hit.value.fromSecret === fp) {
+				return hit.value.token.trim();
+			}
+			return envBootstrap;
+		},
+		async set(token: string) {
+			const trimmed = token.trim();
+			if (!trimmed) return;
+			await kv.set(key, { token: trimmed, fromSecret: await fingerprint() } satisfies StoredXRefreshToken);
+		},
+	};
 }
 
 // twitter-text v3 weights: these code point ranges count 1, everything else 2;
@@ -168,13 +253,14 @@ function xError(body: Record<string, unknown>, status: number): string {
 
 /**
  * Exchange the refresh token for a short-lived user access token.
- * If X rotates the refresh token, the new value is returned in `refreshToken` so
- * the operator can update `.env.dev` (the Worker cannot rewrite wrangler secrets).
+ * When a store is provided, the live refresh token is read from it (KV, bootstrapped
+ * from the Worker secret) and any rotated `refresh_token` is written back immediately.
  */
 export async function refreshXAccessToken(
 	config: XConfig,
-	deps: { fetch: FetchLike },
+	deps: { fetch: FetchLike; refreshTokenStore?: XRefreshTokenStore },
 ): Promise<{ accessToken: string; refreshToken?: string }> {
+	const refreshToken = deps.refreshTokenStore ? await deps.refreshTokenStore.get() : config.refreshToken;
 	let res: Response;
 	try {
 		res = await deps.fetch(X_OAUTH2_TOKEN_URL, {
@@ -185,7 +271,7 @@ export async function refreshXAccessToken(
 			},
 			body: new URLSearchParams({
 				grant_type: 'refresh_token',
-				refresh_token: config.refreshToken,
+				refresh_token: refreshToken,
 			}).toString(),
 		});
 	} catch {
@@ -200,17 +286,26 @@ export async function refreshXAccessToken(
 	if (!accessToken) {
 		throw new ShareNetworkError('X token refresh returned no access_token.', true);
 	}
-	const refreshToken = typeof body.refresh_token === 'string' && body.refresh_token ? body.refresh_token : undefined;
-	return { accessToken, refreshToken };
+	const rotated = typeof body.refresh_token === 'string' && body.refresh_token ? body.refresh_token : undefined;
+	if (rotated && deps.refreshTokenStore) {
+		await deps.refreshTokenStore.set(rotated);
+	}
+	return { accessToken, refreshToken: rotated };
+}
+
+export interface XPublishDeps {
+	fetch: FetchLike;
+	now: () => Date;
+	/** Plugin KV — required for live refresh-token persistence on panel / auto-post. */
+	kv?: ShareKv;
+	mode?: SocialShareMode;
 }
 
 /** Create the post. Never logs secrets. */
-export async function postToX(
-	config: XConfig,
-	draft: XPostDraft,
-	deps: { fetch: FetchLike; now: () => Date },
-): Promise<SharedPost> {
-	const { accessToken } = await refreshXAccessToken(config, deps);
+export async function postToX(config: XConfig, draft: XPostDraft, deps: XPublishDeps): Promise<SharedPost> {
+	const refreshTokenStore =
+		deps.kv !== undefined ? createXRefreshTokenStore(deps.kv, config.refreshToken, deps.mode ?? 'production') : undefined;
+	const { accessToken } = await refreshXAccessToken(config, { fetch: deps.fetch, refreshTokenStore });
 	let res: Response;
 	try {
 		res = await deps.fetch(X_CREATE_POST_URL, {

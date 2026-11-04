@@ -36,8 +36,11 @@ export interface BlueskyConfig {
 	appPassword: string;
 }
 
-/** Config from `[handle, appPassword]` (a leading `@` on the handle is dropped). */
-export function blueskyConfigFromSecrets([handle, appPassword]: readonly string[]): BlueskyConfig {
+/** Config from `[handle, appPassword]` (a leading `@` on the handle is dropped). Mode is unused (label comes from the handle). */
+export function blueskyConfigFromSecrets(
+	[handle, appPassword]: readonly string[],
+	_mode?: unknown,
+): BlueskyConfig {
 	return { handle: handle.replace(/^@/, ''), appPassword };
 }
 

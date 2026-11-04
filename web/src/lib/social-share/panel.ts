@@ -55,13 +55,17 @@ export interface ShareProvider<TConfig, TDraft extends ShareDraftBase> {
 	 */
 	testSecretNames: readonly string[];
 	/** Config from the secret values, in `secretNames` order (all present and non-empty). */
-	configFromSecrets(values: readonly string[]): TConfig;
+	configFromSecrets(values: readonly string[], mode: SocialShareMode): TConfig;
 	/** Account shown in the confirm dialog, e.g. `@freedomtimes.news`. */
 	accountLabel(config: TConfig): string;
 	buildDraft(post: { title: string; description: string; url: string; groups?: readonly string[] }): TDraft;
 	/** Extra preview rows besides the post text (e.g. the link card). */
 	previewFields(draft: TDraft): Array<{ label: string; value: string }>;
-	publish(config: TConfig, draft: TDraft, deps: { fetch: FetchLike; now: () => Date }): Promise<SharedPost>;
+	publish(
+		config: TConfig,
+		draft: TDraft,
+		deps: { fetch: FetchLike; now: () => Date; kv?: ShareKv; mode?: SocialShareMode },
+	): Promise<SharedPost>;
 	/** The request `publish` would send to create the post, without credentials (dry-run preview). */
 	dryRunRequest(draft: TDraft, now: Date): { method: string; url: string; body: unknown };
 	/**
@@ -96,7 +100,7 @@ export function readShareConfig<TConfig>(
 		if (!value) return null;
 		values.push(value);
 	}
-	return provider.configFromSecrets(values);
+	return provider.configFromSecrets(values, mode);
 }
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -252,8 +256,13 @@ function modeBanner<TConfig, TDraft extends ShareDraftBase>(
 ): PanelBlock | null {
 	if (mode === 'production') return null;
 	if (mode === 'staging' && config) {
+		const account = provider.accountLabel(config);
+		// Bluesky returns `@handle`; X returns a full phrase ("the X staging test account").
+		const title = account.startsWith('@')
+			? `Staging: posting to test account ${account}`
+			: `Staging: posting to ${account}`;
 		return banner(
-			`Staging: posting to test account ${provider.accountLabel(config)}`,
+			title,
 			`This posts for real, but only to the ${provider.label} test account set in the staging secrets ${listNames(provider.testSecretNames)}. Never the Freedom Times account.`,
 			'alert',
 		);
@@ -423,7 +432,8 @@ function readyBlocks<TConfig, TDraft extends ShareDraftBase>(
 	}
 	const account = provider.accountLabel(state.config);
 	const testAccount = state.mode === 'staging';
-	const who = testAccount ? `the test account ${account}` : account;
+	// Bluesky `@handle` needs the "test account" prefix; X's label is already a full phrase.
+	const who = testAccount && account.startsWith('@') ? `the test account ${account}` : account;
 	return [
 		{ type: 'context', text: `Preview. Nothing is posted until you press the button and confirm. Posts as ${who}.` },
 		...preview,
@@ -519,7 +529,12 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 
 	const where = state.mode === 'staging' ? `the ${provider.label} test account` : provider.label;
 	try {
-		const shared = await provider.publish(config, state.draft, { fetch: deps.fetch, now: deps.now });
+		const shared = await provider.publish(config, state.draft, {
+			fetch: deps.fetch,
+			now: deps.now,
+			kv: deps.kv,
+			mode: state.mode,
+		});
 		const posted: ShareRecord = {
 			...pending,
 			status: 'posted',
