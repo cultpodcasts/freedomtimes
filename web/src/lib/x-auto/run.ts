@@ -157,7 +157,12 @@ async function postNetwork<TConfig, TDraft extends ShareDraftBase>(
 	if (!claim.applied) return { network: provider.network, action: 'skipped', reason: 'lost-race', text: draft.text };
 
 	try {
-		const shared = await provider.publish(config, draft, { fetch: deps.fetch, now: deps.now });
+		const shared = await provider.publish(config, draft, {
+			fetch: deps.fetch,
+			now: deps.now,
+			kv: deps.kv,
+			mode: 'production',
+		});
 		const posted: ShareRecord = {
 			...pending,
 			status: 'posted',

@@ -1,21 +1,27 @@
 /**
  * X (Twitter) client for the admin-only "Post to X" panel (#20).
  *
- * One call: POST https://api.x.com/2/tweets {"text": …}, signed with OAuth
- * 1.0a user context (HMAC-SHA1 over the app's API key/secret and the
- * account's access token/secret). The JSON body is not part of the OAuth
- * signature. `fetch` is injected so tests mock it. It posts only from the
+ * Auth is OAuth 2.0 user context: refresh the stored refresh token for a short-lived
+ * access token, then POST https://api.x.com/2/tweets with Authorization: Bearer.
+ * Scopes required when minting the refresh token: tweet.read tweet.write users.read
+ * offline.access. `fetch` is injected so tests mock it. It posts only from the
  * production admin (real account) or the staging admin with the staging-only
  * test-account secrets (#178); elsewhere it is a dry run.
+ *
+ * X may rotate the refresh token on each use (`offline.access`). Worker secrets are
+ * immutable from inside the Worker, so the live refresh token is kept in plugin KV
+ * (bootstrap from the env secret; write back on rotation; re-bootstrap when the
+ * Worker secret is reminted). See web/docs/SOCIAL_SHARING.md.
  */
 import { composeSocialText, socialHashtagLine } from './hashtags';
-import type { FetchLike, ShareProvider } from './panel';
-import { readSecret, ShareNetworkError, type SharedPost } from './policy';
+import type { FetchLike, ShareKv, ShareProvider } from './panel';
+import { readSecret, ShareNetworkError, type SharedPost, type SocialShareMode } from './policy';
 
 export const X_NETWORK = 'x';
 export const X_API_ORIGIN = 'https://api.x.com';
 export const X_HOST = 'api.x.com';
 export const X_CREATE_POST_URL = `${X_API_ORIGIN}/2/tweets`;
+export const X_OAUTH2_TOKEN_URL = `${X_API_ORIGIN}/2/oauth2/token`;
 export const X_INTENT_POST_URL = 'https://x.com/intent/post';
 
 /** Ready-to-send compose link. Opening it does not post; the person presses Post on X. */
@@ -25,46 +31,118 @@ export function xIntentUrl(text: string): string {
 	return url.toString();
 }
 
-/** Worker secret names (set by Jon on the production Worker; never committed). */
-export const X_SECRET_NAMES = ['X_API_KEY', 'X_API_KEY_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET'] as const;
-/** Staging-only test-account secret names, same order (#178; set by Jon on the staging Worker only). */
-export const X_TEST_SECRET_NAMES = [
-	'X_TEST_API_KEY',
-	'X_TEST_API_KEY_SECRET',
-	'X_TEST_ACCESS_TOKEN',
-	'X_TEST_ACCESS_TOKEN_SECRET',
-] as const;
+/** Worker secret names (set via .env.dev → set-github-secrets.ps1; never committed). */
+export const X_SECRET_NAMES = ['X_CLIENT_ID', 'X_CLIENT_SECRET', 'X_REFRESH_TOKEN'] as const;
+/** Staging-only test-account secret names (#178). */
+export const X_TEST_SECRET_NAMES = ['X_TEST_CLIENT_ID', 'X_TEST_CLIENT_SECRET', 'X_TEST_REFRESH_TOKEN'] as const;
+/** Scopes to request when minting the production refresh token. */
+export const X_OAUTH2_SCOPES = 'tweet.read tweet.write users.read offline.access' as const;
 /** X's weighted post limit. */
 export const X_MAX_WEIGHTED_LENGTH = 280;
 /** Every URL is wrapped in t.co and counts as 23. */
 export const X_URL_WEIGHT = 23;
 
+/** Plugin KV key for the live OAuth 2.0 refresh token (production vs staging test). */
+export function xRefreshTokenKvKey(mode: SocialShareMode = 'production'): string {
+	return mode === 'staging' ? 'x-oauth-test:refresh-token' : 'x-oauth:refresh-token';
+}
+
 export interface XConfig {
-	apiKey: string;
-	apiKeySecret: string;
-	accessToken: string;
-	accessTokenSecret: string;
+	clientId: string;
+	clientSecret: string;
+	refreshToken: string;
+	/** Confirm-dialog account phrase (production vs staging test). */
+	accountLabel: string;
 }
 
-/** Config from `[apiKey, apiKeySecret, accessToken, accessTokenSecret]`. */
-export function xConfigFromSecrets([apiKey, apiKeySecret, accessToken, accessTokenSecret]: readonly string[]): XConfig {
-	return { apiKey, apiKeySecret, accessToken, accessTokenSecret };
+/** Config from `[clientId, clientSecret, refreshToken]`. Mode picks the account label. */
+export function xConfigFromSecrets(
+	[clientId, clientSecret, refreshToken]: readonly string[],
+	mode: SocialShareMode = 'production',
+): XConfig {
+	return {
+		clientId,
+		clientSecret,
+		refreshToken,
+		accountLabel:
+			mode === 'staging' ? 'the X staging test account' : 'the authorized Freedom Times X account',
+	};
 }
 
-/** All four secrets present (by default the production names), or null (the panel then says it isn't configured). */
-export function readXConfig(env: Record<string, unknown>, names: readonly string[] = X_SECRET_NAMES): XConfig | null {
+/** All three secrets present (by default the production names), or null. */
+export function readXConfig(
+	env: Record<string, unknown>,
+	names: readonly string[] = X_SECRET_NAMES,
+	mode: SocialShareMode = 'production',
+): XConfig | null {
 	const values = names.map((name) => readSecret(env, name));
-	if (values.length !== 4 || values.some((v) => !v)) return null;
-	return xConfigFromSecrets(values as string[]);
+	if (values.length !== 3 || values.some((v) => !v)) return null;
+	return xConfigFromSecrets(values as string[], mode);
+}
+
+/** Account named in the confirm dialog (no paid users/me call). */
+export function xAccountLabel(config: XConfig): string {
+	return config.accountLabel;
 }
 
 /**
- * Account named in the confirm dialog. X access tokens start with the
- * account's numeric user id (`<id>-…`); showing it avoids a paid users/me call.
+ * Read/write the live refresh token. Worker secrets cannot be updated from the
+ * Worker; this store is how a rotated token survives until the next post.
  */
-export function xAccountLabel(config: XConfig): string {
-	const id = /^(\d+)-/.exec(config.accessToken)?.[1];
-	return id ? `the X account with user id ${id}` : 'the X account that owns the access token';
+export interface XRefreshTokenStore {
+	get(): Promise<string>;
+	set(token: string): Promise<void>;
+}
+
+interface StoredXRefreshToken {
+	token: string;
+	/** Fingerprint of the Worker secret that bootstrapped this entry. */
+	fromSecret: string;
+}
+
+async function secretFingerprint(secret: string): Promise<string> {
+	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret));
+	return Array.from(new Uint8Array(digest).slice(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function isStoredRefresh(value: unknown): value is StoredXRefreshToken {
+	if (typeof value !== 'object' || value === null) return false;
+	const rec = value as { token?: unknown; fromSecret?: unknown };
+	return typeof rec.token === 'string' && rec.token.trim().length > 0 && typeof rec.fromSecret === 'string';
+}
+
+/**
+ * Plugin-KV store for the live refresh token.
+ * - Bootstrap from the Worker secret when KV is empty or the secret was reminted
+ *   (fingerprint mismatch).
+ * - On rotation, write the new token back with the current secret fingerprint.
+ */
+export function createXRefreshTokenStore(
+	kv: ShareKv,
+	envBootstrap: string,
+	mode: SocialShareMode = 'production',
+): XRefreshTokenStore {
+	const key = xRefreshTokenKvKey(mode);
+	let fingerprintPromise: Promise<string> | undefined;
+	const fingerprint = () => {
+		fingerprintPromise ??= secretFingerprint(envBootstrap);
+		return fingerprintPromise;
+	};
+	return {
+		async get() {
+			const fp = await fingerprint();
+			const hit = await kv.getVersioned<unknown>(key);
+			if (hit && isStoredRefresh(hit.value) && hit.value.fromSecret === fp) {
+				return hit.value.token.trim();
+			}
+			return envBootstrap;
+		},
+		async set(token: string) {
+			const trimmed = token.trim();
+			if (!trimmed) return;
+			await kv.set(key, { token: trimmed, fromSecret: await fingerprint() } satisfies StoredXRefreshToken);
+		},
+	};
 }
 
 // twitter-text v3 weights: these code point ranges count 1, everything else 2;
@@ -148,72 +226,12 @@ export function buildXDraft(input: { title: string; description: string; url: st
 	return { text, url: input.url, weightedLength: xWeightedLength(text) };
 }
 
-/** RFC 3986 percent-encoding, as X's OAuth 1.0a guide requires. */
-export function oauthPercentEncode(value: string): string {
-	return encodeURIComponent(value).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-}
-
-function base64(bytes: ArrayBuffer): string {
+function basicAuthHeader(clientId: string, clientSecret: string): string {
+	const raw = `${clientId}:${clientSecret}`;
+	const bytes = new TextEncoder().encode(raw);
 	let binary = '';
-	for (const b of new Uint8Array(bytes)) binary += String.fromCharCode(b);
-	return btoa(binary);
-}
-
-/** OAuth 1.0a HMAC-SHA1 signature (docs.x.com "Creating a signature"). */
-export async function oauth1Signature(input: {
-	method: string;
-	url: string;
-	params: Record<string, string>;
-	consumerSecret: string;
-	tokenSecret: string;
-}): Promise<string> {
-	const paramString = Object.entries(input.params)
-		.map(([k, v]) => [oauthPercentEncode(k), oauthPercentEncode(v)] as const)
-		.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-		.map(([k, v]) => `${k}=${v}`)
-		.join('&');
-	const baseString = [input.method.toUpperCase(), oauthPercentEncode(input.url), oauthPercentEncode(paramString)].join(
-		'&',
-	);
-	const signingKey = `${oauthPercentEncode(input.consumerSecret)}&${oauthPercentEncode(input.tokenSecret)}`;
-	const enc = new TextEncoder();
-	const key = await crypto.subtle.importKey('raw', enc.encode(signingKey), { name: 'HMAC', hash: 'SHA-1' }, false, [
-		'sign',
-	]);
-	return base64(await crypto.subtle.sign('HMAC', key, enc.encode(baseString)));
-}
-
-/** `Authorization: OAuth …` header for a JSON-body request (only oauth_* params are signed). */
-export async function oauth1Header(input: {
-	method: string;
-	url: string;
-	config: XConfig;
-	nonce: string;
-	timestamp: number;
-}): Promise<string> {
-	const oauth: Record<string, string> = {
-		oauth_consumer_key: input.config.apiKey,
-		oauth_nonce: input.nonce,
-		oauth_signature_method: 'HMAC-SHA1',
-		oauth_timestamp: String(input.timestamp),
-		oauth_token: input.config.accessToken,
-		oauth_version: '1.0',
-	};
-	oauth.oauth_signature = await oauth1Signature({
-		method: input.method,
-		url: input.url,
-		params: oauth,
-		consumerSecret: input.config.apiKeySecret,
-		tokenSecret: input.config.accessTokenSecret,
-	});
-	return `OAuth ${Object.keys(oauth)
-		.sort()
-		.map((k) => `${oauthPercentEncode(k)}="${oauthPercentEncode(oauth[k])}"`)
-		.join(', ')}`;
-}
-
-function randomNonce(): string {
-	return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+	for (const b of bytes) binary += String.fromCharCode(b);
+	return `Basic ${btoa(binary)}`;
 }
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
@@ -227,28 +245,72 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
 
 function xError(body: Record<string, unknown>, status: number): string {
 	const first = Array.isArray(body.errors) ? (body.errors[0] as Record<string, unknown> | undefined) : undefined;
-	const message = [body.detail, body.title, first?.message, body.message].find((m) => typeof m === 'string');
+	const message = [body.detail, body.title, body.error_description, body.error, first?.message, body.message].find(
+		(m) => typeof m === 'string',
+	);
 	return message ? `HTTP ${status}: ${String(message)}` : `HTTP ${status}`;
 }
 
-/** Create the post. Never logs secrets. */
-export async function postToX(
+/**
+ * Exchange the refresh token for a short-lived user access token.
+ * When a store is provided, the live refresh token is read from it (KV, bootstrapped
+ * from the Worker secret) and any rotated `refresh_token` is written back immediately.
+ */
+export async function refreshXAccessToken(
 	config: XConfig,
-	draft: XPostDraft,
-	deps: { fetch: FetchLike; now: () => Date },
-): Promise<SharedPost> {
-	const authorization = await oauth1Header({
-		method: 'POST',
-		url: X_CREATE_POST_URL,
-		config,
-		nonce: randomNonce(),
-		timestamp: Math.floor(deps.now().getTime() / 1000),
-	});
+	deps: { fetch: FetchLike; refreshTokenStore?: XRefreshTokenStore },
+): Promise<{ accessToken: string; refreshToken?: string }> {
+	const refreshToken = deps.refreshTokenStore ? await deps.refreshTokenStore.get() : config.refreshToken;
+	let res: Response;
+	try {
+		res = await deps.fetch(X_OAUTH2_TOKEN_URL, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/x-www-form-urlencoded',
+				authorization: basicAuthHeader(config.clientId, config.clientSecret),
+			},
+			body: new URLSearchParams({
+				grant_type: 'refresh_token',
+				refresh_token: refreshToken,
+			}).toString(),
+		});
+	} catch {
+		throw new ShareNetworkError('Lost the connection while refreshing the X access token.', false);
+	}
+	const body = await readJson(res);
+	if (!res.ok) {
+		const definitelyNotPosted = res.status >= 400 && res.status < 500;
+		throw new ShareNetworkError(`X refused to refresh the access token (${xError(body, res.status)}).`, definitelyNotPosted);
+	}
+	const accessToken = typeof body.access_token === 'string' ? body.access_token : '';
+	if (!accessToken) {
+		throw new ShareNetworkError('X token refresh returned no access_token.', true);
+	}
+	const rotated = typeof body.refresh_token === 'string' && body.refresh_token ? body.refresh_token : undefined;
+	if (rotated && deps.refreshTokenStore) {
+		await deps.refreshTokenStore.set(rotated);
+	}
+	return { accessToken, refreshToken: rotated };
+}
+
+export interface XPublishDeps {
+	fetch: FetchLike;
+	now: () => Date;
+	/** Plugin KV — required for live refresh-token persistence on panel / auto-post. */
+	kv?: ShareKv;
+	mode?: SocialShareMode;
+}
+
+/** Create the post. Never logs secrets. */
+export async function postToX(config: XConfig, draft: XPostDraft, deps: XPublishDeps): Promise<SharedPost> {
+	const refreshTokenStore =
+		deps.kv !== undefined ? createXRefreshTokenStore(deps.kv, config.refreshToken, deps.mode ?? 'production') : undefined;
+	const { accessToken } = await refreshXAccessToken(config, { fetch: deps.fetch, refreshTokenStore });
 	let res: Response;
 	try {
 		res = await deps.fetch(X_CREATE_POST_URL, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json', authorization },
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
 			body: JSON.stringify({ text: draft.text }),
 		});
 	} catch {
@@ -257,7 +319,7 @@ export async function postToX(
 	}
 	const body = await readJson(res);
 	if (!res.ok) {
-		// 4xx (bad keys, read-only app, out of credits, rate limit, duplicate) means no post was made.
+		// 4xx (bad token, out of credits, rate limit, duplicate) means no post was made.
 		const definitelyNotPosted = res.status >= 400 && res.status < 500;
 		throw new ShareNetworkError(`X refused the post (${xError(body, res.status)}).`, definitelyNotPosted);
 	}
