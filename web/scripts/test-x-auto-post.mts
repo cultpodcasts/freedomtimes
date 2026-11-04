@@ -17,10 +17,9 @@ const PROD = {
 	X_AUTO_POST_ALLOW_SEND: 'yes',
 };
 const SECRETS = {
-	X_API_KEY: 'key',
-	X_API_KEY_SECRET: 'key-secret',
-	X_ACCESS_TOKEN: '1234567890-token',
-	X_ACCESS_TOKEN_SECRET: 'token-secret',
+	X_CLIENT_ID: 'client-id',
+	X_CLIENT_SECRET: 'client-secret',
+	X_REFRESH_TOKEN: 'refresh-token',
 	BLUESKY_HANDLE: 'freedomtimes.bsky.social',
 	BLUESKY_APP_PASSWORD: 'app-pass',
 };
@@ -62,6 +61,12 @@ function post(overrides: Record<string, unknown> = {}) {
 }
 
 function networkResponse(url: string, status = 200): Response {
+	if (url.includes('oauth2/token')) {
+		return new Response(
+			JSON.stringify({ token_type: 'bearer', expires_in: 7200, access_token: 'access-token', scope: 'tweet.read tweet.write users.read offline.access' }),
+			{ status },
+		);
+	}
 	if (url.includes('createSession')) {
 		return new Response(JSON.stringify({ accessJwt: 'jwt', did: 'did:plc:abc' }), { status });
 	}

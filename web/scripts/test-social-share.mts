@@ -46,13 +46,13 @@ import {
 } from '../src/lib/social-share/policy.ts';
 import {
 	buildXDraft,
-	oauth1Header,
-	oauth1Signature,
-	oauthPercentEncode,
 	postToX,
 	readXConfig,
+	refreshXAccessToken,
 	truncateXWeighted,
+	X_CREATE_POST_URL,
 	X_MAX_WEIGHTED_LENGTH,
+	X_OAUTH2_TOKEN_URL,
 	X_SECRET_NAMES,
 	X_TEST_SECRET_NAMES,
 	xAccountLabel,
@@ -342,8 +342,8 @@ describe('admin-only access', () => {
 			'Post to X',
 			'social-share',
 			'BLUESKY_APP_PASSWORD',
-			'X_API_KEY_SECRET',
-			'X_ACCESS_TOKEN_SECRET',
+			'X_CLIENT_SECRET',
+			'X_REFRESH_TOKEN',
 			'api.x.com/2/tweets',
 		];
 		const hits: string[] = [];
@@ -538,19 +538,23 @@ describe('Post to Bluesky panel', () => {
 
 const X_ENV = {
 	SITE_ACCESS_MODE: 'public',
-	X_API_KEY: 'test-consumer-key',
-	X_API_KEY_SECRET: 'test-consumer-secret',
-	X_ACCESS_TOKEN: '1234567890-test-access-token',
-	X_ACCESS_TOKEN_SECRET: 'test-token-secret',
+	X_CLIENT_ID: 'test-client-id',
+	X_CLIENT_SECRET: 'test-client-secret',
+	X_REFRESH_TOKEN: 'test-refresh-token',
 };
 const X_CONFIG = readXConfig(X_ENV)!;
 
-/** Mock X: POST /2/tweets only. */
-function mockX(create?: () => Response | Promise<Response>) {
+/** Mock X: OAuth2 token refresh then POST /2/tweets. */
+function mockX(create?: () => Response | Promise<Response>, token?: () => Response | Promise<Response>) {
 	const calls: Call[] = [];
 	const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
 		calls.push({ url, init });
-		if (url === 'https://api.x.com/2/tweets') {
+		if (url === X_OAUTH2_TOKEN_URL) {
+			return token
+				? token()
+				: json(200, { token_type: 'bearer', expires_in: 7200, access_token: 'test-access-token', scope: 'tweet.read tweet.write users.read offline.access' });
+		}
+		if (url === X_CREATE_POST_URL) {
 			return create ? create() : json(201, { data: { id: '1851234567890123456', text: 'echo' } });
 		}
 		throw new Error(`unexpected fetch ${url}`);
@@ -558,54 +562,29 @@ function mockX(create?: () => Response | Promise<Response>) {
 	return { calls, fetch };
 }
 
-function parseOAuthHeader(header: string): Record<string, string> {
-	assert.match(header, /^OAuth /);
-	return Object.fromEntries(
-		header
-			.slice(6)
-			.split(', ')
-			.map((pair) => {
-				const m = /^([^=]+)="([^"]*)"$/.exec(pair);
-				assert.ok(m, pair);
-				return [decodeURIComponent(m[1]), decodeURIComponent(m[2])];
-			}),
-	);
-}
-
 describe('X client (mocked)', () => {
-	it('needs all four secrets and names the account from the access token', () => {
+	it('needs all three OAuth 2.0 secrets', () => {
 		assert.equal(readXConfig({}), null);
-		assert.equal(readXConfig({ ...X_ENV, X_ACCESS_TOKEN_SECRET: ' ' }), null);
+		assert.equal(readXConfig({ ...X_ENV, X_REFRESH_TOKEN: ' ' }), null);
 		assert.deepEqual(X_CONFIG, {
-			apiKey: 'test-consumer-key',
-			apiKeySecret: 'test-consumer-secret',
-			accessToken: '1234567890-test-access-token',
-			accessTokenSecret: 'test-token-secret',
+			clientId: 'test-client-id',
+			clientSecret: 'test-client-secret',
+			refreshToken: 'test-refresh-token',
 		});
-		assert.equal(xAccountLabel(X_CONFIG), 'the X account with user id 1234567890');
-		assert.equal(xAccountLabel({ ...X_CONFIG, accessToken: 'opaque' }), 'the X account that owns the access token');
+		assert.equal(xAccountLabel(X_CONFIG), 'the authorized Freedom Times X account');
 	});
 
-	it('signs exactly like the worked example in X\'s OAuth 1.0a guide', async () => {
-		// docs.x.com/fundamentals/authentication/oauth-1-0a/creating-a-signature (sample keys, invalid for real use).
-		const signature = await oauth1Signature({
-			method: 'POST',
-			url: 'https://api.x.com/1.1/statuses/update.json',
-			params: {
-				status: 'Hello Ladies + Gentlemen, a signed OAuth request!',
-				include_entities: 'true',
-				oauth_consumer_key: 'xvz1evFS4wEEPTGEFPHBog',
-				oauth_nonce: 'kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg',
-				oauth_signature_method: 'HMAC-SHA1',
-				oauth_timestamp: '1318622958',
-				oauth_token: '370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb',
-				oauth_version: '1.0',
-			},
-			consumerSecret: 'kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw',
-			tokenSecret: 'LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE',
-		});
-		assert.equal(signature, 'Ls93hJiZbQ3akF3HF3x1Bz8/zU4=');
-		assert.equal(oauthPercentEncode("a b!*'()~"), 'a%20b%21%2A%27%28%29~');
+	it('refreshes the access token with Basic client credentials', async () => {
+		const x = mockX();
+		const tokens = await refreshXAccessToken(X_CONFIG, { fetch: x.fetch });
+		assert.equal(tokens.accessToken, 'test-access-token');
+		assert.equal(x.calls.length, 1);
+		assert.equal(x.calls[0].url, X_OAUTH2_TOKEN_URL);
+		const headers = x.calls[0].init?.headers as Record<string, string>;
+		assert.equal(headers['content-type'], 'application/x-www-form-urlencoded');
+		assert.match(headers.authorization, /^Basic /);
+		assert.equal(String(x.calls[0].init?.body), 'grant_type=refresh_token&refresh_token=test-refresh-token');
+		assert.ok(!headers.authorization.includes('test-client-secret'));
 	});
 
 	it('counts like X: 280 weighted, emoji and CJK count 2, the link counts 23', () => {
@@ -653,28 +632,22 @@ describe('X client (mocked)', () => {
 		assert.ok(BLUESKY_MAX_GRAPHEMES - graphemeLength(bluesky.text) < 12);
 	});
 
-	it('makes one signed POST /2/tweets with only the text, and returns the post URL', async () => {
+	it('refreshes then POSTs /2/tweets with Bearer and only the text', async () => {
 		const x = mockX();
 		const draft = buildXDraft({ title: 'T', description: '', url: articleUrl('s') });
 		const now = new Date('2026-10-31T22:00:00Z');
 		const shared = await postToX(X_CONFIG, draft, { fetch: x.fetch, now: () => now });
 		assert.deepEqual(shared, { id: '1851234567890123456', url: 'https://x.com/i/web/status/1851234567890123456' });
-		assert.equal(x.calls.length, 1);
-		const { init } = x.calls[0];
+		assert.equal(x.calls.length, 2);
+		assert.equal(x.calls[0].url, X_OAUTH2_TOKEN_URL);
+		assert.equal(x.calls[1].url, X_CREATE_POST_URL);
+		const { init } = x.calls[1];
 		assert.equal(init?.method, 'POST');
 		assert.deepEqual(JSON.parse(String(init?.body)), { text: draft.text });
 		const headers = init?.headers as Record<string, string>;
 		assert.equal(headers['content-type'], 'application/json');
-		const oauth = parseOAuthHeader(headers.authorization);
-		assert.equal(oauth.oauth_consumer_key, 'test-consumer-key');
-		assert.equal(oauth.oauth_token, '1234567890-test-access-token');
-		assert.equal(oauth.oauth_signature_method, 'HMAC-SHA1');
-		assert.equal(oauth.oauth_timestamp, String(now.getTime() / 1000));
-		assert.equal(oauth.oauth_version, '1.0');
-		assert.match(oauth.oauth_nonce, /^[0-9a-f]{32}$/);
-		const expected = await oauth1Header({ method: 'POST', url: 'https://api.x.com/2/tweets', config: X_CONFIG, nonce: oauth.oauth_nonce, timestamp: now.getTime() / 1000 });
-		assert.equal(headers.authorization, expected, 'signature covers the oauth_* params only (JSON body is not signed)');
-		assert.ok(!headers.authorization.includes('test-consumer-secret') && !headers.authorization.includes('test-token-secret'));
+		assert.equal(headers.authorization, 'Bearer test-access-token');
+		assert.ok(!headers.authorization.includes('test-client-secret') && !headers.authorization.includes('test-refresh-token'));
 	});
 
 	it('says whether a failure definitely did not post', async () => {
@@ -684,7 +657,7 @@ describe('X client (mocked)', () => {
 				() => assert.fail('expected failure'),
 				(e: unknown) => {
 					assert.ok(e instanceof ShareNetworkError);
-					assert.ok(!e.message.includes('test-consumer-secret') && !e.message.includes('test-token-secret'));
+					assert.ok(!e.message.includes('test-client-secret') && !e.message.includes('test-refresh-token'));
 					return e.definitelyNotPosted;
 				},
 			);
@@ -717,9 +690,9 @@ describe('Post to X panel', () => {
 		assert.equal(staging.blocks[0].title, 'Staging: dry run', 'production X names on staging are ignored');
 		assert.equal(findButton(staging.blocks, 'x_post')?.label, 'Dry run: Post to X');
 		assert.match(String((findExternalLink(staging.blocks)?.target as { url?: string })?.url), /^https:\/\/x\.com\/intent\/post\?text=/);
-		const missing = await xLoad({ ...deps, env: { SITE_ACCESS_MODE: 'public', X_API_KEY: 'k' } });
+		const missing = await xLoad({ ...deps, env: { SITE_ACCESS_MODE: 'public', X_CLIENT_ID: 'k' } });
 		assert.equal(missing.blocks[0].title, "X sharing isn't configured");
-		assert.match(String(missing.blocks[0].description), /X_API_KEY, X_API_KEY_SECRET, X_ACCESS_TOKEN, and X_ACCESS_TOKEN_SECRET/);
+		assert.match(String(missing.blocks[0].description), /X_CLIENT_ID, X_CLIENT_SECRET, and X_REFRESH_TOKEN/);
 		assert.equal(findButton(missing.blocks, 'x_post'), undefined);
 		assert.equal(findExternalLink(missing.blocks)?.label, 'Open X to post');
 		assert.equal(x.calls.length, 0);
@@ -734,7 +707,7 @@ describe('Post to X panel', () => {
 		assert.equal(fields[0].value, `${xTextWeight('Cult news this week') + 2 + 23 + 2 + xTextWeight('#Cult')} / 280`);
 		const button = findButton(res.blocks, 'x_post');
 		assert.ok(button, 'a Bluesky share does not block X');
-		assert.equal((button.confirm as { title: string }).title, 'Post to X as the X account with user id 1234567890?');
+		assert.equal((button.confirm as { title: string }).title, 'Post to X as the authorized Freedom Times X account?');
 		assert.equal(x.calls.length, 0, 'nothing posts on load');
 
 		const posted = await xAct(deps, 'x_post', button.value);
@@ -746,7 +719,7 @@ describe('Post to X panel', () => {
 
 		const again = await xAct(deps, 'x_post', button.value);
 		assert.equal(again.toast?.type, 'error');
-		assert.equal(x.calls.length, 1);
+		assert.equal(x.calls.length, 2, 'refresh + create on the first post only');
 		assert.equal(findButton(again.blocks, 'bluesky_post'), undefined);
 	});
 
@@ -772,10 +745,9 @@ describe('staging test accounts and dry run (#178)', () => {
 	const BSKY_TEST = { SITE_ACCESS_MODE: 'locked', BLUESKY_TEST_HANDLE: '@ft-test.bsky.social', BLUESKY_TEST_APP_PASSWORD: 'test-only-pass' };
 	const X_TEST = {
 		SITE_ACCESS_MODE: 'locked',
-		X_TEST_API_KEY: 'stg-consumer-key',
-		X_TEST_API_KEY_SECRET: 'stg-consumer-secret',
-		X_TEST_ACCESS_TOKEN: '999000111-stg-access-token',
-		X_TEST_ACCESS_TOKEN_SECRET: 'stg-token-secret',
+		X_TEST_CLIENT_ID: 'stg-client-id',
+		X_TEST_CLIENT_SECRET: 'stg-client-secret',
+		X_TEST_REFRESH_TOKEN: 'stg-refresh-token',
 	};
 
 	/** Env that records every key the code reads. */
@@ -873,15 +845,15 @@ describe('staging test accounts and dry run (#178)', () => {
 		assert.equal(kv.data.size, 0);
 
 		const ready = await go(X_TEST, { type: 'panel_load' });
-		assert.equal(ready.blocks[0].title, 'Staging: posting to test account the X account with user id 999000111');
+		assert.equal(ready.blocks[0].title, 'Staging: posting to test account the authorized Freedom Times X account');
 		const button = findButton(ready.blocks, 'x_post');
 		assert.equal(button?.label, 'Post to X test account');
 		const posted = await go(X_TEST, { type: 'block_action', action_id: 'x_post', value: button?.value });
 		assert.equal(posted.toast?.message, 'Posted to the X test account.');
-		assert.equal(x.calls.length, 1);
-		const oauth = parseOAuthHeader(String((x.calls[0].init?.headers as Record<string, string>).authorization));
-		assert.equal(oauth.oauth_consumer_key, 'stg-consumer-key');
-		assert.equal(oauth.oauth_token, '999000111-stg-access-token');
+		assert.equal(x.calls.length, 2, 'refresh + create');
+		assert.equal(x.calls[0].url, X_OAUTH2_TOKEN_URL);
+		assert.equal(x.calls[1].url, X_CREATE_POST_URL);
+		assert.equal((x.calls[1].init?.headers as Record<string, string>).authorization, 'Bearer test-access-token');
 		assert.equal((await kv.getVersioned<Record<string, unknown>>('share-test:x:p1'))?.value.status, 'posted');
 		assert.equal(await kv.getVersioned('share:x:p1'), null);
 	});

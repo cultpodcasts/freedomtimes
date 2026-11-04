@@ -1,10 +1,10 @@
 /**
  * X (Twitter) client for the admin-only "Post to X" panel (#20).
  *
- * One call: POST https://api.x.com/2/tweets {"text": …}, signed with OAuth
- * 1.0a user context (HMAC-SHA1 over the app's API key/secret and the
- * account's access token/secret). The JSON body is not part of the OAuth
- * signature. `fetch` is injected so tests mock it. It posts only from the
+ * Auth is OAuth 2.0 user context: refresh the stored refresh token for a short-lived
+ * access token, then POST https://api.x.com/2/tweets with Authorization: Bearer.
+ * Scopes required when minting the refresh token: tweet.read tweet.write users.read
+ * offline.access. `fetch` is injected so tests mock it. It posts only from the
  * production admin (real account) or the staging admin with the staging-only
  * test-account secrets (#178); elsewhere it is a dry run.
  */
@@ -16,6 +16,7 @@ export const X_NETWORK = 'x';
 export const X_API_ORIGIN = 'https://api.x.com';
 export const X_HOST = 'api.x.com';
 export const X_CREATE_POST_URL = `${X_API_ORIGIN}/2/tweets`;
+export const X_OAUTH2_TOKEN_URL = `${X_API_ORIGIN}/2/oauth2/token`;
 export const X_INTENT_POST_URL = 'https://x.com/intent/post';
 
 /** Ready-to-send compose link. Opening it does not post; the person presses Post on X. */
@@ -25,46 +26,38 @@ export function xIntentUrl(text: string): string {
 	return url.toString();
 }
 
-/** Worker secret names (set by Jon on the production Worker; never committed). */
-export const X_SECRET_NAMES = ['X_API_KEY', 'X_API_KEY_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_TOKEN_SECRET'] as const;
-/** Staging-only test-account secret names, same order (#178; set by Jon on the staging Worker only). */
-export const X_TEST_SECRET_NAMES = [
-	'X_TEST_API_KEY',
-	'X_TEST_API_KEY_SECRET',
-	'X_TEST_ACCESS_TOKEN',
-	'X_TEST_ACCESS_TOKEN_SECRET',
-] as const;
+/** Worker secret names (set via .env.dev → set-github-secrets.ps1; never committed). */
+export const X_SECRET_NAMES = ['X_CLIENT_ID', 'X_CLIENT_SECRET', 'X_REFRESH_TOKEN'] as const;
+/** Staging-only test-account secret names (#178). */
+export const X_TEST_SECRET_NAMES = ['X_TEST_CLIENT_ID', 'X_TEST_CLIENT_SECRET', 'X_TEST_REFRESH_TOKEN'] as const;
+/** Scopes to request when minting the production refresh token. */
+export const X_OAUTH2_SCOPES = 'tweet.read tweet.write users.read offline.access' as const;
 /** X's weighted post limit. */
 export const X_MAX_WEIGHTED_LENGTH = 280;
 /** Every URL is wrapped in t.co and counts as 23. */
 export const X_URL_WEIGHT = 23;
 
 export interface XConfig {
-	apiKey: string;
-	apiKeySecret: string;
-	accessToken: string;
-	accessTokenSecret: string;
+	clientId: string;
+	clientSecret: string;
+	refreshToken: string;
 }
 
-/** Config from `[apiKey, apiKeySecret, accessToken, accessTokenSecret]`. */
-export function xConfigFromSecrets([apiKey, apiKeySecret, accessToken, accessTokenSecret]: readonly string[]): XConfig {
-	return { apiKey, apiKeySecret, accessToken, accessTokenSecret };
+/** Config from `[clientId, clientSecret, refreshToken]`. */
+export function xConfigFromSecrets([clientId, clientSecret, refreshToken]: readonly string[]): XConfig {
+	return { clientId, clientSecret, refreshToken };
 }
 
-/** All four secrets present (by default the production names), or null (the panel then says it isn't configured). */
+/** All three secrets present (by default the production names), or null. */
 export function readXConfig(env: Record<string, unknown>, names: readonly string[] = X_SECRET_NAMES): XConfig | null {
 	const values = names.map((name) => readSecret(env, name));
-	if (values.length !== 4 || values.some((v) => !v)) return null;
+	if (values.length !== 3 || values.some((v) => !v)) return null;
 	return xConfigFromSecrets(values as string[]);
 }
 
-/**
- * Account named in the confirm dialog. X access tokens start with the
- * account's numeric user id (`<id>-…`); showing it avoids a paid users/me call.
- */
-export function xAccountLabel(config: XConfig): string {
-	const id = /^(\d+)-/.exec(config.accessToken)?.[1];
-	return id ? `the X account with user id ${id}` : 'the X account that owns the access token';
+/** Account named in the confirm dialog (no paid users/me call). */
+export function xAccountLabel(_config: XConfig): string {
+	return 'the authorized Freedom Times X account';
 }
 
 // twitter-text v3 weights: these code point ranges count 1, everything else 2;
@@ -148,72 +141,12 @@ export function buildXDraft(input: { title: string; description: string; url: st
 	return { text, url: input.url, weightedLength: xWeightedLength(text) };
 }
 
-/** RFC 3986 percent-encoding, as X's OAuth 1.0a guide requires. */
-export function oauthPercentEncode(value: string): string {
-	return encodeURIComponent(value).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
-}
-
-function base64(bytes: ArrayBuffer): string {
+function basicAuthHeader(clientId: string, clientSecret: string): string {
+	const raw = `${clientId}:${clientSecret}`;
+	const bytes = new TextEncoder().encode(raw);
 	let binary = '';
-	for (const b of new Uint8Array(bytes)) binary += String.fromCharCode(b);
-	return btoa(binary);
-}
-
-/** OAuth 1.0a HMAC-SHA1 signature (docs.x.com "Creating a signature"). */
-export async function oauth1Signature(input: {
-	method: string;
-	url: string;
-	params: Record<string, string>;
-	consumerSecret: string;
-	tokenSecret: string;
-}): Promise<string> {
-	const paramString = Object.entries(input.params)
-		.map(([k, v]) => [oauthPercentEncode(k), oauthPercentEncode(v)] as const)
-		.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-		.map(([k, v]) => `${k}=${v}`)
-		.join('&');
-	const baseString = [input.method.toUpperCase(), oauthPercentEncode(input.url), oauthPercentEncode(paramString)].join(
-		'&',
-	);
-	const signingKey = `${oauthPercentEncode(input.consumerSecret)}&${oauthPercentEncode(input.tokenSecret)}`;
-	const enc = new TextEncoder();
-	const key = await crypto.subtle.importKey('raw', enc.encode(signingKey), { name: 'HMAC', hash: 'SHA-1' }, false, [
-		'sign',
-	]);
-	return base64(await crypto.subtle.sign('HMAC', key, enc.encode(baseString)));
-}
-
-/** `Authorization: OAuth …` header for a JSON-body request (only oauth_* params are signed). */
-export async function oauth1Header(input: {
-	method: string;
-	url: string;
-	config: XConfig;
-	nonce: string;
-	timestamp: number;
-}): Promise<string> {
-	const oauth: Record<string, string> = {
-		oauth_consumer_key: input.config.apiKey,
-		oauth_nonce: input.nonce,
-		oauth_signature_method: 'HMAC-SHA1',
-		oauth_timestamp: String(input.timestamp),
-		oauth_token: input.config.accessToken,
-		oauth_version: '1.0',
-	};
-	oauth.oauth_signature = await oauth1Signature({
-		method: input.method,
-		url: input.url,
-		params: oauth,
-		consumerSecret: input.config.apiKeySecret,
-		tokenSecret: input.config.accessTokenSecret,
-	});
-	return `OAuth ${Object.keys(oauth)
-		.sort()
-		.map((k) => `${oauthPercentEncode(k)}="${oauthPercentEncode(oauth[k])}"`)
-		.join(', ')}`;
-}
-
-function randomNonce(): string {
-	return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+	for (const b of bytes) binary += String.fromCharCode(b);
+	return `Basic ${btoa(binary)}`;
 }
 
 async function readJson(res: Response): Promise<Record<string, unknown>> {
@@ -227,8 +160,48 @@ async function readJson(res: Response): Promise<Record<string, unknown>> {
 
 function xError(body: Record<string, unknown>, status: number): string {
 	const first = Array.isArray(body.errors) ? (body.errors[0] as Record<string, unknown> | undefined) : undefined;
-	const message = [body.detail, body.title, first?.message, body.message].find((m) => typeof m === 'string');
+	const message = [body.detail, body.title, body.error_description, body.error, first?.message, body.message].find(
+		(m) => typeof m === 'string',
+	);
 	return message ? `HTTP ${status}: ${String(message)}` : `HTTP ${status}`;
+}
+
+/**
+ * Exchange the refresh token for a short-lived user access token.
+ * If X rotates the refresh token, the new value is returned in `refreshToken` so
+ * the operator can update `.env.dev` (the Worker cannot rewrite wrangler secrets).
+ */
+export async function refreshXAccessToken(
+	config: XConfig,
+	deps: { fetch: FetchLike },
+): Promise<{ accessToken: string; refreshToken?: string }> {
+	let res: Response;
+	try {
+		res = await deps.fetch(X_OAUTH2_TOKEN_URL, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/x-www-form-urlencoded',
+				authorization: basicAuthHeader(config.clientId, config.clientSecret),
+			},
+			body: new URLSearchParams({
+				grant_type: 'refresh_token',
+				refresh_token: config.refreshToken,
+			}).toString(),
+		});
+	} catch {
+		throw new ShareNetworkError('Lost the connection while refreshing the X access token.', false);
+	}
+	const body = await readJson(res);
+	if (!res.ok) {
+		const definitelyNotPosted = res.status >= 400 && res.status < 500;
+		throw new ShareNetworkError(`X refused to refresh the access token (${xError(body, res.status)}).`, definitelyNotPosted);
+	}
+	const accessToken = typeof body.access_token === 'string' ? body.access_token : '';
+	if (!accessToken) {
+		throw new ShareNetworkError('X token refresh returned no access_token.', true);
+	}
+	const refreshToken = typeof body.refresh_token === 'string' && body.refresh_token ? body.refresh_token : undefined;
+	return { accessToken, refreshToken };
 }
 
 /** Create the post. Never logs secrets. */
@@ -237,18 +210,12 @@ export async function postToX(
 	draft: XPostDraft,
 	deps: { fetch: FetchLike; now: () => Date },
 ): Promise<SharedPost> {
-	const authorization = await oauth1Header({
-		method: 'POST',
-		url: X_CREATE_POST_URL,
-		config,
-		nonce: randomNonce(),
-		timestamp: Math.floor(deps.now().getTime() / 1000),
-	});
+	const { accessToken } = await refreshXAccessToken(config, deps);
 	let res: Response;
 	try {
 		res = await deps.fetch(X_CREATE_POST_URL, {
 			method: 'POST',
-			headers: { 'content-type': 'application/json', authorization },
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
 			body: JSON.stringify({ text: draft.text }),
 		});
 	} catch {
@@ -257,7 +224,7 @@ export async function postToX(
 	}
 	const body = await readJson(res);
 	if (!res.ok) {
-		// 4xx (bad keys, read-only app, out of credits, rate limit, duplicate) means no post was made.
+		// 4xx (bad token, out of credits, rate limit, duplicate) means no post was made.
 		const definitelyNotPosted = res.status >= 400 && res.status < 500;
 		throw new ShareNetworkError(`X refused the post (${xError(body, res.status)}).`, definitelyNotPosted);
 	}

@@ -101,6 +101,19 @@ function Main {
                 Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_IOS_APNS_PRIVATE_KEY" -Value $stagingIosApnsPrivateKey -WhatIfOnly:$DryRun
                 Set-WorkerSecret -ConfigPath $stagingSchedulerWranglerConfig -Name "PUSH_IOS_APNS_BUNDLE_ID" -Value $stagingIosApnsBundleId -WhatIfOnly:$DryRun
             }
+            # Social share test accounts (#178 / OAuth 2.0 X) — optional; skip empty so day-to-day staging sync still works.
+            $stagingSocial = @(
+                @{ Name = "BLUESKY_TEST_HANDLE"; Value = (Get-EnvValue -Values $stagingEnvValues -Keys @("BLUESKY_TEST_HANDLE")) },
+                @{ Name = "BLUESKY_TEST_APP_PASSWORD"; Value = (Get-EnvValue -Values $stagingEnvValues -Keys @("BLUESKY_TEST_APP_PASSWORD")) },
+                @{ Name = "X_TEST_CLIENT_ID"; Value = (Get-EnvValue -Values $stagingEnvValues -Keys @("X_TEST_CLIENT_ID")) },
+                @{ Name = "X_TEST_CLIENT_SECRET"; Value = (Get-EnvValue -Values $stagingEnvValues -Keys @("X_TEST_CLIENT_SECRET")) },
+                @{ Name = "X_TEST_REFRESH_TOKEN"; Value = (Get-EnvValue -Values $stagingEnvValues -Keys @("X_TEST_REFRESH_TOKEN")) }
+            )
+            foreach ($s in $stagingSocial) {
+                if (-not [string]::IsNullOrWhiteSpace($s.Value)) {
+                    Set-WorkerSecret -ConfigPath $stagingWranglerConfig -Name $s.Name -Value $s.Value -WhatIfOnly:$DryRun
+                }
+            }
         }
         elseif ($Target -eq "Production") {
             Write-Host "\nSyncing Cloudflare Worker secrets for PRODUCTION..." -ForegroundColor Red
@@ -184,6 +197,19 @@ function Main {
                 Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "PUSH_IOS_APNS_KEY_ID" -Value $productionIosApnsKeyId -WhatIfOnly:$DryRun
                 Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "PUSH_IOS_APNS_PRIVATE_KEY" -Value $productionIosApnsPrivateKey -WhatIfOnly:$DryRun
                 Set-WorkerSecret -ConfigPath $productionSchedulerWranglerConfig -Name "PUSH_IOS_APNS_BUNDLE_ID" -Value $productionIosApnsBundleId -WhatIfOnly:$DryRun
+            }
+            # Social share production accounts (Bluesky + X OAuth 2.0) — optional until filled in .env.dev.
+            $productionSocial = @(
+                @{ Name = "BLUESKY_HANDLE"; Value = (Get-EnvValue -Values $productionEnvValues -Keys @("BLUESKY_HANDLE")) },
+                @{ Name = "BLUESKY_APP_PASSWORD"; Value = (Get-EnvValue -Values $productionEnvValues -Keys @("BLUESKY_APP_PASSWORD")) },
+                @{ Name = "X_CLIENT_ID"; Value = (Get-EnvValue -Values $productionEnvValues -Keys @("X_CLIENT_ID")) },
+                @{ Name = "X_CLIENT_SECRET"; Value = (Get-EnvValue -Values $productionEnvValues -Keys @("X_CLIENT_SECRET")) },
+                @{ Name = "X_REFRESH_TOKEN"; Value = (Get-EnvValue -Values $productionEnvValues -Keys @("X_REFRESH_TOKEN")) }
+            )
+            foreach ($s in $productionSocial) {
+                if (-not [string]::IsNullOrWhiteSpace($s.Value)) {
+                    Set-WorkerSecret -ConfigPath $productionWranglerConfig -Name $s.Name -Value $s.Value -WhatIfOnly:$DryRun
+                }
             }
         }
     }

@@ -78,7 +78,7 @@
     "test:prod-backup-inventory": "node --test scripts/lib/production-emdash-inventory.test.mjs scripts/lib/staging-emdash-auth.test.mjs scripts/verify-production-emdash-backup.test.mjs"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^14.4.3",
+    "@astrojs/cloudflare": "^14.4.4",
     "@astrojs/react": "^7.1.0",
     "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
@@ -93,7 +93,7 @@
     "astro": "^7.4.1",
     "drizzle-orm": "^0.45.4",
     "emdash": "^1.4.0",
-    "jose": "^6.2.14",
+    "jose": "^6.2.15",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "sharp": "^0.34.5"

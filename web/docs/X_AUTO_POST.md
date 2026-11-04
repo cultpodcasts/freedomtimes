@@ -30,17 +30,13 @@ Dry-run log line, once per network: `dry-run <network> <post id> (<length>) <int
 - X: `https://x.com/intent/post?text=<url-encoded text>`
 - Bluesky: `https://bsky.app/intent/compose?text=<url-encoded text>`
 
-## When the X developer account exists
+## Production secrets (X developer account live)
 
-The @_freedomtimes developer signup is blocked (“Your account has been flagged and cannot proceed”). The account is not suspended. The recent developer-forum thread for this same flag, where X is still taking the request, is [Developer Console onboarding blocked](https://devcommunity.x.com/t/developer-console-onboarding-blocked-your-account-has-been-flagged-and-cannot-proceed-account-not-suspended/277865). Stay with that thread. Do not open a second thread, app, or account.
+The Freedom Times X developer account is active with prepaid credits. Put Bluesky and X OAuth 2.0 secrets in **`.env.dev`**, then sync with `set-github-secrets.ps1` ([SOCIAL_SHARING.md](./SOCIAL_SHARING.md)): `BLUESKY_HANDLE`, `BLUESKY_APP_PASSWORD`, `X_CLIENT_ID`, `X_CLIENT_SECRET`, `X_REFRESH_TOKEN`. Mint the refresh token with `npx tsx web/scripts/mint-x-oauth2-refresh-token.mts`. Publishing still does not post. After the 30-minute delay, the agent may offer to post, and the admin panels can post with those secrets.
 
-[Topic 278836](https://devcommunity.x.com/t/developer-console-signup-blocked-your-account-has-been-flagged-and-cannot-proceed/278836) is a different person’s post from 20 Oct 2026. X closed it and sent them to the Help Center. That is not this request.
+Each X post that includes the article link is a paid API call (about $0.20). Keep a spending limit in the developer console. Bluesky app passwords are not metered the same way.
 
-When that flag is lifted, set the four production X secrets already documented in [SOCIAL_SHARING.md](./SOCIAL_SHARING.md) (`X_API_KEY`, `X_API_KEY_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`). Publishing still does not post. After the 30-minute delay, the agent may offer to post, and the panel can post with those secrets. There is no separate OAuth 2.0 client and no email step.
-
-Each X post that includes the article link is a paid API call (about $0.20). Set a spending limit in the developer console. Bluesky app passwords are not metered the same way.
-
-Until a network's secrets exist, the offer is the intent link on that post.
+Until a network's secrets exist on the production Worker, that panel shows “isn't configured” and the offer is the intent link only.
 
 ## Dry run locally
 

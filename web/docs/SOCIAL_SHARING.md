@@ -86,10 +86,9 @@ shows the new preview.
 - Limit: 280, counted the way X counts. The link always counts as 23, because X wraps every URL in `t.co`.
   Emoji and CJK characters count 2. Anything in the title that looks like a link (e.g. `freedomtimes.news`) is
   also counted as 23, so the title is never under-counted. At worst it is trimmed slightly more than X needs.
-- One call: `POST https://api.x.com/2/tweets` with `{"text": …}`, signed with OAuth 1.0a user context
-  (HMAC-SHA1). X builds the link card itself from the article page's Open Graph tags.
-- The confirm dialog names the account by the numeric user id at the start of the access token. That avoids a
-  paid `users/me` lookup.
+- Auth: OAuth 2.0 user context. Before each post the Worker refreshes `X_REFRESH_TOKEN` at
+  `POST https://api.x.com/2/oauth2/token`, then calls `POST https://api.x.com/2/tweets` with
+  `Authorization: Bearer <access_token>` and `{"text": …}`. X builds the link card from Open Graph tags.
 - **Cost.** The X API is pay-per-use with prepaid credits and no subscription. X's pricing page
   ([docs.x.com/x-api/getting-started/pricing](https://docs.x.com/x-api/getting-started/pricing), checked
   31 Oct 2026) lists **Post: Create (with URL) at $0.200 per request**, against $0.015 for a post without a
@@ -117,74 +116,57 @@ real or test post.
 
 ## Setting the secrets (Jon)
 
-The real accounts' credentials are Worker secrets on the **production** Worker only (staging has its own
-test-account names: [§ Testing on staging](#testing-on-staging)). They are never committed, and none are
-set in GitHub, `.env.dev` or Terraform. Each network works on its own: set only Bluesky's, and only the
-Bluesky panel goes live.
+Canonical source is **`.env.dev`** (same as Auth0 / Turso / push). Sync to the production Worker with
+`scripts/set-github-secrets.ps1` (not GitHub Actions — these names are Worker-only). Staging uses separate
+`*_TEST_*` names ([§ Testing on staging](#testing-on-staging)). Each network works on its own.
 
-| Secret | Value |
+| `.env.dev` / Worker secret | Value |
 |---|---|
 | `BLUESKY_HANDLE` | The account handle, e.g. `freedomtimes.news` (a leading `@` is ignored). |
 | `BLUESKY_APP_PASSWORD` | A Bluesky **app password** for that account, not the account password. |
-| `X_API_KEY` | The X app's **API Key** (consumer key). |
-| `X_API_KEY_SECRET` | The X app's **API Key Secret** (consumer secret). |
-| `X_ACCESS_TOKEN` | The **Access Token** for the Freedom Times X account (starts with its numeric user id). |
-| `X_ACCESS_TOKEN_SECRET` | The matching **Access Token Secret**. |
+| `X_CLIENT_ID` | X app **OAuth 2.0 Client ID**. |
+| `X_CLIENT_SECRET` | X app **OAuth 2.0 Client Secret** (confidential / Web App). |
+| `X_REFRESH_TOKEN` | User refresh token for the Freedom Times X account (`offline.access`). |
 
 ### Bluesky
 
 1. Create the app password: sign in at [bsky.app](https://bsky.app) as the Freedom Times account →
    **Settings** → **Privacy and security** → **App passwords** → **Add App Password**. Name it e.g.
-   `freedomtimes-admin`, leave direct-message access off, and copy it.
-2. From `web/`, put both secrets on the production Worker (Wrangler prompts for each value, so nothing lands in
-   shell history):
+   `freedomtimes-admin`, leave direct-message access off, and copy it into `.env.dev` as `BLUESKY_APP_PASSWORD`
+   (and set `BLUESKY_HANDLE`).
+
+### X (OAuth 2.0)
+
+1. Sign in at [console.x.com](https://console.x.com) **as the Freedom Times X account**. Buy credits and set a
+   spending limit.
+2. App → **User authentication settings**: type **Web App** (confidential), callback
+   `http://127.0.0.1:9876/callback`, and enable OAuth 2.0. Copy **Client ID** and **Client Secret** into
+   `.env.dev` as `X_CLIENT_ID` / `X_CLIENT_SECRET`.
+3. Mint the user refresh token (scopes `tweet.read tweet.write users.read offline.access`), signed in as the
+   FT account:
 
    ```powershell
-   npx wrangler secret put BLUESKY_HANDLE --config wrangler.jsonc --env production
-   npx wrangler secret put BLUESKY_APP_PASSWORD --config wrangler.jsonc --env production
+   npx tsx web/scripts/mint-x-oauth2-refresh-token.mts
    ```
 
-To revoke: delete the app password in Bluesky (**Settings** → **Privacy and security** → **App passwords**),
-then run `npx wrangler secret delete BLUESKY_APP_PASSWORD --config wrangler.jsonc --env production`.
+   Paste the printed `X_REFRESH_TOKEN=…` into `.env.dev`.
 
-### X
+### Sync to Cloudflare
 
-1. Sign in at [console.x.com](https://console.x.com) **as the Freedom Times X account**. The access token
-   posts as the account that owns the app. Accept the developer agreement and buy credits (consider setting a
-   spending limit).
-2. Create an app. In its user authentication settings, set **App permissions** to **Read and write**.
-3. On the app's **Keys and tokens** tab, copy the **API Key** and **API Key Secret**, then generate the
-   **Access Token** and **Access Token Secret**. Generate the access token *after* setting Read and write.
-   X's docs say changing an app's permissions needs new tokens to pick up the new scope, so a token made while
-   the app was read-only can't post. If the panel shows "X refused the post" with a permission error,
-   regenerate the access token and secret and set both again.
-4. From `web/`:
+```powershell
+# Production Worker (requires -AllowProduction)
+.\scripts\set-github-secrets.ps1 -Target Production -SyncCloudflareWorkerSecrets -AllowProduction
+```
 
-   ```powershell
-   npx wrangler secret put X_API_KEY --config wrangler.jsonc --env production
-   npx wrangler secret put X_API_KEY_SECRET --config wrangler.jsonc --env production
-   npx wrangler secret put X_ACCESS_TOKEN --config wrangler.jsonc --env production
-   npx wrangler secret put X_ACCESS_TOKEN_SECRET --config wrangler.jsonc --env production
-   ```
+Empty social keys are skipped, so a normal Auth0/Turso sync still works before these are filled. Secrets take
+effect without a redeploy.
 
-To revoke: regenerate (or revoke) the access token on the app's **Keys and tokens** tab, then run
-`npx wrangler secret delete X_ACCESS_TOKEN_SECRET --config wrangler.jsonc --env production`.
+Do **not** put production social values on staging. Staging reads only `*_TEST_*` ([below](#testing-on-staging)).
 
-### After setting them
-
-Open a published post in the production EmDash admin. The panel for that network should show the preview and
-the button. Secrets take effect without a redeploy.
-
-Do **not** set these on staging. Staging never reads them (it reads only the `*_TEST_*` names below), and keeping
-them off staging means a staging copy never holds the credentials.
-
-**Keeping the secrets.** The normal production deploy (`wrangler deploy`, run when a PR merges) keeps Worker
-secrets. A production **Terraform apply** re-uploads the Worker's Terraform-owned `secret_text` bindings and
-can drop secrets set by hand (see
-[NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)). After a production
-Terraform apply, open the panels. If one says "isn't configured", run that network's commands again. Wiring
-these names into Terraform or `set-github-secrets.ps1` would make them survive, but it needs new GitHub or
-`.env` secrets, so it is left for Jon to decide.
+**Keeping the secrets.** Prefer re-running `set-github-secrets.ps1` after filling `.env.dev`. A production
+**Terraform apply** can drop hand-set Worker `secret_text` bindings
+([NON_TERRAFORM_RESOURCES.md](../../NON_TERRAFORM_RESOURCES.md#terraform-holding-page-drift)); if a panel says
+"isn't configured", sync again from `.env.dev`.
 
 ## Testing on staging
 
@@ -211,14 +193,13 @@ Set staging-only test-account secrets on the **staging** Worker (`freedomtimes-s
 They use their own names, so staging can never read or use a production secret, and production never reads these.
 Each network works on its own.
 
-| Staging secret | Value |
+| Staging secret (`.env.dev`) | Value |
 |---|---|
 | `BLUESKY_TEST_HANDLE` | The test account's handle, e.g. `freedomtimes-test.bsky.social`. |
 | `BLUESKY_TEST_APP_PASSWORD` | An app password for the test account. |
-| `X_TEST_API_KEY` | The test X app's API Key. |
-| `X_TEST_API_KEY_SECRET` | The test X app's API Key Secret. |
-| `X_TEST_ACCESS_TOKEN` | The test X account's Access Token (starts with its numeric user id). |
-| `X_TEST_ACCESS_TOKEN_SECRET` | The matching Access Token Secret. |
+| `X_TEST_CLIENT_ID` | Test app OAuth 2.0 Client ID. |
+| `X_TEST_CLIENT_SECRET` | Test app OAuth 2.0 Client Secret. |
+| `X_TEST_REFRESH_TOKEN` | Test account refresh token (`offline.access`). |
 
 **Bluesky test account.**
 
@@ -226,28 +207,24 @@ Each network works on its own.
    email address. Bluesky has no private accounts, so its posts are public; say "test account" in its bio.
 2. As that account: **Settings** → **Privacy and security** → **App passwords** → **Add App Password**, e.g.
    `freedomtimes-staging`, no direct-message access.
-3. From `web/` (Wrangler prompts for each value):
+3. Put both into `.env.dev`, then:
 
    ```powershell
-   npx wrangler secret put BLUESKY_TEST_HANDLE --config wrangler.jsonc --env staging
-   npx wrangler secret put BLUESKY_TEST_APP_PASSWORD --config wrangler.jsonc --env staging
+   .\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
    ```
 
 **X test account.**
 
 1. Create a separate X account for testing (its own email or phone), and protect its posts if you like
    (**Settings** → **Privacy and safety** → **Audience** → **Protect your posts**).
-2. Sign in at [console.x.com](https://console.x.com) **as the test account**, accept the developer agreement and
-   buy a small amount of credits (set a low spending limit). Create an app, set **App permissions** to **Read and
-   write**, then on **Keys and tokens** copy the API Key and Secret and generate the Access Token and Secret
-   (after setting Read and write, as above).
-3. From `web/`:
+2. Sign in at [console.x.com](https://console.x.com) **as the test account**, create an OAuth 2.0 Web App with
+   callback `http://127.0.0.1:9876/callback`, put `X_TEST_CLIENT_ID` / `X_TEST_CLIENT_SECRET` in `.env.dev`,
+   temporarily rename or copy them to `X_CLIENT_ID` / `X_CLIENT_SECRET` to run
+   `npx tsx web/scripts/mint-x-oauth2-refresh-token.mts`, then store the result as `X_TEST_REFRESH_TOKEN`.
+3. Sync:
 
    ```powershell
-   npx wrangler secret put X_TEST_API_KEY --config wrangler.jsonc --env staging
-   npx wrangler secret put X_TEST_API_KEY_SECRET --config wrangler.jsonc --env staging
-   npx wrangler secret put X_TEST_ACCESS_TOKEN --config wrangler.jsonc --env staging
-   npx wrangler secret put X_TEST_ACCESS_TOKEN_SECRET --config wrangler.jsonc --env staging
+   .\scripts\set-github-secrets.ps1 -Target Staging -SyncCloudflareWorkerSecrets
    ```
 
 **Cost.** Every real test post to X contains the article link, so it costs about **$0.20** in the test developer
@@ -262,10 +239,9 @@ toast all say "test account". A staging test share is recorded under `share-test
 [§ No double posting](#no-double-posting)), so each post can be shared once per network to the test account;
 use **Release lock** only as described there.
 
-To stop: `npx wrangler secret delete BLUESKY_TEST_APP_PASSWORD --config wrangler.jsonc --env staging` (or
-`X_TEST_ACCESS_TOKEN_SECRET`) and the panel goes back to the dry run. Revoke the app password or token in the
-network as well. As for production, a staging **Terraform apply** can drop hand-set Worker secrets; set them again
-if a panel goes back to the dry run.
+To stop: clear the `*_TEST_*` values in `.env.dev` and delete the matching staging Worker secrets (or re-sync after
+clearing). Revoke the app password / refresh grant in the network as well. A staging **Terraform apply** can drop
+hand-set Worker secrets; sync again from `.env.dev` if a panel goes back to the dry run.
 
 ## Tests
 
@@ -285,7 +261,6 @@ real account. It covers:
 - the missing-secret state;
 - the preview and confirm dialog;
 - Bluesky: the UTF-8 byte offsets of the link facet, and the 300-character limit;
-- X: the OAuth 1.0a signature against X's published worked example, the signed request, and the 280 weighted
-  limit with the link counted as 23;
+- X: OAuth 2.0 token refresh then Bearer `POST /2/tweets`, and the 280 weighted limit with the link counted as 23;
 - one post per click, two simultaneous clicks posting once, and Bluesky and X recorded separately;
 - lock release.
