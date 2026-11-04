@@ -2,10 +2,12 @@
  * Bluesky (AT Protocol) client for the admin-only "Post to Bluesky" panel.
  *
  * Flow: com.atproto.server.createSession (handle + app password) →
+ * optional download of the article OG image + com.atproto.repo.uploadBlob →
  * com.atproto.repo.createRecord (app.bsky.feed.post with a link facet and an
- * app.bsky.embed.external link card). `fetch` is injected so tests mock it.
- * It posts only from the production admin (real account) or the staging admin
- * with the staging-only test-account secrets (#178); elsewhere it is a dry run.
+ * app.bsky.embed.external link card, thumb when upload succeeded). `fetch` is
+ * injected so tests mock it. It posts only from the production admin (real
+ * account) or the staging admin with the staging-only test-account secrets
+ * (#178); elsewhere it is a dry run.
  */
 import { composeSocialText, socialHashtagLine } from './hashtags';
 import type { FetchLike, ShareProvider } from './panel';
@@ -15,6 +17,8 @@ export const BLUESKY_NETWORK = 'bluesky';
 export const BLUESKY_SERVICE_ORIGIN = 'https://bsky.social';
 export const BLUESKY_HOST = 'bsky.social';
 export const BLUESKY_INTENT_COMPOSE_URL = 'https://bsky.app/intent/compose';
+/** Same 1 MiB cap as RedditPodcastPoster BlueskyCardImageDownloader.MaxBytes. */
+export const BLUESKY_CARD_IMAGE_MAX_BYTES = 1_000_000;
 
 /** Ready-to-send compose link. Opening it does not post; the person presses Post on Bluesky. */
 export function blueskyIntentUrl(text: string): string {
@@ -61,10 +65,20 @@ export interface BlueskyPostDraft {
 	url: string;
 	cardTitle: string;
 	cardDescription: string;
+	/** Absolute OG/social image URL to upload as the link-card thumb, or null. */
+	cardImageUrl: string | null;
 }
 
+export type ShareDraftInput = {
+	title: string;
+	description: string;
+	url: string;
+	groups?: readonly string[];
+	cardImageUrl?: string | null;
+};
+
 /** Title, blank line, hashtags, blank line, URL. Tags fill 300 graphemes. The title is trimmed only when the tags and the link leave no room. */
-export function buildBlueskyDraft(input: { title: string; description: string; url: string; groups?: readonly string[] }): BlueskyPostDraft {
+export function buildBlueskyDraft(input: ShareDraftInput): BlueskyPostDraft {
 	const title0 = input.title.trim();
 	const hashtags = socialHashtagLine(title0, input.url, input.groups ?? [], graphemeLength, BLUESKY_MAX_GRAPHEMES);
 	const tail = `\n\n${hashtags}\n\n${input.url}`;
@@ -75,6 +89,7 @@ export function buildBlueskyDraft(input: { title: string; description: string; u
 		url: input.url,
 		cardTitle: title0 || input.url,
 		cardDescription: truncateGraphemes(input.description.trim(), CARD_DESCRIPTION_MAX),
+		cardImageUrl: input.cardImageUrl?.trim() ? input.cardImageUrl.trim() : null,
 	};
 }
 
@@ -87,8 +102,12 @@ export function utf8ByteRange(text: string, needle: string): { byteStart: number
 	return { byteStart, byteEnd: byteStart + enc.encode(needle).length };
 }
 
-/** The app.bsky.feed.post record for a draft. */
-export function buildBlueskyRecord(draft: BlueskyPostDraft, createdAt: Date): Record<string, unknown> {
+/** The app.bsky.feed.post record for a draft. `thumb` is the uploadBlob result when present. */
+export function buildBlueskyRecord(
+	draft: BlueskyPostDraft,
+	createdAt: Date,
+	thumb?: unknown,
+): Record<string, unknown> {
 	const facets: Array<Record<string, unknown>> = [];
 	const link = utf8ByteRange(draft.text, draft.url);
 	if (link) facets.push({ index: link, features: [{ $type: 'app.bsky.richtext.facet#link', uri: draft.url }] });
@@ -98,6 +117,12 @@ export function buildBlueskyRecord(draft: BlueskyPostDraft, createdAt: Date): Re
 		if (!range || !tag) continue;
 		facets.push({ index: range, features: [{ $type: 'app.bsky.richtext.facet#tag', tag: tag.slice(1) }] });
 	}
+	const external: Record<string, unknown> = {
+		uri: draft.url,
+		title: draft.cardTitle,
+		description: draft.cardDescription,
+	};
+	if (thumb != null) external.thumb = thumb;
 	return {
 		$type: 'app.bsky.feed.post',
 		text: draft.text,
@@ -106,7 +131,7 @@ export function buildBlueskyRecord(draft: BlueskyPostDraft, createdAt: Date): Re
 		...(facets.length > 0 ? { facets } : {}),
 		embed: {
 			$type: 'app.bsky.embed.external',
-			external: { uri: draft.url, title: draft.cardTitle, description: draft.cardDescription },
+			external,
 		},
 	};
 }
@@ -130,6 +155,52 @@ function xrpcError(body: Record<string, unknown>, status: number): string {
 	const code = typeof body.error === 'string' ? body.error : `HTTP ${status}`;
 	const message = typeof body.message === 'string' ? `: ${body.message}` : '';
 	return `${code}${message}`;
+}
+
+/**
+ * Download the card image and upload it to Bluesky. Returns the blob ref, or
+ * null when there is no URL / download / upload fails (post still goes out
+ * with a text-only link card).
+ */
+export async function uploadBlueskyCardThumb(
+	accessJwt: string,
+	cardImageUrl: string | null,
+	fetchLike: FetchLike,
+): Promise<unknown | null> {
+	if (!cardImageUrl) return null;
+	let image: Response;
+	try {
+		image = await fetchLike(cardImageUrl);
+	} catch {
+		return null;
+	}
+	if (!image.ok) return null;
+	const mime = (image.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
+	if (!mime.toLowerCase().startsWith('image/')) return null;
+	let bytes: Uint8Array;
+	try {
+		bytes = new Uint8Array(await image.arrayBuffer());
+	} catch {
+		return null;
+	}
+	if (bytes.byteLength === 0 || bytes.byteLength > BLUESKY_CARD_IMAGE_MAX_BYTES) return null;
+
+	let uploaded: Response;
+	try {
+		uploaded = await fetchLike(`${BLUESKY_SERVICE_ORIGIN}/xrpc/com.atproto.repo.uploadBlob`, {
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${accessJwt}`,
+				'content-type': mime,
+			},
+			body: bytes,
+		});
+	} catch {
+		return null;
+	}
+	if (!uploaded.ok) return null;
+	const body = await readJson(uploaded);
+	return body.blob ?? null;
 }
 
 /** Sign in with the app password and create the post. Never logs secrets. */
@@ -158,6 +229,8 @@ export async function postToBluesky(
 		throw new ShareNetworkError('Bluesky sign-in returned no session.', true);
 	}
 
+	const thumb = await uploadBlueskyCardThumb(accessJwt, draft.cardImageUrl, deps.fetch);
+
 	let created: Response;
 	try {
 		created = await deps.fetch(`${BLUESKY_SERVICE_ORIGIN}/xrpc/com.atproto.repo.createRecord`, {
@@ -166,7 +239,7 @@ export async function postToBluesky(
 			body: JSON.stringify({
 				repo: did,
 				collection: 'app.bsky.feed.post',
-				record: buildBlueskyRecord(draft, deps.now()),
+				record: buildBlueskyRecord(draft, deps.now(), thumb),
 			}),
 		});
 	} catch {
@@ -201,6 +274,7 @@ export const blueskyProvider: ShareProvider<BlueskyConfig, BlueskyPostDraft> = {
 	previewFields: (draft) => [
 		{ label: 'Link card title', value: draft.cardTitle },
 		...(draft.cardDescription ? [{ label: 'Link card description', value: draft.cardDescription }] : []),
+		...(draft.cardImageUrl ? [{ label: 'Link card image', value: draft.cardImageUrl }] : []),
 	],
 	publish: postToBluesky,
 	intentUrl: (draft) => blueskyIntentUrl(draft.text),

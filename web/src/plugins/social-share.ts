@@ -23,7 +23,11 @@ import { definePlugin, PluginRouteError } from 'emdash';
 import { blueskyProvider } from '../lib/social-share/bluesky';
 import { SOCIAL_SHARE_ALLOWED_HOSTS, SOCIAL_SHARE_CAPABILITIES } from '../lib/social-share/manifest';
 import { handleSharePanel, ShareAccessError, type ShareDraftBase, type ShareKv, type ShareProvider } from '../lib/social-share/panel';
-import { snapshotFromContentItem } from '../lib/social-share/policy';
+import {
+	PRODUCTION_SITE_ORIGIN,
+	snapshotFromContentItem,
+	socialShareMode,
+} from '../lib/social-share/policy';
 import { xProvider } from '../lib/social-share/x';
 
 export const SOCIAL_SHARE_PLUGIN_ID = 'ft-social-share';
@@ -41,7 +45,14 @@ function sharePanelRoute<TConfig, TDraft extends ShareDraftBase>(provider: Share
 						kv: ctx.kv as unknown as ShareKv,
 						getPost: async (id) => {
 							const item = await ctx.content?.get('posts', id);
-							return item ? snapshotFromContentItem(item) : null;
+							if (!item) return null;
+							const hostname = new URL(ctx.request.url).hostname;
+							const mode = socialShareMode({
+								siteAccessMode: (cfEnv as { SITE_ACCESS_MODE?: unknown }).SITE_ACCESS_MODE,
+								hostname,
+							});
+							const siteOrigin = mode === 'staging' ? new URL(ctx.request.url).origin : PRODUCTION_SITE_ORIGIN;
+							return snapshotFromContentItem(item, { siteOrigin });
 						},
 						fetch: async (url, init) => {
 							if (!ctx.http) throw new Error('Network access is not available to this plugin.');

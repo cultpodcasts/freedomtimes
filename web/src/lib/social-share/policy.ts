@@ -5,6 +5,7 @@
  * Pure functions only (no Astro / Worker / EmDash imports) so
  * scripts/test-social-share.mts can test them directly.
  */
+import { readMediaValueSrc } from '../content/mediaValue';
 import { isProductionPublicHostname, isStagingHostname } from '../homepage-host';
 import { contentCanonicalPath } from '../seo/article-seo';
 
@@ -105,23 +106,77 @@ export interface SharePostSnapshot {
 	description: string;
 	/** Organisation names on the post. Each one becomes a hashtag. */
 	groups: string[];
+	/**
+	 * Absolute URL of the Open Graph / social card image (seo.image → social_image →
+	 * featured/cover), or null when the post has none. Bluesky uploads this as the
+	 * link-card thumb; X relies on OG scrape instead.
+	 */
+	cardImageUrl: string | null;
+}
+
+/**
+ * Public media path for the share card image, same order as the article OG image
+ * (seo.image → social_image → featured → cover). Relative `/_emdash/api/media/file/…`
+ * paths or absolute http(s) URLs; null when nothing resolves.
+ */
+export function resolveShareCardImagePath(
+	data: Record<string, unknown>,
+	seo?: { image?: unknown } | null,
+): string | null {
+	const dataSeo =
+		data.seo && typeof data.seo === 'object' && !Array.isArray(data.seo)
+			? (data.seo as Record<string, unknown>)
+			: null;
+	return (
+		readMediaValueSrc(seo?.image)
+		?? readMediaValueSrc(dataSeo?.image)
+		?? readMediaValueSrc(data.social_image)
+		?? readMediaValueSrc(data.socialImage)
+		?? readMediaValueSrc(data.featured_image)
+		?? readMediaValueSrc(data.cover_image)
+		?? null
+	);
+}
+
+/** Absolute card image URL for Worker fetch. Absolute http(s) inputs are returned as-is. */
+export function absoluteCardImageUrl(pathOrUrl: string, siteOrigin: string): string {
+	if (/^https?:\/\//i.test(pathOrUrl.trim())) return pathOrUrl.trim();
+	const origin = siteOrigin.replace(/\/$/, '');
+	const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+	return `${origin}${path}`;
 }
 
 /**
  * Title and description the same way the article page picks og:title and
  * og:description (social_title → SEO title → title; SEO description → lede).
+ * `siteOrigin` absolute-izes relative media paths (production apex, or the
+ * staging request origin when sharing from staging).
  */
-export function snapshotFromContentItem(item: {
-	id: string;
-	slug: string | null;
-	status: string;
-	data: Record<string, unknown>;
-	seo?: { title?: string | null; description?: string | null } | null;
-}): SharePostSnapshot {
+export function snapshotFromContentItem(
+	item: {
+		id: string;
+		slug: string | null;
+		status: string;
+		data: Record<string, unknown>;
+		seo?: { title?: string | null; description?: string | null; image?: unknown } | null;
+	},
+	options?: { siteOrigin?: string },
+): SharePostSnapshot {
 	const data = item.data ?? {};
 	const title = str(data.social_title) ?? str(item.seo?.title) ?? str(data.title) ?? '';
 	const description = str(item.seo?.description) ?? str(data.lede) ?? str(data.excerpt) ?? '';
-	return { id: item.id, slug: item.slug, status: item.status, title, description, groups: organisationNames(data) };
+	const path = resolveShareCardImagePath(data, item.seo);
+	const origin = options?.siteOrigin ?? PRODUCTION_SITE_ORIGIN;
+	const cardImageUrl = path ? absoluteCardImageUrl(path, origin) : null;
+	return {
+		id: item.id,
+		slug: item.slug,
+		status: item.status,
+		title,
+		description,
+		groups: organisationNames(data),
+		cardImageUrl,
+	};
 }
 
 function organisationNames(data: Record<string, unknown>): string[] {

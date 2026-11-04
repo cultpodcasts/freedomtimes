@@ -75,6 +75,7 @@ const POST: SharePostSnapshot = {
 	title: 'Cult news this week',
 	description: 'The week in review.',
 	groups: [],
+	cardImageUrl: null,
 };
 
 /** In-memory plugin KV with EmDash's revision semantics. */
@@ -108,16 +109,31 @@ function json(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
-/** Mock Bluesky: createSession then createRecord, with optional overrides. */
-function mockBluesky(over: { session?: () => Response; create?: () => Response | Promise<Response> } = {}) {
+/** Mock Bluesky: createSession, optional uploadBlob / image GET, then createRecord. */
+function mockBluesky(
+	over: {
+		session?: () => Response;
+		create?: () => Response | Promise<Response>;
+		upload?: () => Response | Promise<Response>;
+		image?: (url: string) => Response | Promise<Response>;
+	} = {},
+) {
 	const calls: Call[] = [];
 	const fetch = async (url: string, init?: RequestInit): Promise<Response> => {
 		calls.push({ url, init });
 		if (url.endsWith('/com.atproto.server.createSession')) {
 			return over.session ? over.session() : json(200, { accessJwt: 'jwt-1', did: 'did:plc:abc123', handle: 'freedomtimes.news' });
 		}
+		if (url.endsWith('/com.atproto.repo.uploadBlob')) {
+			return over.upload
+				? over.upload()
+				: json(200, { blob: { $type: 'blob', ref: { $link: 'bafythumb' }, mimeType: 'image/png', size: 12 } });
+		}
 		if (url.endsWith('/com.atproto.repo.createRecord')) {
 			return over.create ? over.create() : json(200, { uri: 'at://did:plc:abc123/app.bsky.feed.post/3kxyz', cid: 'bafy' });
+		}
+		if (over.image && /^https?:\/\//i.test(url) && !url.includes('bsky.social')) {
+			return over.image(url);
 		}
 		throw new Error(`unexpected fetch ${url}`);
 	};
@@ -197,9 +213,42 @@ describe('social share policy', () => {
 		assert.equal(snap.title, 'Social title');
 		assert.equal(snap.description, 'Lede');
 		assert.deepEqual(snap.groups, []);
+		assert.equal(snap.cardImageUrl, null);
 		const fallback = snapshotFromContentItem({ id: 'p1', slug: 's', status: 'draft', data: { title: 'Title' }, seo: { title: null, description: 'SEO desc' } });
 		assert.equal(fallback.title, 'Title');
 		assert.equal(fallback.description, 'SEO desc');
+	});
+
+	it('resolves the card image from seo.image then social then featured, absolute on siteOrigin', () => {
+		const withSeo = snapshotFromContentItem(
+			{
+				id: 'p1',
+				slug: 's',
+				status: 'published',
+				data: {
+					title: 'T',
+					social_image: { meta: { storageKey: 'social.jpg' } },
+					featured_image: { meta: { storageKey: 'feat.jpg' } },
+				},
+				seo: { image: '/_emdash/api/media/file/og.png' },
+			},
+			{ siteOrigin: 'https://freedomtimes.news' },
+		);
+		assert.equal(withSeo.cardImageUrl, 'https://freedomtimes.news/_emdash/api/media/file/og.png');
+		const socialOnly = snapshotFromContentItem(
+			{
+				id: 'p1',
+				slug: 's',
+				status: 'published',
+				data: {
+					title: 'T',
+					social_image: { meta: { storageKey: 'social.jpg' } },
+					featured_image: { meta: { storageKey: 'feat.jpg' } },
+				},
+			},
+			{ siteOrigin: 'https://staging.freedomtimes.news' },
+		);
+		assert.equal(socialOnly.cardImageUrl, 'https://staging.freedomtimes.news/_emdash/api/media/file/social.jpg');
 	});
 });
 
@@ -254,7 +303,46 @@ describe('Bluesky client (mocked)', () => {
 		assert.equal(body.repo, 'did:plc:abc123');
 		assert.equal(body.collection, 'app.bsky.feed.post');
 		assert.equal(body.record.text, draft.text);
+		assert.equal(body.record.embed.external.thumb, undefined);
 		assert.equal(blueskyWebUrl('not-a-uri'), null);
+	});
+
+	it('downloads the card image, uploads the blob, and attaches external.thumb', async () => {
+		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/og.png';
+		const thumb = { $type: 'blob', ref: { $link: 'bafythumb' }, mimeType: 'image/png', size: 4 };
+		const bsky = mockBluesky({
+			image: () => new Response(Uint8Array.from([1, 2, 3, 4]), { status: 200, headers: { 'content-type': 'image/png' } }),
+			upload: () => json(200, { blob: thumb }),
+		});
+		const draft = buildBlueskyDraft({ title: 'T', description: 'd', url: articleUrl('s'), cardImageUrl: imageUrl });
+		await postToBluesky({ handle: 'freedomtimes.news', appPassword: 'test-app-pass' }, draft, {
+			fetch: bsky.fetch,
+			now: () => new Date('2026-10-31T22:00:00Z'),
+		});
+		assert.deepEqual(bsky.calls.map((c) => c.url), [
+			'https://bsky.social/xrpc/com.atproto.server.createSession',
+			imageUrl,
+			'https://bsky.social/xrpc/com.atproto.repo.uploadBlob',
+			'https://bsky.social/xrpc/com.atproto.repo.createRecord',
+		]);
+		const upload = bsky.calls[2];
+		assert.equal((upload.init?.headers as Record<string, string>).authorization, 'Bearer jwt-1');
+		assert.equal((upload.init?.headers as Record<string, string>)['content-type'], 'image/png');
+		const body = JSON.parse(String(bsky.calls[3].init?.body));
+		assert.deepEqual(body.record.embed.external.thumb, thumb);
+	});
+
+	it('still posts a text-only card when the image download fails', async () => {
+		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/missing.png';
+		const bsky = mockBluesky({
+			image: () => new Response(null, { status: 404 }),
+		});
+		const draft = buildBlueskyDraft({ title: 'T', description: '', url: articleUrl('s'), cardImageUrl: imageUrl });
+		await postToBluesky({ handle: 'h', appPassword: 'p' }, draft, { fetch: bsky.fetch, now: () => new Date() });
+		assert.ok(bsky.calls.some((c) => c.url === imageUrl));
+		assert.ok(!bsky.calls.some((c) => c.url.endsWith('uploadBlob')));
+		const body = JSON.parse(String(bsky.calls.find((c) => c.url.endsWith('createRecord'))?.init?.body));
+		assert.equal(body.record.embed.external.thumb, undefined);
 	});
 
 	it('says whether a failure definitely did not post', async () => {

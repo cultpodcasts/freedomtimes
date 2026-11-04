@@ -224,7 +224,8 @@ export default defineConfig({
           format: 'native',
           options: {},
           capabilities: ['content:read', 'network:request'],
-          allowedHosts: ['bsky.social', 'api.x.com'],
+          // Keep in sync with SOCIAL_SHARE_ALLOWED_HOSTS (image download + APIs).
+          allowedHosts: ['bsky.social', 'api.x.com', 'freedomtimes.news', 'staging.freedomtimes.news'],
         },
         // Publish logs the X and Bluesky intent links and does not post.
         // The editor offers the links. See web/docs/X_AUTO_POST.md.
