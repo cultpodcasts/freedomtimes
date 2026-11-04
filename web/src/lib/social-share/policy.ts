@@ -4,9 +4,13 @@
  *
  * Pure functions only (no Astro / Worker / EmDash imports) so
  * scripts/test-social-share.mts can test them directly.
+ *
+ * Card-image *path* resolution is not duplicated here: the plugin calls
+ * `readArticleNotificationImagePath` (same contract as article OG /
+ * `socialImage.ts`) and passes the absolute URL into
+ * {@link snapshotFromContentItem}.
  */
-import { readMediaValueSrc } from '../content/mediaValue';
-import { isProductionPublicHostname, isStagingHostname } from '../homepage-host';
+import { isProductionPublicHostname, isStagingHostname, STAGING_HOSTNAME } from '../homepage-host';
 import { contentCanonicalPath } from '../seo/article-seo';
 
 /** EmDash RBAC level for Admin (@emdash-cms/auth Role.ADMIN). */
@@ -15,6 +19,14 @@ export const EMDASH_ADMIN_ROLE = 50;
 /** Public origin every shared link points at (production only ever posts). */
 export const PRODUCTION_SITE_ORIGIN = 'https://freedomtimes.news';
 
+/**
+ * Hostnames the Worker may fetch for a Bluesky link-card thumb.
+ * FT production + staging only — not Bluesky/X API hosts from the plugin sandbox.
+ */
+export const SHARE_CARD_IMAGE_ALLOWED_HOSTS = [
+	new URL(PRODUCTION_SITE_ORIGIN).hostname,
+	STAGING_HOSTNAME,
+] as const;
 /** Only the `posts` collection can be shared. */
 export const SHAREABLE_COLLECTION = 'posts';
 
@@ -107,50 +119,54 @@ export interface SharePostSnapshot {
 	/** Organisation names on the post. Each one becomes a hashtag. */
 	groups: string[];
 	/**
-	 * Absolute URL of the Open Graph / social card image (seo.image → social_image →
-	 * featured/cover), or null when the post has none. Bluesky uploads this as the
-	 * link-card thumb; X relies on OG scrape instead.
+	 * Absolute URL of the Open Graph / social card image (same resolution as
+	 * article `og:image` via `readArticleNotificationImagePath` /
+	 * `socialImage.ts`), or null when the post has none / the host is not
+	 * allowlisted. Bluesky uploads this as the link-card thumb; X relies on
+	 * OG scrape instead.
 	 */
 	cardImageUrl: string | null;
 }
 
-/**
- * Public media path for the share card image, same order as the article OG image
- * (seo.image → social_image → featured → cover). Relative `/_emdash/api/media/file/…`
- * paths or absolute http(s) URLs; null when nothing resolves.
- */
-export function resolveShareCardImagePath(
-	data: Record<string, unknown>,
-	seo?: { image?: unknown } | null,
-): string | null {
-	const dataSeo =
-		data.seo && typeof data.seo === 'object' && !Array.isArray(data.seo)
-			? (data.seo as Record<string, unknown>)
-			: null;
-	return (
-		readMediaValueSrc(seo?.image)
-		?? readMediaValueSrc(dataSeo?.image)
-		?? readMediaValueSrc(data.social_image)
-		?? readMediaValueSrc(data.socialImage)
-		?? readMediaValueSrc(data.featured_image)
-		?? readMediaValueSrc(data.cover_image)
-		?? null
-	);
+/** True when `hostname` is a Freedom Times origin the Worker may fetch for thumbs. */
+export function isAllowedShareCardImageHost(hostname: string): boolean {
+	return (SHARE_CARD_IMAGE_ALLOWED_HOSTS as readonly string[]).includes(hostname);
 }
 
-/** Absolute card image URL for Worker fetch. Absolute http(s) inputs are returned as-is. */
-export function absoluteCardImageUrl(pathOrUrl: string, siteOrigin: string): string {
-	if (/^https?:\/\//i.test(pathOrUrl.trim())) return pathOrUrl.trim();
-	const origin = siteOrigin.replace(/\/$/, '');
-	const path = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
-	return `${origin}${path}`;
+/**
+ * Absolute card image URL for Worker fetch. Relative paths are joined to
+ * `siteOrigin`. Absolute http(s) URLs are kept only when their hostname is in
+ * {@link SHARE_CARD_IMAGE_ALLOWED_HOSTS}; anything else returns `null`.
+ */
+export function absoluteCardImageUrl(pathOrUrl: string, siteOrigin: string): string | null {
+	const trimmed = pathOrUrl.trim();
+	if (!trimmed) return null;
+	let absolute: string;
+	if (/^https?:\/\//i.test(trimmed)) {
+		absolute = trimmed;
+	} else {
+		const origin = siteOrigin.replace(/\/$/, '');
+		const path = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+		absolute = `${origin}${path}`;
+	}
+	try {
+		const parsed = new URL(absolute);
+		if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+		if (!isAllowedShareCardImageHost(parsed.hostname)) return null;
+	} catch {
+		return null;
+	}
+	return absolute;
 }
 
 /**
  * Title and description the same way the article page picks og:title and
  * og:description (social_title → SEO title → title; SEO description → lede).
- * `siteOrigin` absolute-izes relative media paths (production apex, or the
- * staging request origin when sharing from staging).
+ *
+ * Pass `cardImageUrl` from the plugin after
+ * `readArticleNotificationImagePath` + {@link absoluteCardImageUrl} so the
+ * thumb matches article OG (including bare media ids and `_emdash_seo`).
+ * When omitted, `cardImageUrl` is null — this module does not re-resolve images.
  */
 export function snapshotFromContentItem(
 	item: {
@@ -160,14 +176,13 @@ export function snapshotFromContentItem(
 		data: Record<string, unknown>;
 		seo?: { title?: string | null; description?: string | null; image?: unknown } | null;
 	},
-	options?: { siteOrigin?: string },
+	options?: { siteOrigin?: string; cardImageUrl?: string | null },
 ): SharePostSnapshot {
 	const data = item.data ?? {};
 	const title = str(data.social_title) ?? str(item.seo?.title) ?? str(data.title) ?? '';
 	const description = str(item.seo?.description) ?? str(data.lede) ?? str(data.excerpt) ?? '';
-	const path = resolveShareCardImagePath(data, item.seo);
-	const origin = options?.siteOrigin ?? PRODUCTION_SITE_ORIGIN;
-	const cardImageUrl = path ? absoluteCardImageUrl(path, origin) : null;
+	const cardImageUrl =
+		options && 'cardImageUrl' in options ? (options.cardImageUrl ?? null) : null;
 	return {
 		id: item.id,
 		slug: item.slug,

@@ -158,6 +158,64 @@ function xrpcError(body: Record<string, unknown>, status: number): string {
 }
 
 /**
+ * Read at most `maxBytes` from a Response. Rejects early on Content-Length when
+ * present and over the cap; otherwise streams and aborts as soon as the
+ * cumulative size exceeds the cap (never buffers an unbounded body first).
+ */
+export async function readResponseBodyCapped(
+	response: Response,
+	maxBytes: number,
+): Promise<Uint8Array | null> {
+	const contentLength = response.headers.get('content-length');
+	if (contentLength != null) {
+		const n = Number(contentLength);
+		if (Number.isFinite(n) && n > maxBytes) return null;
+	}
+
+	const stream = response.body;
+	if (!stream) {
+		try {
+			const buf = new Uint8Array(await response.arrayBuffer());
+			if (buf.byteLength === 0 || buf.byteLength > maxBytes) return null;
+			return buf;
+		} catch {
+			return null;
+		}
+	}
+
+	const reader = stream.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value || value.byteLength === 0) continue;
+			total += value.byteLength;
+			if (total > maxBytes) {
+				try {
+					await reader.cancel();
+				} catch {
+					/* ignore */
+				}
+				return null;
+			}
+			chunks.push(value);
+		}
+	} catch {
+		return null;
+	}
+	if (total === 0) return null;
+	const out = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		out.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return out;
+}
+
+/**
  * Download the card image and upload it to Bluesky. Returns the blob ref, or
  * null when there is no URL / download / upload fails (post still goes out
  * with a text-only link card).
@@ -177,13 +235,8 @@ export async function uploadBlueskyCardThumb(
 	if (!image.ok) return null;
 	const mime = (image.headers.get('content-type') ?? '').split(';')[0]?.trim() ?? '';
 	if (!mime.toLowerCase().startsWith('image/')) return null;
-	let bytes: Uint8Array;
-	try {
-		bytes = new Uint8Array(await image.arrayBuffer());
-	} catch {
-		return null;
-	}
-	if (bytes.byteLength === 0 || bytes.byteLength > BLUESKY_CARD_IMAGE_MAX_BYTES) return null;
+	const bytes = await readResponseBodyCapped(image, BLUESKY_CARD_IMAGE_MAX_BYTES);
+	if (!bytes) return null;
 
 	let uploaded: Response;
 	try {
@@ -278,6 +331,8 @@ export const blueskyProvider: ShareProvider<BlueskyConfig, BlueskyPostDraft> = {
 	],
 	publish: postToBluesky,
 	intentUrl: (draft) => blueskyIntentUrl(draft.text),
+	// Thumb is omitted on dry-run: uploadBlob needs a live session. The intended
+	// image URL (if any) is only in previewFields until a real/test post.
 	dryRunRequest: (draft, now) => ({
 		method: 'POST',
 		url: `${BLUESKY_SERVICE_ORIGIN}/xrpc/com.atproto.repo.createRecord`,
