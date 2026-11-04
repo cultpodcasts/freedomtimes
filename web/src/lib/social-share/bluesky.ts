@@ -240,14 +240,15 @@ export async function uploadBlueskyCardThumb(
 
 	let uploaded: Response;
 	try {
-		// Blob satisfies BodyInit under Dom lib typings (bare Uint8Array does not in TS 5+/Node 22).
+		// TS 5.7+ Dom/Node typings: Uint8Array is generic over ArrayBufferLike; BodyInit/BlobPart
+		// still expect ArrayBuffer-backed views. Runtime fetch accepts the bytes as-is.
 		uploaded = await fetchLike(`${BLUESKY_SERVICE_ORIGIN}/xrpc/com.atproto.repo.uploadBlob`, {
 			method: 'POST',
 			headers: {
 				authorization: `Bearer ${accessJwt}`,
 				'content-type': mime,
 			},
-			body: new Blob([bytes], { type: mime }),
+			body: bytes as unknown as BodyInit,
 		});
 	} catch {
 		return null;
