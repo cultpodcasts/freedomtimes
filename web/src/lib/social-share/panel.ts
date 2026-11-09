@@ -519,7 +519,18 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 	// Re-check everything server-side at click time; the button value is only a preview fingerprint.
 	const state = await resolveState(postId, req, deps);
 	if (state.kind !== 'ready') {
-		return respond(state.response.blocks, { message: `Not posted to ${provider.label}.`, type: 'error' });
+		// A previous attempt often left a pending/uncertain claim (e.g. the browser
+		// canceled mid-post). Say that plainly — "Not posted to …" alone hid the lock.
+		const status = state.record?.value.status;
+		const message =
+			status === 'posted'
+				? `Already shared to ${provider.label}.`
+				: status === 'pending'
+					? `Not posted: a ${provider.label} attempt is still in progress (or was interrupted). Wait two minutes for Release lock, or refresh after the lock clears.`
+					: status === 'uncertain'
+						? `Not posted: a previous ${provider.label} attempt may or may not have gone out. Check the profile, then Release lock to try again.`
+						: `Not posted to ${provider.label}.`;
+		return respond(state.response.blocks, { message, type: 'error' });
 	}
 	if (input.value !== state.fingerprint) {
 		return respond(blocksOf(state), {

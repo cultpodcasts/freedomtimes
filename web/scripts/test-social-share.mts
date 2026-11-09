@@ -398,6 +398,20 @@ describe('Bluesky client (mocked)', () => {
 		assert.equal(body.record.embed.external.thumb, undefined);
 	});
 
+	it('still posts a text-only card when the image fetch aborts (timeout)', async () => {
+		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/slow.png';
+		const bsky = mockBluesky({
+			image: () => Promise.reject(new DOMException('The operation was aborted.', 'AbortError')),
+		});
+		const draft = buildBlueskyDraft({ title: 'T', description: '', url: articleUrl('s'), cardImageUrl: imageUrl });
+		await postToBluesky({ handle: 'h', appPassword: 'p' }, draft, { fetch: bsky.fetch, now: () => new Date() });
+		assert.ok(bsky.calls.some((c) => c.url === imageUrl));
+		assert.ok(bsky.calls.some((c) => c.url === imageUrl && c.init?.signal instanceof AbortSignal));
+		assert.ok(!bsky.calls.some((c) => c.url.endsWith('uploadBlob')));
+		const body = JSON.parse(String(bsky.calls.find((c) => c.url.endsWith('createRecord'))?.init?.body));
+		assert.equal(body.record.embed.external.thumb, undefined);
+	});
+
 	it('still posts a text-only card when Content-Type is not image/*', async () => {
 		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/og.html';
 		const bsky = mockBluesky({
@@ -756,6 +770,24 @@ describe('Post to Bluesky panel', () => {
 		assert.ok(findButton((await load(deps)).blocks, 'bluesky_release'));
 		await act(deps, 'bluesky_release');
 		assert.equal(kv.data.size, 0);
+	});
+
+	it('names a stuck pending claim when Post is pressed again', async () => {
+		const now = new Date('2026-10-31T22:45:00Z');
+		const { deps, kv, bsky } = harness({ now: () => now });
+		await kv.set('share:bluesky:p1', {
+			network: 'bluesky',
+			postId: 'p1',
+			status: 'pending',
+			text: 't',
+			claimedAt: now.toISOString(),
+			claimedBy: 'Jon',
+		});
+		const res = await act(deps, 'bluesky_post', 'any-fingerprint');
+		assert.equal(res.toast?.type, 'error');
+		assert.match(String(res.toast?.message), /still in progress|interrupted/i);
+		assert.equal(bsky.calls.length, 0);
+		assert.equal(kv.data.size, 1);
 	});
 });
 
