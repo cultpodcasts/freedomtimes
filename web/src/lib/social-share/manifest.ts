@@ -11,7 +11,7 @@ import { X_HOST } from './x';
 
 export const SOCIAL_SHARE_CAPABILITIES = ['content:read', 'network:request'] as const;
 
-/** Bluesky / X API hosts, plus FT origins so the Worker can download the card image for uploadBlob. */
+/** Bluesky / X API hosts. FT origins remain allowlisted for any residual same-zone fetches; Bluesky thumbs read MEDIA (R2) by storage key instead of HTTP. */
 export const SOCIAL_SHARE_ALLOWED_HOSTS = [
 	BLUESKY_HOST,
 	X_HOST,

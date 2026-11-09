@@ -70,7 +70,16 @@ export interface ShareProvider<TConfig, TDraft extends ShareDraftBase> {
 	publish(
 		config: TConfig,
 		draft: TDraft,
-		deps: { fetch: FetchLike; now: () => Date; kv?: ShareKv; mode?: SocialShareMode },
+		deps: {
+			fetch: FetchLike;
+			now: () => Date;
+			kv?: ShareKv;
+			mode?: SocialShareMode;
+			/** Bluesky: read OG bytes from R2 by storage key (avoids Worker→self HTTP hang). */
+			readCardImageBytes?: (
+				storageKey: string,
+			) => Promise<{ bytes: Uint8Array; mimeType: string } | null>;
+		},
 	): Promise<SharedPost>;
 	/** The request `publish` would send to create the post, without credentials (dry-run preview). */
 	dryRunRequest(draft: TDraft, now: Date): { method: string; url: string; body: unknown };
@@ -175,6 +184,10 @@ export interface SharePanelDeps<TConfig, TDraft extends ShareDraftBase> {
 	getPost(id: string): Promise<SharePostSnapshot | null>;
 	fetch: FetchLike;
 	now: () => Date;
+	/** Optional: Bluesky thumb from R2 / local media by storage key (no same-origin HTTP). */
+	readCardImageBytes?: (
+		storageKey: string,
+	) => Promise<{ bytes: Uint8Array; mimeType: string } | null>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -569,6 +582,7 @@ export async function handleSharePanel<TConfig, TDraft extends ShareDraftBase>(
 			now: deps.now,
 			kv: deps.kv,
 			mode: state.mode,
+			readCardImageBytes: deps.readCardImageBytes,
 		});
 		const posted: ShareRecord = {
 			...pending,

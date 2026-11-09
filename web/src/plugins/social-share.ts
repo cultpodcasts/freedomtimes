@@ -21,7 +21,11 @@ import type { ResolvedPlugin, RouteContext } from 'emdash';
 import { definePlugin, PluginRouteError } from 'emdash';
 
 import { readArticleNotificationImagePath } from '../lib/content/contentEntry';
-import { blueskyProvider } from '../lib/social-share/bluesky';
+import {
+	blueskyCardImageMimeFromStorageKey,
+	blueskyProvider,
+	BLUESKY_CARD_IMAGE_MAX_BYTES,
+} from '../lib/social-share/bluesky';
 import { SOCIAL_SHARE_ALLOWED_HOSTS, SOCIAL_SHARE_CAPABILITIES } from '../lib/social-share/manifest';
 import { handleSharePanel, ShareAccessError, type ShareDraftBase, type ShareKv, type ShareProvider } from '../lib/social-share/panel';
 import {
@@ -71,6 +75,28 @@ function sharePanelRoute<TConfig, TDraft extends ShareDraftBase>(provider: Share
 							return ctx.http.fetch(url, init);
 						},
 						now: () => new Date(),
+						// Bluesky link-card thumb: read MEDIA (R2) by storage key.
+						// Never HTTP-fetch same-origin /_emdash/api/media/file/… — Worker→self hangs.
+						readCardImageBytes: async (storageKey) => {
+							type MediaObject = {
+								size?: number;
+								httpMetadata?: { contentType?: string };
+								arrayBuffer(): Promise<ArrayBuffer>;
+							};
+							const media = (cfEnv as { MEDIA?: { get(key: string): Promise<MediaObject | null> } }).MEDIA;
+							if (!media || typeof media.get !== 'function') return null;
+							const obj = await media.get(storageKey);
+							if (!obj) return null;
+							if (typeof obj.size === 'number' && obj.size > BLUESKY_CARD_IMAGE_MAX_BYTES) return null;
+							const headerMime =
+								(obj.httpMetadata?.contentType ?? '').split(';')[0]?.trim() ||
+								blueskyCardImageMimeFromStorageKey(storageKey) ||
+								'';
+							if (!headerMime.toLowerCase().startsWith('image/')) return null;
+							const bytes = new Uint8Array(await obj.arrayBuffer());
+							if (bytes.byteLength === 0 || bytes.byteLength > BLUESKY_CARD_IMAGE_MAX_BYTES) return null;
+							return { bytes, mimeType: headerMime };
+						},
 					},
 				);
 			} catch (error) {
