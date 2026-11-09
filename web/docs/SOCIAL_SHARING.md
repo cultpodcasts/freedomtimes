@@ -76,18 +76,19 @@ shows the new preview.
   the SEO description (else the lede), and a thumbnail when the post has an OG/social image. The card image uses
   the same resolver as article `og:image` (`readArticleNotificationImagePath` / `socialImage.ts`: `seo.image`
   including bare media ids → `_emdash_seo.seo_image` → `social_image` → featured/cover), then only Freedom Times
-  production/staging hosts. Bluesky does not scrape Open Graph for API posts, so the Worker downloads that image
-  (rejecting early on `Content-Length` over 1 MB, otherwise streaming with a hard 1 MB ceiling) and uploads it with
-  `com.atproto.repo.uploadBlob` (`image/*`), then sets `external.thumb` to the blob. If download or upload fails,
-  the text card still posts without a thumb.
-- AT Protocol calls, to `https://bsky.social` (plus a same-origin or production fetch of the card image):
+  production/staging hosts. Bluesky does not scrape Open Graph for API posts, so the Worker reads that image
+  from the `MEDIA` R2 binding by EmDash storage key (not via HTTP to `/_emdash/api/media/file/…` — a Worker
+  same-zone fetch hangs), caps at 1 MB, uploads with `com.atproto.repo.uploadBlob` (`image/*`), and sets
+  `external.thumb` to the blob. If the R2 read or upload fails, the text card still posts without a thumb.
+  (RedditPodcastPoster’s Bluesky path GETs an *external* ThumbUrl from YouTube/Spotify CDNs; FT cannot do
+  that for its own media, so R2 is the equivalent.)
+- AT Protocol calls, to `https://bsky.social`:
   1. `com.atproto.server.createSession` with the handle and app password;
-  2. `com.atproto.repo.uploadBlob` when a card image URL is available;
+  2. `com.atproto.repo.uploadBlob` when card-image bytes were read from R2;
   3. `com.atproto.repo.createRecord` (`app.bsky.feed.post`).
 - The account must be hosted by Bluesky. A custom-domain handle such as `freedomtimes.news` is fine.
   `bsky.social` forwards the calls to the account's Bluesky server. An account on a self-hosted PDS isn't
-  supported, because the plugin can only reach `bsky.social` and `api.x.com` (plus Freedom Times media hosts
-  for the card image).
+  supported, because the plugin can only reach `bsky.social` and `api.x.com`.
 
 ### X
 

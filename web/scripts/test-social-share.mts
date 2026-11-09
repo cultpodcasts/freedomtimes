@@ -15,6 +15,8 @@ import { SOCIAL_SHARE_ALLOWED_HOSTS, SOCIAL_SHARE_CAPABILITIES } from '../src/li
 import {
 	BLUESKY_CARD_IMAGE_MAX_BYTES,
 	BLUESKY_MAX_GRAPHEMES,
+	blueskyCardImageMimeFromStorageKey,
+	blueskyCardImageStorageKey,
 	blueskyProvider,
 	BLUESKY_SECRET_NAMES,
 	BLUESKY_TEST_SECRET_NAMES,
@@ -360,7 +362,90 @@ describe('Bluesky client (mocked)', () => {
 		assert.equal(blueskyWebUrl('not-a-uri'), null);
 	});
 
-	it('downloads the card image, uploads the blob, and attaches external.thumb', async () => {
+	it('parses EmDash media storage keys and MIME from allowlisted card image URLs', () => {
+		assert.equal(
+			blueskyCardImageStorageKey('https://freedomtimes.news/_emdash/api/media/file/01M6ZS9EDTW7SWZTJB4AY406EX.png'),
+			'01M6ZS9EDTW7SWZTJB4AY406EX.png',
+		);
+		assert.equal(
+			blueskyCardImageStorageKey('https://evil.example/_emdash/api/media/file/og.png'),
+			null,
+		);
+		assert.equal(blueskyCardImageMimeFromStorageKey('og.PNG'), 'image/png');
+		assert.equal(blueskyCardImageMimeFromStorageKey('card.jpeg'), 'image/jpeg');
+		assert.equal(blueskyCardImageMimeFromStorageKey('noext'), null);
+	});
+
+	it('reads card image bytes from local storage (R2), uploads the blob, and never HTTP-fetches the media URL', async () => {
+		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/og.png';
+		const thumb = { $type: 'blob', ref: { $link: 'bafythumb' }, mimeType: 'image/png', size: 4 };
+		const bsky = mockBluesky({
+			upload: () => json(200, { blob: thumb }),
+		});
+		const reads: string[] = [];
+		const draft = buildBlueskyDraft({ title: 'T', description: 'd', url: articleUrl('s'), cardImageUrl: imageUrl });
+		await postToBluesky({ handle: 'freedomtimes.news', appPassword: 'test-app-pass' }, draft, {
+			fetch: bsky.fetch,
+			now: () => new Date('2026-10-31T22:00:00Z'),
+			readCardImageBytes: async (storageKey) => {
+				reads.push(storageKey);
+				assert.equal(storageKey, 'og.png');
+				return { bytes: Uint8Array.from([1, 2, 3, 4]), mimeType: 'image/png' };
+			},
+		});
+		assert.deepEqual(reads, ['og.png']);
+		assert.deepEqual(bsky.calls.map((c) => c.url), [
+			'https://bsky.social/xrpc/com.atproto.server.createSession',
+			'https://bsky.social/xrpc/com.atproto.repo.uploadBlob',
+			'https://bsky.social/xrpc/com.atproto.repo.createRecord',
+		]);
+		assert.ok(!bsky.calls.some((c) => c.url === imageUrl), 'must not HTTP-fetch same-origin media');
+		const upload = bsky.calls[1];
+		assert.equal((upload.init?.headers as Record<string, string>).authorization, 'Bearer jwt-1');
+		assert.equal((upload.init?.headers as Record<string, string>)['content-type'], 'image/png');
+		const body = JSON.parse(String(bsky.calls[2].init?.body));
+		assert.deepEqual(body.record.embed.external.thumb, thumb);
+	});
+
+	it('still posts a text-only card when local media read returns null (no HTTP fallback)', async () => {
+		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/missing.png';
+		const bsky = mockBluesky({
+			image: () => new Response(Uint8Array.from([1]), { status: 200, headers: { 'content-type': 'image/png' } }),
+		});
+		const draft = buildBlueskyDraft({ title: 'T', description: '', url: articleUrl('s'), cardImageUrl: imageUrl });
+		await postToBluesky(
+			{ handle: 'h', appPassword: 'p' },
+			draft,
+			{ fetch: bsky.fetch, now: () => new Date(), readCardImageBytes: async () => null },
+		);
+		assert.ok(!bsky.calls.some((c) => c.url === imageUrl), 'must not fall back to hanging HTTP');
+		assert.ok(!bsky.calls.some((c) => c.url.endsWith('uploadBlob')));
+		const body = JSON.parse(String(bsky.calls.find((c) => c.url.endsWith('createRecord'))?.init?.body));
+		assert.equal(body.record.embed.external.thumb, undefined);
+	});
+
+	it('still posts a text-only card when local media bytes exceed 1 MiB', async () => {
+		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/huge.png';
+		const bsky = mockBluesky();
+		const draft = buildBlueskyDraft({ title: 'T', description: '', url: articleUrl('s'), cardImageUrl: imageUrl });
+		await postToBluesky(
+			{ handle: 'h', appPassword: 'p' },
+			draft,
+			{
+				fetch: bsky.fetch,
+				now: () => new Date(),
+				readCardImageBytes: async () => ({
+					bytes: new Uint8Array(BLUESKY_CARD_IMAGE_MAX_BYTES + 1),
+					mimeType: 'image/png',
+				}),
+			},
+		);
+		assert.ok(!bsky.calls.some((c) => c.url.endsWith('uploadBlob')));
+		const body = JSON.parse(String(bsky.calls.find((c) => c.url.endsWith('createRecord'))?.init?.body));
+		assert.equal(body.record.embed.external.thumb, undefined);
+	});
+
+	it('HTTP-downloads the card image only when no local reader is wired (legacy / tests)', async () => {
 		const imageUrl = 'https://freedomtimes.news/_emdash/api/media/file/og.png';
 		const thumb = { $type: 'blob', ref: { $link: 'bafythumb' }, mimeType: 'image/png', size: 4 };
 		const bsky = mockBluesky({
@@ -378,9 +463,6 @@ describe('Bluesky client (mocked)', () => {
 			'https://bsky.social/xrpc/com.atproto.repo.uploadBlob',
 			'https://bsky.social/xrpc/com.atproto.repo.createRecord',
 		]);
-		const upload = bsky.calls[2];
-		assert.equal((upload.init?.headers as Record<string, string>).authorization, 'Bearer jwt-1');
-		assert.equal((upload.init?.headers as Record<string, string>)['content-type'], 'image/png');
 		const body = JSON.parse(String(bsky.calls[3].init?.body));
 		assert.deepEqual(body.record.embed.external.thumb, thumb);
 	});
