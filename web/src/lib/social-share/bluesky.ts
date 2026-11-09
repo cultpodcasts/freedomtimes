@@ -19,6 +19,12 @@ export const BLUESKY_HOST = 'bsky.social';
 export const BLUESKY_INTENT_COMPOSE_URL = 'https://bsky.app/intent/compose';
 /** Same 1 MiB cap as RedditPodcastPoster BlueskyCardImageDownloader.MaxBytes. */
 export const BLUESKY_CARD_IMAGE_MAX_BYTES = 1_000_000;
+/**
+ * Cap same-origin / network waits for the card image. A hung Worker→self fetch of
+ * `/_emdash/api/media/file/…` otherwise holds the share claim in `pending` until the
+ * client cancels, and the next click only shows a generic "Not posted" toast.
+ */
+export const BLUESKY_CARD_IMAGE_FETCH_TIMEOUT_MS = 8_000;
 
 /** Ready-to-send compose link. Opening it does not post; the person presses Post on Bluesky. */
 export function blueskyIntentUrl(text: string): string {
@@ -228,7 +234,9 @@ export async function uploadBlueskyCardThumb(
 	if (!cardImageUrl) return null;
 	let image: Response;
 	try {
-		image = await fetchLike(cardImageUrl);
+		image = await fetchLike(cardImageUrl, {
+			signal: AbortSignal.timeout(BLUESKY_CARD_IMAGE_FETCH_TIMEOUT_MS),
+		});
 	} catch {
 		return null;
 	}
@@ -249,6 +257,7 @@ export async function uploadBlueskyCardThumb(
 				'content-type': mime,
 			},
 			body: bytes as unknown as BodyInit,
+			signal: AbortSignal.timeout(BLUESKY_CARD_IMAGE_FETCH_TIMEOUT_MS),
 		});
 	} catch {
 		return null;
