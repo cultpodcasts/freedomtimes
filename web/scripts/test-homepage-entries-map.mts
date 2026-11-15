@@ -165,10 +165,13 @@ describe('homepage light query: EmDash loader drift tripwire', () => {
 	// (locale, status = published, deleted_at IS NULL, ordering, byline hydration).
 	// The mirror was diffed against emdash 1.3.1 and re-diffed against 1.4.0 (1.4.0 only changed
 	// byline folding and dropped cacheHint.lastModified; WHERE / ORDER BY / locale are unchanged and
-	// the light query does no byline hydration). Widening this range is a
+	// the light query does no byline hydration). Re-diffed against 1.5.0: the byline fold gained a
+	// fieldsVersion key, taxonomy filters use a JSON IN list past SQL_BATCH_SIZE, id-filtered queries
+	// add a unary + index pin, and single-entry reads fold titleField; the plain collection query
+	// (deleted_at IS NULL, status, locale, ORDER BY) is unchanged. Widening this range is a
 	// deliberate act: re-diff `emdash` loader.ts against homepage-entries.ts first.
-	const SUPPORTED = { min: [1, 4, 0], belowMinor: [1, 5] } as const;
-	it('installed emdash is within the range the mirror was verified against (>=1.4.0 <1.5.0)', () => {
+	const SUPPORTED = { min: [1, 4, 0], belowMinor: [1, 6] } as const;
+	it('installed emdash is within the range the mirror was verified against (>=1.4.0 <1.6.0)', () => {
 		const pkg = JSON.parse(
 			readFileSync(fileURLToPath(new URL('../node_modules/emdash/package.json', import.meta.url)), 'utf8'),
 		) as { version: string };
@@ -179,7 +182,7 @@ describe('homepage light query: EmDash loader drift tripwire', () => {
 			(minor > SUPPORTED.min[1] || (minor === SUPPORTED.min[1] && patch >= SUPPORTED.min[2]));
 		assert.ok(
 			ok,
-			`emdash ${pkg.version} is outside >=1.4.0 <1.5.0. Re-diff node_modules/emdash loader (collection query: locale, status, deleted_at, ORDER BY, byline hydration) against src/lib/content/homepage-entries.ts, then update this range.`,
+			`emdash ${pkg.version} is outside >=1.4.0 <1.6.0. Re-diff node_modules/emdash loader (collection query: locale, status, deleted_at, ORDER BY, byline hydration) against src/lib/content/homepage-entries.ts, then update this range.`,
 		);
 	});
 });

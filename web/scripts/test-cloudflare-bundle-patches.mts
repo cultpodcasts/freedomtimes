@@ -67,8 +67,8 @@ describe('cloudflare bundle patches', () => {
 	});
 
 	it('FAILS when installed package is outside the range an obsolete patch was verified for', () => {
-		const r = applyBundlePatches(bundle(), { emdash: '1.5.0', '@astrojs/cloudflare': '14.4.3' });
-		assert.match(r.errors.join('\n'), /verified for emdash >=1\.3\.1 <1\.5 but 1\.5\.0 is installed/);
+		const r = applyBundlePatches(bundle(), { emdash: '1.6.0', '@astrojs/cloudflare': '14.4.3' });
+		assert.match(r.errors.join('\n'), /verified for emdash >=1\.3\.1 <1\.6 but 1\.6\.0 is installed/);
 		const r2 = applyBundlePatches(bundle(), { emdash: '1.4.0' });
 		assert.match(r2.errors.join('\n'), /@astrojs\/cloudflare is not installed/);
 	});
