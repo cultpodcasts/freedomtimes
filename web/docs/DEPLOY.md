@@ -34,7 +34,7 @@
 
 **Production gating (GitHub environment `production`, #141 thread 412).** The production job declares `environment: production`, which is configured in the repo settings as follows:
 - **Deployment branches:** custom policy, `main` only. A run from any other branch cannot use the environment or its secrets.
-- **Required reviewer:** `cultpodcasts` (Jon). Every production run waits at **Review deployments** until Jon approves it. Nothing (backup, migrate or deploy) runs before that approval.
+- **Required reviewer:** `cultpodcasts` (Jon). Every production run waits at **Review deployments** until Jon approves it. Nothing (backup, migrate or deploy) runs before that approval. Agents never approve the production Review deployments gate; only Jon does.
 - **Prevent self-review:** off. Jon merges as `cultpodcasts`, so turning it on would stop him approving his own merges.
 - **Environment secrets:** `TURSO_PRODUCTION_EMDASH_DB_URL`, the only secret used by nothing but this job. `scripts/set-github-secrets.ps1` syncs it to the environment (`gh secret set NAME --env production`), never to the repo. An environment secret shadows a repo secret with the same name. The other production secrets this job reads (`TURSO_TOKEN`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN`, `PUSH_PRODUCTION_*`, `TF_VAR_CLOUDFLARE_*`) stay repo-level, because `terraform-production.yml` (and, for `TF_VAR_CLOUDFLARE_*`, the staging jobs) read them too.
 
@@ -288,10 +288,10 @@ SELECT name FROM _emdash_migrations WHERE name >= '090' ORDER BY name;
 
 | Database | Checked | `q092_kv_rows` | `q095_uidx_rows` | `_plugin_storage` total | `_plugin_indexes` total | Applied up to |
 |---|---|---|---|---|---|---|
-| `freedomtimes-emdash-staging` | 15 Nov 2026, about 22:25 GMT (agent, read-only) | 0 | 0 | 0 | 0 | `091_redirect_artifacts` (092–097 pending) |
-| `freedomtimes-emdash-production` | **Jon to run** the same queries against `freedomtimes-emdash-production` before approving the production deployment | – | – | – | – | – |
+| `freedomtimes-emdash-staging` | 15 Nov 2026, about 22:25 GMT (agent, read-only) | 0 | 0 | 0 | 0 | `091_redirect_artifacts` (092–097 pending; applied by the PR #194 staging deploy at 23:52 GMT, `Pending: none`) |
+| `freedomtimes-emdash-production` | 15 Nov 2026, 23:58 GMT (agent, read-only SELECT via `turso db shell`, at Jon's request on PR #194) | 0 | 0 | 0 | 0 | `091_redirect_artifacts` (092–097 pending) |
 
-Agents do not run this against production. Jon runs it, read-only, before he approves the **Review deployments** gate of the production job ([§ Production gating](#standard-path-github-actions-deploy-workeryml)).
+Against production this is SELECT-only and runs only when Jon asks for it; he checks the result before he approves the **Review deployments** gate of the production job ([§ Production gating](#standard-path-github-actions-deploy-workeryml)). Agents never approve the production Review deployments gate; only Jon does.
 
 **If both production counts are 0**, 092 and 095 are no-ops (they find no rows and create no indexes). The standard backup → migrate → deploy order is then safe for this upgrade, and the merge can go through the normal production job.
 
