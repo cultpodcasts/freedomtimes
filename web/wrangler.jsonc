@@ -152,7 +152,7 @@
 				// page cache must stay off here. Never set "on" for staging.
 				"PAGE_CACHE": "off",
 				// Staging never sends. The allow flag is production-only, and the handler dry-runs without it.
-				"X_AUTO_POST_MODE": "dry-run"
+				"X_AUTO_POST_MODE": "off"
 			}
 		}
 	}
