@@ -247,6 +247,7 @@ Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only
 
 ## Table of contents
 
+- [EmDash 1.5.0 upgrade (migrations 092–097)](#emdash-150-upgrade-migrations-092097)
 - [For AI agents](#for-ai-agents)
 - [Local deploy scripts](#local-deploy-scripts)
 - [When NOT to use these scripts](#when-not-to-use-these-scripts) *(in Local deploy scripts section)*
@@ -264,6 +265,47 @@ Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only
 
 ---
 
+## EmDash 1.5.0 upgrade (migrations 092–097)
+
+EmDash 1.5.0 ([PR #194](https://github.com/cultpodcasts/freedomtimes/pull/194)) adds core migrations `092_plugin_kv_options`, `093_menu_item_orphans`, `094_media_usage_file_url_reindex`, `095_plugin_storage_unique_scope`, `096_revision_kind_and_editors` and `097_room_storage`. The 1.5.0 notes say 092 must not run while older builds still serve traffic (no rolling deploy), and that 095 needs a maintenance window. The standard path ([§ Standard path](#standard-path-github-actions-deploy-workeryml)) does not take a window: it runs backup, then `emdash migrate`, then `wrangler deploy`, while the old Worker (and its crons) keeps serving until the deploy. That order is safe for Freedom Times **only if both migrations have nothing to move**, which the read-only queries below check.
+
+**What the two migrations touch** (from `node_modules/emdash/dist/runner-*.mjs`, 1.5.0):
+
+- **092** copies `_plugin_storage` rows where `collection = '__kv'` and `substr(id, 1, 9) <> 'settings:'` (sandboxed plugin KV) into `options`. It touches nothing else.
+- **095** rewrites only the `_plugin_indexes` rows where `index_name LIKE 'uidx_plugin_%'` (plugin storage unique indexes), and the matching indexes on `_plugin_storage`.
+
+All three Freedom Times plugins are `format: 'native'` (no `sandboxed: []`), and none declares `storage` indexes. So both counts should be 0.
+
+**Read-only check (SELECT only, no writes).** Save as a `.sql` file and run `turso db shell <db> < file.sql` (on Windows: `wsl bash -lic 'turso db shell <db> < /mnt/c/.../file.sql'`):
+
+```sql
+SELECT 'q092_kv_rows' AS k, COUNT(*) AS n FROM _plugin_storage WHERE collection = '__kv' AND substr(id, 1, 9) <> 'settings:'
+UNION ALL SELECT 'q095_uidx_rows', COUNT(*) FROM _plugin_indexes WHERE index_name LIKE 'uidx_plugin_%'
+UNION ALL SELECT 'plugin_storage_total', COUNT(*) FROM _plugin_storage
+UNION ALL SELECT 'plugin_indexes_total', COUNT(*) FROM _plugin_indexes;
+SELECT name FROM _emdash_migrations WHERE name >= '090' ORDER BY name;
+```
+
+| Database | Checked | `q092_kv_rows` | `q095_uidx_rows` | `_plugin_storage` total | `_plugin_indexes` total | Applied up to |
+|---|---|---|---|---|---|---|
+| `freedomtimes-emdash-staging` | 15 Nov 2026, about 22:25 GMT (agent, read-only) | 0 | 0 | 0 | 0 | `091_redirect_artifacts` (092–097 pending) |
+| `freedomtimes-emdash-production` | **Jon to run** the same queries against `freedomtimes-emdash-production` before approving the production deployment | – | – | – | – | – |
+
+Agents do not run this against production. Jon runs it, read-only, before he approves the **Review deployments** gate of the production job ([§ Production gating](#standard-path-github-actions-deploy-workeryml)).
+
+**If both production counts are 0**, 092 and 095 are no-ops (they find no rows and create no indexes). The standard backup → migrate → deploy order is then safe for this upgrade, and the merge can go through the normal production job.
+
+**If either production count is non-zero**, do not approve the production job. Use a maintenance window instead:
+
+1. Agree the window with Jon. Keep the PR unmerged until then (or merge, and leave the production run waiting at **Review deployments** until the window starts).
+2. At the start of the window, stop writes through the old Worker: no editor or agent publishes, edits or changes plugin settings until step 5 (publishing is what fires the auto-post and social-share hooks). The job takes the verified backup as usual.
+3. Approve the production job (or run `deploy-production-local.ps1 -WorkerOnly -AllowProduction`). It backs up, runs `emdash migrate` (092–097), then deploys 1.5.0.
+4. Check the migration log for `[plugin-kv-migration] Conflicting KV values` warnings (092) and any `Failed to scope plugin storage unique index` error (095). On an error, follow [§ If the production job fails](#if-the-production-job-fails): restore from the run's `prod-rollback-*` branch rather than re-running migrate by hand.
+5. Smoke-test the site and the editor, then end the window.
+
+Staging follows the same rule: its counts are 0, so its normal PR deploy (backup branch, migrate, deploy) is fine.
+
+---
 ## EmDash MCP failure (AI agents)
 
 ### Symptom
