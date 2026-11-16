@@ -227,7 +227,7 @@ describe('plugin registration', () => {
 		assert.match(production, /"X_AUTO_POST_MODE": "dry-run"/);
 		assert.doesNotMatch(production, /X_AUTO_POST_ALLOW_SEND/);
 		assert.doesNotMatch(production, /X_AUTO_POST_NOTIFY_TO/);
-		assert.match(staging, /"X_AUTO_POST_MODE": "dry-run"/);
+		assert.match(staging, /"X_AUTO_POST_MODE": "off"/);
 		assert.doesNotMatch(staging, /X_AUTO_POST_ALLOW_SEND/);
 	});
 });

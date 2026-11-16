@@ -11,7 +11,7 @@ Remove-Item Env:GITHUB_ACTIONS, Env:GITHUB_STEP_SUMMARY -ErrorAction SilentlyCon
 . "$PSScriptRoot/resolve-turso-build-credentials.ps1"
 
 # #147: several functions under test warn on purpose (a 31-char stub CLOUDFLARE_API_TOKEN, a
-# production-looking process TURSO_DATABASE_URL), and a runner without nvm 22.22.2 warns from
+# production-looking process TURSO_DATABASE_URL), and a runner without nvm 22.23.5 warns from
 # Initialize-DeployEnvironment. Printed as "WARNING:" in the No-secrets guards step of a
 # production deploy they look like real config problems. Capture the warning stream instead:
 # expected warnings are asserted on, incidental ones are echoed as a plain "[guard test env]" line.
@@ -384,13 +384,13 @@ Assert-True ($epochOnly -eq [datetime]::MinValue) "epoch mtime without createdAt
 Remove-Item -LiteralPath $metaPath -Force -ErrorAction SilentlyContinue
 
 if (-not $IsWindows) {
-    Write-Host "=== Initialize-LinuxNvmNodePath prepends nvm 22.22.2 ==="
+    Write-Host "=== Initialize-LinuxNvmNodePath prepends nvm 22.23.5 ==="
     $tmpRoot = $env:TMPDIR
     if ([string]::IsNullOrWhiteSpace($tmpRoot)) {
         $tmpRoot = "/tmp"
     }
     $tmp = Join-Path $tmpRoot "nvm-deploy-guard-test"
-    $bin = Join-Path $tmp "versions/node/v22.22.2/bin"
+    $bin = Join-Path $tmp "versions/node/v22.23.5/bin"
     New-Item -ItemType Directory -Force -Path $bin | Out-Null
     Set-Content -LiteralPath (Join-Path $bin "node") -Value ""
     $prevNvm = $env:NVM_DIR
@@ -400,7 +400,7 @@ if (-not $IsWindows) {
         $env:PATH = "/exec-daemon:/usr/bin"
         Initialize-LinuxNvmNodePath
         $prefix = $bin + [IO.Path]::PathSeparator
-        Assert-True ($env:PATH.StartsWith($prefix, [StringComparison]::Ordinal)) "prepends nvm 22.22.2 bin ahead of /exec-daemon"
+        Assert-True ($env:PATH.StartsWith($prefix, [StringComparison]::Ordinal)) "prepends nvm 22.23.5 bin ahead of /exec-daemon"
     }
     finally {
         if ($null -eq $prevNvm) { Remove-Item Env:NVM_DIR -ErrorAction SilentlyContinue } else { $env:NVM_DIR = $prevNvm }

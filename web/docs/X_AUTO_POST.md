@@ -23,7 +23,7 @@ Production `X_AUTO_POST_MODE` is `dry-run`, so a publish only logs the intent li
 - `SITE_ACCESS_MODE=public` (the production Worker)
 - `X_AUTO_POST_ALLOW_SEND=yes` (set only in the production env block)
 
-Locked staging, local dev, and a staging smoke test that flips `SITE_ACCESS_MODE` to `public` all dry-run, because they do not have the allow flag. A leftover `intent` value (the retired email path) also dry-runs. To stop production without a code change, set `X_AUTO_POST_MODE` to `off` or remove `X_AUTO_POST_ALLOW_SEND`.
+Staging never posts to X or Bluesky: its `X_AUTO_POST_MODE` is `off`, so the handler skips entirely (no dry-run log either), and it has no allow flag. Local dev, and a staging smoke test that flips `SITE_ACCESS_MODE` to `public` without the allow flag, dry-run at most. A leftover `intent` value (the retired email path) also dry-runs. To stop production without a code change, set `X_AUTO_POST_MODE` to `off` or remove `X_AUTO_POST_ALLOW_SEND`.
 
 Dry-run log line, once per network: `dry-run <network> <post id> (<length>) <intent URL>`.
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { BUNDLE_PATCHES, applyBundlePatches, versionInRange } from './lib/cloudflare-bundle-patches.mjs';
@@ -67,8 +68,8 @@ describe('cloudflare bundle patches', () => {
 	});
 
 	it('FAILS when installed package is outside the range an obsolete patch was verified for', () => {
-		const r = applyBundlePatches(bundle(), { emdash: '1.5.0', '@astrojs/cloudflare': '14.4.3' });
-		assert.match(r.errors.join('\n'), /verified for emdash >=1\.3\.1 <1\.5 but 1\.5\.0 is installed/);
+		const r = applyBundlePatches(bundle(), { emdash: '1.6.0', '@astrojs/cloudflare': '14.4.3' });
+		assert.match(r.errors.join('\n'), /verified for emdash >=1\.3\.1 <1\.6 but 1\.6\.0 is installed/);
 		const r2 = applyBundlePatches(bundle(), { emdash: '1.4.0' });
 		assert.match(r2.errors.join('\n'), /@astrojs\/cloudflare is not installed/);
 	});
@@ -88,5 +89,25 @@ describe('cloudflare bundle patches', () => {
 		assert.equal(versionInRange('1.3.0', { min: '1.3.1', belowMinor: '1.4' }), false);
 		assert.equal(versionInRange('1.4.0', { min: '1.3.1', belowMinor: '1.4' }), false);
 		assert.equal(versionInRange('14.4.2', { min: '14.0.0', belowMinor: '15.0' }), true);
+	});
+});
+
+// EmDash 1.5.0 release notes: keep emdash and @emdash-cms/cloudflare on the same version and
+// update them together (the adapter peer-pins emdash exactly). Both are exact pins in package.json.
+describe('emdash / @emdash-cms/cloudflare version lockstep', () => {
+	const readJson = (path: string | URL) => JSON.parse(readFileSync(path, 'utf8'));
+
+	it('package.json pins both to the same exact version', () => {
+		const pkg = readJson(new URL('../package.json', import.meta.url));
+		const core = pkg.dependencies?.emdash;
+		const adapter = pkg.dependencies?.['@emdash-cms/cloudflare'];
+		assert.match(core ?? '', /^\d+\.\d+\.\d+$/, 'emdash must be an exact version pin');
+		assert.equal(adapter, core, '@emdash-cms/cloudflare must pin the same version as emdash');
+	});
+
+	it('installed versions match', () => {
+		const core = readJson(new URL('../node_modules/emdash/package.json', import.meta.url)).version;
+		const adapter = readJson(new URL('../node_modules/@emdash-cms/cloudflare/package.json', import.meta.url)).version;
+		assert.equal(adapter, core);
 	});
 });

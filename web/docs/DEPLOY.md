@@ -24,7 +24,7 @@
 **This is the one place that defines the standard web Worker deploy.** Other docs link here.
 
 1. Push a branch to `cultpodcasts/freedomtimes` and open a PR to `main`. The PR does **not** edit the version: each deploy stamps its own ([§ Build version](#build-version-stamped-at-deploy-time), [#168](https://github.com/cultpodcasts/freedomtimes/issues/168)). Docs-only changes (`*.md`, `web/docs/**`) and native-shell changes (`web/android/**`, `web/ios/**`) do not run this workflow; script and workflow changes still deploy staging on the PR.
-2. Job **Deploy Worker to Staging** (`.github/workflows/deploy-worker.yml`, GitHub environment `staging`) runs on every PR push from a branch of this repo (forks and Dependabot never deploy). Before any secret-bearing step it runs the no-secrets guards (`scripts/ci-check-no-public-backups.mjs` and `scripts/test-deploy-cloud-agent-guards.ps1`, also run on every PR and push by `.github/workflows/ci-guards.yml`). A passing guard run prints no `WARNING:` lines: the warnings its fixtures trigger on purpose (a 31-char stub `CLOUDFLARE_API_TOKEN`, a production-looking process `TURSO_DATABASE_URL`) are captured and asserted, and `[guard test env]` lines are notes about the runner (for example no nvm Node 22.22.2), not deploy problems ([#147](https://github.com/cultpodcasts/freedomtimes/issues/147)). It then runs the same script as local: `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -TursoBranchBackup` (push-secrets preflight, staging backup as Turso branch `staging-rollback-YYYYMMDD-HHMMSS`, build with Turso creds from `terraform output` of the staging workspace, `emdash migrate`, `wrangler deploy`, `--check`, secret-name verify). The job summary lists the backup branch and `wrangler deployments` (the new version id). Check https://staging.freedomtimes.news (still behind the Auth0 lock).
+2. Job **Deploy Worker to Staging** (`.github/workflows/deploy-worker.yml`, GitHub environment `staging`) runs on every PR push from a branch of this repo (forks and Dependabot never deploy). Before any secret-bearing step it runs the no-secrets guards (`scripts/ci-check-no-public-backups.mjs` and `scripts/test-deploy-cloud-agent-guards.ps1`, also run on every PR and push by `.github/workflows/ci-guards.yml`). A passing guard run prints no `WARNING:` lines: the warnings its fixtures trigger on purpose (a 31-char stub `CLOUDFLARE_API_TOKEN`, a production-looking process `TURSO_DATABASE_URL`) are captured and asserted, and `[guard test env]` lines are notes about the runner (for example no nvm Node 22.23.5), not deploy problems ([#147](https://github.com/cultpodcasts/freedomtimes/issues/147)). It then runs the same script as local: `pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -TursoBranchBackup` (push-secrets preflight, staging backup as Turso branch `staging-rollback-YYYYMMDD-HHMMSS`, build with Turso creds from `terraform output` of the staging workspace, `emdash migrate`, `wrangler deploy`, `--check`, secret-name verify). The job summary lists the backup branch and `wrangler deployments` (the new version id). Check https://staging.freedomtimes.news (still behind the Auth0 lock).
 3. The operator (Jon) merges the PR. Agents never merge.
 4. Job **Backup + Deploy Worker to Production** (environment `production`) runs on the push to `main` **when the merge changes something that ships in the Worker**: `web/**` except docs (`*.md`, `web/docs/**`), web tests (`web/scripts/test-*.mts`, `web/scripts/**/*.test.mjs`, `web/scripts/fixtures/**`), native shells (`web/android/**`, `web/ios/**`) and `web/.vscode/**`. A merge that only changes those, deploy tooling (`scripts/**`) or the workflow itself runs no production backup or deploy; it ships with the next Worker change (#168). If such a change must reach production sooner, Jon runs the [local fallback](#deploy-production-localps1) (`deploy-production-local.ps1 -WorkerOnly -AllowProduction`) or waits for the next `web/**` merge; do not add a dispatch trigger or a no-op web edit to force a run. It runs in this order. Each step runs only if the one before it passed, so nothing is migrated or deployed unless the backup is verified:
    1. Checkout, Node, the no-secrets guards (as for staging), `npm ci`, and the pinned Turso CLI (`scripts/ci-install-turso-cli.sh`: fixed release, sha256-checked). None of these steps gets a secret.
@@ -34,7 +34,7 @@
 
 **Production gating (GitHub environment `production`, #141 thread 412).** The production job declares `environment: production`, which is configured in the repo settings as follows:
 - **Deployment branches:** custom policy, `main` only. A run from any other branch cannot use the environment or its secrets.
-- **Required reviewer:** `cultpodcasts` (Jon). Every production run waits at **Review deployments** until Jon approves it. Nothing (backup, migrate or deploy) runs before that approval.
+- **Required reviewer:** `cultpodcasts` (Jon). Every production run waits at **Review deployments** until Jon approves it. Nothing (backup, migrate or deploy) runs before that approval. Agents never approve the production Review deployments gate; only Jon does.
 - **Prevent self-review:** off. Jon merges as `cultpodcasts`, so turning it on would stop him approving his own merges.
 - **Environment secrets:** `TURSO_PRODUCTION_EMDASH_DB_URL`, the only secret used by nothing but this job. `scripts/set-github-secrets.ps1` syncs it to the environment (`gh secret set NAME --env production`), never to the repo. An environment secret shadows a repo secret with the same name. The other production secrets this job reads (`TURSO_TOKEN`, `TURSO_PRODUCTION_EMDASH_DB_TOKEN`, `PUSH_PRODUCTION_*`, `TF_VAR_CLOUDFLARE_*`) stay repo-level, because `terraform-production.yml` (and, for `TF_VAR_CLOUDFLARE_*`, the staging jobs) read them too.
 
@@ -76,7 +76,7 @@ Look at which step failed in the run:
 
 Read **`AGENTS.md`** first, then [§ Standard path](#standard-path-github-actions-deploy-workeryml) (web Worker deploys go through a PR), then this section if you need a local script, then run **one** script from the decision table below.
 
-**Cloud Agents (Linux VM):** a **full staging stack** (Terraform + workers) is `pwsh ./scripts/deploy-staging-local.ps1` with **no** `-WorkerOnly` / `-WorkersOnly`. A **full production stack** (operator must ask) is `pwsh ./scripts/deploy-production-local.ps1` with **no** `-WorkerOnly`. Do not take the WorkerOnly path because this table also lists those flags. Do not repeat remaps by hand. Full deploy inits Terraform when `.terraform` is missing, retries apply once on plugin/lockfile mismatch (or missing providers), remaps `TF_TOKEN_APP_TERRAFORM_IO` and a short `CLOUDFLARE_API_TOKEN` stub, skips a production process Turso URL/token (`IgnoredProcessProductionShadow` even when Terraform URL wins), and prepends nvm Node **22.22.2** (throws on this VM if missing while `/exec-daemon` is on PATH). Staging `/` 1–3s with `Server-Timing` is success; a hang is 0-byte pending. If GitHub Apply to Staging / Android / iOS fail in ~3s with empty steps, that is an Actions billing lock (CA-09), not empty YAML; tell the operator, because the standard deploy also needs Actions. If a helper still fails: **`AGENTS.md`** Cloud Agents — do not write production Turso into `.env.dev`.
+**Cloud Agents (Linux VM):** a **full staging stack** (Terraform + workers) is `pwsh ./scripts/deploy-staging-local.ps1` with **no** `-WorkerOnly` / `-WorkersOnly`. A **full production stack** (operator must ask) is `pwsh ./scripts/deploy-production-local.ps1` with **no** `-WorkerOnly`. Do not take the WorkerOnly path because this table also lists those flags. Do not repeat remaps by hand. Full deploy inits Terraform when `.terraform` is missing, retries apply once on plugin/lockfile mismatch (or missing providers), remaps `TF_TOKEN_APP_TERRAFORM_IO` and a short `CLOUDFLARE_API_TOKEN` stub, skips a production process Turso URL/token (`IgnoredProcessProductionShadow` even when Terraform URL wins), and prepends nvm Node **22.23.5** (throws on this VM if missing while `/exec-daemon` is on PATH). Staging `/` 1–3s with `Server-Timing` is success; a hang is 0-byte pending. If GitHub Apply to Staging / Android / iOS fail in ~3s with empty steps, that is an Actions billing lock (CA-09), not empty YAML; tell the operator, because the standard deploy also needs Actions. If a helper still fails: **`AGENTS.md`** Cloud Agents — do not write production Turso into `.env.dev`.
 
 **Script entry points (repo root, `pwsh`):**
 
@@ -159,7 +159,7 @@ Entry points live under `scripts/`. Shared helpers are in `Deploy-EnvironmentCom
 ### Prerequisites (all local deploy scripts)
 
 - Repo-root `.env.dev` populated (see [`.env.dev.example`](../../.env.dev.example), [ENVIRONMENT_SETUP.md](../../ENVIRONMENT_SETUP.md))
-- `pwsh` (PowerShell 7+), Node **>=22.22.2** / npm in `web/` (EmDash 0.35 needs `registerHooks`; 22.14.0 is not enough), wrangler auth (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
+- `pwsh` (PowerShell 7+), Node **>=22.23.5** / npm in `web/` (EmDash 0.35 needs `registerHooks`; 22.14.0 is not enough), wrangler auth (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
 - Push secret preflight runs first on staging and production deploy scripts (VAPID + FCM — see [FCM keys (deploy preflight)](#fcm-keys-deploy-preflight))
 
 ### `deploy-staging-local.ps1`
@@ -247,6 +247,7 @@ Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only
 
 ## Table of contents
 
+- [EmDash 1.5.0 upgrade (migrations 092–097)](#emdash-150-upgrade-migrations-092097)
 - [For AI agents](#for-ai-agents)
 - [Local deploy scripts](#local-deploy-scripts)
 - [When NOT to use these scripts](#when-not-to-use-these-scripts) *(in Local deploy scripts section)*
@@ -264,6 +265,47 @@ Dot-sourced by `deploy-staging-local.ps1` and `deploy-production-local.ps1` only
 
 ---
 
+## EmDash 1.5.0 upgrade (migrations 092–097)
+
+EmDash 1.5.0 ([PR #194](https://github.com/cultpodcasts/freedomtimes/pull/194)) adds core migrations `092_plugin_kv_options`, `093_menu_item_orphans`, `094_media_usage_file_url_reindex`, `095_plugin_storage_unique_scope`, `096_revision_kind_and_editors` and `097_room_storage`. The 1.5.0 notes say 092 must not run while older builds still serve traffic (no rolling deploy), and that 095 needs a maintenance window. The standard path ([§ Standard path](#standard-path-github-actions-deploy-workeryml)) does not take a window: it runs backup, then `emdash migrate`, then `wrangler deploy`, while the old Worker (and its crons) keeps serving until the deploy. That order is safe for Freedom Times **only if both migrations have nothing to move**, which the read-only queries below check.
+
+**What the two migrations touch** (from `node_modules/emdash/dist/runner-*.mjs`, 1.5.0):
+
+- **092** copies `_plugin_storage` rows where `collection = '__kv'` and `substr(id, 1, 9) <> 'settings:'` (sandboxed plugin KV) into `options`. It touches nothing else.
+- **095** rewrites only the `_plugin_indexes` rows where `index_name LIKE 'uidx_plugin_%'` (plugin storage unique indexes), and the matching indexes on `_plugin_storage`.
+
+All three Freedom Times plugins are `format: 'native'` (no `sandboxed: []`), and none declares `storage` indexes. So both counts should be 0.
+
+**Read-only check (SELECT only, no writes).** Save as a `.sql` file and run `turso db shell <db> < file.sql` (on Windows: `wsl bash -lic 'turso db shell <db> < /mnt/c/.../file.sql'`):
+
+```sql
+SELECT 'q092_kv_rows' AS k, COUNT(*) AS n FROM _plugin_storage WHERE collection = '__kv' AND substr(id, 1, 9) <> 'settings:'
+UNION ALL SELECT 'q095_uidx_rows', COUNT(*) FROM _plugin_indexes WHERE index_name LIKE 'uidx_plugin_%'
+UNION ALL SELECT 'plugin_storage_total', COUNT(*) FROM _plugin_storage
+UNION ALL SELECT 'plugin_indexes_total', COUNT(*) FROM _plugin_indexes;
+SELECT name FROM _emdash_migrations WHERE name >= '090' ORDER BY name;
+```
+
+| Database | Checked | `q092_kv_rows` | `q095_uidx_rows` | `_plugin_storage` total | `_plugin_indexes` total | Applied up to |
+|---|---|---|---|---|---|---|
+| `freedomtimes-emdash-staging` | 15 Nov 2026, about 22:25 GMT (agent, read-only) | 0 | 0 | 0 | 0 | `091_redirect_artifacts` (092–097 pending; applied by the PR #194 staging deploy at 23:52 GMT, `Pending: none`) |
+| `freedomtimes-emdash-production` | 15 Nov 2026, 23:58 GMT (agent, read-only SELECT via `turso db shell`, at Jon's request on PR #194) | 0 | 0 | 0 | 0 | `091_redirect_artifacts` (092–097 pending) |
+
+Against production this is SELECT-only and runs only when Jon asks for it; he checks the result before he approves the **Review deployments** gate of the production job ([§ Production gating](#standard-path-github-actions-deploy-workeryml)). Agents never approve the production Review deployments gate; only Jon does.
+
+**If both production counts are 0**, 092 and 095 are no-ops (they find no rows and create no indexes). The standard backup → migrate → deploy order is then safe for this upgrade, and the merge can go through the normal production job.
+
+**If either production count is non-zero**, do not approve the production job. Use a maintenance window instead:
+
+1. Agree the window with Jon. Keep the PR unmerged until then (or merge, and leave the production run waiting at **Review deployments** until the window starts).
+2. At the start of the window, stop writes through the old Worker: no editor or agent publishes, edits or changes plugin settings until step 5 (publishing is what fires the auto-post and social-share hooks). The job takes the verified backup as usual.
+3. Approve the production job (or run `deploy-production-local.ps1 -WorkerOnly -AllowProduction`). It backs up, runs `emdash migrate` (092–097), then deploys 1.5.0.
+4. Check the migration log for `[plugin-kv-migration] Conflicting KV values` warnings (092) and any `Failed to scope plugin storage unique index` error (095). On an error, follow [§ If the production job fails](#if-the-production-job-fails): restore from the run's `prod-rollback-*` branch rather than re-running migrate by hand.
+5. Smoke-test the site and the editor, then end the window.
+
+Staging follows the same rule: its counts are 0, so its normal PR deploy (backup branch, migrate, deploy) is fine.
+
+---
 ## EmDash MCP failure (AI agents)
 
 ### Symptom
@@ -686,7 +728,7 @@ pwsh ./scripts/deploy-production-local.ps1 -SkipTursoBackup
 | Warning: `Turso rejected the Terraform output turso_database_auth_token (<class>)` on a staging deploy | The staging Terraform JWT in state is stale or revoked; the `.env.dev` `TURSO_AUTH_TOKEN` still works | The deploy already used the `.env.dev` token for migrate (#140). Re-mint the Terraform token with a reviewed staging Terraform apply using `-replace=turso_database_token.emdash`; never `turso db tokens invalidate` (database-wide). A bare 404 (wrong `TURSO_DATABASE_URL` or deleted database) never falls back. If both tokens are rejected the deploy stops before migrate: mint a staging token (AGENTS.md CA-21) |
 | Terraform `Required plugins are not installed` / lockfile checksum mismatch on Linux | Fresh VM has no `.terraform`, or Linux `terraform init` added extra platform hashes | Full `deploy-*-local.ps1` inits when `.terraform` is missing and retries apply **once**. **Leave the lockfile dirty through apply**; scripts revert hash-only after success. Do **not** `git checkout` the lockfile before retry |
 | Terraform Cloud auth missing on Cloud Agent | Cursor secret is `TF_TOKEN_APP_TERRAFORM_IO`; CLI wants `TF_TOKEN_app_terraform_io` | `terraform-preflight.ps1` remaps the Cursor name. If it still fails, copy that secret into `TF_TOKEN_app_terraform_io` in process env (never print it) |
-| `EBADENGINE` / `npm ci` on Node 22.14 during Cloud VM deploy | `/exec-daemon/node` stays first on `PATH` after `nvm use` | Deploy prepends nvm **v22.22.2** and throws if that binary is missing while `/exec-daemon` is on PATH. `nvm install 22.22.2` and re-run `deploy-*-local.ps1` — do not rely on `nvm use` |
+| `EBADENGINE` / `npm ci` on Node 22.14 during Cloud VM deploy | `/exec-daemon/node` stays first on `PATH` after `nvm use` | Deploy prepends nvm **v22.23.5** and throws if that binary is missing while `/exec-daemon` is on PATH. `nvm install 22.23.5` and re-run `deploy-*-local.ps1` — do not rely on `nvm use` |
 | GitHub `Apply to Staging` / Android / iOS fail in ~3s with empty steps | Actions billing lock: `The job was not started because your account is locked due to a billing issue`. Empty `steps` is not empty YAML and is not this VM deploy | Not a code failure: do not patch those workflows. Tell the operator, who unlocks Actions billing; until then the standard `deploy-worker.yml` deploy cannot run either, so use the local fallback only if the operator asks (CA-09) |
 | Staging `/` takes 1–3s with `Server-Timing` | Cold isolate / first HTML after deploy | Success, not a hang. A hang is **0-byte pending** with no timing headers |
 | `punycode` deprecation | Node / wrangler noise | Ignore. A `[patch-cloudflare-bundle] ERROR` (build exit 1) is not noise: see [PATCH_CLOUDFLARE_BUNDLE.md](./PATCH_CLOUDFLARE_BUNDLE.md) |

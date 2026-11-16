@@ -1,4 +1,5 @@
 ---
+import type { ComponentProps } from 'astro/types';
 import { PortableText } from 'emdash/ui';
 import Audio from '../Audio.astro';
 import type { LegacyContentBlock, ProcessedPortableNode } from '../../lib/content/contentBlocks';
@@ -17,6 +18,11 @@ const {
 	/** User overrides for emdash/ui PortableText (`audio` / `embed` / `image` — youtube uses plugin). */
 	portableComponents: Record<string, unknown>;
 };
+
+// EmDash 1.5 type-checks <PortableText> props. Our processed nodes keep the
+// raw Portable Text arrays as unknown[]; cast at the render boundary.
+type PortableValue = ComponentProps<typeof PortableText>['value'];
+const pt = (value: unknown[]): PortableValue => value as PortableValue;
 ---
 
 {portableRenderNodes.length > 0 && (
@@ -25,10 +31,10 @@ const {
 			node.type === 'details' ? (
 				<details class="legacy-details translate">
 					<summary>{node.summary}</summary>
-					<PortableText value={node.value} components={portableComponents} />
+					<PortableText value={pt(node.value)} components={portableComponents} />
 				</details>
 			) : (
-				<PortableText value={node.value} components={portableComponents} />
+				<PortableText value={pt(node.value)} components={portableComponents} />
 			)
 		))}
 	</div>
@@ -37,7 +43,7 @@ const {
 	<div class="legacy-content">
 		{legacyBlocks.map((block) => (
 			block.type === 'portable' ? (
-				<PortableText value={block.value} components={portableComponents} />
+				<PortableText value={pt(block.value)} components={portableComponents} />
 			) : block.type === 'audio' ? (
 				<Audio value={block.value} />
 			) : block.type === 'image' ? (

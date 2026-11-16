@@ -90,7 +90,7 @@ function Set-DeploySkipTursoMutate {
 
 function Initialize-LinuxNvmNodePath {
     # Cloud VM: default node can be 22.14; /exec-daemon/node stays first on PATH
-    # after `nvm use`, so npm ci hits EBADENGINE. Prepend nvm 22.22.2.
+    # after `nvm use`, so npm ci hits EBADENGINE. Prepend nvm 22.23.5.
     if ($IsWindows -eq $true) {
         return
     }
@@ -99,10 +99,10 @@ function Initialize-LinuxNvmNodePath {
     }
 
     $nvmRoot = if (-not [string]::IsNullOrWhiteSpace($env:NVM_DIR)) { $env:NVM_DIR } else { Join-Path $env:HOME ".nvm" }
-    $binDir = Join-Path $nvmRoot "versions/node/v22.22.2/bin"
+    $binDir = Join-Path $nvmRoot "versions/node/v22.23.5/bin"
     $execDaemonOnPath = @($env:PATH -split [IO.Path]::PathSeparator | Where-Object { $_ -match "exec-daemon" }).Count -gt 0
     if (-not (Test-Path -LiteralPath (Join-Path $binDir "node"))) {
-        $msg = "nvm Node v22.22.2 not found at $binDir. /exec-daemon/node can shadow nvm and leave npm on 22.14 (EBADENGINE). Install with nvm, then re-run deploy — do not rely on ``nvm use`` alone."
+        $msg = "nvm Node v22.23.5 not found at $binDir. /exec-daemon/node can shadow nvm and leave npm on 22.14 (EBADENGINE). Install with nvm, then re-run deploy — do not rely on ``nvm use`` alone."
         if ($execDaemonOnPath) {
             throw $msg
         }
@@ -112,7 +112,7 @@ function Initialize-LinuxNvmNodePath {
 
     $segments = @($env:PATH -split [IO.Path]::PathSeparator | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     $env:PATH = $binDir + [IO.Path]::PathSeparator + (($segments | Where-Object { $_ -ne $binDir }) -join [IO.Path]::PathSeparator)
-    Write-Host "Prepended nvm Node v22.22.2 ahead of PATH (beats /exec-daemon/node)." -ForegroundColor DarkGray
+    Write-Host "Prepended nvm Node v22.23.5 ahead of PATH (beats /exec-daemon/node)." -ForegroundColor DarkGray
 }
 
 function Test-DeployTerraformPluginCacheMismatch {
