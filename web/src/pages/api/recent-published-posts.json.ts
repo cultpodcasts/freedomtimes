@@ -73,7 +73,7 @@ export const GET: APIRoute = async ({ cookies, request, url }) => {
         );
       }
 
-      const imagePath = await readArticleNotificationImagePath(entry, siteOrigin);
+      const imagePath = await readArticleNotificationImagePath(entry);
       const image =
         imagePath === null
           ? null

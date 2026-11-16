@@ -14,16 +14,23 @@
  *   C --> ALT
  *   N --> ALT
  *   ALT["sync resolveHeroImage alt = field.alt → legacy &lt;field&gt;_alt → other legacy _alt → '&lt;title&gt; featured image'"]
- *   ALT -. empty/generic only .-> ASYNC["async resolveHeroImageAltFromMediaWith: Turso media.alt → same-origin media API (#133)"]
+ *   ALT -. empty/generic only .-> ASYNC["async resolveHeroImageAltFromMediaWith: Turso media.alt, bounded (#133, #195)"]
  * ```
  *
  * The post stores a snapshot of alt when the image is picked. Sync {@link resolveHeroImage}
  * never reads the media library. When that snapshot is empty/generic,
  * {@link resolveHeroImageAltFromMediaWith} can fill from the media library row (#133). That
  * lookup must never reject: it runs from component frontmatter after the 200 headers (#123).
+ *
+ * #195: there is no HTTP fallback. It used to fetch `${origin}/_emdash/api/media/<id>` when Turso
+ * had no alt. That is a Worker → own-hostname subrequest, which Cloudflare cannot route back to the
+ * Worker: it failed with a 522 after ~20 s on every uncached render of a page whose hero has no alt.
+ * The media API reads the same Turso row anyway. The Turso read is capped by
+ * {@link timedRenderLookup} and logs when slow.
  */
 import { readImageAlt } from './imageAlt';
 import { readImageFieldMediaId, readMediaValueSrc, readTrimmedString } from './mediaValue';
+import { timedRenderLookup, type RenderLookupOptions } from './renderLookup';
 
 /** Slice of a libsql client used for the hero media.alt lookup (`@libsql/client/web` satisfies it). */
 export type HeroImageQueryClient = {
@@ -80,35 +87,17 @@ export function resolveHeroImage(data: Record<string, unknown>, title: string): 
 
 const LOG_PREFIX = '[contentEntry] resolveHeroImageAltFromMedia';
 
-async function fetchMediaAltFromApi(origin: string, mediaId: string): Promise<string | null> {
-	const base = origin.replace(/\/$/, '');
-	try {
-		const r = await fetch(`${base}/_emdash/api/media/${encodeURIComponent(mediaId)}`, {
-			headers: { Accept: 'application/json' },
-		});
-		if (!r.ok) return null;
-		const j = (await r.json()) as {
-			data?: { item?: { alt?: string | null } };
-			item?: { alt?: string | null };
-		};
-		const item = j.data?.item ?? j.item;
-		const alt = item && typeof item.alt === 'string' ? item.alt.trim() : '';
-		return alt.length > 0 ? alt : null;
-	} catch {
-		return null;
-	}
-}
-
 /**
  * When the hero has no stored alt (only the generic `"<title> featured image"`), look up `media.alt`
- * by the rendered field's media id (#133). Never rejects: failures keep `currentAlt`.
+ * by the rendered field's media id (#133). Never rejects: failures, a missing client, an empty
+ * library alt or a timeout keep `currentAlt`. Never makes an HTTP request (#195).
  */
 export async function resolveHeroImageAltFromMediaWith(
 	createClient: HeroImageClientFactory,
 	data: Record<string, unknown>,
 	title: string,
 	currentAlt: string,
-	options?: { origin?: string },
+	lookupOptions?: RenderLookupOptions,
 ): Promise<string> {
 	try {
 		if (storedHeroImageAlt(currentAlt, title)) return currentAlt;
@@ -122,27 +111,27 @@ export async function resolveHeroImageAltFromMediaWith(
 		try {
 			client = createClient();
 		} catch (err) {
-			console.error(`${LOG_PREFIX}: libsql client creation failed; trying media API`, err);
+			console.error(`${LOG_PREFIX}: libsql client creation failed; keeping snapshot/generic alt`, err);
 		}
 
 		if (client) {
 			try {
-				const res = await client.execute({
-					sql: 'select alt from media where id = ? limit 1',
-					args: [mediaId],
-				});
+				const queryClient = client;
+				const res = await timedRenderLookup(
+					'hero_alt.media',
+					() =>
+						queryClient.execute({
+							sql: 'select alt from media where id = ? limit 1',
+							args: [mediaId],
+						}),
+					lookupOptions,
+				);
 				const row = res.rows[0] as Record<string, unknown> | undefined;
 				const alt = row && typeof row.alt === 'string' ? row.alt.trim() : '';
 				if (alt.length > 0) return alt;
 			} catch (err) {
 				console.error(`${LOG_PREFIX}: Turso media alt lookup failed`, err);
 			}
-		}
-
-		const origin = options?.origin?.trim();
-		if (origin) {
-			const fromApi = await fetchMediaAltFromApi(origin, mediaId);
-			if (fromApi) return fromApi;
 		}
 	} catch (err) {
 		console.error(`${LOG_PREFIX}: unexpected failure; keeping snapshot/generic alt`, err);

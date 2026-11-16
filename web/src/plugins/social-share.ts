@@ -65,7 +65,6 @@ function sharePanelRoute<TConfig, TDraft extends ShareDraftBase>(provider: Share
 							if (item.slug && typeof data.slug !== 'string') data.slug = item.slug;
 							const imagePath = await readArticleNotificationImagePath(
 								{ id: item.id, data, seo: item.seo } as { id: string; data: Record<string, unknown> },
-								siteOrigin,
 							);
 							const cardImageUrl = imagePath ? absoluteCardImageUrl(imagePath, siteOrigin) : null;
 							return snapshotFromContentItem(item, { siteOrigin, cardImageUrl });

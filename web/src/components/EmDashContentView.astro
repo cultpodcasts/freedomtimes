@@ -93,17 +93,15 @@ const {
 	primaryByline,
 	primaryBylineUrl,
 } = viewModel;
-// #133: empty snapshot alt → media library alt (never throws).
+// #133: empty snapshot alt → media library alt (never throws; Turso only, bounded, #195).
 const featuredImageAlt = await enrichHeroImageAlt(
 	entry.data,
 	title,
 	viewModel.featuredImageAlt,
-	{ origin: Astro.url.origin },
 );
 const entryRecord = entry as Record<string, unknown>;
 const seoRecord = readEntrySeoRecord(entryRecord);
 const socialImage = await resolveSocialImage(entry.data, seoRecord, {
-	origin: Astro.url.origin,
 	emdashSeoLookup: {
 		collection: emdashCollection,
 		contentId: String(entry.id ?? ""),

@@ -140,8 +140,15 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   `EmDashContentView` does this (social image `media` / `_emdash_seo` lookups fall
   back to the hero image; empty/generic hero alt may fill from `media.alt` via
   `enrichHeroImageAlt` / `resolveHeroImageAltFromMediaWith` (#133), never-reject —
-  Turso then same-origin media API — pinned by `scripts/test-hero-image-alt.mts`;
-  weekly prev/next is wrapped in try/catch).
+  pinned by `scripts/test-hero-image-alt.mts`; weekly prev/next is wrapped in try/catch).
+  These lookups are **Turso only**, each capped at 2.5 s by `timedRenderLookup`
+  (`src/lib/content/renderLookup.ts`), which logs `ft.render.slow_lookup` (≥ 750 ms) and
+  `ft.render.lookup_timeout`. **Never** `fetch` the site's own hostname from a render
+  (or any Worker code): Cloudflare cannot route a same-zone subrequest back to this
+  Worker, so it fails with a 522 after its 19 s TCP connect timeout. #195 was the
+  same-origin `/_emdash/api/media/<id>` fallback doing exactly that on every uncached
+  render of a page whose hero had no alt (~20 s per render); #192/#193 was the same
+  failure for the Bluesky card image. Read R2 (`env.MEDIA`) or Turso instead.
   `scripts/test-homepage-entries-map.mts` lists every component / layout frontmatter
   `await`, so a new one has to be added there on purpose. The body check above is the
   backstop: a page cut off by a component failure is never cached.

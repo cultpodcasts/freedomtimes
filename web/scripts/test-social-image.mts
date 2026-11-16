@@ -78,29 +78,45 @@ describe('resolveSocialImageSrcWith: a throwing client constructor never breaks 
 		assert.equal(src, null);
 	});
 
-	it('a failed client still lets the same-origin media API resolve a bare seo.image id', async () => {
+	it('a failed client never falls back to a Worker → self HTTP fetch (#195)', async () => {
 		const requested: string[] = [];
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			requested.push(String(input));
-			return new Response(JSON.stringify({ data: { item: { storageKey: 'seo-card.png' } } }), { status: 200 });
+			throw new Error('must not fetch');
 		}) as typeof fetch;
-		const src = await resolveSocialImageSrcWith(throwingFactory({ n: 0 }), data, { image: SEO_MEDIA_ID }, {
-			...lookup,
-			origin: 'https://example.test/',
+		const src = await resolveSocialImageSrcWith(
+			throwingFactory({ n: 0 }),
+			{ ...data, social_image: SOCIAL_MEDIA_ID },
+			{ image: SEO_MEDIA_ID },
+			lookup,
+		);
+		assert.equal(src, HERO_PATH);
+		assert.deepEqual(requested, []);
+	});
+});
+
+describe('resolveSocialImageWith: Turso lookups are bounded and logged (#195)', () => {
+	it('hung queries time out to the hero image instead of stalling the render', async () => {
+		const warned: unknown[][] = [];
+		const started = Date.now();
+		const src = await resolveSocialImageSrcWith(
+			clientWith(() => new Promise<never>(() => {})),
+			{ ...data, social_image: SOCIAL_MEDIA_ID },
+			{ image: SEO_MEDIA_ID },
+			{ ...lookup, lookup: { timeoutMs: 40, log: { warn: (...args: unknown[]) => warned.push(args) } } },
+		);
+		assert.equal(src, HERO_PATH);
+		assert.ok(Date.now() - started < 2_000, 'each lookup gives up after its timeout');
+		const labels = warned.map((args) => {
+			assert.equal(args[0], 'ft.render.lookup_timeout');
+			return (JSON.parse(String(args[1])) as { label: string }).label;
 		});
-		assert.equal(src, '/_emdash/api/media/file/seo-card.png');
-		assert.deepEqual(requested, [`https://example.test/_emdash/api/media/${SEO_MEDIA_ID}`]);
+		// seo.image id → media; _emdash_seo by content id (its timeout skips the slug query); social_image id → media.
+		assert.deepEqual(labels, ['social_image.media', 'social_image.emdash_seo', 'social_image.media']);
 	});
 
-	it('a failing media API on top of a failed client still resolves to the hero', async () => {
-		globalThis.fetch = (async () => {
-			throw new Error('network down');
-		}) as typeof fetch;
-		const src = await resolveSocialImageSrcWith(throwingFactory({ n: 0 }), data, { image: SEO_MEDIA_ID }, {
-			...lookup,
-			origin: 'https://example.test',
-		});
-		assert.equal(src, HERO_PATH);
+	it('socialImage.ts has no fetch call', () => {
+		assert.doesNotMatch(read('../src/lib/content/socialImage.ts'), /\bfetch\s*\(/);
 	});
 });
 
