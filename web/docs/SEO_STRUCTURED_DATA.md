@@ -33,8 +33,11 @@ onto the post's image value when the image is chosen. On save, EmDash fills an e
 media item only when it also has to look up other metadata (dimensions, storage key, file info or
 placeholder). Editing alt in the media library does **not** change a non-empty snapshot on the post —
 set the alt on the post's image field, or re-pick the image. When the snapshot is empty, the reader
-looks up `media.alt` by the rendered field's media id (Turso, then the same-origin media API) and
-keeps the generic `"<title> featured image"` if that fails
+looks up `media.alt` by the rendered field's media id (Turso only, capped by `timedRenderLookup`
+and the page's shared render budget; no HTTP fallback, see
+[#195](https://github.com/cultpodcasts/freedomtimes/issues/195) and
+[EMDASH_MIDDLEWARE_AND_ROUTING.md](EMDASH_MIDDLEWARE_AND_ROUTING.md#anonymous-reader-page-cache-production-only))
+and keeps the generic `"<title> featured image"` if that fails or times out
 ([#133](https://github.com/cultpodcasts/freedomtimes/issues/133)).
 
 Hero caption comes from the same rendered field as the hero `src` / alt

@@ -26,11 +26,12 @@
  * had no alt. That is a Worker → own-hostname subrequest, which Cloudflare cannot route back to the
  * Worker: it failed with a 522 after ~20 s on every uncached render of a page whose hero has no alt.
  * The media API reads the same Turso row anyway. The Turso read is capped by
- * {@link timedRenderLookup} and logs when slow.
+ * {@link timedRenderLookup} and logs when slow. Pass `lookupOptions.budget` to share the page's
+ * render budget with the social-image lookups, so one hung Turso costs one timeout per render.
  */
 import { readImageAlt } from './imageAlt';
 import { readImageFieldMediaId, readMediaValueSrc, readTrimmedString } from './mediaValue';
-import { timedRenderLookup, type RenderLookupOptions } from './renderLookup';
+import { isRenderLookupBoundError, timedRenderLookup, type RenderLookupOptions } from './renderLookup';
 
 /** Slice of a libsql client used for the hero media.alt lookup (`@libsql/client/web` satisfies it). */
 export type HeroImageQueryClient = {
@@ -90,7 +91,7 @@ const LOG_PREFIX = '[contentEntry] resolveHeroImageAltFromMedia';
 /**
  * When the hero has no stored alt (only the generic `"<title> featured image"`), look up `media.alt`
  * by the rendered field's media id (#133). Never rejects: failures, a missing client, an empty
- * library alt or a timeout keep `currentAlt`. Never makes an HTTP request (#195).
+ * library alt, a timeout or a tripped budget keep `currentAlt`. Never makes an HTTP request (#195).
  */
 export async function resolveHeroImageAltFromMediaWith(
 	createClient: HeroImageClientFactory,
@@ -106,6 +107,9 @@ export async function resolveHeroImageAltFromMediaWith(
 		if (!field) return currentAlt;
 		const mediaId = readImageFieldMediaId(data[field]);
 		if (!mediaId) return currentAlt;
+
+		// An earlier lookup in this render already timed out: do not even build a client (#195).
+		if (lookupOptions?.budget?.trippedBy) return currentAlt;
 
 		let client: HeroImageQueryClient | null = null;
 		try {
@@ -130,7 +134,8 @@ export async function resolveHeroImageAltFromMediaWith(
 				const alt = row && typeof row.alt === 'string' ? row.alt.trim() : '';
 				if (alt.length > 0) return alt;
 			} catch (err) {
-				console.error(`${LOG_PREFIX}: Turso media alt lookup failed`, err);
+				// Timeouts / skips are already logged as ft.render.* by timedRenderLookup.
+				if (!isRenderLookupBoundError(err)) console.error(`${LOG_PREFIX}: Turso media alt lookup failed`, err);
 			}
 		}
 	} catch (err) {

@@ -15,6 +15,8 @@ import {
 	type SocialImageClientFactory,
 	type SocialImageQueryClient,
 } from '../src/lib/content/socialImage.ts';
+import { resolveHeroImageAltFromMediaWith } from '../src/lib/content/heroImage.ts';
+import { createRenderLookupBudget } from '../src/lib/content/renderLookup.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
@@ -96,23 +98,78 @@ describe('resolveSocialImageSrcWith: a throwing client constructor never breaks 
 });
 
 describe('resolveSocialImageWith: Turso lookups are bounded and logged (#195)', () => {
-	it('hung queries time out to the hero image instead of stalling the render', async () => {
+	it('a hung Turso costs one timeout per resolve: the rest are skipped and the hero is used', async () => {
 		const warned: unknown[][] = [];
+		let executes = 0;
 		const started = Date.now();
 		const src = await resolveSocialImageSrcWith(
-			clientWith(() => new Promise<never>(() => {})),
+			clientWith(() => {
+				executes += 1;
+				return new Promise<never>(() => {});
+			}),
 			{ ...data, social_image: SOCIAL_MEDIA_ID },
 			{ image: SEO_MEDIA_ID },
 			{ ...lookup, lookup: { timeoutMs: 40, log: { warn: (...args: unknown[]) => warned.push(args) } } },
 		);
 		assert.equal(src, HERO_PATH);
-		assert.ok(Date.now() - started < 2_000, 'each lookup gives up after its timeout');
+		assert.ok(Date.now() - started < 1_000, 'one timeout, not one per lookup');
 		const labels = warned.map((args) => {
 			assert.equal(args[0], 'ft.render.lookup_timeout');
 			return (JSON.parse(String(args[1])) as { label: string }).label;
 		});
-		// seo.image id → media; _emdash_seo by content id (its timeout skips the slug query); social_image id → media.
-		assert.deepEqual(labels, ['social_image.media', 'social_image.emdash_seo', 'social_image.media']);
+		// Only the first lookup (seo.image id → media) runs; _emdash_seo and social_image are skipped.
+		assert.deepEqual(labels, ['social_image.media']);
+		assert.equal(executes, 1);
+		assert.deepEqual(logged, [], 'timeouts / skips are not logged again as console.error');
+	});
+
+	it('one budget per page render: a hero-alt timeout skips every social-image lookup', async () => {
+		const warned: unknown[][] = [];
+		const log = { warn: (...args: unknown[]) => warned.push(args) };
+		const budget = createRenderLookupBudget();
+		let executes = 0;
+		const hung = () => {
+			executes += 1;
+			return new Promise<never>(() => {});
+		};
+		const heroValue = { id: '01M2DW4H4PB5X0AEC83M40GN7R', provider: 'local', meta: { storageKey: HERO_KEY } };
+		const started = Date.now();
+		const alt = await resolveHeroImageAltFromMediaWith(
+			() => ({ execute: hung }),
+			{ featured_image: heroValue },
+			'A post',
+			'A post featured image',
+			{ timeoutMs: 40, log, budget },
+		);
+		const src = await resolveSocialImageSrcWith(
+			clientWith(hung),
+			{ ...data, social_image: SOCIAL_MEDIA_ID },
+			{ image: SEO_MEDIA_ID },
+			{ ...lookup, lookup: { timeoutMs: 40, log, budget } },
+		);
+		assert.equal(alt, 'A post featured image');
+		assert.equal(src, HERO_PATH);
+		assert.ok(Date.now() - started < 1_000, 'the whole render pays one timeout');
+		assert.equal(executes, 1);
+		assert.equal(warned.length, 1);
+		assert.match(String(warned[0][1]), /"label":"hero_alt\.media"/);
+		assert.deepEqual(logged, []);
+	});
+
+	it('a shared budget bounds a whole request across entries (recent posts, share panel)', async () => {
+		const budget = createRenderLookupBudget();
+		let executes = 0;
+		const factory = clientWith(() => {
+			executes += 1;
+			return new Promise<never>(() => {});
+		});
+		const options = { ...lookup, lookup: { timeoutMs: 40, log: { warn: () => {} }, budget } };
+		const started = Date.now();
+		for (let i = 0; i < 5; i += 1) {
+			assert.equal(await resolveSocialImageSrcWith(factory, data, { image: SEO_MEDIA_ID }, options), HERO_PATH);
+		}
+		assert.ok(Date.now() - started < 1_000, 'five entries, one timeout');
+		assert.equal(executes, 1);
 	});
 
 	it('socialImage.ts has no fetch call', () => {

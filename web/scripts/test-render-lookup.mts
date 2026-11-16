@@ -9,7 +9,10 @@ import {
 	RENDER_LOOKUP_TIMEOUT_LOG,
 	RENDER_LOOKUP_TIMEOUT_MS,
 	RENDER_SLOW_LOOKUP_LOG,
+	RenderLookupSkippedError,
 	RenderLookupTimeoutError,
+	createRenderLookupBudget,
+	isRenderLookupBoundError,
 	timedRenderLookup,
 } from '../src/lib/content/renderLookup.ts';
 
@@ -80,5 +83,56 @@ describe('timedRenderLookup (#195)', () => {
 		);
 		assert.equal(lines.length, 1);
 		assert.deepEqual(JSON.parse(String(lines[0][1])), { label: 'x', ms: 1_000, outcome: 'error' });
+	});
+});
+
+describe('RenderLookupBudget: one timeout per render / request (#195)', () => {
+	it('the first timeout trips the budget; later lookups are skipped without running', async () => {
+		const { lines, log } = recorder();
+		const budget = createRenderLookupBudget();
+		assert.equal(budget.trippedBy, null);
+		await assert.rejects(
+			timedRenderLookup('hero_alt.media', () => new Promise<never>(() => {}), { timeoutMs: 20, log, budget }),
+			RenderLookupTimeoutError,
+		);
+		assert.equal(budget.trippedBy, 'hero_alt.media');
+
+		let ran = false;
+		await assert.rejects(
+			timedRenderLookup('social_image.media', async () => {
+				ran = true;
+				return 1;
+			}, { log, budget }),
+			(err: unknown) =>
+				err instanceof RenderLookupSkippedError
+				&& /social_image\.media skipped: render lookup budget tripped by hero_alt\.media/.test(err.message),
+		);
+		assert.equal(ran, false);
+		assert.equal(lines.length, 1, 'only the timeout is logged; a skip adds no line');
+	});
+
+	it('errors and slow successes do not trip the budget', async () => {
+		const budget = createRenderLookupBudget();
+		await assert.rejects(timedRenderLookup('x', async () => {
+			throw new Error('turso down');
+		}, { budget, log: { warn: () => {} } }), /turso down/);
+		let t = 0;
+		await timedRenderLookup('y', async () => {
+			t = 1_000;
+		}, { budget, now: () => t, log: { warn: () => {} } });
+		assert.equal(budget.trippedBy, null);
+	});
+
+	it('keeps the first tripping label', () => {
+		const budget = createRenderLookupBudget();
+		budget.trip('a');
+		budget.trip('b');
+		assert.equal(budget.trippedBy, 'a');
+	});
+
+	it('isRenderLookupBoundError matches only timeouts and skips', () => {
+		assert.equal(isRenderLookupBoundError(new RenderLookupTimeoutError('x', 1)), true);
+		assert.equal(isRenderLookupBoundError(new RenderLookupSkippedError('x', 'y')), true);
+		assert.equal(isRenderLookupBoundError(new Error('turso down')), false);
 	});
 });

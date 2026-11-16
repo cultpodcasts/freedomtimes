@@ -19,6 +19,7 @@ import {
 	readTrimmedString,
 	tryParseJsonString,
 } from '../src/lib/content/mediaValue.ts';
+import { createRenderLookupBudget } from '../src/lib/content/renderLookup.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
@@ -265,30 +266,6 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 		assert.equal(alt, libraryAlt);
 	});
 
-	it('keeps the generic alt when the client or query fails without origin', async () => {
-		const data = { featured_image: imageValue() };
-		const current = resolveHeroImage(data, title).alt;
-		assert.equal(
-			await resolveHeroImageAltFromMediaWith(() => {
-				throw new TypeError('URL_SCHEME_NOT_SUPPORTED');
-			}, data, title, current),
-			generic,
-		);
-		assert.equal(
-			await resolveHeroImageAltFromMediaWith(
-				() => ({
-					execute: async () => {
-						throw new Error('turso down');
-					},
-				}),
-				data,
-				title,
-				current,
-			),
-			generic,
-		);
-	});
-
 	it('never makes an HTTP request, whatever Turso does (#195: Worker → self fetch stalled ~20 s)', async () => {
 		const data = { featured_image: imageValue() };
 		const current = resolveHeroImage(data, title).alt;
@@ -325,12 +302,16 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 		}
 	});
 
-	it('a hung Turso query times out to the generic alt and logs it (#195)', async () => {
+	it('a hung Turso query times out to the generic alt, logs one structured line and trips the budget (#195)', async () => {
 		const data = { featured_image: imageValue() };
 		const current = resolveHeroImage(data, title).alt;
 		const warned: unknown[][] = [];
+		const errors: unknown[][] = [];
 		const originalError = console.error;
-		console.error = () => {};
+		console.error = (...args: unknown[]) => {
+			errors.push(args);
+		};
+		const budget = createRenderLookupBudget();
 		const started = Date.now();
 		try {
 			const alt = await resolveHeroImageAltFromMediaWith(
@@ -338,7 +319,7 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 				data,
 				title,
 				current,
-				{ timeoutMs: 50, log: { warn: (...args: unknown[]) => warned.push(args) } },
+				{ timeoutMs: 50, log: { warn: (...args: unknown[]) => warned.push(args) }, budget },
 			);
 			assert.equal(alt, generic);
 		} finally {
@@ -348,6 +329,28 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 		assert.equal(warned.length, 1);
 		assert.equal(warned[0][0], 'ft.render.lookup_timeout');
 		assert.match(String(warned[0][1]), /"label":"hero_alt\.media"/);
+		assert.deepEqual(errors, [], 'the timeout is logged once (structured warn), not again as console.error');
+		assert.equal(budget.trippedBy, 'hero_alt.media');
+	});
+
+	it('a budget already tripped this render skips the lookup without creating a client (#195)', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		const budget = createRenderLookupBudget();
+		budget.trip('social_image.media');
+		let calls = 0;
+		const alt = await resolveHeroImageAltFromMediaWith(
+			() => {
+				calls += 1;
+				return { execute: async () => ({ rows: [{ alt: libraryAlt }] }) };
+			},
+			data,
+			title,
+			current,
+			{ budget },
+		);
+		assert.equal(alt, generic);
+		assert.equal(calls, 0);
 	});
 
 	it('heroImage.ts has no fetch call (#195)', () => {

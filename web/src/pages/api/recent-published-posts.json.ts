@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { getEmDashCollection, type ContentEntry } from 'emdash';
 
 import { readArticleNotificationImagePath } from '../../lib/content/contentEntry';
+import { createRenderLookupBudget } from '../../lib/content/renderLookup';
 import { readEmDashPublishedAt } from '../../lib/content/emdashTimestamps';
 import { authorizeReaderApiRequest } from '../../lib/editorial-session';
 
@@ -50,6 +51,10 @@ export const GET: APIRoute = async ({ cookies, request, url }) => {
     });
   }
 
+  // #195: one lookup budget for the whole request, shared by every entry. After the first Turso
+  // timeout the remaining image lookups are skipped (hero fallback), so a hung Turso costs one
+  // timeout per request, not one per lookup per entry.
+  const lookupBudget = createRenderLookupBudget();
   const posts = await Promise.all(
     postEntries.map(async (entry) => {
       const data = entry.data;
@@ -73,7 +78,7 @@ export const GET: APIRoute = async ({ cookies, request, url }) => {
         );
       }
 
-      const imagePath = await readArticleNotificationImagePath(entry);
+      const imagePath = await readArticleNotificationImagePath(entry, { budget: lookupBudget });
       const image =
         imagePath === null
           ? null
