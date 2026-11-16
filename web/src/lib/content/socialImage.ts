@@ -23,7 +23,7 @@
  * {@link timedRenderLookup} and logs when slow, and all reads in one resolve call share one
  * {@link RenderLookupBudget} (the caller's, when it passes `lookup.budget`, else a fresh one): after
  * the first timeout the remaining lookups are skipped and the resolver falls back to the hero, so a
- * hung Turso costs one timeout, not one per lookup.
+ * hung Turso costs one timeout per resolve call, not one per lookup.
  */
 import { normalizeToPublicMediaFilePath } from './mediaFileUrl';
 import { asMediaRecord, readMediaValueSrc as readFeaturedImageSrc, readNonBlankString } from './mediaValue';

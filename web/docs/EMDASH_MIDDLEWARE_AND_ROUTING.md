@@ -149,11 +149,17 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   later lookup in that render is skipped (`RenderLookupSkippedError`, no Turso call, no
   extra log line), and the page falls back to the generic alt and the hero OG image. So a
   hung Turso adds **at most one 2.5 s timeout** to an uncached post or archive render,
-  for readers and Googlebot alike. `/api/recent-published-posts.json` and the share
-  panel use one budget per request, shared across entries, for the same bound per
-  request. A timed-out libsql request is not cancelled (`@libsql/client` `execute()`
-  takes no `AbortSignal`), so it stays in flight until it settles or the invocation
-  ends. The budget stops later lookups from adding more.
+  for readers and Googlebot alike, with one abandoned libsql request. The share panel
+  uses one budget per request (one entry, sequential lookups): the same bound.
+  `/api/recent-published-posts.json` uses one budget per request too, but resolves up to
+  25 entries **concurrently** (`Promise.all`): every lookup already in flight when the
+  first one trips the budget times out as well, at about the same moment. With a hung
+  Turso that request still waits about **one 2.5 s timeout** of wall time, but may log up
+  to one `ft.render.lookup_timeout` and leave one abandoned request per in-flight entry
+  (≤ 25); every later lookup in those entries is skipped. A timed-out libsql request is
+  not cancelled (`@libsql/client` `execute()` takes no `AbortSignal`), so it stays in
+  flight until it settles or the invocation ends. The budget stops later lookups from
+  adding more.
   **Never** `fetch` the site's own hostname from the **web Worker** (served on a route
   in the `freedomtimes.news` zone), in a render, an API route, a plugin or middleware:
   Cloudflare cannot route a same-zone subrequest back to this Worker, so it fails with a

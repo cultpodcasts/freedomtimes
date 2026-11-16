@@ -156,20 +156,37 @@ describe('resolveSocialImageWith: Turso lookups are bounded and logged (#195)', 
 		assert.deepEqual(logged, []);
 	});
 
-	it('a shared budget bounds a whole request across entries (recent posts, share panel)', async () => {
+	it('a shared budget bounds a concurrent request (recent posts: entries under Promise.all)', async () => {
+		const timeoutMs = 200;
 		const budget = createRenderLookupBudget();
+		const warned: unknown[][] = [];
 		let executes = 0;
 		const factory = clientWith(() => {
 			executes += 1;
 			return new Promise<never>(() => {});
 		});
-		const options = { ...lookup, lookup: { timeoutMs: 40, log: { warn: () => {} }, budget } };
+		const options = {
+			...lookup,
+			lookup: { timeoutMs, log: { warn: (...args: unknown[]) => warned.push(args) }, budget },
+		};
+		const entries = 5;
 		const started = Date.now();
-		for (let i = 0; i < 5; i += 1) {
-			assert.equal(await resolveSocialImageSrcWith(factory, data, { image: SEO_MEDIA_ID }, options), HERO_PATH);
-		}
-		assert.ok(Date.now() - started < 1_000, 'five entries, one timeout');
-		assert.equal(executes, 1);
+		// Each entry has two Turso stages (seo.image id → media, then social_image id → media), like the
+		// recent-posts endpoint resolving its entries concurrently.
+		const srcs = await Promise.all(
+			Array.from({ length: entries }, () =>
+				resolveSocialImageSrcWith(factory, { ...data, social_image: SOCIAL_MEDIA_ID }, { image: SEO_MEDIA_ID }, options),
+			),
+		);
+		const elapsed = Date.now() - started;
+		assert.deepEqual(srcs, Array(entries).fill(HERO_PATH));
+		assert.ok(elapsed < 2 * timeoutMs, `about one timeout of wall time, not one per stage (${elapsed} ms)`);
+		// Only the lookups already in flight when the budget tripped ran (≤ one per entry); every
+		// second-stage lookup was skipped.
+		assert.ok(executes <= entries, `at most one Turso call per in-flight entry (${executes})`);
+		assert.ok(warned.length <= entries);
+		assert.ok(budget.trippedBy);
+		assert.deepEqual(logged, []);
 	});
 
 	it('socialImage.ts has no fetch call', () => {

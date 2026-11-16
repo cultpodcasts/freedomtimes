@@ -13,9 +13,16 @@
  *
  * A {@link RenderLookupBudget} caps the **whole render**, not each lookup: the first timeout trips
  * it, and every later lookup that shares the budget rejects at once with
- * {@link RenderLookupSkippedError} without running. One budget per page render (hero alt + social
- * image) or per API request (recent posts, share panel) means a hung Turso costs at most one
- * timeout there, and the callers fall back (generic alt, hero OG image).
+ * {@link RenderLookupSkippedError} without running. Callers fall back (generic alt, hero OG image).
+ * Use one budget per page render (hero alt + social image) or per API request (recent posts, share
+ * panel). With a hung Turso that bounds **wall time** to about one timeout per render or request.
+ * The number of timeouts depends on the caller:
+ * - **Sequential lookups** (a page render; the share panel's single entry): exactly one timeout,
+ *   one `ft.render.lookup_timeout` line and one abandoned libsql request; the rest are skipped.
+ * - **Concurrent lookups** (`/api/recent-published-posts.json` resolves up to 25 entries under
+ *   `Promise.all`): every lookup already in flight when the first one trips the budget times out
+ *   too, at about the same moment. That is up to one timeout, log line and abandoned request per
+ *   in-flight entry (≤ 25); every later lookup in those entries is skipped.
  *
  * ```mermaid
  * flowchart LR
@@ -82,7 +89,11 @@ export type RenderLookupOptions = {
 	slowMs?: number;
 	log?: { warn: (...args: unknown[]) => void };
 	now?: () => number;
-	/** Share one budget across a render / request so a hung store costs at most one timeout. */
+	/**
+	 * Share one budget across a render / request: a hung store costs about one timeout of wall time,
+	 * and lookups that start after the first timeout are skipped. Lookups already in flight
+	 * concurrently still time out on their own (see the module comment).
+	 */
 	budget?: RenderLookupBudget;
 };
 
@@ -94,9 +105,10 @@ export type RenderLookupOptions = {
  * On timeout the underlying libsql request is **not cancelled**: `@libsql/client` (0.18, web)
  * `execute()` takes no `AbortSignal`, and the only hook is the client-wide `fetch`. The abandoned
  * subrequest stays in flight until it settles or the invocation ends. That is acceptable because
- * the shared budget allows at most **one** abandoned request per render or request (later lookups
- * are skipped), so it cannot pile up against the subrequest / connection limits. The race attaches
- * a handler, so its late rejection is not unhandled.
+ * the shared budget stops new lookups after the first timeout: at most **one** abandoned request
+ * per page render (its lookups are sequential), and for a concurrent caller at most one per entry
+ * already in flight (≤ 25 for the recent-posts endpoint), never one per lookup per entry. The race
+ * attaches a handler, so its late rejection is not unhandled.
  */
 export async function timedRenderLookup<T>(
 	label: string,

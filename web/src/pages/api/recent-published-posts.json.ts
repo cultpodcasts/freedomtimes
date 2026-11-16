@@ -51,9 +51,10 @@ export const GET: APIRoute = async ({ cookies, request, url }) => {
     });
   }
 
-  // #195: one lookup budget for the whole request, shared by every entry. After the first Turso
-  // timeout the remaining image lookups are skipped (hero fallback), so a hung Turso costs one
-  // timeout per request, not one per lookup per entry.
+  // #195: one lookup budget for the whole request, shared by every entry. Entries resolve
+  // concurrently, so with a hung Turso each entry's in-flight lookup times out at about the same
+  // moment (≤ 25 timeouts, ~one timeout of wall time); every later lookup is skipped (hero
+  // fallback), never one timeout per lookup per entry.
   const lookupBudget = createRenderLookupBudget();
   const posts = await Promise.all(
     postEntries.map(async (entry) => {

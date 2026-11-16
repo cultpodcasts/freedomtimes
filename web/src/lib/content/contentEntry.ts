@@ -312,7 +312,9 @@ export function readEntrySeoRecord(entryMeta: Record<string, unknown>): Record<s
  * Image for article push / recent-posts feed: same resolution as {@link resolveSocialImageSrc}
  * (**OG** / `_emdash_seo`, bare media ids, `social_image`, then **featured** / **cover**).
  * Turso only: no Worker → own-hostname HTTP fallback (#195). Pass one `budget` per request and
- * share it across entries so a hung Turso costs one lookup timeout per request, not per entry.
+ * share it across entries: a hung Turso costs about one timeout of wall time per request, and
+ * lookups that start after the first timeout are skipped (concurrent entries already in flight
+ * still time out individually, see `renderLookup.ts`).
  */
 export async function readArticleNotificationImagePath(
 	entry: { id: string; data: Record<string, unknown> },
