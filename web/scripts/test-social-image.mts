@@ -15,6 +15,8 @@ import {
 	type SocialImageClientFactory,
 	type SocialImageQueryClient,
 } from '../src/lib/content/socialImage.ts';
+import { resolveHeroImageAltFromMediaWith } from '../src/lib/content/heroImage.ts';
+import { createRenderLookupBudget } from '../src/lib/content/renderLookup.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
@@ -78,29 +80,117 @@ describe('resolveSocialImageSrcWith: a throwing client constructor never breaks 
 		assert.equal(src, null);
 	});
 
-	it('a failed client still lets the same-origin media API resolve a bare seo.image id', async () => {
+	it('a failed client never falls back to a Worker → self HTTP fetch (#195)', async () => {
 		const requested: string[] = [];
 		globalThis.fetch = (async (input: RequestInfo | URL) => {
 			requested.push(String(input));
-			return new Response(JSON.stringify({ data: { item: { storageKey: 'seo-card.png' } } }), { status: 200 });
+			throw new Error('must not fetch');
 		}) as typeof fetch;
-		const src = await resolveSocialImageSrcWith(throwingFactory({ n: 0 }), data, { image: SEO_MEDIA_ID }, {
-			...lookup,
-			origin: 'https://example.test/',
+		const src = await resolveSocialImageSrcWith(
+			throwingFactory({ n: 0 }),
+			{ ...data, social_image: SOCIAL_MEDIA_ID },
+			{ image: SEO_MEDIA_ID },
+			lookup,
+		);
+		assert.equal(src, HERO_PATH);
+		assert.deepEqual(requested, []);
+	});
+});
+
+describe('resolveSocialImageWith: Turso lookups are bounded and logged (#195)', () => {
+	it('a hung Turso costs one timeout per resolve: the rest are skipped and the hero is used', async () => {
+		const warned: unknown[][] = [];
+		let executes = 0;
+		const started = Date.now();
+		const src = await resolveSocialImageSrcWith(
+			clientWith(() => {
+				executes += 1;
+				return new Promise<never>(() => {});
+			}),
+			{ ...data, social_image: SOCIAL_MEDIA_ID },
+			{ image: SEO_MEDIA_ID },
+			{ ...lookup, lookup: { timeoutMs: 40, log: { warn: (...args: unknown[]) => warned.push(args) } } },
+		);
+		assert.equal(src, HERO_PATH);
+		assert.ok(Date.now() - started < 1_000, 'one timeout, not one per lookup');
+		const labels = warned.map((args) => {
+			assert.equal(args[0], 'ft.render.lookup_timeout');
+			return (JSON.parse(String(args[1])) as { label: string }).label;
 		});
-		assert.equal(src, '/_emdash/api/media/file/seo-card.png');
-		assert.deepEqual(requested, [`https://example.test/_emdash/api/media/${SEO_MEDIA_ID}`]);
+		// Only the first lookup (seo.image id → media) runs; _emdash_seo and social_image are skipped.
+		assert.deepEqual(labels, ['social_image.media']);
+		assert.equal(executes, 1);
+		assert.deepEqual(logged, [], 'timeouts / skips are not logged again as console.error');
 	});
 
-	it('a failing media API on top of a failed client still resolves to the hero', async () => {
-		globalThis.fetch = (async () => {
-			throw new Error('network down');
-		}) as typeof fetch;
-		const src = await resolveSocialImageSrcWith(throwingFactory({ n: 0 }), data, { image: SEO_MEDIA_ID }, {
-			...lookup,
-			origin: 'https://example.test',
-		});
+	it('one budget per page render: a hero-alt timeout skips every social-image lookup', async () => {
+		const warned: unknown[][] = [];
+		const log = { warn: (...args: unknown[]) => warned.push(args) };
+		const budget = createRenderLookupBudget();
+		let executes = 0;
+		const hung = () => {
+			executes += 1;
+			return new Promise<never>(() => {});
+		};
+		const heroValue = { id: '01M2DW4H4PB5X0AEC83M40GN7R', provider: 'local', meta: { storageKey: HERO_KEY } };
+		const started = Date.now();
+		const alt = await resolveHeroImageAltFromMediaWith(
+			() => ({ execute: hung }),
+			{ featured_image: heroValue },
+			'A post',
+			'A post featured image',
+			{ timeoutMs: 40, log, budget },
+		);
+		const src = await resolveSocialImageSrcWith(
+			clientWith(hung),
+			{ ...data, social_image: SOCIAL_MEDIA_ID },
+			{ image: SEO_MEDIA_ID },
+			{ ...lookup, lookup: { timeoutMs: 40, log, budget } },
+		);
+		assert.equal(alt, 'A post featured image');
 		assert.equal(src, HERO_PATH);
+		assert.ok(Date.now() - started < 1_000, 'the whole render pays one timeout');
+		assert.equal(executes, 1);
+		assert.equal(warned.length, 1);
+		assert.match(String(warned[0][1]), /"label":"hero_alt\.media"/);
+		assert.deepEqual(logged, []);
+	});
+
+	it('a shared budget bounds a concurrent request (recent posts: entries under Promise.all)', async () => {
+		const timeoutMs = 200;
+		const budget = createRenderLookupBudget();
+		const warned: unknown[][] = [];
+		let executes = 0;
+		const factory = clientWith(() => {
+			executes += 1;
+			return new Promise<never>(() => {});
+		});
+		const options = {
+			...lookup,
+			lookup: { timeoutMs, log: { warn: (...args: unknown[]) => warned.push(args) }, budget },
+		};
+		const entries = 5;
+		const started = Date.now();
+		// Each entry has two Turso stages (seo.image id → media, then social_image id → media), like the
+		// recent-posts endpoint resolving its entries concurrently.
+		const srcs = await Promise.all(
+			Array.from({ length: entries }, () =>
+				resolveSocialImageSrcWith(factory, { ...data, social_image: SOCIAL_MEDIA_ID }, { image: SEO_MEDIA_ID }, options),
+			),
+		);
+		const elapsed = Date.now() - started;
+		assert.deepEqual(srcs, Array(entries).fill(HERO_PATH));
+		assert.ok(elapsed < 2 * timeoutMs, `about one timeout of wall time, not one per stage (${elapsed} ms)`);
+		// Only the lookups already in flight when the budget tripped ran (≤ one per entry); every
+		// second-stage lookup was skipped.
+		assert.ok(executes <= entries, `at most one Turso call per in-flight entry (${executes})`);
+		assert.ok(warned.length <= entries);
+		assert.ok(budget.trippedBy);
+		assert.deepEqual(logged, []);
+	});
+
+	it('socialImage.ts has no fetch call', () => {
+		assert.doesNotMatch(read('../src/lib/content/socialImage.ts'), /\bfetch\s*\(/);
 	});
 });
 

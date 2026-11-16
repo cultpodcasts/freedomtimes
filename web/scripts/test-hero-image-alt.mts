@@ -19,6 +19,7 @@ import {
 	readTrimmedString,
 	tryParseJsonString,
 } from '../src/lib/content/mediaValue.ts';
+import { createRenderLookupBudget } from '../src/lib/content/renderLookup.ts';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 
@@ -240,9 +241,7 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 		}) as typeof fetch;
 		try {
 			assert.equal(
-				await resolveHeroImageAltFromMediaWith(factory, data, title, current, {
-					origin: 'https://freedomtimes.news',
-				}),
+				await resolveHeroImageAltFromMediaWith(factory, data, title, current),
 				'Court photo',
 			);
 			assert.equal(calls, 0);
@@ -267,84 +266,96 @@ describe('resolveHeroImageAltFromMediaWith (#133)', () => {
 		assert.equal(alt, libraryAlt);
 	});
 
-	it('keeps the generic alt when the client or query fails without origin', async () => {
-		const data = { featured_image: imageValue() };
-		const current = resolveHeroImage(data, title).alt;
-		assert.equal(
-			await resolveHeroImageAltFromMediaWith(() => {
-				throw new TypeError('URL_SCHEME_NOT_SUPPORTED');
-			}, data, title, current),
-			generic,
-		);
-		assert.equal(
-			await resolveHeroImageAltFromMediaWith(
-				() => ({
-					execute: async () => {
-						throw new Error('turso down');
-					},
-				}),
-				data,
-				title,
-				current,
-			),
-			generic,
-		);
-	});
-
-	it('falls through to the same-origin media API when Turso fails', async () => {
+	it('never makes an HTTP request, whatever Turso does (#195: Worker → self fetch stalled ~20 s)', async () => {
 		const data = { featured_image: imageValue() };
 		const current = resolveHeroImage(data, title).alt;
 		assert.equal(current, generic);
-		const mediaId = '01M2DW4H4PB5X0AEC83M40GN7R';
-		const apiAlt = 'Protesters outside the court (API)';
-		let fetchUrl: string | undefined;
+		let fetchCalls = 0;
 		const originalFetch = globalThis.fetch;
-		globalThis.fetch = (async (input: RequestInfo | URL) => {
-			fetchUrl = String(input);
-			return new Response(JSON.stringify({ data: { item: { alt: apiAlt } } }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+		const originalError = console.error;
+		globalThis.fetch = (async () => {
+			fetchCalls += 1;
+			throw new Error('must not fetch');
 		}) as typeof fetch;
+		console.error = () => {};
 		try {
-			const alt = await resolveHeroImageAltFromMediaWith(
+			const factories: HeroImageClientFactory[] = [
+				() => null,
+				() => {
+					throw new TypeError('URL_SCHEME_NOT_SUPPORTED');
+				},
 				() => ({
 					execute: async () => {
 						throw new Error('turso down');
 					},
 				}),
-				data,
-				title,
-				current,
-				{ origin: 'https://freedomtimes.news' },
-			);
-			assert.equal(alt, apiAlt);
-			assert.equal(fetchUrl, `https://freedomtimes.news/_emdash/api/media/${mediaId}`);
+				() => ({ execute: async () => ({ rows: [] }) }),
+				() => ({ execute: async () => ({ rows: [{ alt: '  ' }] }) }),
+			];
+			for (const factory of factories) {
+				assert.equal(await resolveHeroImageAltFromMediaWith(factory, data, title, current), generic);
+			}
+			assert.equal(fetchCalls, 0);
 		} finally {
 			globalThis.fetch = originalFetch;
+			console.error = originalError;
 		}
 	});
 
-	it('falls through to the media API when the client factory returns null', async () => {
+	it('a hung Turso query times out to the generic alt, logs one structured line and trips the budget (#195)', async () => {
 		const data = { featured_image: imageValue() };
 		const current = resolveHeroImage(data, title).alt;
-		const apiAlt = 'From media API after null client';
-		const originalFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
-			new Response(JSON.stringify({ data: { item: { alt: apiAlt } } }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			})) as typeof fetch;
+		const warned: unknown[][] = [];
+		const errors: unknown[][] = [];
+		const originalError = console.error;
+		console.error = (...args: unknown[]) => {
+			errors.push(args);
+		};
+		const budget = createRenderLookupBudget();
+		const started = Date.now();
 		try {
-			assert.equal(
-				await resolveHeroImageAltFromMediaWith(() => null, data, title, current, {
-					origin: 'https://freedomtimes.news',
-				}),
-				apiAlt,
+			const alt = await resolveHeroImageAltFromMediaWith(
+				() => ({ execute: () => new Promise<never>(() => {}) }),
+				data,
+				title,
+				current,
+				{ timeoutMs: 50, log: { warn: (...args: unknown[]) => warned.push(args) }, budget },
 			);
+			assert.equal(alt, generic);
 		} finally {
-			globalThis.fetch = originalFetch;
+			console.error = originalError;
 		}
+		assert.ok(Date.now() - started < 2_000, 'resolves soon after the timeout, not ~20 s later');
+		assert.equal(warned.length, 1);
+		assert.equal(warned[0][0], 'ft.render.lookup_timeout');
+		assert.match(String(warned[0][1]), /"label":"hero_alt\.media"/);
+		assert.deepEqual(errors, [], 'the timeout is logged once (structured warn), not again as console.error');
+		assert.equal(budget.trippedBy, 'hero_alt.media');
+	});
+
+	it('a budget already tripped this render skips the lookup without creating a client (#195)', async () => {
+		const data = { featured_image: imageValue() };
+		const current = resolveHeroImage(data, title).alt;
+		const budget = createRenderLookupBudget();
+		budget.trip('social_image.media');
+		let calls = 0;
+		const alt = await resolveHeroImageAltFromMediaWith(
+			() => {
+				calls += 1;
+				return { execute: async () => ({ rows: [{ alt: libraryAlt }] }) };
+			},
+			data,
+			title,
+			current,
+			{ budget },
+		);
+		assert.equal(alt, generic);
+		assert.equal(calls, 0);
+	});
+
+	it('heroImage.ts has no fetch call (#195)', () => {
+		const source = read('../src/lib/content/heroImage.ts');
+		assert.doesNotMatch(source, /\bfetch\s*\(/);
 	});
 });
 

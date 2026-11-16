@@ -21,6 +21,7 @@ import type { ResolvedPlugin, RouteContext } from 'emdash';
 import { definePlugin, PluginRouteError } from 'emdash';
 
 import { readArticleNotificationImagePath } from '../lib/content/contentEntry';
+import { createRenderLookupBudget } from '../lib/content/renderLookup';
 import {
 	blueskyCardImageMimeFromStorageKey,
 	blueskyProvider,
@@ -65,7 +66,8 @@ function sharePanelRoute<TConfig, TDraft extends ShareDraftBase>(provider: Share
 							if (item.slug && typeof data.slug !== 'string') data.slug = item.slug;
 							const imagePath = await readArticleNotificationImagePath(
 								{ id: item.id, data, seo: item.seo } as { id: string; data: Record<string, unknown> },
-								siteOrigin,
+								// #195: one budget per panel request; a Turso timeout skips the rest (hero fallback).
+								{ budget: createRenderLookupBudget() },
 							);
 							const cardImageUrl = imagePath ? absoluteCardImageUrl(imagePath, siteOrigin) : null;
 							return snapshotFromContentItem(item, { siteOrigin, cardImageUrl });

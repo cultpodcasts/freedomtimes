@@ -140,8 +140,39 @@ behaviour-tested in `scripts/test-page-cache-handler.mts`):
   `EmDashContentView` does this (social image `media` / `_emdash_seo` lookups fall
   back to the hero image; empty/generic hero alt may fill from `media.alt` via
   `enrichHeroImageAlt` / `resolveHeroImageAltFromMediaWith` (#133), never-reject —
-  Turso then same-origin media API — pinned by `scripts/test-hero-image-alt.mts`;
-  weekly prev/next is wrapped in try/catch).
+  pinned by `scripts/test-hero-image-alt.mts`; weekly prev/next is wrapped in try/catch).
+  These lookups are **Turso only** (no HTTP fallback), each capped at 2.5 s by
+  `timedRenderLookup` (`src/lib/content/renderLookup.ts`), which logs
+  `ft.render.slow_lookup` (≥ 750 ms) and `ft.render.lookup_timeout`. The cap is **per
+  render, not per lookup**: `EmDashContentView` creates one `RenderLookupBudget` and
+  passes it to the hero-alt and social-image lookups. The first timeout trips it, every
+  later lookup in that render is skipped (`RenderLookupSkippedError`, no Turso call, no
+  extra log line), and the page falls back to the generic alt and the hero OG image. So a
+  hung Turso adds **at most one 2.5 s timeout** to an uncached post or archive render,
+  for readers and Googlebot alike, with one abandoned libsql request. The share panel
+  uses one budget per request (one entry, sequential lookups): the same bound.
+  `/api/recent-published-posts.json` uses one budget per request too, but resolves up to
+  25 entries **concurrently** (`Promise.all`): every lookup already in flight when the
+  first one trips the budget times out as well, at about the same moment. With a hung
+  Turso that request still waits about **one 2.5 s timeout** of wall time, but may log up
+  to one `ft.render.lookup_timeout` and leave one abandoned request per in-flight entry
+  (≤ 25); every later lookup in those entries is skipped. A timed-out libsql request is
+  not cancelled (`@libsql/client` `execute()` takes no `AbortSignal`), so it stays in
+  flight until it settles or the invocation ends. The budget stops later lookups from
+  adding more.
+  **Never** `fetch` the site's own hostname from the **web Worker** (served on a route
+  in the `freedomtimes.news` zone), in a render, an API route, a plugin or middleware:
+  Cloudflare cannot route a same-zone subrequest back to this Worker, so it fails with a
+  522 after its 19 s TCP connect timeout. #195 was the same-origin
+  `/_emdash/api/media/<id>` fallback doing exactly that on every uncached render of a
+  page whose hero had no alt (~20 s per render); #192/#193 was the same failure for the
+  Bluesky card image. Read R2 (`env.MEDIA`) or Turso instead.
+  `scripts/test-no-self-fetch.mts` (in `npm test`) fails on any `fetch(` in `src/` whose
+  URL is built from the site origin (`origin`, `siteOrigin`, `Astro.url`, `SITE_ORIGIN`,
+  `PRODUCTION_SITE_ORIGIN`, `freedomtimes.news`, or an interpolated base in front of
+  `/_emdash/` or `/api/`, the exact #195 shape). A Worker **outside** the zone may
+  call the site over HTTP: `scheduler-worker` runs on `workers.dev` and fetching
+  `${SITE_ORIGIN}/api/recent-published-posts.json` from there is fine.
   `scripts/test-homepage-entries-map.mts` lists every component / layout frontmatter
   `await`, so a new one has to be added there on purpose. The body check above is the
   backstop: a page cut off by a component failure is never cached.

@@ -15,6 +15,7 @@ import {
 } from './emdashTimestamps';
 import { readMediaLibraryFileUrl as readMediaFileUrl } from './mediaFileUrl';
 import { readArchiveSourceAttribution } from './archive-pdf';
+import type { RenderLookupBudget } from './renderLookup';
 import {
 	resolveSocialImageWith,
 	type ResolveSocialImageSrcOptions,
@@ -310,18 +311,22 @@ export function readEntrySeoRecord(entryMeta: Record<string, unknown>): Record<s
 /**
  * Image for article push / recent-posts feed: same resolution as {@link resolveSocialImageSrc}
  * (**OG** / `_emdash_seo`, bare media ids, `social_image`, then **featured** / **cover**).
+ * Turso only: no Worker → own-hostname HTTP fallback (#195). Pass one `budget` per request and
+ * share it across entries: a hung Turso costs about one timeout of wall time per request, and
+ * lookups that start after the first timeout are skipped (concurrent entries already in flight
+ * still time out individually, see `renderLookup.ts`).
  */
 export async function readArticleNotificationImagePath(
 	entry: { id: string; data: Record<string, unknown> },
-	siteOrigin: string,
+	options?: { budget?: RenderLookupBudget },
 ): Promise<string | null> {
 	const data = entry.data;
 	const entryMeta = entry as unknown as Record<string, unknown>;
 	const seo = readEntrySeoRecord(entryMeta);
 	const slug = readString(data.slug) ?? undefined;
 	return resolveSocialImageSrc(data, seo, {
-		origin: siteOrigin.trim().replace(/\/$/, ''),
 		emdashSeoLookup: { collection: 'posts', contentId: entry.id, slug },
+		lookup: options?.budget ? { budget: options.budget } : undefined,
 	});
 }
 
@@ -391,19 +396,21 @@ export async function resolveSocialImageSrc(
 /**
  * When the hero alt on the post is empty, fill from the media library row (#133).
  * Never rejects: safe to await from component frontmatter after the headers are sent (#123).
+ * Turso only, bounded by a short timeout; no HTTP fallback (#195). Pass the page's render
+ * `budget` (shared with {@link resolveSocialImage}) so one hung Turso costs one timeout per render.
  */
 export function enrichHeroImageAlt(
 	data: Record<string, unknown>,
 	title: string,
 	currentAlt: string,
-	options?: { origin?: string },
+	options?: { budget?: RenderLookupBudget },
 ): Promise<string> {
 	return resolveHeroImageAltFromMediaWith(
 		createLibsqlClientForContentQueries,
 		data,
 		title,
 		currentAlt,
-		options,
+		options?.budget ? { budget: options.budget } : undefined,
 	);
 }
 
