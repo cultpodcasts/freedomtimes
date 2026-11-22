@@ -269,25 +269,40 @@ export function openSqliteReadonly(filePath) {
  * @param {string} token
  */
 export async function listPublishedPostSlugsViaApi(baseUrl, token) {
-	const url = `${baseUrl.replace(/\/$/, "")}/_emdash/api/content/posts?status=published&limit=500`;
-	const r = await fetch(url, {
-		headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-	});
-	const txt = await r.text();
-	let j;
-	try {
-		j = JSON.parse(txt);
-	} catch {
-		const err = new Error(`Non-JSON ${r.status} ${url}: ${txt.slice(0, 200)}`);
-		err.status = r.status;
-		throw err;
+	// EmDash caps `limit` at 100 (VALIDATION_ERROR above that); page with nextCursor so counts stay complete.
+	const base = `${baseUrl.replace(/\/$/, "")}/_emdash/api/content/posts?status=published&limit=100`;
+	const items = [];
+	let cursor = "";
+	let total;
+	for (let page = 0; page < 1000; page++) {
+		const url = cursor ? `${base}&cursor=${encodeURIComponent(cursor)}` : base;
+		const r = await fetch(url, {
+			headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+		});
+		const txt = await r.text();
+		let j;
+		try {
+			j = JSON.parse(txt);
+		} catch {
+			const err = new Error(`Non-JSON ${r.status} ${url}: ${txt.slice(0, 200)}`);
+			err.status = r.status;
+			throw err;
+		}
+		if (!r.ok) {
+			const err = new Error(`${r.status} GET ${url}: ${j?.error?.message ?? txt}`);
+			err.status = r.status;
+			throw err;
+		}
+		const d = j?.data ?? j;
+		items.push(...(d?.items ?? []));
+		if (typeof d?.total === "number") total = d.total;
+		cursor = d?.nextCursor ? String(d.nextCursor) : "";
+		if (!cursor) break;
 	}
-	if (!r.ok) {
-		const err = new Error(`${r.status} GET ${url}: ${j?.error?.message ?? txt}`);
-		err.status = r.status;
-		throw err;
+	if (cursor) throw new Error(`Pagination did not finish for ${base}`);
+	if (typeof total === "number" && items.length !== total) {
+		throw new Error(`Paged ${items.length} posts but API total is ${total} for ${base}`);
 	}
-	const items = j?.data?.items ?? j?.items ?? [];
 	return items
 		.map((i) => ({ slug: String(i.slug), status: String(i.status ?? "published") }))
 		.filter((p) => p.slug)

@@ -503,7 +503,9 @@ async function main() {
 			`DRAFT-ONLY: skipped content_publish for ${collection}/${slug}. Live readers still see the previous revision (or 404 if new).`,
 		);
 	} else {
-		await emdashMcpToolsCall(prodUrl, prodToken, "content_publish", { collection, id: slug });
+		// EmDash requires _rev from a fresh content_get; no publishedAt so first publish stamps now.
+		const revPub = await prodContentRev(prodUrl, prodToken, collection, slug);
+		await emdashMcpToolsCall(prodUrl, prodToken, "content_publish", { collection, id: slug, _rev: revPub });
 	}
 
 	// 6) Verify (MCP content_get)
