@@ -241,6 +241,13 @@ describe('secure access wall document', () => {
 		assert.doesNotMatch(html, /front-grid/);
 		assert.match(renderSecureAccessWallHtml(true), /Access denied/);
 	});
+
+	it('loads the native shell bridge so the mobile app can sign in from the wall (PR #198)', () => {
+		const html = renderSecureAccessWallHtml(false);
+		assert.match(html, /<script src="\/native-shell-bridge\.js" defer data-ft-native-shell-bridge="1"><\/script>/);
+		assert.ok(html.indexOf('native-shell-bridge.js') < html.indexOf('</head>'), 'bridge loads in <head>');
+		assert.match(html, /href="\/auth\/login"/, 'the bridge intercepts this link and opens the system browser');
+	});
 });
 
 describe('hasRefreshableAuthCookies', () => {
