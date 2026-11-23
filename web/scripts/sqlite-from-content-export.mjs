@@ -28,7 +28,23 @@ export function readContentExport(file) {
 export function restoreContentExport(text, outFile) {
 	const db = new DatabaseSync(outFile);
 	try {
-		db.exec(text);
+		// Format 2 exports carry no BEGIN/COMMIT (Cloudflare D1 rejects them); restore atomically here.
+		// Format 1 files (before the D1 interop fix) open their own transaction.
+		const ownTransaction = /^BEGIN TRANSACTION;$/m.test(text);
+		if (ownTransaction) db.exec(text);
+		else {
+			db.exec('BEGIN');
+			try {
+				db.exec(text);
+				db.exec('COMMIT');
+			} catch (error) {
+				db.exec('ROLLBACK');
+				throw error;
+			}
+		}
+		const fkViolations = db.prepare('PRAGMA foreign_key_check').all();
+		// Reported, not fatal: the source database may already hold them (D1 and SQLite allow it).
+		if (fkViolations.length > 0) console.warn(`WARNING: foreign_key_check reports ${fkViolations.length} violation(s)`);
 		const integrity = Object.values(db.prepare('PRAGMA integrity_check').get())[0];
 		if (integrity !== 'ok') throw new Error(`integrity_check failed: ${integrity}`);
 		const tables = db

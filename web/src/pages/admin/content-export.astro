@@ -54,8 +54,14 @@ const backendLabel = backend === 'd1' ? 'Cloudflare D1' : 'Turso (libsql)';
 		<pre><code>node web/scripts/sqlite-from-content-export.mjs freedomtimes-{environment}-content-….sql.gz out.db</code></pre>
 		<p>
 			The script refuses a truncated download and prints row counts per table. With the sqlite3 CLI:
-			<code>gunzip -c file.sql.gz | sqlite3 out.db</code>. To load the result into D1, use
-			<code>web/scripts/hydrate-d1-from-sqlite.mjs</code> (see <code>web/docs/CONTENT_BACKEND.md</code>).
+			<code>gunzip -c file.sql.gz | sqlite3 out.db</code>.
+		</p>
+
+		<h2>Restore into Turso or D1</h2>
+		<p>
+			The file loads unchanged into a new, empty database: <code>turso db shell &lt;db&gt; &lt; file.sql</code>
+			or <code>npx wrangler d1 execute &lt;DB&gt; --file file.sql</code> (unzip first for wrangler). Details and
+			older (format 1) files: <code>web/docs/CONTENT_BACKEND.md</code>.
 		</p>
 	</article>
 </Layout>

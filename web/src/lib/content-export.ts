@@ -1,8 +1,10 @@
 /**
  * Admin SQLite export of the EmDash content database (PR #198).
  *
- * Produces a standard SQLite SQL dump (the `sqlite3 .dump` shape: schema, then rows, then indexes,
- * then FTS5 rows, then triggers and views) from ANY SQLite-compatible backend through one
+ * Produces a portable SQLite SQL dump (the `sqlite3 .dump` shape: schema, then rows, then indexes,
+ * then FTS5 rows, then triggers and views) that restores unchanged into sqlite3, Turso/libSQL and
+ * Cloudflare D1: no BEGIN/COMMIT, no statement over 100 KB, parents before children
+ * (scripts/test-content-export-restore.mts restores it into `turso dev` and a local D1) from ANY SQLite-compatible backend through one
  * `query(sql)` function: Cloudflare D1 today, Turso/libsql after swap-back. Each environment's
  * Worker exports its own database (the one EmDash is reading).
  *
@@ -49,7 +51,7 @@ export function sqlLiteral(value: unknown): string {
 	if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
 	if (typeof value === 'bigint') return value.toString();
 	if (typeof value === 'boolean') return value ? '1' : '0';
-	if (typeof value === 'string') return `'${value.replaceAll("'", "''")}'`;
+	if (typeof value === 'string') return stringLiteral(value);
 	if (value instanceof Uint8Array) return `X'${toHex(value)}'`;
 	if (value instanceof ArrayBuffer) return `X'${toHex(new Uint8Array(value))}'`;
 	if (Array.isArray(value) && value.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
@@ -57,6 +59,23 @@ export function sqlLiteral(value: unknown): string {
 		return `X'${toHex(Uint8Array.from(value as number[]))}'`;
 	}
 	return `'${JSON.stringify(value).replaceAll("'", "''")}'`;
+}
+
+/**
+ * `wrangler d1 execute --file` scans the WHOLE file for the text `BEGIN TRANSACTION` and then deletes
+ * the first `BEGIN TRANSACTION;` and the first `COMMIT;` it finds, even inside a string literal
+ * (workers-utils d1-trimmer). A post that mentions either would be corrupted or rejected on import,
+ * so a literal containing them is written as a `||` concatenation that never spells them out.
+ */
+const WRANGLER_TRIM_TOKENS = /(BEGIN TRANSACTION|COMMIT;)/g;
+
+function stringLiteral(value: string): string {
+	const quoted = `'${value.replaceAll("'", "''")}'`;
+	if (!value.includes('BEGIN TRANSACTION') && !value.includes('COMMIT;')) return quoted;
+	// 'a BEGIN TRANSACTION b' -> 'a BEGIN' || ' TRANSACTION b' (same text, no token in the file).
+	return quoted.replace(WRANGLER_TRIM_TOKENS, (token) =>
+		token === 'COMMIT;' ? "COMMIT' || ';" : "BEGIN' || ' TRANSACTION",
+	);
 }
 
 export function isFtsVirtualTable(sql: string | null): boolean {
@@ -92,11 +111,138 @@ export function planContentExport(master: SqliteMasterEntry[]): ContentExportPla
 		.sort(byName);
 	const triggers = withSql.filter((o) => o.type === 'trigger').sort(byName);
 	const views = withSql.filter((o) => o.type === 'view').sort(byName);
-	return { tables, ftsTables, indexes, triggers, views };
+	return { tables: parentTablesFirst(tables), ftsTables, indexes, triggers, views };
+}
+
+/** Tables named after REFERENCES in a CREATE TABLE statement. */
+export function referencedTables(sql: string | null): string[] {
+	const out = new Set<string>();
+	for (const m of String(sql ?? '').matchAll(/\bREFERENCES\s+(?:"((?:[^"]|"")+)"|`([^`]+)`|\[([^\]]+)\]|([A-Za-z_][\w$]*))/gi)) {
+		out.add((m[1]?.replaceAll('""', '"') ?? m[2] ?? m[3] ?? m[4]).toLowerCase());
+	}
+	return [...out];
+}
+
+/**
+ * Parents before children (stable, alphabetical otherwise). D1 always enforces foreign keys (its
+ * `PRAGMA foreign_keys=OFF` is a no-op inside the import transaction), so the dump also sets
+ * `PRAGMA defer_foreign_keys=ON`; ordering keeps sqlite3 / turso / D1 happy even without it.
+ */
+export function parentTablesFirst(tables: SqliteMasterEntry[]): SqliteMasterEntry[] {
+	const byLower = new Map(tables.map((t) => [t.name.toLowerCase(), t]));
+	const done = new Set<string>();
+	const visiting = new Set<string>();
+	const out: SqliteMasterEntry[] = [];
+	const visit = (t: SqliteMasterEntry) => {
+		const key = t.name.toLowerCase();
+		if (done.has(key) || visiting.has(key)) return; // cycles: deferred FKs cover them
+		visiting.add(key);
+		for (const parent of referencedTables(t.sql)) {
+			const p = byLower.get(parent);
+			if (p && p !== t) visit(p);
+		}
+		visiting.delete(key);
+		done.add(key);
+		out.push(t);
+	};
+	for (const t of tables) visit(t);
+	return out;
 }
 
 function withoutRowid(sql: string | null): boolean {
 	return /WITHOUT\s+ROWID/i.test(sql ?? '');
+}
+
+/**
+ * Longest statement the dump writes, in UTF-8 bytes. Cloudflare D1 (remote and `wrangler d1 execute
+ * --local`) rejects any SQL statement over 100,000 bytes (`statement too long: SQLITE_TOOBIG`); real
+ * EmDash rows (revisions, long posts) reach 300 KB. Rows over the cap are written as an INSERT with
+ * the long values empty, then `UPDATE ... SET col = col || '<chunk>'` statements under the cap.
+ */
+export const CONTENT_EXPORT_MAX_STATEMENT_BYTES = 90_000;
+/** Raw bytes of one long value per append statement (escaping can at most double it). */
+const APPEND_CHUNK_BYTES = 40_000;
+/** Values longer than this are moved out of an oversized INSERT into appends. */
+const INLINE_VALUE_BYTES = 1_024;
+
+const utf8 = new TextEncoder();
+const byteLength = (text: string) => utf8.encode(text).length;
+
+function asBytes(value: unknown): Uint8Array | null {
+	if (value instanceof Uint8Array) return value;
+	if (value instanceof ArrayBuffer) return new Uint8Array(value);
+	if (Array.isArray(value) && value.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) {
+		return Uint8Array.from(value as number[]);
+	}
+	return null;
+}
+
+/** Split text into pieces of at most `maxBytes` UTF-8 bytes, never inside a code point. */
+export function splitUtf8(text: string, maxBytes: number): string[] {
+	const pieces: string[] = [];
+	let current = '';
+	let size = 0;
+	for (const ch of text) {
+		const n = ch.length === 1 ? (ch.charCodeAt(0) < 0x80 ? 1 : ch.charCodeAt(0) < 0x800 ? 2 : 3) : 4;
+		if (size + n > maxBytes && current) {
+			pieces.push(current);
+			current = '';
+			size = 0;
+		}
+		current += ch;
+		size += n;
+	}
+	if (current) pieces.push(current);
+	return pieces;
+}
+
+function insertStatement(table: string, columns: string[], literals: string[]): string {
+	return `INSERT INTO ${quoteIdent(table)}(${columns.map(quoteIdent).join(',')}) VALUES(${literals.join(',')});\n`;
+}
+
+/**
+ * One row as SQL statements, each under CONTENT_EXPORT_MAX_STATEMENT_BYTES. `rowWhere` is the WHERE
+ * clause that finds the row just inserted (`rowid = last_insert_rowid()`, or the primary key for a
+ * WITHOUT ROWID table).
+ */
+export async function rowStatements(
+	table: string,
+	row: ContentExportRow,
+	rowWhere: () => Promise<string>,
+	maxBytes = CONTENT_EXPORT_MAX_STATEMENT_BYTES,
+): Promise<string> {
+	const columns = Object.keys(row);
+	const literals = columns.map((c) => sqlLiteral(row[c]));
+	const whole = insertStatement(table, columns, literals);
+	if (byteLength(whole) <= maxBytes) return whole;
+
+	const appends: string[] = [];
+	const where = await rowWhere();
+	const chunkBytes = Math.min(APPEND_CHUNK_BYTES, Math.floor(maxBytes / 2) - 512);
+	columns.forEach((column, i) => {
+		if (byteLength(literals[i]) <= INLINE_VALUE_BYTES) return;
+		const value = row[column];
+		const set = (expr: string) => `UPDATE ${quoteIdent(table)} SET ${quoteIdent(column)} = ${expr} WHERE ${where};\n`;
+		const bytes = typeof value === 'string' ? null : asBytes(value);
+		if (bytes) {
+			literals[i] = "X''";
+			for (let at = 0; at < bytes.length; at += chunkBytes) {
+				const hex = sqlLiteral(bytes.subarray(at, at + chunkBytes));
+				appends.push(set(`CAST(${quoteIdent(column)} || ${hex} AS BLOB)`));
+			}
+			return;
+		}
+		const text = typeof value === 'string' ? value : JSON.stringify(value);
+		literals[i] = "''";
+		for (const piece of splitUtf8(text, chunkBytes)) appends.push(set(`${quoteIdent(column)} || ${sqlLiteral(piece)}`));
+	});
+	const statements = [insertStatement(table, columns, literals), ...appends];
+	for (const statement of statements) {
+		if (byteLength(statement) > maxBytes) {
+			throw new Error(`content export: a statement for ${table} is still ${byteLength(statement)} bytes after splitting`);
+		}
+	}
+	return statements.join('');
 }
 
 async function* dumpRows(
@@ -105,7 +251,9 @@ async function* dumpRows(
 	counts: Map<string, number>,
 	pageSize: number,
 ): AsyncGenerator<string> {
-	const order = withoutRowid(table.sql) ? '' : ' ORDER BY rowid';
+	const noRowid = withoutRowid(table.sql);
+	const order = noRowid ? '' : ' ORDER BY rowid';
+	let primaryKey: string[] | null = null;
 	let offset = 0;
 	let total = 0;
 	for (;;) {
@@ -113,10 +261,16 @@ async function* dumpRows(
 		if (rows.length === 0) break;
 		let chunk = '';
 		for (const row of rows) {
-			const columns = Object.keys(row);
-			chunk += `INSERT INTO ${quoteIdent(table.name)}(${columns.map(quoteIdent).join(',')}) VALUES(${columns
-				.map((c) => sqlLiteral(row[c]))
-				.join(',')});\n`;
+			chunk += await rowStatements(table.name, row, async () => {
+				if (!noRowid) return 'rowid = last_insert_rowid()';
+				primaryKey ??= (
+					await query(
+						`SELECT name FROM pragma_table_info(${sqlLiteral(table.name)}) WHERE pk > 0 ORDER BY pk`,
+					)
+				).map((r) => String(r.name));
+				if (primaryKey.length === 0) throw new Error(`content export: ${table.name} has no primary key`);
+				return primaryKey.map((c) => `${quoteIdent(c)} = ${sqlLiteral(row[c])}`).join(' AND ');
+			});
 		}
 		total += rows.length;
 		yield chunk;
@@ -147,10 +301,15 @@ export async function* generateContentDump(
 		`-- environment: ${meta.environment}`,
 		`-- backend: ${meta.backend}`,
 		`-- generated: ${meta.generatedAt.toISOString()}`,
-		'-- restore: node web/scripts/sqlite-from-content-export.mjs <this file> <out.db>   (or: sqlite3 out.db < this.sql)',
+		'-- format: 2 (portable: sqlite3, Turso/libSQL `turso db shell`, Cloudflare D1 `wrangler d1 execute --file`)',
+		'-- restore into a NEW EMPTY database (plain .sql; gunzip first for wrangler):',
+		'--   node web/scripts/sqlite-from-content-export.mjs <this file> <out.db>',
+		'--   turso db shell <db-or-url> < this.sql   |   wrangler d1 execute <DB> --file this.sql',
+		'-- No BEGIN/COMMIT (D1 rejects them; it runs the file in one transaction). With sqlite3/turso a',
+		'-- failed restore leaves a partial database: drop it and restore again into a new one.',
 		'-- PRIVATE: contains unpublished drafts and account data. Never commit, upload or share publicly.',
 		'PRAGMA foreign_keys=OFF;',
-		'BEGIN TRANSACTION;',
+		'PRAGMA defer_foreign_keys=ON;',
 		'',
 	].join('\n');
 
@@ -169,7 +328,7 @@ export async function* generateContentDump(
 	for (const trigger of plan.triggers) yield `${trigger.sql};\n`;
 
 	const summary = [...counts.entries()].map(([name, n]) => `--   ${name}: ${n}`).join('\n');
-	yield `COMMIT;\n-- rows exported per table:\n${summary}\n-- end of export\n`;
+	yield `-- rows exported per table:\n${summary}\n-- end of export\n`;
 }
 
 /** Which deployed environment this Worker is, from the request host (the export names its file by it). */

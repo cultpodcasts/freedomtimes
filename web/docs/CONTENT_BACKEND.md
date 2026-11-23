@@ -170,8 +170,33 @@ database.
   node scripts/sqlite-from-content-export.mjs .\freedomtimes-production-content-d1-....sql.gz .\restored.db
   ```
 
-  This runs `PRAGMA integrity_check` and prints the row counts. To load the dump into a fresh D1 or
-  Turso database, use the plain `.sql` with `wrangler d1 execute --file` or `turso db shell < file`.
+  This runs `PRAGMA integrity_check` and prints the row counts.
+- **Restore into Turso or D1 (format 2, portable):** the same file loads unchanged into a NEW, EMPTY
+  database of either backend:
+
+  ```bash
+  turso db shell <db-name-or-url> < freedomtimes-...sql            # gz: gunzip -c file.sql.gz | turso db shell ...
+  npx wrangler d1 execute <DB> --file freedomtimes-...sql          # wrangler needs the plain .sql
+  ```
+
+  Format 2 (header `-- format: 2`) has no `BEGIN TRANSACTION`/`COMMIT` (D1 rejects them and runs
+  the file in one transaction itself), no statement over 90,000 bytes (D1's limit is 100,000; long
+  rows are an INSERT plus `UPDATE ... SET col = col || '…'` appends), parent tables before child
+  tables plus `PRAGMA defer_foreign_keys=ON` (D1 always enforces foreign keys), and string values
+  that contain `BEGIN TRANSACTION` or `COMMIT;` written as `'…BEGIN' || ' TRANSACTION…'` (wrangler
+  strips those tokens from the whole file, string literals included). With `turso db shell` or
+  `sqlite3` a failed restore leaves a partial database: delete it and restore into a new one.
+- **Interop gate:** `npm run test:content-export-restore` restores a synthetic export (.sql and
+  .sql.gz) into a local `turso dev` and a local D1 (`wrangler d1 execute --local`) and compares every
+  row with the source. CI runs it on every PR (`ci-guards.yml`, job *Content export restores into
+  local Turso + local D1*) with `FT_REQUIRE_RESTORE_TARGETS=1`; locally it skips with a WARNING when
+  turso/sqld are missing. Never Turso Cloud, never `--remote`, no credentials.
+- **Check a real download:** `npm run content-export:verify-restore -- <file.sql[.gz]> [...]` does the
+  same for a real export (local only; prints counts, never rows).
+- **Format 1 files** (downloaded before this fix, e.g. the 23 Nov staging exports) restore into
+  Turso/sqlite3 as they are, but `wrangler d1 execute` rejects them (`statement too long:
+  SQLITE_TOOBIG`; remote D1 also rejects their `BEGIN TRANSACTION`). Convert first:
+  `npm run content-export:upgrade -- old.sql[.gz] new.sql` (same rows, format 2).
 - **Audit:** each export logs `[admin-content-export] started/completed` with the admin's name and
   the cf-ray. The response is `Cache-Control: no-store, private`.
 - The file contains **private data** (users, sessions, unpublished drafts). Keep it off shared drives.
