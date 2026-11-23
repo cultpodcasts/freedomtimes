@@ -29,6 +29,9 @@ import { readOptionalEnv } from './auth';
 import {
 	buildOutageAlertEmail,
 	buildOutageAlertPush,
+	buildOutageAlertTestEmail,
+	OUTAGE_ALERT_TEST_WINDOW_SECONDS,
+	outageAlertTestKey,
 	OUTAGE_ALERT_FROM,
 	OUTAGE_ALERT_WINDOW_SECONDS,
 	outageAlertDedupeKey,
@@ -67,28 +70,107 @@ async function claimAlertWindow(event: OutageAlertEvent): Promise<boolean> {
 	return true;
 }
 
-async function sendEmailAlerts(event: OutageAlertEvent): Promise<void> {
+export type OutageEmailResult = {
+	ok: boolean;
+	recipients: number;
+	sent: number;
+	failed: number;
+	/** Why nothing was attempted (missing config) or the first send error. */
+	error?: string;
+	/** Message ids returned by Cloudflare Email Sending, when it returns one. */
+	messageIds: string[];
+};
+
+/** Sends one message to every OUTAGE_ALERT_EMAIL_TO recipient through the EMAIL binding. Never throws. */
+async function sendAlertEmail(
+	message: { subject: string; text: string; html: string },
+	logContext: Record<string, unknown>,
+): Promise<OutageEmailResult> {
 	const recipients = parseEmailRecipients(readOptionalEnv('OUTAGE_ALERT_EMAIL_TO'));
 	if (recipients.length === 0) {
-		console.error('[ft-outage-alert] NOT SENT by email: OUTAGE_ALERT_EMAIL_TO is not set on this Worker');
-		return;
+		console.error('[ft-outage-alert] NOT SENT by email: OUTAGE_ALERT_EMAIL_TO is not set on this Worker', logContext);
+		return { ok: false, recipients: 0, sent: 0, failed: 0, error: 'OUTAGE_ALERT_EMAIL_TO is not set', messageIds: [] };
 	}
 	const email = binding<SendEmailLike>('EMAIL');
 	if (!email || typeof email.send !== 'function') {
-		console.error('[ft-outage-alert] NOT SENT by email: send_email binding EMAIL missing');
-		return;
+		console.error('[ft-outage-alert] NOT SENT by email: send_email binding EMAIL missing', logContext);
+		return { ok: false, recipients: recipients.length, sent: 0, failed: 0, error: 'send_email binding EMAIL missing', messageIds: [] };
 	}
-	const message = buildOutageAlertEmail(event);
-	await Promise.all(
+	const results = await Promise.all(
 		recipients.map(async (to) => {
 			try {
-				await email.send({ from: OUTAGE_ALERT_FROM, to, subject: message.subject, text: message.text, html: message.html });
-				console.info('[ft-outage-alert] email sent', { status: event.status, environment: event.environment });
+				const sent = (await email.send({ from: OUTAGE_ALERT_FROM, to, subject: message.subject, text: message.text, html: message.html })) as
+					| { messageId?: string }
+					| undefined;
+				const messageId = typeof sent?.messageId === 'string' ? sent.messageId : '';
+				console.info('[ft-outage-alert] email accepted by Cloudflare', { ...logContext, messageId });
+				return { ok: true as const, messageId };
 			} catch (error) {
-				console.error('[ft-outage-alert] email failed', { message: error instanceof Error ? error.message : String(error) });
+				const msg = error instanceof Error ? error.message : String(error);
+				console.error('[ft-outage-alert] email failed', { ...logContext, message: msg });
+				return { ok: false as const, error: msg };
 			}
 		}),
 	);
+	const sent = results.filter((r) => r.ok).length;
+	const firstError = results.find((r) => !r.ok);
+	return {
+		ok: sent === recipients.length,
+		recipients: recipients.length,
+		sent,
+		failed: recipients.length - sent,
+		error: firstError && !firstError.ok ? firstError.error : undefined,
+		messageIds: results.flatMap((r) => (r.ok && r.messageId ? [r.messageId] : [])),
+	};
+}
+
+async function sendEmailAlerts(event: OutageAlertEvent): Promise<void> {
+	await sendAlertEmail(buildOutageAlertEmail(event), { status: event.status, environment: event.environment });
+}
+
+export type OutageAlertTestResult =
+	| ({ kind: 'sent' } & OutageEmailResult)
+	| { kind: 'rate-limited'; retryAfterSeconds: number };
+
+/**
+ * Admin "send a test alert" (POST /api/admin/outage-alert-test). Same EMAIL binding, sender and
+ * recipients as a real alert, a [TEST] subject, no push. Ignores OUTAGE_ALERTS (so it works where
+ * real alerts are off) but is limited to one per environment per minute.
+ */
+export async function sendOutageAlertTestEmail(params: {
+	environment: OutageAlertEvent['environment'];
+	host: string;
+	requestedBy: string;
+	at?: Date;
+}): Promise<OutageAlertTestResult> {
+	const at = params.at ?? new Date();
+	const kv = binding<KvLike>('SESSION');
+	const key = outageAlertTestKey(params.environment);
+	if (kv) {
+		try {
+			if (await kv.get(key)) return { kind: 'rate-limited', retryAfterSeconds: OUTAGE_ALERT_TEST_WINDOW_SECONDS };
+			await kv.put(key, at.toISOString(), { expirationTtl: OUTAGE_ALERT_TEST_WINDOW_SECONDS });
+		} catch (error) {
+			console.warn('[ft-outage-alert] test rate limit unavailable', { message: String(error) });
+		}
+	}
+	const message = buildOutageAlertTestEmail({
+		environment: params.environment,
+		host: params.host,
+		at,
+		requestedBy: params.requestedBy,
+		alertsEnabled: outageAlertsEnabled(params.environment, readOptionalEnv('OUTAGE_ALERTS')),
+		contentBackend: readOptionalEnv('FT_CONTENT_BACKEND').trim() || 'turso',
+	});
+	const result = await sendAlertEmail(message, { test: true, environment: params.environment, requestedBy: params.requestedBy });
+	console.info('[ft-outage-alert] test email result', {
+		environment: params.environment,
+		ok: result.ok,
+		recipients: result.recipients,
+		sent: result.sent,
+		failed: result.failed,
+	});
+	return { kind: 'sent', ...result };
 }
 
 function firstEnv(...keys: string[]): string {

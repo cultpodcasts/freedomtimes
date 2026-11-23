@@ -130,3 +130,59 @@ export function buildOutageAlertPush(event: OutageAlertEvent, siteOrigin: string
 		urgency: 'high' as const,
 	};
 }
+
+/** Rate limit for the admin test send: one test email per environment per minute. */
+export const OUTAGE_ALERT_TEST_WINDOW_SECONDS = 60;
+
+export function outageAlertTestKey(environment: string): string {
+	return `ft-outage-alert-test:v1:${environment}`;
+}
+
+export type OutageAlertTestRequest = {
+	environment: string;
+	host: string;
+	at: Date;
+	requestedBy: string;
+	alertsEnabled: boolean;
+	contentBackend: string;
+};
+
+/**
+ * The admin "send test alert" email. Same sender and channel as a real alert, but the subject
+ * starts with [TEST] and names the environment, so nobody mistakes it for an outage.
+ */
+export function buildOutageAlertTestEmail(req: OutageAlertTestRequest): { subject: string; text: string; html: string } {
+	const subject = `[TEST] Freedom Times ${req.environment} outage alert email (${req.host})`;
+	const lines = [
+		`TEST ONLY - ${req.host} (${req.environment}) is not down.`,
+		'',
+		'This is a test of the outage alert email. A real alert uses this sender and these recipients when',
+		'the site serves the "Temporarily unavailable" (HTTP 5xx) page.',
+		'',
+		`Environment:      ${req.environment}`,
+		`Real alerts:      ${req.alertsEnabled ? 'ON' : 'OFF (set OUTAGE_ALERTS=on to enable)'}`,
+		`Content backend:  ${req.contentBackend}`,
+		`Requested by:     ${req.requestedBy}`,
+		`When:             ${londonTime(req.at)} (${req.at.toISOString()})`,
+	];
+	const text = lines.join('\n');
+	const html = `<!doctype html><html><body style="font-family:Georgia,serif;color:#111;max-width:640px">`
+		+ `<p style="font-family:'Playfair Display',Georgia,serif;font-size:28px;font-weight:900;margin:0 0 4px">freedom times</p>`
+		+ `<p style="font-family:Arial,sans-serif;font-size:12px;letter-spacing:.05em;color:#0044bb;font-weight:700;margin:0 0 16px">OUTAGE ALERT · TEST</p>`
+		+ `<pre style="font-family:Menlo,Consolas,monospace;font-size:13px;white-space:pre-wrap;background:#e8eefc;padding:12px;border-left:4px solid #0044bb">${escapeHtml(text)}</pre>`
+		+ `</body></html>`;
+	return { subject, text, html };
+}
+
+/** Constant-time string compare for the optional operator test token. */
+export function timingSafeEqualString(a: string, b: string): boolean {
+	const enc = new TextEncoder();
+	const x = enc.encode(a);
+	const y = enc.encode(b);
+	let diff = x.length ^ y.length;
+	for (let i = 0; i < Math.max(x.length, y.length); i += 1) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+	return diff === 0;
+}
+
+/** Minimum length for OUTAGE_ALERT_TEST_TOKEN; a shorter (or unset) token disables the bearer path. */
+export const OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH = 32;

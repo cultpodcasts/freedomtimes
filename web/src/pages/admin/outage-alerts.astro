@@ -1,0 +1,159 @@
+---
+/**
+ * /admin/outage-alerts: admin-only status of the 5xx outage alert email for this environment, with a
+ * "Send test alert email" button (POST /api/admin/outage-alert-test, same gate + CSRF). PR #198.
+ */
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { requireAdminPageSession } from '../../lib/admin-session';
+import { hasAdminRole, readOptionalEnv } from '../../lib/auth';
+import { resolveDeployEnvironmentName } from '../../lib/content-export';
+import { outageAlertsEnabled, parseEmailRecipients } from '../../lib/outage-alert';
+
+export const prerender = false;
+
+const auth = await requireAdminPageSession({
+	context: { cookies: Astro.cookies, url: Astro.url, request: Astro.request, redirect: Astro.redirect },
+	roleCheck: hasAdminRole,
+	loginNextPath: '/admin/outage-alerts',
+	logPrefix: 'admin-outage-alerts-page',
+});
+if (auth instanceof Response) {
+	return auth;
+}
+Astro.response.headers.set('Cache-Control', 'no-store, private');
+
+const environment = resolveDeployEnvironmentName(Astro.url.hostname);
+const enabled = outageAlertsEnabled(environment, readOptionalEnv('OUTAGE_ALERTS'));
+const recipientCount = parseEmailRecipients(readOptionalEnv('OUTAGE_ALERT_EMAIL_TO')).length;
+---
+
+<Layout title="Outage alerts" description="Admin-only outage alert settings." canonicalUrl={null} noindex>
+	<Header section="Admin" sectionUrl="/admin" isAdmin={true} isSignedIn={true} isEditor={true} />
+	<article class="alerts-page" data-ft-outage-alerts>
+		<h1>Outage alerts</h1>
+		<p class="lede">
+			When <strong>{Astro.url.host}</strong> serves the "Temporarily unavailable" page (HTTP 5xx), an email goes
+			to the configured recipients straight away, at most once every 10 minutes.
+		</p>
+		<dl>
+			<dt>Environment</dt><dd>{environment}</dd>
+			<dt>Real alerts</dt><dd>{enabled ? 'On' : 'Off (Worker var OUTAGE_ALERTS=on enables them)'}</dd>
+			<dt>Email recipients</dt><dd>{recipientCount > 0 ? `${recipientCount} configured (OUTAGE_ALERT_EMAIL_TO)` : 'None: set the OUTAGE_ALERT_EMAIL_TO secret'}</dd>
+			<dt>Sender</dt><dd>noreply@freedomtimes.news (Cloudflare Email Sending)</dd>
+		</dl>
+		<p class="actions">
+			<button type="button" class="button" data-ft-outage-alert-test disabled={recipientCount === 0}>Send test alert email</button>
+			<span class="status" data-ft-outage-alert-test-status role="status"></span>
+		</p>
+		<p class="note">The test email's subject starts with <code>[TEST]</code> and names this environment. One test per minute.</p>
+	</article>
+</Layout>
+
+<script>
+	function readCookie(name: string): string {
+		const prefix = `${name}=`;
+		for (const part of document.cookie.split(';')) {
+			const trimmed = part.trim();
+			if (trimmed.startsWith(prefix)) return decodeURIComponent(trimmed.slice(prefix.length));
+		}
+		return '';
+	}
+
+	const button = document.querySelector<HTMLButtonElement>('[data-ft-outage-alert-test]');
+	const statusEl = document.querySelector<HTMLElement>('[data-ft-outage-alert-test-status]');
+	button?.addEventListener('click', async () => {
+		if (!statusEl) return;
+		button.disabled = true;
+		statusEl.textContent = 'Sending…';
+		try {
+			const csrfToken = readCookie('ft_csrf');
+			const response = await fetch('/api/admin/outage-alert-test', {
+				method: 'POST',
+				credentials: 'include',
+				headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
+			});
+			const body = (await response.json()) as { ok?: boolean; sent?: number; recipients?: number; error?: string };
+			statusEl.textContent = response.ok
+				? `Sent to ${body.sent} of ${body.recipients} recipient(s). Check the inbox.`
+				: `Not sent: ${body.error ?? response.status}`;
+		} catch (error) {
+			statusEl.textContent = `Request failed: ${error instanceof Error ? error.message : String(error)}`;
+		} finally {
+			button.disabled = false;
+		}
+	});
+</script>
+
+<style>
+	.alerts-page {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+	}
+
+	.lede {
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
+
+	dl {
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		gap: 0.5rem 1.25rem;
+		font-family: 'Inter', sans-serif;
+	}
+
+	dt {
+		font-weight: 700;
+	}
+
+	dd {
+		margin: 0;
+	}
+
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 1rem;
+		margin: 1.75rem 0 0.75rem;
+		font-family: 'Inter', sans-serif;
+	}
+
+	.button {
+		padding: 0.8rem 1.3rem;
+		border: 0;
+		border-radius: 6px;
+		background: #111111;
+		color: #ffffff;
+		font: inherit;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.button:hover,
+	.button:focus-visible {
+		background: #0044bb;
+	}
+
+	.button:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
+
+	.note {
+		font-size: 0.9rem;
+		color: var(--text-secondary);
+	}
+</style>

@@ -50,3 +50,32 @@ npx wrangler secret put OUTAGE_ALERT_PUSH_USER_IDS --env production
 ```
 
 Every alert is also logged (`[ft-outage-alert] 5xx served`) and can be read with `wrangler tail`.
+
+## Test email (admin)
+
+`/admin/outage-alerts` (admin role; tile "Outage alerts" on `/admin`) shows whether real alerts are on,
+how many recipients are configured, and has a **Send test alert email** button. It calls
+`POST /api/admin/outage-alert-test`, which uses the same admin gate as the content export, plus
+`X-CSRF-Token`. It sends through the **same** `EMAIL` binding, sender and `OUTAGE_ALERT_EMAIL_TO`
+recipients as a real alert. The subject is
+`[TEST] Freedom Times <environment> outage alert email (<host>)`. There is no push. It is limited to
+one test per environment per minute, and it works even where `OUTAGE_ALERTS` is off.
+
+The JSON response reports `recipients`, `sent`, `failed` and any Cloudflare `messageIds`. The Worker logs
+`[ft-outage-alert] email accepted by Cloudflare` for each recipient.
+
+Operators without a browser session can call the same endpoint with
+`Authorization: Bearer <OUTAGE_ALERT_TEST_TOKEN>`. That optional Worker secret must be at least 32
+characters; when it is unset, the bearer path is off. It can only send this fixed test email to the
+configured recipients.
+
+## Current settings
+
+| | production | staging |
+| --- | --- | --- |
+| `OUTAGE_ALERTS` | default (on) | `on` (`wrangler.jsonc` var) |
+| `OUTAGE_ALERT_EMAIL_TO` (secret) | `developer@freedomtimes.news` | `developer@freedomtimes.news` |
+| Push (`OUTAGE_ALERT_PUSH_USER_IDS`) | unset | unset |
+
+`developer@freedomtimes.news` is an Email Routing rule that forwards to the owner's verified mailbox.
+Email Sending is enabled for `freedomtimes.news`.

@@ -11,6 +11,11 @@ import { fileURLToPath } from 'node:url';
 import {
 	buildOutageAlertEmail,
 	buildOutageAlertPush,
+	buildOutageAlertTestEmail,
+	OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH,
+	OUTAGE_ALERT_TEST_WINDOW_SECONDS,
+	outageAlertTestKey,
+	timingSafeEqualString,
 	OUTAGE_ALERT_WINDOW_SECONDS,
 	outageAlertDedupeKey,
 	outageAlertsEnabled,
@@ -109,5 +114,55 @@ describe('wiring (source checks)', () => {
 		assert.doesNotMatch(page, /emdash\/runtime|getDb|getEmDash|subscriptions-db|requireEditorialSession/);
 		const header = read('../src/components/Header.astro');
 		assert.doesNotMatch(header, /emdash\/runtime|getDb|getEmDash/);
+	});
+});
+
+describe('admin test alert email', () => {
+	const req = {
+		environment: 'staging',
+		host: 'staging.freedomtimes.news',
+		at: new Date('2026-11-23T13:30:00Z'),
+		requestedBy: 'Jon',
+		alertsEnabled: true,
+		contentBackend: 'd1',
+	};
+	it('subject is marked [TEST] and names the environment; body says the site is not down', () => {
+		const m = buildOutageAlertTestEmail(req);
+		assert.equal(m.subject, '[TEST] Freedom Times staging outage alert email (staging.freedomtimes.news)');
+		assert.match(m.text, /^TEST ONLY - staging\.freedomtimes\.news \(staging\) is not down\./);
+		assert.match(m.text, /Real alerts: +ON/);
+		assert.match(m.text, /Requested by: +Jon/);
+		assert.doesNotMatch(m.subject, /^\[ALERT\]/);
+		assert.match(buildOutageAlertTestEmail({ ...req, alertsEnabled: false }).text, /OFF \(set OUTAGE_ALERTS=on/);
+	});
+	it('rate limit key and window', () => {
+		assert.equal(outageAlertTestKey('production'), 'ft-outage-alert-test:v1:production');
+		assert.equal(OUTAGE_ALERT_TEST_WINDOW_SECONDS, 60);
+	});
+	it('timingSafeEqualString', () => {
+		assert.equal(timingSafeEqualString('abc', 'abc'), true);
+		assert.equal(timingSafeEqualString('abc', 'abd'), false);
+		assert.equal(timingSafeEqualString('abc', 'abcd'), false);
+		assert.equal(timingSafeEqualString('', ''), true);
+		assert.equal(OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH, 32);
+	});
+	it('POST /api/admin/outage-alert-test: admin + CSRF gate (or a >=32-char operator token), same email path', () => {
+		const route = read('../src/pages/api/admin/outage-alert-test.ts');
+		assert.match(route, /export const POST: APIRoute/);
+		assert.doesNotMatch(route, /export const GET/);
+		assert.match(route, /authorizeAdminApiRequest\(\{[\s\S]*roleCheck: hasAdminRole,[\s\S]*requireCsrf: true,/);
+		assert.match(route, /configured\.length < OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH \|\| !timingSafeEqualString\(presented, configured\)/);
+		// Auth happens before anything is sent.
+		assert.ok(route.indexOf('authorizeAdminApiRequest(') < route.indexOf('sendOutageAlertTestEmail({'));
+		const server = read('../src/lib/outage-alert-server.ts');
+		assert.match(server, /sendAlertEmail\(buildOutageAlertEmail\(event\)/, 'real alerts use sendAlertEmail');
+		assert.match(server, /const result = await sendAlertEmail\(message, \{ test: true/, 'the test uses the same sender path');
+	});
+	it('/admin/outage-alerts page is admin-gated and not cached', () => {
+		const page = read('../src/pages/admin/outage-alerts.astro');
+		assert.match(page, /requireAdminPageSession\(\{[\s\S]*roleCheck: hasAdminRole,/);
+		assert.match(page, /Cache-Control', 'no-store, private'/);
+		assert.match(page, /'X-CSRF-Token': csrfToken/);
+		assert.match(read('../src/pages/admin/index.astro'), /href: '\/admin\/outage-alerts'/);
 	});
 });
