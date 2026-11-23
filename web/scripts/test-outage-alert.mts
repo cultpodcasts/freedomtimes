@@ -12,10 +12,8 @@ import {
 	buildOutageAlertEmail,
 	buildOutageAlertPush,
 	buildOutageAlertTestEmail,
-	OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH,
 	OUTAGE_ALERT_TEST_WINDOW_SECONDS,
 	outageAlertTestKey,
-	timingSafeEqualString,
 	OUTAGE_ALERT_WINDOW_SECONDS,
 	outageAlertDedupeKey,
 	outageAlertsEnabled,
@@ -150,19 +148,12 @@ describe('admin test alert email', () => {
 		assert.equal(outageAlertTestKey('production'), 'ft-outage-alert-test:v1:production');
 		assert.equal(OUTAGE_ALERT_TEST_WINDOW_SECONDS, 60);
 	});
-	it('timingSafeEqualString', () => {
-		assert.equal(timingSafeEqualString('abc', 'abc'), true);
-		assert.equal(timingSafeEqualString('abc', 'abd'), false);
-		assert.equal(timingSafeEqualString('abc', 'abcd'), false);
-		assert.equal(timingSafeEqualString('', ''), true);
-		assert.equal(OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH, 32);
-	});
-	it('POST /api/admin/outage-alert-test: admin + CSRF gate (or a >=32-char operator token), same email path', () => {
+	it('POST /api/admin/outage-alert-test: admin + CSRF only (no token / bearer path), same email path', () => {
 		const route = read('../src/pages/api/admin/outage-alert-test.ts');
 		assert.match(route, /export const POST: APIRoute/);
 		assert.doesNotMatch(route, /export const GET/);
 		assert.match(route, /authorizeAdminApiRequest\(\{[\s\S]*roleCheck: hasAdminRole,[\s\S]*requireCsrf: true,/);
-		assert.match(route, /configured\.length < OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH \|\| !timingSafeEqualString\(presented, configured\)/);
+		assert.doesNotMatch(route, /OUTAGE_ALERT_TEST_TOKEN|authorization|bearer/i, 'no token path (removed by owner decision)');
 		// Auth happens before anything is sent.
 		assert.ok(route.indexOf('authorizeAdminApiRequest(') < route.indexOf('sendOutageAlertTestEmail({'));
 		const server = read('../src/lib/outage-alert-server.ts');

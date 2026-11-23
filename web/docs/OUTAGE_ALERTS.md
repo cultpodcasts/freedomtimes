@@ -68,10 +68,7 @@ one test per environment per minute, and it works even where `OUTAGE_ALERTS` is 
 The JSON response reports `recipients`, `sent`, `failed` and any Cloudflare `messageIds`. The Worker logs
 `[ft-outage-alert] email accepted by Cloudflare` for each recipient.
 
-Operators without a browser session can call the same endpoint with
-`Authorization: Bearer <OUTAGE_ALERT_TEST_TOKEN>`. That optional Worker secret must be at least 32
-characters; when it is unset, the bearer path is off. It can only send this fixed test email to the
-configured recipients.
+There is no token or bearer path: a test email needs a signed-in admin (owner decision, PR #198).
 
 ## Current settings
 
