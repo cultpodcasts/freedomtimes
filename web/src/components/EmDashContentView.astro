@@ -24,6 +24,7 @@ import {
 import { storedHeroImageAlt } from "../lib/content/heroImage";
 import { createRenderLookupBudget } from "../lib/content/renderLookup";
 import { SITE_DISPLAY_NAME } from "../lib/site-brand";
+import { notificationsEnabled } from "../lib/notifications-availability-server";
 import { getWeeklySummaries } from "../lib/seo/weekly-list";
 import {
 	WEEKLY_SUMMARIES_SECTION_TITLE,
@@ -208,6 +209,8 @@ const jsonLd: Record<string, unknown>[] = isPost
 			}),
 		]
 	: [];
+// PR #198: no reader-facing notification promise while notifications are paused.
+const showNotificationsCallout = await notificationsEnabled();
 ---
 
 <Layout
@@ -288,7 +291,7 @@ const jsonLd: Record<string, unknown>[] = isPost
 					</nav>
 				)}
 				{showReaderDataProvenance && <ReaderDataProvenance />}
-				<PushNotificationsCallout />
+				{showNotificationsCallout && <PushNotificationsCallout />}
 			</section>
 		</div>
 	</article>

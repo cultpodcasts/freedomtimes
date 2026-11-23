@@ -89,11 +89,26 @@ on Turso (do not retarget them at D1). Rollback: `npx wrangler rollback 6926c482
 
 
 
+## Direct content lookups (outside the EmDash runtime)
+
+A few server helpers query the content tables with raw SQL instead of going through EmDash
+(`src/lib/contentEntry.ts` → `createLibsqlClientForContentQueries`, used for slug / weekly / SEO
+lookups). With `FT_CONTENT_BACKEND=d1` that function returns a small adapter over the `EMDASH` D1
+binding (`src/lib/content/d1-query-client.ts`, same `execute({ sql, args }) → { rows }` shape), so these
+lookups read D1 too and never touch Turso. With `turso` it builds the libsql client as before.
+Tests: `scripts/test-d1-query-client.mts` (fake D1, synthetic rows).
+
 ## Swap back to Turso
 
 1. Confirm Turso reads are unblocked (quota reset or plan change). Do not change billing from this runbook.
 2. Set `FT_CONTENT_BACKEND` to `turso` in `web/wrangler.jsonc` `env.<name>.vars` (or remove the var so the default applies). That one change turns every Turso step back on (backup, migrate, provenance); unset the `FT_SKIP_TURSO` repo variable if it was set.
 3. Rebuild and deploy the same Worker. The `EMDASH` D1 binding can stay unused.
+   - Reader notifications: once the **subscriptions** DB (also Turso) is readable again, set
+     `NOTIFICATIONS_ENABLED` to `on` in `web/wrangler.jsonc` `env.<name>.vars` (target: 1 Dec 2026)
+     and ship it through the normal GitHub deploy (staging on the PR, production on merge). If an
+     admin set an override at `/admin/feature-switches`, press **Clear override** there too, or it
+     keeps winning over the config. The health check turns notifications off again by itself if the
+     subscriptions DB still fails. See `web/docs/FEATURE_SWITCHES.md`.
 4. Or, without a new build, roll back the Worker:
    - Staging previous version: `cb64d297-b665-4bce-8d30-bacd0d87b596` (created 22 Nov 2026, 20:00 UTC / 20:00 Europe/London).
      `npx wrangler rollback cb64d297-b665-4bce-8d30-bacd0d87b596 --env staging --config wrangler.jsonc`

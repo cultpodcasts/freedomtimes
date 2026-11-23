@@ -97,6 +97,8 @@
 				// Single source of truth for the content backend (web/scripts/resolve-content-backend.mjs exports it for the build; d1 also bypasses Turso deploy steps with a WARNING). Default turso.
 				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "public",
+				// Reader notifications feature switch (web/docs/FEATURE_SWITCHES.md): off while the Turso subscriptions DB is blocked; set "on" after 1 Dec. Admins can override at /admin/feature-switches.
+				"NOTIFICATIONS_ENABLED": "off",
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
@@ -168,6 +170,8 @@
 				// Single source of truth for the content backend (web/scripts/resolve-content-backend.mjs exports it for the build; d1 also bypasses Turso deploy steps with a WARNING). Default turso.
 				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "locked",
+				// Reader notifications feature switch (web/docs/FEATURE_SWITCHES.md): off while the Turso subscriptions DB is blocked; set "on" after 1 Dec. Admins can override at /admin/feature-switches.
+				"NOTIFICATIONS_ENABLED": "off",
 				// 5xx outage alert email (web/docs/OUTAGE_ALERTS.md). Production alerts by default; staging opts in.
 				"OUTAGE_ALERTS": "on",
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",

@@ -39,6 +39,10 @@ still goes out (better a duplicate than silence).
    fallbacks). The device list comes from the **subscriptions DB, which is on Turso**, so this
    channel is down while Turso is blocked. A failure is logged (`push failed (subscriptions DB on
    Turso)`) and never blocks the email. The notification opens `/admin`.
+   **Currently inert:** push is skipped while the `notifications` feature switch is off
+   (`NOTIFICATIONS_ENABLED=off`, see `FEATURE_SWITCHES.md`), and `push_subscriptions.user_id` is not
+   recorded yet, so no device can match an Auth0 `sub`. Making this work needs a follow-up that
+   stores the signed-in user's `sub` with each subscription. Use email until then.
 
 ## Setup (production)
 

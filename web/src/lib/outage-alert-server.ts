@@ -5,9 +5,10 @@
  * Channels (both optional, both configured by Worker secrets; see web/docs/OUTAGE_ALERTS.md):
  * 1. Email (primary, no Turso): Cloudflare Email Sending through the existing `send_email` binding
  *    EMAIL (from noreply@freedomtimes.news) to every address in `OUTAGE_ALERT_EMAIL_TO`.
- * 2. App/web push (best effort): devices registered in the subscriptions DB by the Auth0 users in
- *    `OUTAGE_ALERT_PUSH_USER_IDS`. That DB is on Turso, so this channel is down whenever Turso is;
- *    a failure is logged and never blocks the email.
+ * 2. App/web push (best effort, currently inert): devices registered in the subscriptions DB by the
+ *    Auth0 users in `OUTAGE_ALERT_PUSH_USER_IDS`. Skipped while the `notifications` feature switch is
+ *    off. push_subscriptions.user_id is not recorded yet, so no device can match until subscriptions
+ *    store the Auth0 `sub` (follow-up). A failure is logged and never blocks the email.
  *
  * Dedupe: KV `SESSION` key `ft-outage-alert:v1:<env>` with a TTL of one window, plus a per-isolate
  * timestamp so an outage storm does not hit KV on every request.
@@ -184,6 +185,13 @@ function firstEnv(...keys: string[]): string {
 async function sendPushAlerts(event: OutageAlertEvent, siteOrigin: string): Promise<void> {
 	const userIds = parseList(readOptionalEnv('OUTAGE_ALERT_PUSH_USER_IDS'));
 	if (userIds.length === 0) return;
+	// PR #198 review: push needs the notifications switch on (and the subscriptions DB up). Note that
+	// push_subscriptions.user_id is not recorded yet, so matching by user id needs that follow-up first.
+	const { notificationsEnabled } = await import('./notifications-availability-server');
+	if (!(await notificationsEnabled())) {
+		console.warn('[ft-outage-alert] push skipped: notifications are switched off (feature switch / subscriptions DB)');
+		return;
+	}
 	const webPushConfig = readWebPushConfig({
 		PUSH_VAPID_PUBLIC_KEY: firstEnv('PUSH_VAPID_PUBLIC_KEY', 'PUSH_SUBSCRIBE_PUBLIC_KEY', 'PUSH_STAGING_SUBSCRIBE_PUBLIC_KEY'),
 		PUSH_VAPID_PRIVATE_KEY: firstEnv('PUSH_VAPID_PRIVATE_KEY', 'PUSH_PRODUCTION_VAPID_PRIVATE_KEY', 'PUSH_STAGING_VAPID_PRIVATE_KEY'),
