@@ -74,6 +74,18 @@
 					"bucket_name": "freedomtimes-media-production"
 				}
 			],
+			// Temporary D1 content backend (23 Nov 2026 Turso sync-quota outage). Binding name EMDASH
+			// must match d1({ binding: "EMDASH" }) in astro.config.ts when FT_CONTENT_BACKEND=d1.
+			// Swap back to Turso: set FT_CONTENT_BACKEND=turso, rebuild + deploy (or wrangler rollback
+			// to 6926c482-02f8-4cdb-a379-e8de04f5c6c1). Do not terraform apply while this binding is
+			// only in wrangler.jsonc — Terraform may strip it.
+			"d1_databases": [
+				{
+					"binding": "EMDASH",
+					"database_name": "freedomtimes-emdash-production-fallback-20261123",
+					"database_id": "ece69b46-eacd-4ce5-9923-68185cfcfb48"
+				}
+			],
 			"analytics_engine_datasets": [
 				{
 					"binding": "PAGE_VIEWS",
@@ -82,6 +94,8 @@
 				}
 			],
 			"vars": {
+				// Must match the Astro build-time FT_CONTENT_BACKEND. Default in code is turso.
+				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "public",
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
@@ -131,6 +145,18 @@
 					"bucket_name": "freedomtimes-media-staging"
 				}
 			],
+			// Temporary D1 content backend (23 Nov 2026 Turso sync-quota outage). Binding name EMDASH
+			// must match d1({ binding: "EMDASH" }) in astro.config.ts when FT_CONTENT_BACKEND=d1.
+			// Swap back to Turso: set FT_CONTENT_BACKEND=turso, rebuild + deploy (or wrangler rollback
+			// to cb64d297-b665-4bce-8d30-bacd0d87b596). Do not terraform apply while this binding is
+			// only in wrangler.jsonc — Terraform may strip it.
+			"d1_databases": [
+				{
+					"binding": "EMDASH",
+					"database_name": "freedomtimes-emdash-staging-fallback-20261123",
+					"database_id": "ba03720b-f6f8-4ab1-b3cf-c2809b4bb0bf"
+				}
+			],
 			"analytics_engine_datasets": [
 				{
 					"binding": "PAGE_VIEWS",
@@ -139,6 +165,8 @@
 				}
 			],
 			"vars": {
+				// Must match the Astro build-time FT_CONTENT_BACKEND. Default in code is turso.
+				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "locked",
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",

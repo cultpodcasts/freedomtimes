@@ -7,7 +7,7 @@ import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 import emdash from 'emdash/astro';
 import type { PluginDescriptor } from 'emdash';
-import { r2 } from '@emdash-cms/cloudflare';
+import { d1, r2 } from '@emdash-cms/cloudflare';
 import { cloudflareEmail } from '@emdash-cms/cloudflare/plugins';
 import { embedsPlugin } from '@emdash-cms/plugin-embeds';
 import {
@@ -40,7 +40,26 @@ const libsqlShimEntryUrl = new URL('./src/shims/kysely-libsql.ts', import.meta.u
 const tursoDatabaseUrl =
   process.env.TURSO_DATABASE_URL?.trim() || 'libsql://unused-at-build.invalid';
 
-const emdashDatabase = {
+/**
+ * Content database backend (23 Nov 2026 D1 fallback).
+ * Build/deploy with FT_CONTENT_BACKEND=d1 to use the official EmDash D1 adapter
+ * (`d1({ binding: "EMDASH" })`) and a wrangler D1 binding. Default (and swap-back)
+ * is `turso`, which keeps the existing request-scoped libsql shim and TURSO_* secrets.
+ * Runtime wrangler var FT_CONTENT_BACKEND should match the build. Rollback to a
+ * prior Worker version also returns production/staging to Turso without a new build.
+ */
+function resolveContentBackend(): 'd1' | 'turso' {
+  const raw = (process.env.FT_CONTENT_BACKEND ?? 'turso').trim().toLowerCase();
+  if (raw === 'd1') return 'd1';
+  if (raw === 'turso') return 'turso';
+  throw new Error(
+    `FT_CONTENT_BACKEND must be "d1" or "turso" (got ${JSON.stringify(process.env.FT_CONTENT_BACKEND)}).`,
+  );
+}
+
+const contentBackend = resolveContentBackend();
+
+const emdashTursoDatabase = {
   entrypoint: libsqlShimEntryUrl,
   config: {
     url: tursoDatabaseUrl,
@@ -62,6 +81,12 @@ const emdashDatabase = {
   },
 } as const;
 
+// Sessions disabled for the fallback: all queries go to the D1 primary. Avoids
+// Sessions-API hangs and is enough for a temporary read-mostly outage window.
+const emdashD1Database = d1({ binding: 'EMDASH', session: 'disabled' });
+
+const emdashDatabase = contentBackend === 'd1' ? emdashD1Database : emdashTursoDatabase;
+
 const emdashStorage = r2({ binding: 'MEDIA' });
 const libsqlClientWebPath = fileURLToPath(
   new URL('./node_modules/@libsql/client/lib-esm/web.js', import.meta.url),
@@ -71,7 +96,7 @@ const bindingsShimPath = fileURLToPath(new URL('./src/shims/bindings.ts', import
 
 const isAstroBuild = process.argv.includes('build');
 const isAstroDev = process.argv.includes('dev') && !isAstroBuild;
-if (isAstroDev && /emdash-production/i.test(tursoDatabaseUrl)) {
+if (isAstroDev && contentBackend === 'turso' && /emdash-production/i.test(tursoDatabaseUrl)) {
   throw new Error(
     'astro dev refuses TURSO_DATABASE_URL that looks like production EmDash (migrations.dev is auto). Use a local or staging URL.',
   );
