@@ -7,7 +7,7 @@ import Header from '../../components/Header.astro';
 import Layout from '../../layouts/Layout.astro';
 import { requireAdminPageSession } from '../../lib/admin-session';
 import { hasAdminRole, readOptionalEnv } from '../../lib/auth';
-import { resolveDeployEnvironmentName } from '../../lib/content-export';
+import { resolveDeployEnvironmentName } from '../../lib/deploy-environment';
 import { outageAlertsEnabled, parseEmailRecipients } from '../../lib/outage-alert';
 
 export const prerender = false;

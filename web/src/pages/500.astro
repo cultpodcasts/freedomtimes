@@ -54,7 +54,7 @@ if (storeUnavailable) {
 			minute.
 		</p>
 		<nav class="actions">
-			<a class="retry" href={Astro.url.pathname}>Try again</a>
+			<a class="retry" href={`${Astro.url.pathname}${Astro.url.search}`}>Try again</a>
 			<a href="/">Back to homepage</a>
 		</nav>
 	</article>

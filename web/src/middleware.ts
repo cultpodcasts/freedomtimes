@@ -31,8 +31,8 @@ import { SITE_SITEMAP_PATH } from './lib/site-sitemap';
 import { generateSiteSitemapResponse } from './lib/site-sitemap-db';
 import { promoteContentStoreUnavailable } from './lib/content-store-guard';
 import { assertContentStoreReady } from './lib/content-store-guard-db';
-import { resolveDeployEnvironmentName } from './lib/content-export';
-import { shouldAlertOnResponse, type OutageAlertEvent } from './lib/outage-alert';
+import { resolveDeployEnvironmentName } from './lib/deploy-environment';
+import { shouldAlertOnResponse, shouldAlertOnThrow, type OutageAlertEvent } from './lib/outage-alert';
 import { sendOutageAlert } from './lib/outage-alert-server';
 import { SECURE_ACCESS_WALL_NATIVE_BRIDGE_SCRIPT } from './lib/secure-access-wall';
 
@@ -184,7 +184,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
   try {
     response = promoteContentStoreUnavailable(await handleSiteRequest(context, next), context.locals);
   } catch (error) {
-    scheduleOutageAlert(context, 500, error);
+    if (shouldAlertOnThrow({ method: context.request.method, pathname: context.url.pathname })) {
+      scheduleOutageAlert(context, 500, error);
+    }
     throw error;
   }
   if (

@@ -31,6 +31,13 @@ export type OutageAlertEvent = {
 	error?: string;
 };
 
+/** Shared request rule for both the response and the throw path: reader page loads only. */
+function isAlertableRequest(input: { method: string; pathname: string }): boolean {
+	if (input.method !== 'GET' && input.method !== 'HEAD') return false;
+	// EmDash CMS/API JSON errors are not reader pages (and are noisy during editing).
+	return !input.pathname.startsWith('/_emdash/api/') && !input.pathname.startsWith('/api/');
+}
+
 export function shouldAlertOnResponse(input: {
 	status: number;
 	method: string;
@@ -38,10 +45,13 @@ export function shouldAlertOnResponse(input: {
 	contentType: string | null;
 }): boolean {
 	if (input.status < 500 || input.status > 599) return false;
-	if (input.method !== 'GET' && input.method !== 'HEAD') return false;
-	// EmDash CMS/API JSON errors are not reader pages (and are noisy during editing).
-	if (input.pathname.startsWith('/_emdash/api/') || input.pathname.startsWith('/api/')) return false;
+	if (!isAlertableRequest(input)) return false;
 	return (input.contentType ?? '').toLowerCase().includes('text/html');
+}
+
+/** A middleware throw becomes a 500 page; alert under the same method/path rules as a response. */
+export function shouldAlertOnThrow(input: { method: string; pathname: string }): boolean {
+	return isAlertableRequest(input);
 }
 
 export function outageAlertsEnabled(environment: OutageAlertEnvironment, setting: string): boolean {

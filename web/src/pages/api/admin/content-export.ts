@@ -15,11 +15,11 @@ import {
 	contentDumpToStream,
 	contentExportFileName,
 	generateContentDump,
-	resolveDeployEnvironmentName,
 	type ContentExportMeta,
 	type ContentExportQuery,
 } from '../../../lib/content-export';
 import { createContentExportQuery, currentContentBackend } from '../../../lib/content-export-db';
+import { resolveDeployEnvironmentName } from '../../../lib/deploy-environment';
 
 export const prerender = false;
 

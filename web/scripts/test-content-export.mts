@@ -18,10 +18,10 @@ import {
 	contentExportFileName,
 	generateContentDump,
 	planContentExport,
-	resolveDeployEnvironmentName,
 	sqlLiteral,
 	type ContentExportRow,
 } from '../src/lib/content-export.ts';
+import { resolveDeployEnvironmentName } from '../src/lib/deploy-environment.ts';
 import { readContentExport, restoreContentExport } from './sqlite-from-content-export.mjs';
 
 const meta = { environment: 'staging', backend: 'd1', generatedAt: new Date('2026-11-23T12:05:01.123Z') };

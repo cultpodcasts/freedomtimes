@@ -7,7 +7,7 @@ import Header from '../../components/Header.astro';
 import Layout from '../../layouts/Layout.astro';
 import { requireAdminPageSession } from '../../lib/admin-session';
 import { hasAdminRole } from '../../lib/auth';
-import { resolveDeployEnvironmentName } from '../../lib/content-export';
+import { resolveDeployEnvironmentName } from '../../lib/deploy-environment';
 import { currentContentBackend } from '../../lib/content-export-db';
 
 export const prerender = false;

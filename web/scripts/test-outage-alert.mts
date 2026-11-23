@@ -21,6 +21,7 @@ import {
 	outageAlertsEnabled,
 	parseEmailRecipients,
 	shouldAlertOnResponse,
+	shouldAlertOnThrow,
 	type OutageAlertEvent,
 } from '../src/lib/outage-alert.ts';
 
@@ -51,6 +52,16 @@ describe('shouldAlertOnResponse', () => {
 		assert.equal(shouldAlertOnResponse({ status: 500, method: 'POST', pathname: '/', contentType: html }), false);
 		assert.equal(shouldAlertOnResponse({ status: 500, method: 'GET', pathname: '/_emdash/api/content', contentType: html }), false);
 		assert.equal(shouldAlertOnResponse({ status: 500, method: 'GET', pathname: '/api/admin/content-export', contentType: html }), false);
+	});
+});
+
+describe('shouldAlertOnThrow', () => {
+	it('same method/path rules as responses', () => {
+		assert.equal(shouldAlertOnThrow({ method: 'GET', pathname: '/posts/a' }), true);
+		assert.equal(shouldAlertOnThrow({ method: 'HEAD', pathname: '/' }), true);
+		assert.equal(shouldAlertOnThrow({ method: 'POST', pathname: '/' }), false);
+		assert.equal(shouldAlertOnThrow({ method: 'GET', pathname: '/api/push-subscriptions' }), false);
+		assert.equal(shouldAlertOnThrow({ method: 'GET', pathname: '/_emdash/api/content' }), false);
 	});
 });
 
@@ -99,7 +110,7 @@ describe('wiring (source checks)', () => {
 	it('middleware alerts on 5xx responses and on a middleware throw, via waitUntil', () => {
 		const mw = read('../src/middleware.ts');
 		assert.match(mw, /shouldAlertOnResponse\(\{/);
-		assert.match(mw, /catch \(error\) \{\s*scheduleOutageAlert\(context, 500, error\);\s*throw error;/);
+		assert.match(mw, /catch \(error\) \{\s*if \(shouldAlertOnThrow\(\{ method: context\.request\.method, pathname: context\.url\.pathname \}\)\) \{\s*scheduleOutageAlert\(context, 500, error\);\s*\}\s*throw error;/);
 		assert.match(mw, /waitUntil\(task\)/);
 	});
 	it('the email path never imports Turso / the content DB at module load', () => {

@@ -331,13 +331,6 @@ export async function* generateContentDump(
 	yield `-- rows exported per table:\n${summary}\n-- end of export\n`;
 }
 
-/** Which deployed environment this Worker is, from the request host (the export names its file by it). */
-export function resolveDeployEnvironmentName(hostname: string): 'production' | 'staging' | 'local' {
-	const host = hostname.trim().toLowerCase();
-	if (host === 'freedomtimes.news' || host === 'www.freedomtimes.news') return 'production';
-	if (host === 'staging.freedomtimes.news') return 'staging';
-	return 'local';
-}
 
 /** Download file name, e.g. freedomtimes-production-content-d1-20261123T120501Z.sql.gz */
 export function contentExportFileName(meta: ContentExportMeta, gzip: boolean): string {

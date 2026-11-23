@@ -14,7 +14,7 @@ import type { APIRoute } from 'astro';
 
 import { authorizeAdminApiRequest } from '../../../lib/admin-session';
 import { hasAdminRole, readOptionalEnv } from '../../../lib/auth';
-import { resolveDeployEnvironmentName } from '../../../lib/content-export';
+import { resolveDeployEnvironmentName } from '../../../lib/deploy-environment';
 import { OUTAGE_ALERT_TEST_TOKEN_MIN_LENGTH, timingSafeEqualString } from '../../../lib/outage-alert';
 import { sendOutageAlertTestEmail } from '../../../lib/outage-alert-server';
 
