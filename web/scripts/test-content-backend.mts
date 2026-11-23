@@ -99,3 +99,21 @@ describe('buildTursoBypassWarning', () => {
 		assert.match(w.details, /NO verified Turso backup/);
 	});
 });
+
+describe('workflows call the resolver from a path that exists (PR #198 CI regression)', () => {
+	const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+	for (const workflow of ['deploy-worker.yml', 'terraform-staging.yml', 'terraform-production.yml']) {
+		it(workflow, () => {
+			const text = readFileSync(`${repoRoot}.github/workflows/${workflow}`, 'utf8').replace(/\r\n/g, '\n');
+			const steps = [...text.matchAll(/id: content_backend\n((?:\s+.*\n){1,3})/g)].map((m) => m[1]);
+			assert.ok(steps.length >= 1, 'has a content_backend step');
+			const defaultsDir = /defaults:\n\s+run:\n\s+working-directory: (\S+)/.exec(text)?.[1] ?? '.';
+			for (const step of steps) {
+				const dir = /working-directory: (\S+)/.exec(step)?.[1] ?? defaultsDir;
+				const script = /run: node (\S+)/.exec(step)?.[1];
+				assert.ok(script, step);
+				readFileSync(`${repoRoot}${dir}/${script}`); // throws when the path does not resolve
+			}
+		});
+	}
+});

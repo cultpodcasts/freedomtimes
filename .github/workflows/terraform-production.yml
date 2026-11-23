@@ -543,7 +543,9 @@ jobs:
 
       - name: Resolve content backend (WARNS when Turso steps are bypassed)
         id: content_backend
-        run: node web/scripts/resolve-content-backend.mjs --env production
+        # The job default working-directory is infra/terraform/environments/production.
+        working-directory: web
+        run: node scripts/resolve-content-backend.mjs --env production
 
       - name: Decide worker / Turso mutate
         id: emdash_mutate
