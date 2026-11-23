@@ -36,26 +36,55 @@ The Terraform Cloudflare API token used for Workers deploy does not include
 `d1:write`. Creating and hydrating D1 is done with a local `wrangler login`
 (OAuth has `d1:write`).
 
-## Staging deploy while Turso is blocked
+## Single source of truth and the Turso bypass
+
+`web/wrangler.jsonc` `env.<name>.vars.FT_CONTENT_BACKEND` decides the backend for each
+environment. `web/scripts/resolve-content-backend.mjs` (logic in
+`web/scripts/lib/content-backend.mjs`, tests in `web/scripts/test-content-backend.mts`) reads it,
+and the deploy scripts and CI export it as `FT_CONTENT_BACKEND` before `npm run build`, so the
+bundle always matches the Worker. An explicit `FT_CONTENT_BACKEND` that disagrees with wrangler
+fails the run before anything is backed up, built or deployed.
+
+Turso steps are **bypassed** when either:
+
+| Trigger | Scope |
+| --- | --- |
+| The env's wrangler backend is `d1` | EmDash content DB steps: Turso backup / `staging-rollback-*` / `prod-rollback-*` branch, `emdash migrate` apply + `--check`, production Turso host provenance (#142/#148), `-UseFreshTursoCheckpoint` |
+| `FT_SKIP_TURSO=1` (env var locally; **repo variable** `FT_SKIP_TURSO` in GitHub Actions) | All of the above, plus the scheduler / subscriptions / tips SQL deploys in `terraform-*.yml` |
+
+A bypass is never silent:
+
+- console: a yellow `WARNING: TURSO STEPS BYPASSED (<env>) …` banner;
+- GitHub Actions: a `::warning title=TURSO STEPS BYPASSED (<env>)::…` annotation on the run;
+- GitHub Actions: a `⚠️ TURSO STEPS BYPASSED` block in the job summary, with the reason and the
+  safety net (D1 Time Travel + the admin export).
+
+```mermaid
+flowchart LR
+  W[web/wrangler.jsonc<br/>env.X.vars.FT_CONTENT_BACKEND] --> R[resolve-content-backend.mjs]
+  F[FT_SKIP_TURSO] --> R
+  E[explicit FT_CONTENT_BACKEND] -->|must agree| R
+  R -->|backend| B[npm run build]
+  R -->|skip_turso| S{Turso steps}
+  S -->|true| WARN[WARNING + ::warning:: + summary<br/>skip backup / migrate / provenance]
+  S -->|false| T[Turso backup → migrate → deploy → check]
+```
+
+## Staging and production deploys while Turso is blocked
+
+No special flags: the wrangler backend (`d1`) already bypasses the Turso steps, locally and in CI
+(`deploy-worker.yml` staging on every PR push, production on merge to `main`).
 
 ```
-$env:FT_CONTENT_BACKEND = "d1"
-pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly -SkipTursoBackup
+pwsh ./scripts/deploy-staging-local.ps1 -WorkerOnly
+pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction
 ```
 
-`-SkipTursoBackup` also avoids `emdash migrate apply/check` against blocked Turso.
+`-SkipTursoBackup` still works as before. Terraform no longer strips the D1 binding:
+`modules/cloudflare_holding_page` keeps `d1` bindings (Wrangler-owned, like KV and R2), and the
+D1 databases can be adopted into Terraform state (below).
 
-Do **not** `terraform apply` while the D1 binding exists only in `wrangler.jsonc`;
-Terraform may strip it.
-
-## Production deploy while Turso is blocked
-
-```
-$env:FT_CONTENT_BACKEND = "d1"
-pwsh ./scripts/deploy-production-local.ps1 -WorkerOnly -AllowProduction -SkipTursoBackup
-```
-
-This deploys only the web Worker. Leave the scheduler / subscriptions Workers
+The web Worker deploy covers only the web Worker. Leave the scheduler / subscriptions Workers
 on Turso (do not retarget them at D1). Rollback: `npx wrangler rollback 6926c482-02f8-4cdb-a379-e8de04f5c6c1 --env production --config wrangler.jsonc`.
 
 
@@ -63,7 +92,7 @@ on Turso (do not retarget them at D1). Rollback: `npx wrangler rollback 6926c482
 ## Swap back to Turso
 
 1. Confirm Turso reads are unblocked (quota reset or plan change). Do not change billing from this runbook.
-2. Set `FT_CONTENT_BACKEND=turso` in the shell and in `wrangler.jsonc` vars (or remove the var so the default applies).
+2. Set `FT_CONTENT_BACKEND` to `turso` in `web/wrangler.jsonc` `env.<name>.vars` (or remove the var so the default applies). That one change turns every Turso step back on (backup, migrate, provenance); unset the `FT_SKIP_TURSO` repo variable if it was set.
 3. Rebuild and deploy the same Worker. The `EMDASH` D1 binding can stay unused.
 4. Or, without a new build, roll back the Worker:
    - Staging previous version: `cb64d297-b665-4bce-8d30-bacd0d87b596` (created 22 Nov 2026, 20:00 UTC / 20:00 Europe/London).
@@ -73,6 +102,20 @@ on Turso (do not retarget them at D1). Rollback: `npx wrangler rollback 6926c482
 
 Content written only to D1 during the outage will not be on Turso after swap-back.
 Treat the D1 window as read-mostly. Leave the scheduler on Turso.
+
+## D1 databases in Terraform
+
+`infra/terraform/environments/<env>/d1.tf` adopts each fallback database with an `import` block
+(no create, no replace; `prevent_destroy`). It is gated by `manage_emdash_d1_fallback`
+(default `false`) because the Terraform Cloudflare API token (`TF_VAR_CLOUDFLARE_API_TOKEN`) has no
+D1 permission, so a plan that reads the database would fail. To adopt:
+
+1. Add **Account → D1 → Edit** to that token (Cloudflare dashboard → API Tokens).
+2. Set the GitHub repo variable `TF_VAR_MANAGE_EMDASH_D1_FALLBACK=true` (locally:
+   `$env:TF_VAR_manage_emdash_d1_fallback = "true"`).
+3. Plan: expect `1 to import` for `cloudflare_d1_database.emdash_fallback["emdash"]`, nothing destroyed.
+
+The `EMDASH` binding itself stays in `web/wrangler.jsonc` (one owner); Terraform keeps it on apply.
 
 ## Test the switch by config (no deploy required for the unit of choice)
 

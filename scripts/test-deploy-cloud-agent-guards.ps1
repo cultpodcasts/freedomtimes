@@ -1159,6 +1159,33 @@ $stagingDeployIdx = $wfText.IndexOf("deploy-staging-local.ps1 -WorkerOnly -Turso
 Assert-True ($pruneIdx -lt 0 -or $pruneIdx -lt $stagingDeployIdx) "deploy-worker.yml prunes staging-rollback branches (if wired) before the staging backup"
 Assert-True (([regex]::Matches($wfText, 'turso-backup-retention\.mjs[^\n]*--delete')).Count -eq ([regex]::Matches($wfText, 'turso-backup-retention\.mjs --ci-staging-only --delete')).Count) "deploy-worker.yml runs retention --delete only in --ci-staging-only mode"
 
+Write-Host "=== PR #198 content backend / Turso bypass ==="
+$savedBackend = $env:FT_CONTENT_BACKEND
+Initialize-DeployEnvironment -Environment staging 3>$null
+$bypassOut = Resolve-DeployContentBackend -Resolve { [pscustomobject]@{ backend = "d1"; skipTurso = $true; forced = $false; warningTitle = "TURSO STEPS BYPASSED (staging)"; warningLine = "TURSO STEPS BYPASSED (staging): test" } } 6>&1 | Out-String
+Assert-True ($env:FT_CONTENT_BACKEND -eq "d1") "Resolve-DeployContentBackend exports FT_CONTENT_BACKEND for the build"
+Assert-True ($script:DeployTursoBypass -eq $true) "d1 backend sets the Turso bypass"
+Assert-True ($bypassOut -match "WARNING: TURSO STEPS BYPASSED") "a Turso bypass prints a console WARNING"
+Assert-True ($bypassOut -notmatch "::warning") "no ::warning:: workflow command outside GitHub Actions"
+Set-DeploySkipTursoMutate
+Assert-True ($script:DeploySkipTursoMutate -eq $true) "a Turso bypass skips EmDash migrate even on a full deploy"
+Initialize-DeployEnvironment -Environment staging 3>$null
+$null = Resolve-DeployContentBackend -Resolve { [pscustomobject]@{ backend = "turso"; skipTurso = $false; forced = $false; warningTitle = $null; warningLine = $null } } 6>$null
+Set-DeploySkipTursoMutate -SkipTursoBackup:$false -WorkerOnly
+Assert-True ($script:DeployTursoBypass -eq $false -and $script:DeploySkipTursoMutate -eq $false) "turso backend without FT_SKIP_TURSO keeps every Turso step"
+$env:FT_CONTENT_BACKEND = $savedBackend
+foreach ($f in "deploy-staging-local.ps1", "deploy-production-local.ps1") {
+    $t = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot $f)
+    $resolveIdx = $t.IndexOf('$null = Resolve-DeployContentBackend')
+    $skipIdx = $t.IndexOf("Set-DeploySkipTursoMutate", [Math]::Max($resolveIdx, 0))
+    $backupIdx = $t.IndexOf("Invoke-DeployEmDashTursoBackup", [Math]::Max($resolveIdx, 0))
+    Assert-True ($resolveIdx -gt 0 -and $skipIdx -gt $resolveIdx -and $backupIdx -gt $skipIdx) "$f resolves the content backend before any Turso step"
+}
+$prodText = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "deploy-production-local.ps1")
+Assert-True ($prodText -match '(?s)if \(\$script:DeployTursoBypass\) \{.*?\$UseFreshTursoCheckpoint = \$false') "production bypass drops the -UseFreshTursoCheckpoint Turso gates"
+$wfText2 = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot "../.github/workflows/deploy-worker.yml")
+Assert-True ($wfText2 -match "(?s)Verified production EmDash backup.*?if: steps\.content_backend\.outputs\.skip_turso != 'true'") "deploy-worker.yml skips the production Turso backup step under a bypass"
+
 Write-Host "passed=$script:Passed failed=$script:Failed"
 if ($script:Failed -gt 0) {
     exit 1

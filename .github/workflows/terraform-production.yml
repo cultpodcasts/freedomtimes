@@ -36,6 +36,12 @@ concurrency:
 env:
   PRODUCTION_TERRAFORM_APPLY: "false"
   PRODUCTION_WORKER_DEPLOY: "false"
+  # PR #198 (Turso outage): repo variable FT_SKIP_TURSO=1 bypasses every Turso step; a d1 backend in
+  # web/wrangler.jsonc implies it for EmDash. Both WARN (web/scripts/resolve-content-backend.mjs).
+  FT_SKIP_TURSO: ${{ vars.FT_SKIP_TURSO }}
+  # PR #198: adopt the EmDash D1 fallback DB into Terraform (import block in environments/<env>/d1.tf).
+  # Leave unset/false until the Terraform Cloudflare token has Account > D1 > Edit.
+  TF_VAR_manage_emdash_d1_fallback: ${{ vars.TF_VAR_MANAGE_EMDASH_D1_FALLBACK || 'false' }}
 
 jobs:
   terraform:
@@ -535,6 +541,10 @@ jobs:
             npm install --no-audit --no-fund
           fi
 
+      - name: Resolve content backend (WARNS when Turso steps are bypassed)
+        id: content_backend
+        run: node web/scripts/resolve-content-backend.mjs --env production
+
       - name: Decide worker / Turso mutate
         id: emdash_mutate
         env:
@@ -546,7 +556,7 @@ jobs:
           echo "Production mutate (EmDash backup/apply, SQL db:deploy, wrangler): $deploy (push to main: EmDash --check only)"
 
       - name: Apply Scheduler Database Migration and Seed
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.scheduler_turso_database_url != '' && steps.tf_outputs.outputs.scheduler_turso_database_url != 'null' && steps.content_backend.outputs.force_skip_turso != 'true'
         working-directory: web
         env:
           TURSO_SCHEDULER_DATABASE_URL: ${{ steps.tf_outputs.outputs.scheduler_turso_database_url }}
@@ -567,7 +577,7 @@ jobs:
           npm run scheduler:db:deploy
 
       - name: Apply Subscriptions Database Migration and Seed
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.subscriptions_turso_database_url != '' && steps.tf_outputs.outputs.subscriptions_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.subscriptions_turso_database_url != '' && steps.tf_outputs.outputs.subscriptions_turso_database_url != 'null' && steps.content_backend.outputs.force_skip_turso != 'true'
         working-directory: web
         env:
           TURSO_SUBSCRIPTIONS_DATABASE_URL: ${{ steps.tf_outputs.outputs.subscriptions_turso_database_url }}
@@ -588,7 +598,7 @@ jobs:
           npm run subscriptions:db:deploy
 
       - name: Apply Tips Database Migration
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.tips_turso_database_url != '' && steps.tf_outputs.outputs.tips_turso_database_url != 'null'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.tf_outputs.outputs.tips_turso_database_url != '' && steps.tf_outputs.outputs.tips_turso_database_url != 'null' && steps.content_backend.outputs.force_skip_turso != 'true'
         working-directory: web
         env:
           TURSO_TIPS_DATABASE_URL: ${{ steps.tf_outputs.outputs.tips_turso_database_url }}
@@ -609,7 +619,7 @@ jobs:
           npm run tips:db:deploy
 
       - name: Backup EmDash Turso before core migrate
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.content_backend.outputs.skip_turso != 'true'
         id: emdash_backup
         env:
           TURSO_API_TOKEN: ${{ secrets.TURSO_TOKEN }}
@@ -624,7 +634,7 @@ jobs:
             "${{ vars.TF_VAR_TURSO_DATABASE_GROUP_PRODUCTION }}"
 
       - name: Upload production EmDash rollback metadata
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.content_backend.outputs.skip_turso != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: emdash-production-rollback-metadata
@@ -635,7 +645,7 @@ jobs:
           retention-days: 30
 
       - name: Record production EmDash rollback in job summary
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.content_backend.outputs.skip_turso != 'true'
         env:
           ROLLBACK_METADATA: ${{ steps.emdash_backup.outputs.rollback_metadata }}
         run: |
@@ -659,6 +669,8 @@ jobs:
       - name: Build Astro Worker
         working-directory: web
         env:
+          # PR #198: web/wrangler.jsonc backend (d1 during the Turso outage); the bundle must match the Worker.
+          FT_CONTENT_BACKEND: ${{ steps.content_backend.outputs.backend }}
           TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
           TURSO_AUTH_TOKEN: ${{ steps.tf_outputs.outputs.turso_auth_token }}
           FT_BUILD_COMMIT_SHA: ${{ github.sha }}
@@ -680,7 +692,7 @@ jobs:
           npm run build
 
       - name: Apply EmDash core migrations
-        if: steps.emdash_mutate.outputs.deploy_worker == 'true'
+        if: steps.emdash_mutate.outputs.deploy_worker == 'true' && steps.content_backend.outputs.skip_turso != 'true'
         working-directory: web
         env:
           TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}
@@ -710,6 +722,7 @@ jobs:
           --var API_UPSTREAM_MODE:$API_UPSTREAM_MODE
 
       - name: Check EmDash core migrations
+        if: steps.content_backend.outputs.skip_turso != 'true'
         working-directory: web
         env:
           TURSO_DATABASE_URL: ${{ steps.tf_outputs.outputs.turso_database_url }}

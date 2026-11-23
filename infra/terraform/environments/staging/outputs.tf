@@ -144,3 +144,8 @@ output "page_views_binding_name" {
   description = "Worker Analytics Engine binding name for public page views"
   value       = module.cloudflare_holding_page.page_views_binding_name
 }
+
+output "emdash_d1_fallback_database_id" {
+  description = "EmDash D1 fallback database id (matches web/wrangler.jsonc d1_databases EMDASH). PR #198."
+  value       = local.emdash_d1_fallback_database_id
+}

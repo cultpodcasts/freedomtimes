@@ -55,6 +55,12 @@ param(
   Set FT_PRODUCTION_SITE_ORIGIN to override the origin; DEPLOY_PROVENANCE_TOKEN is sent
   as a bearer when set (only needed if the Worker has that secret).
 
+  Content backend / Turso bypass (PR #198): the backend comes from web/wrangler.jsonc
+  env.production.vars.FT_CONTENT_BACKEND and is exported for the build. When it is d1, or
+  FT_SKIP_TURSO=1 is set, every Turso step is bypassed (as -SkipTursoBackup; the
+  -UseFreshTursoCheckpoint gates are ignored) with a loud WARNING, a GitHub ::warning:: and a
+  job summary block. See web/docs/CONTENT_BACKEND.md.
+
 .EXAMPLE
   pwsh ./scripts/deploy-production-local.ps1
 
@@ -81,6 +87,17 @@ if ($UseFreshTursoCheckpoint -and $SkipTursoBackup) {
 
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 Initialize-DeployEnvironment -Environment production
+# PR #198: backend from web/wrangler.jsonc; d1 backend or FT_SKIP_TURSO=1 bypasses every Turso step
+# (loud WARNING + ::warning:: + job summary). The -UseFreshTursoCheckpoint gates (fresh Turso backup,
+# migrate-target and live Turso host provenance) do not apply to a Worker that does not read Turso.
+$null = Resolve-DeployContentBackend
+if ($script:DeployTursoBypass) {
+    if ($UseFreshTursoCheckpoint) {
+        Write-Host "WARNING: -UseFreshTursoCheckpoint ignored: Turso steps are bypassed (see warning above)." -ForegroundColor Yellow
+        $UseFreshTursoCheckpoint = $false
+    }
+    $SkipTursoBackup = $true
+}
 Set-DeploySkipTursoMutate -SkipTursoBackup:$SkipTursoBackup -WorkerOnly:$WorkerOnly
 
 $workflowLabel = if ($WorkerOnly) { "worker deploy" } else { "full deploy" }

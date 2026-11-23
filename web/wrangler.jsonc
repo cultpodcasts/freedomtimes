@@ -77,8 +77,8 @@
 			// Temporary D1 content backend (23 Nov 2026 Turso sync-quota outage). Binding name EMDASH
 			// must match d1({ binding: "EMDASH" }) in astro.config.ts when FT_CONTENT_BACKEND=d1.
 			// Swap back to Turso: set FT_CONTENT_BACKEND=turso, rebuild + deploy (or wrangler rollback
-			// to 6926c482-02f8-4cdb-a379-e8de04f5c6c1). Do not terraform apply while this binding is
-			// only in wrangler.jsonc — Terraform may strip it.
+			// to 6926c482-02f8-4cdb-a379-e8de04f5c6c1). Terraform keeps it (modules/cloudflare_holding_page
+			// keep_bindings includes d1) and can adopt the DB itself (environments/<env>/d1.tf).
 			"d1_databases": [
 				{
 					"binding": "EMDASH",
@@ -94,7 +94,7 @@
 				}
 			],
 			"vars": {
-				// Must match the Astro build-time FT_CONTENT_BACKEND. Default in code is turso.
+				// Single source of truth for the content backend (web/scripts/resolve-content-backend.mjs exports it for the build; d1 also bypasses Turso deploy steps with a WARNING). Default turso.
 				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "public",
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
@@ -148,8 +148,8 @@
 			// Temporary D1 content backend (23 Nov 2026 Turso sync-quota outage). Binding name EMDASH
 			// must match d1({ binding: "EMDASH" }) in astro.config.ts when FT_CONTENT_BACKEND=d1.
 			// Swap back to Turso: set FT_CONTENT_BACKEND=turso, rebuild + deploy (or wrangler rollback
-			// to cb64d297-b665-4bce-8d30-bacd0d87b596). Do not terraform apply while this binding is
-			// only in wrangler.jsonc — Terraform may strip it.
+			// to cb64d297-b665-4bce-8d30-bacd0d87b596). Terraform keeps it (modules/cloudflare_holding_page
+			// keep_bindings includes d1) and can adopt the DB itself (environments/<env>/d1.tf).
 			"d1_databases": [
 				{
 					"binding": "EMDASH",
@@ -165,7 +165,7 @@
 				}
 			],
 			"vars": {
-				// Must match the Astro build-time FT_CONTENT_BACKEND. Default in code is turso.
+				// Single source of truth for the content backend (web/scripts/resolve-content-backend.mjs exports it for the build; d1 also bypasses Turso deploy steps with a WARNING). Default turso.
 				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "locked",
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
