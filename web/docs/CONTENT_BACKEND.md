@@ -147,3 +147,33 @@ Any content, media metadata, or CMS changes written to D1 during the outage
 `wrangler rollback` will serve the pre-outage Turso database and will not
 include D1-only writes. Do not swap back until that copy is done and verified,
 or accept losing those changes.
+
+## Admin SQLite export
+
+`/admin/content-export` (admin role only; tile "Content database export" on `/admin`) downloads the
+**content database the running Worker is using**: D1 `EMDASH` on production and staging today, Turso
+after the swap back. Each environment exports its own database, because the route uses the Worker's
+own `getDb()`. The API is `GET /api/admin/content-export`; it checks the admin role before it opens the
+database.
+
+- **Format:** a gzip'd SQLite SQL dump (`freedomtimes-<env>-content-<backend>-<UTC stamp>.sql.gz`;
+  add `?format=sql` for plain text). It is streamed table by table, 200 rows per query, so a 45 MB
+  database never has to fit in Worker memory. A binary `.db` cannot be built inside a Worker.
+- **Contents:** every table, index, view, trigger and FTS5 table with its rows. FTS shadow tables
+  and D1/libSQL internals (`_cf_*`, `sqlite_*`, `libsql_*`) are left out; they rebuild themselves.
+- **Integrity:** the file ends with per-table row counts and `-- end of export`. A download cut
+  short has no trailer, and the restore script refuses it.
+- **Restore to a `.db`:**
+
+  ```powershell
+  cd web
+  node scripts/sqlite-from-content-export.mjs .\freedomtimes-production-content-d1-....sql.gz .\restored.db
+  ```
+
+  This runs `PRAGMA integrity_check` and prints the row counts. To load the dump into a fresh D1 or
+  Turso database, use the plain `.sql` with `wrangler d1 execute --file` or `turso db shell < file`.
+- **Audit:** each export logs `[admin-content-export] started/completed` with the admin's name and
+  the cf-ray. The response is `Cache-Control: no-store, private`.
+- The file contains **private data** (users, sessions, unpublished drafts). Keep it off shared drives.
+- Large exports use Worker CPU time. The paid Workers plan (30 s CPU by default) is enough for the
+  current database: about 1.3 s locally to dump 40 MB.
