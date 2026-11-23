@@ -1,6 +1,7 @@
 import { env as cfEnv } from 'cloudflare:workers';
 
 import { getHomePath, isLockedSiteAccess, readOptionalEnv } from './auth';
+import { buildPageViewDataPoint, createOnceErrorReporter } from './page-view-index';
 
 /**
  * Site analytics for public reader pages (homepage, articles, CMS pages, etc.).
@@ -299,8 +300,18 @@ export function readCountryCode(request: Request): string {
  * - blob2: country (ISO-3166 alpha-2 or XX)
  * - blob3: is_bot ("0" | "1")
  * - double1: 1 (unit count; sampling uses `_sample_interval`)
- * - index1: path (sampling key; same canonical path as blob1)
+ * - index1: fixed-length hash of the path (`pageViewIndexKey`, 19 bytes; sampling key only)
  */
+const reportPageViewWriteFailure = createOnceErrorReporter();
+
+function safePathForLog(request: Request): string {
+  try {
+    return new URL(request.url).pathname.slice(0, 256);
+  } catch {
+    return '';
+  }
+}
+
 export function recordPageView(request: Request, response: Response): void {
   try {
     if (!shouldRecordPageView(request, response)) {
@@ -316,15 +327,11 @@ export function recordPageView(request: Request, response: Response): void {
     const country = readCountryCode(request);
     const isBot = isLikelyBotRequest(request);
 
-    dataset.writeDataPoint({
-      blobs: [path, country, isBot ? '1' : '0'],
-      doubles: [1],
-      indexes: [path],
-    });
+    // index1 is a fixed-length hash (Analytics Engine caps indexes at 96 bytes; long
+    // `/posts/{slug}` paths used to be rejected and silently dropped). blob1 keeps the full path.
+    dataset.writeDataPoint(buildPageViewDataPoint(path, country, isBot));
   } catch (error) {
-    console.warn('[page-view-analytics] write failed', {
-      message: error instanceof Error ? error.message : String(error),
-    });
+    reportPageViewWriteFailure(error, { path: safePathForLog(request) });
   }
 }
 

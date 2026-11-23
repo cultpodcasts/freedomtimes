@@ -35,6 +35,12 @@ param(
 
   -WorkerOnly and -WorkersOnly are mutually exclusive.
 
+  Content backend / Turso bypass (PR #198): the backend comes from web/wrangler.jsonc
+  env.staging.vars.FT_CONTENT_BACKEND and is exported for the build. When it is d1, or
+  FT_SKIP_TURSO=1 is set, every Turso step is bypassed (as -SkipTursoBackup, and
+  -TursoBranchBackup is ignored) with a loud WARNING, a GitHub ::warning:: and a job
+  summary block. See web/docs/CONTENT_BACKEND.md.
+
 .EXAMPLE
   pwsh ./scripts/deploy-staging-local.ps1
 
@@ -58,6 +64,16 @@ if ($TursoBranchBackup -and $SkipTursoBackup) {
 
 . "$PSScriptRoot/Deploy-EnvironmentCommon.ps1"
 Initialize-DeployEnvironment -Environment staging
+# PR #198: backend from web/wrangler.jsonc; d1 backend or FT_SKIP_TURSO=1 bypasses every Turso step
+# (loud WARNING + ::warning:: + job summary). -TursoBranchBackup (CI) is ignored under a bypass.
+$null = Resolve-DeployContentBackend
+if ($script:DeployTursoBypass) {
+    if ($TursoBranchBackup) {
+        Write-Host "WARNING: -TursoBranchBackup ignored: Turso steps are bypassed (see warning above)." -ForegroundColor Yellow
+        $TursoBranchBackup = $false
+    }
+    $SkipTursoBackup = $true
+}
 Set-DeploySkipTursoMutate -SkipTursoBackup:$SkipTursoBackup -WorkerOnly:$WorkerOnly -WorkersOnly:$WorkersOnly
 $script:DeployStagingBackupAsBranch = [bool]$TursoBranchBackup
 

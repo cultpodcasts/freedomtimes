@@ -1,4 +1,5 @@
 import { createClient } from '@libsql/client/web';
+import { env as cfEnv } from 'cloudflare:workers';
 
 import { readOptionalEnv } from '../auth';
 import { resolveEntryBody } from './entryBody';
@@ -15,6 +16,7 @@ import {
 } from './emdashTimestamps';
 import { readMediaLibraryFileUrl as readMediaFileUrl } from './mediaFileUrl';
 import { readArchiveSourceAttribution } from './archive-pdf';
+import { createD1ContentQueryClient, isD1Like } from './d1-query-client';
 import type { RenderLookupBudget } from './renderLookup';
 import {
 	resolveSocialImageWith,
@@ -356,6 +358,11 @@ function workerSafeFetch():
  * {@link resolveSocialImageWith} calls this inside its error handling (#125).
  */
 function createLibsqlClientForContentQueries(): SocialImageQueryClient | null {
+	// PR #198: on the D1 backend, read the same D1 database EmDash serves (never the Turso URL).
+	if (readOptionalEnv('FT_CONTENT_BACKEND').trim().toLowerCase() === 'd1') {
+		const d1 = (cfEnv as Record<string, unknown>).EMDASH;
+		return isD1Like(d1) ? createD1ContentQueryClient(d1) : null;
+	}
 	const attempts: [string, string][] = [
 		['TURSO_DATABASE_URL', 'TURSO_AUTH_TOKEN'],
 		['EMDASH_DATABASE_URL', 'TURSO_AUTH_TOKEN'],

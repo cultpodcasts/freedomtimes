@@ -74,6 +74,9 @@ function Initialize-DeployEnvironment {
     $script:DeployStagingBackupAsBranch = $false
     # Set when the live production Worker predates /api/deploy-provenance.json (#142 bootstrap).
     $script:DeployLiveProvenanceBootstrap = $false
+    # Set by Resolve-DeployContentBackend (PR #198).
+    $script:DeployContentBackend = $null
+    $script:DeployTursoBypass = $false
 }
 
 function Set-DeploySkipTursoMutate {
@@ -85,7 +88,51 @@ function Set-DeploySkipTursoMutate {
 
     # Operator -SkipTursoBackup on a Worker-only hotfix: do not export, branch,
     # or run emdash migrate. Full deploy still migrates after skipping backup.
-    $script:DeploySkipTursoMutate = [bool]($SkipTursoBackup -and ($WorkerOnly -or $WorkersOnly))
+    # PR #198: a Turso bypass (d1 backend / FT_SKIP_TURSO=1) never mutates Turso, full deploy included.
+    $script:DeploySkipTursoMutate = [bool]($script:DeployTursoBypass -or ($SkipTursoBackup -and ($WorkerOnly -or $WorkersOnly)))
+}
+# PR #198 (Turso outage, Nov 2026): web/wrangler.jsonc env.<name>.vars.FT_CONTENT_BACKEND is the
+# single source of truth for the content backend. Exports FT_CONTENT_BACKEND for the Astro build and
+# reports whether Turso steps are bypassed (backend d1, or FT_SKIP_TURSO=1). Logic lives in
+# web/scripts/lib/content-backend.mjs (unit-tested); this only shells out to its CLI.
+# -Resolve is for tests: a scriptblock returning the CLI's JSON object.
+function Resolve-DeployContentBackend {
+    param([scriptblock]$Resolve)
+    if ($null -ne $Resolve) {
+        $decision = & $Resolve
+    }
+    else {
+        $cli = Join-Path $script:DeployRepoRoot "web/scripts/resolve-content-backend.mjs"
+        $raw = & node $cli --env $script:DeployEnvironment --json
+        if ($LASTEXITCODE -ne 0) {
+            throw "Content backend resolution failed for $($script:DeployEnvironment) (see ERROR above). Nothing was backed up, built or deployed."
+        }
+        $decision = ($raw | Out-String) | ConvertFrom-Json
+    }
+    $env:FT_CONTENT_BACKEND = [string]$decision.backend
+    $script:DeployContentBackend = [string]$decision.backend
+    $script:DeployTursoBypass = [bool]$decision.skipTurso
+    Write-DeployStep "Content backend ($($script:DeployEnvironment)): $($script:DeployContentBackend); Turso steps $(if ($script:DeployTursoBypass) { 'BYPASSED' } else { 'enabled' })"
+    if ($script:DeployTursoBypass) {
+        Write-DeployTursoBypassWarning -Title ([string]$decision.warningTitle) -Line ([string]$decision.warningLine)
+    }
+    return $decision
+}
+
+# Loud, never silent: console WARNING plus a GitHub Actions ::warning:: annotation. The job-summary
+# block is written by the Node CLI. Called once per run by Resolve-DeployContentBackend.
+function Write-DeployTursoBypassWarning {
+    param(
+        [Parameter(Mandatory = $true)][string]$Title,
+        [Parameter(Mandatory = $true)][string]$Line
+    )
+    $bar = "!" * 100
+    Write-Host $bar -ForegroundColor Yellow
+    Write-Host "WARNING: $Line" -ForegroundColor Yellow
+    Write-Host $bar -ForegroundColor Yellow
+    if ($env:GITHUB_ACTIONS -eq "true") {
+        Write-Host "::warning title=$Title::$Line"
+    }
 }
 
 function Initialize-LinuxNvmNodePath {
@@ -1677,7 +1724,7 @@ function Confirm-DeployStagingEmdashTursoToken {
 
 function Invoke-DeployEmdashCoreMigrate {
     if ($script:DeploySkipTursoMutate) {
-        Write-DeployStep "Skipping EmDash core migrate (-WorkerOnly -SkipTursoBackup); Worker hotfix does not touch Turso"
+        Write-DeployStep "Skipping EmDash core migrate ($(if ($script:DeployTursoBypass) { "Turso bypass: backend $($script:DeployContentBackend)" } else { "-WorkerOnly -SkipTursoBackup" })); does not touch Turso"
         return
     }
 
@@ -1716,7 +1763,7 @@ function Invoke-DeployEmdashCoreMigrate {
 
 function Invoke-DeployEmdashCoreMigrateCheck {
     if ($script:DeploySkipTursoMutate) {
-        Write-DeployStep "Skipping EmDash core migrate --check (-WorkerOnly -SkipTursoBackup)"
+        Write-DeployStep "Skipping EmDash core migrate --check ($(if ($script:DeployTursoBypass) { "Turso bypass: backend $($script:DeployContentBackend)" } else { "-WorkerOnly -SkipTursoBackup" }))"
         return
     }
 

@@ -59,6 +59,11 @@ permissions:
 env:
   NODE_VERSION: "22.23.5"
   TERRAFORM_VERSION: "1.14.8"
+  # PR #198 (Turso outage): explicit Turso bypass. Set the repo variable FT_SKIP_TURSO=1 to skip every
+  # Turso step; a d1 backend in web/wrangler.jsonc (env.<name>.vars.FT_CONTENT_BACKEND) implies it for
+  # the content DB. Either way the run carries a ::warning:: and a job-summary block
+  # (web/scripts/resolve-content-backend.mjs). See web/docs/CONTENT_BACKEND.md.
+  FT_SKIP_TURSO: ${{ vars.FT_SKIP_TURSO }}
 
 jobs:
   staging:
@@ -107,6 +112,10 @@ jobs:
       - name: Install web dependencies
         working-directory: web
         run: npm ci
+
+      - name: Resolve content backend (WARNS when Turso steps are bypassed)
+        id: content_backend
+        run: node web/scripts/resolve-content-backend.mjs --env staging
 
       - name: Setup Terraform (outputs only; no plan/apply)
         uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
@@ -204,10 +213,17 @@ jobs:
         working-directory: web
         run: npm ci
 
+      - name: Resolve content backend (WARNS when Turso steps are bypassed)
+        id: content_backend
+        run: node web/scripts/resolve-content-backend.mjs --env production
+
       - name: Install pinned Turso CLI (sha256-verified, no secrets)
         run: bash ./scripts/ci-install-turso-cli.sh
 
       - name: Verified production EmDash backup (Turso branch prod-rollback-YYYYMMDD-HHMMSS; no .db)
+        # PR #198: skipped (with the warning above) when the production Worker does not read Turso
+        # (d1 backend) or FT_SKIP_TURSO=1. The deploy script then ignores -UseFreshTursoCheckpoint.
+        if: steps.content_backend.outputs.skip_turso != 'true'
         shell: pwsh
         env:
           # Turso platform API token (turso CLI auth for the prod-rollback branch); same secret terraform-production.yml uses.

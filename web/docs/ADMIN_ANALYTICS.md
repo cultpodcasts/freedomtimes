@@ -82,8 +82,18 @@ blob1 = path          (e.g. /posts/my-article)
 blob2 = country       (or XX)
 blob3 = is_bot        ("0" | "1")
 double1 = 1
-index1 = path         (sampling key)
+index1 = p1:<fnv1a64> (sampling key; fixed 19 bytes, see below)
 ```
+
+`index1` is **not** the raw path. Analytics Engine rejects any data point whose index is over
+96 bytes, so before PR #198 every view of a page with a path longer than 96 bytes (for example
+`/posts/sam-carling-…-cult-news-22-november-2026`, 109 bytes) was dropped with only a warning
+log, and those pages never appeared in `/admin/analytics`. `index1` is now a fixed-length hash
+of the path (`pageViewIndexKey()` in `src/lib/page-view-index.ts`); admin queries group and filter
+on `blob1` only, so history and queries are unchanged. A write failure now logs
+`[page-view-analytics] write failed — page views are NOT being recorded` with `console.error`,
+once per isolate per distinct error. Views dropped before the fix cannot be backfilled.
+Tests: `scripts/test-page-view-analytics.mts`.
 
 ### Bot flag
 

@@ -66,6 +66,10 @@ resource "cloudflare_workers_script" "holding_page" {
   keep_assets = true
   keep_bindings = [
     "assets",
+    # PR #198: the EmDash D1 content binding (EMDASH) is Wrangler-owned like KV/R2 (one owner:
+    # web/wrangler.jsonc). Keeping the type here means a Terraform apply never strips it. The D1
+    # databases themselves are Terraform resources in environments/<env>/d1.tf.
+    "d1",
     "kv_namespace",
     "plain_text",
     "r2_bucket",

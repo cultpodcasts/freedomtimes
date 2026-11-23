@@ -199,7 +199,9 @@ describe('promoteContentStoreUnavailable (500.astro → 503)', () => {
 		}
 	});
 	it('src/middleware.ts wraps every return path with it', () => {
-		assert.match(read('src/middleware.ts'), /export const onRequest = defineMiddleware\(async \(context, next\) => \{\s*return promoteContentStoreUnavailable\(await handleSiteRequest\(context, next\), context\.locals\);\s*\}\);/);
+		// PR #198: the wrapper also schedules the outage alert, but still promotes every response.
+		assert.match(read('src/middleware.ts'), /export const onRequest = defineMiddleware\(async \(context, next\) => \{\s*let response: Response;\s*try \{\s*response = promoteContentStoreUnavailable\(await handleSiteRequest\(context, next\), context\.locals\);\s*\} catch/);
+		assert.match(read('src/middleware.ts'), /\r?\n  return response;\r?\n\}\);/);
 	});
 });
 

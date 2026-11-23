@@ -31,6 +31,10 @@ import { SITE_SITEMAP_PATH } from './lib/site-sitemap';
 import { generateSiteSitemapResponse } from './lib/site-sitemap-db';
 import { promoteContentStoreUnavailable } from './lib/content-store-guard';
 import { assertContentStoreReady } from './lib/content-store-guard-db';
+import { resolveDeployEnvironmentName } from './lib/deploy-environment';
+import { shouldAlertOnResponse, shouldAlertOnThrow, type OutageAlertEvent } from './lib/outage-alert';
+import { sendOutageAlert } from './lib/outage-alert-server';
+import { SECURE_ACCESS_WALL_NATIVE_BRIDGE_SCRIPT } from './lib/secure-access-wall';
 
 enum PathMode {
   Exact = 'exact',
@@ -123,8 +127,7 @@ function maybeMagicLinkVerifyLander(response: Response): Response {
   return new Response(html, { status: 200, headers });
 }
 
-const NATIVE_SHELL_BRIDGE_SCRIPT =
-  '<script src="/native-shell-bridge.js" defer data-ft-native-shell-bridge="1"></script>';
+const NATIVE_SHELL_BRIDGE_SCRIPT = SECURE_ACCESS_WALL_NATIVE_BRIDGE_SCRIPT;
 
 /**
  * EmDash admin/login HTML does not use Layout.astro, so the Capacitor
@@ -174,9 +177,50 @@ async function maybeInjectNativeShellBridge(path: string, response: Response): P
 
 // #128: a 500.astro render marked "content store unavailable" leaves as a 503 + Retry-After (Astro
 // pins 500.astro to status 500). Wraps every return path, including the error-page render.
+// PR #198: every 5xx HTML page (500.astro, its 503 variant, EmDash 503s, a middleware throw) also
+// schedules an immediate, deduped outage alert (src/lib/outage-alert*.ts) via waitUntil.
 export const onRequest = defineMiddleware(async (context, next) => {
-  return promoteContentStoreUnavailable(await handleSiteRequest(context, next), context.locals);
+  let response: Response;
+  try {
+    response = promoteContentStoreUnavailable(await handleSiteRequest(context, next), context.locals);
+  } catch (error) {
+    if (shouldAlertOnThrow({ method: context.request.method, pathname: context.url.pathname })) {
+      scheduleOutageAlert(context, 500, error);
+    }
+    throw error;
+  }
+  if (
+    shouldAlertOnResponse({
+      status: response.status,
+      method: context.request.method,
+      pathname: context.url.pathname,
+      contentType: response.headers.get('content-type'),
+    })
+  ) {
+    scheduleOutageAlert(context, response.status);
+  }
+  return response;
 });
+
+function scheduleOutageAlert(context: APIContext, status: number, error?: unknown): void {
+  const event: OutageAlertEvent = {
+    environment: resolveDeployEnvironmentName(context.url.hostname),
+    status,
+    method: context.request.method,
+    url: `${context.url.origin}${context.url.pathname}`,
+    cfRay: context.request.headers.get('cf-ray') ?? '',
+    at: new Date(),
+    contentStoreUnavailable: status === 503,
+    contentBackend: ((cfEnv as Record<string, string | undefined>).FT_CONTENT_BACKEND ?? 'turso').trim() || 'turso',
+    error: error === undefined ? undefined : (error instanceof Error ? error.message : String(error)).slice(0, 300),
+  };
+  const task = sendOutageAlert(event, context.url.origin);
+  try {
+    waitUntil(task);
+  } catch {
+    // Not on Workers (dev): let the promise run detached.
+  }
+}
 
 async function handleSiteRequest(context: APIContext, next: MiddlewareNext): Promise<Response> {
   const path = context.url.pathname;

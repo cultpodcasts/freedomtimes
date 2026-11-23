@@ -1,0 +1,237 @@
+---
+/**
+ * /admin/feature-switches (PR #198): admin-only runtime feature switches. Shows each switch's
+ * effective state and why (override / config / default / auto-off), lets an admin enable, disable or
+ * clear the override (POST /api/admin/feature-switches, same gate + CSRF), and lists the audit trail.
+ */
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { requireAdminPageSession } from '../../lib/admin-session';
+import { hasAdminRole } from '../../lib/auth';
+import { listFeatureSwitchesForAdmin } from '../../lib/feature-switch-admin';
+
+export const prerender = false;
+
+const auth = await requireAdminPageSession({
+	context: { cookies: Astro.cookies, url: Astro.url, request: Astro.request, redirect: Astro.redirect },
+	roleCheck: hasAdminRole,
+	loginNextPath: '/admin/feature-switches',
+	logPrefix: 'admin-feature-switches-page',
+});
+if (auth instanceof Response) {
+	return auth;
+}
+Astro.response.headers.set('Cache-Control', 'no-store, private');
+
+const rows = await listFeatureSwitchesForAdmin();
+const sourceLabel: Record<string, string> = {
+	override: 'Admin override',
+	config: 'Worker config',
+	default: 'Default',
+	'auto-off': 'Automatically off',
+};
+const fmt = (iso: string) => {
+	const d = new Date(iso);
+	return Number.isNaN(d.getTime())
+		? iso
+		: new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', dateStyle: 'medium', timeStyle: 'short' }).format(d);
+};
+---
+
+<Layout title="Feature switches" description="Admin-only feature switches." canonicalUrl={null} noindex>
+	<Header section="Admin" sectionUrl="/admin" isAdmin={true} isSignedIn={true} isEditor={true} />
+	<article class="switches-page" data-ft-feature-switches>
+		<h1>Feature switches</h1>
+		<p class="lede">
+			Turn features on or off without a deploy. A change reaches every server within about a minute. "Clear"
+			removes your override and goes back to the Worker config (<code>wrangler.jsonc</code>).
+		</p>
+
+		{rows.map(({ description, state, audit }) => (
+			<section class="switch" data-ft-feature-switch={state.name}>
+				<header>
+					<h2>{state.label}</h2>
+					<span class:list={['pill', state.enabled ? 'on' : 'off']} data-ft-feature-switch-state>{state.enabled ? 'On' : 'Off'}</span>
+				</header>
+				<p class="description">{description}</p>
+				<dl>
+					<dt>Why</dt><dd data-ft-feature-switch-reason>{sourceLabel[state.source]}: {state.reason}</dd>
+					<dt>Worker config</dt><dd><code>{state.envVar}</code> = {state.configured === undefined ? 'unset' : state.configured ? 'on' : 'off'}</dd>
+					<dt>Override</dt><dd>{state.override ? `${state.override.enabled ? 'on' : 'off'} (by ${state.override.by}, ${fmt(state.override.at)})` : 'none'}</dd>
+				</dl>
+				<p class="actions">
+					<button type="button" class="button" data-action="enable" data-name={state.name}>Enable</button>
+					<button type="button" class="button secondary" data-action="disable" data-name={state.name}>Disable</button>
+					<button type="button" class="link" data-action="clear" data-name={state.name} disabled={!state.override}>Clear override</button>
+					<span class="status" role="status" data-ft-feature-switch-status></span>
+				</p>
+				<h3>Recent changes</h3>
+				{audit.length === 0 ? (
+					<p class="muted">No changes recorded.</p>
+				) : (
+					<ul class="audit">
+						{audit.map((e) => (
+							<li><strong>{e.action}</strong> by {e.by}, {fmt(e.at)} <span class="muted">(was {e.before.enabled ? 'on' : 'off'}, {e.before.source})</span></li>
+						))}
+					</ul>
+				)}
+			</section>
+		))}
+	</article>
+</Layout>
+
+<script>
+	function readCookie(name: string): string {
+		const prefix = `${name}=`;
+		for (const part of document.cookie.split(';')) {
+			const trimmed = part.trim();
+			if (trimmed.startsWith(prefix)) return decodeURIComponent(trimmed.slice(prefix.length));
+		}
+		return '';
+	}
+
+	for (const button of document.querySelectorAll<HTMLButtonElement>('[data-ft-feature-switch] button[data-action]')) {
+		button.addEventListener('click', async () => {
+			const section = button.closest('[data-ft-feature-switch]');
+			const status = section?.querySelector<HTMLElement>('[data-ft-feature-switch-status]');
+			if (!status) return;
+			status.textContent = 'Saving…';
+			const csrfToken = readCookie('ft_csrf');
+			try {
+				const response = await fetch('/api/admin/feature-switches', {
+					method: 'POST',
+					credentials: 'include',
+					headers: { 'content-type': 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+					body: JSON.stringify({ name: button.dataset.name, action: button.dataset.action }),
+				});
+				const body = (await response.json()) as { error?: string };
+				if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+				window.location.reload();
+			} catch (error) {
+				status.textContent = `Not saved: ${error instanceof Error ? error.message : String(error)}`;
+			}
+		});
+	}
+</script>
+
+<style>
+	.switches-page {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+	}
+
+	.lede,
+	.description,
+	.muted {
+		color: var(--text-secondary);
+	}
+
+	.switch {
+		margin: 2rem 0;
+		padding: 1.25rem 1.5rem;
+		border: 1px solid #dddddd;
+		border-radius: 8px;
+	}
+
+	.switch header {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+	}
+
+	h2 {
+		margin: 0;
+		font-family: 'Playfair Display', Georgia, serif;
+	}
+
+	h3 {
+		margin: 1.25rem 0 0.5rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+	}
+
+	.pill {
+		padding: 0.15rem 0.7rem;
+		border-radius: 999px;
+		font-family: 'Inter', sans-serif;
+		font-weight: 700;
+		font-size: 0.85rem;
+	}
+
+	.pill.on {
+		background: #e4f4e8;
+		color: #1a5a2a;
+	}
+
+	.pill.off {
+		background: #fce8e8;
+		color: #7a1a1a;
+	}
+
+	dl {
+		display: grid;
+		grid-template-columns: max-content 1fr;
+		gap: 0.4rem 1.25rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.95rem;
+	}
+
+	dt {
+		font-weight: 700;
+	}
+
+	dd {
+		margin: 0;
+	}
+
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.75rem;
+		font-family: 'Inter', sans-serif;
+	}
+
+	.button {
+		padding: 0.6rem 1.1rem;
+		border: 0;
+		border-radius: 6px;
+		background: #111111;
+		color: #ffffff;
+		font: inherit;
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.button.secondary {
+		background: #7a1a1a;
+	}
+
+	.link {
+		border: 0;
+		background: none;
+		color: #0044bb;
+		font: inherit;
+		cursor: pointer;
+	}
+
+	.link:disabled {
+		color: #999999;
+		cursor: default;
+	}
+
+	.audit {
+		margin: 0;
+		padding-left: 1.2rem;
+		font-size: 0.9rem;
+	}
+</style>

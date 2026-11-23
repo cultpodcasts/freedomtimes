@@ -1,0 +1,140 @@
+---
+/**
+ * /admin/content-export: admin-only page to download this environment's EmDash content database as
+ * a SQLite SQL dump (PR #198). The download itself is GET /api/admin/content-export (same gate).
+ */
+import Header from '../../components/Header.astro';
+import Layout from '../../layouts/Layout.astro';
+import { requireAdminPageSession } from '../../lib/admin-session';
+import { hasAdminRole } from '../../lib/auth';
+import { resolveDeployEnvironmentName } from '../../lib/deploy-environment';
+import { currentContentBackend } from '../../lib/content-export-db';
+
+export const prerender = false;
+
+const auth = await requireAdminPageSession({
+	context: { cookies: Astro.cookies, url: Astro.url, request: Astro.request, redirect: Astro.redirect },
+	roleCheck: hasAdminRole,
+	loginNextPath: '/admin/content-export',
+	logPrefix: 'admin-content-export-page',
+});
+if (auth instanceof Response) {
+	return auth;
+}
+Astro.response.headers.set('Cache-Control', 'no-store, private');
+
+const environment = resolveDeployEnvironmentName(Astro.url.hostname);
+const backend = currentContentBackend();
+const backendLabel = backend === 'd1' ? 'Cloudflare D1' : 'Turso (libsql)';
+---
+
+<Layout title="Content database export" description="Admin-only content database export." canonicalUrl={null} noindex>
+	<Header section="Admin" sectionUrl="/admin" isAdmin={true} isSignedIn={true} isEditor={true} />
+	<article class="export-page" data-ft-content-export>
+		<h1>Content database export</h1>
+		<p class="lede">
+			Download a SQLite backup of the <strong>{environment}</strong> content database
+			(<strong>{backendLabel}</strong>): every post, page, revision, media record and CMS setting EmDash
+			is serving right now.
+		</p>
+
+		<p class="actions">
+			<a class="button" href="/api/admin/content-export" download data-ft-content-export-download>
+				Download SQLite backup (.sql.gz)
+			</a>
+			<a class="secondary" href="/api/admin/content-export?format=sql" download>Uncompressed .sql</a>
+		</p>
+
+		<p class="warning">
+			Private: the file includes unpublished drafts and account data. Keep it off public repos, chats and
+			shared drives.
+		</p>
+
+		<h2>Restore to a .db file</h2>
+		<pre><code>node web/scripts/sqlite-from-content-export.mjs freedomtimes-{environment}-content-….sql.gz out.db</code></pre>
+		<p>
+			The script refuses a truncated download and prints row counts per table. With the sqlite3 CLI:
+			<code>gunzip -c file.sql.gz | sqlite3 out.db</code>.
+		</p>
+
+		<h2>Restore into Turso or D1</h2>
+		<p>
+			The file loads unchanged into a new, empty database: <code>turso db shell &lt;db&gt; &lt; file.sql</code>
+			or <code>npx wrangler d1 execute &lt;DB&gt; --file file.sql</code> (unzip first for wrangler). Details and
+			older (format 1) files: <code>web/docs/CONTENT_BACKEND.md</code>.
+		</p>
+	</article>
+</Layout>
+
+<style>
+	.export-page {
+		max-width: var(--max-width-article);
+		margin: 0 auto;
+		padding: var(--page-padding-top) var(--page-padding-side) 4rem;
+	}
+
+	h1 {
+		margin: 0 0 1rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1;
+		letter-spacing: -0.02em;
+	}
+
+	h2 {
+		margin: 2.5rem 0 0.75rem;
+		font-family: 'Playfair Display', Georgia, serif;
+		font-size: 1.35rem;
+	}
+
+	.lede {
+		font-size: 1.05rem;
+		line-height: 1.65;
+		color: var(--text-secondary);
+	}
+
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 1rem 1.5rem;
+		margin: 1.75rem 0;
+		font-family: 'Inter', sans-serif;
+		font-weight: 700;
+	}
+
+	.button {
+		display: inline-block;
+		padding: 0.8rem 1.3rem;
+		border-radius: 6px;
+		background: #111111;
+		color: #ffffff;
+		text-decoration: none;
+	}
+
+	.button:hover,
+	.button:focus-visible {
+		background: #0044bb;
+	}
+
+	.secondary {
+		color: #0044bb;
+	}
+
+	.warning {
+		padding: 0.85rem 1rem;
+		border-left: 4px solid #7a1a1a;
+		background: #fce8e8;
+		color: #4a1010;
+		font-size: 0.95rem;
+	}
+
+	pre {
+		overflow-x: auto;
+		padding: 0.9rem 1rem;
+		border-radius: 6px;
+		background: #f4f4f4;
+		font-size: 0.85rem;
+	}
+</style>

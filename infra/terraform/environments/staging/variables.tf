@@ -369,3 +369,9 @@ variable "auth0_management_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "manage_emdash_d1_fallback" {
+  description = "Adopt the EmDash D1 fallback database into Terraform (import). Needs D1 Edit on the Cloudflare API token. See d1.tf (PR #198)."
+  type        = bool
+  default     = false
+}

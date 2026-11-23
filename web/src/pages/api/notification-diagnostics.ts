@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 
 import { authorizeReaderApiRequest } from '../../lib/editorial-session';
+import { notificationsPausedResponse } from '../../lib/notifications-availability';
+import { notificationsEnabled } from '../../lib/notifications-availability-server';
 import {
   persistNotificationDiagnostic,
   readNotificationDiagnosticRequest,
@@ -13,6 +15,11 @@ export const POST: APIRoute = async ({ cookies, request, url }) => {
   const auth = await authorizeReaderApiRequest({ cookies, request, url });
   if (auth instanceof Response) {
     return auth;
+  }
+
+  // PR #198: notifications feature switch / subscriptions DB down → 503 before any Turso access.
+  if (!(await notificationsEnabled({ healthCheck: true }))) {
+    return notificationsPausedResponse();
   }
 
   let payload: unknown;

@@ -353,6 +353,9 @@ export async function ensureBrowserPushSubscriptionSynced(publicKey: string): Pr
   if (publicKey.trim().length === 0 || !('Notification' in window) || Notification.permission !== 'granted') {
     return;
   }
+  if (!(await areNotificationsAvailable())) {
+    return;
+  }
 
   try {
     const registration = await ensureBrowserServiceWorkerRegistration();
@@ -367,6 +370,9 @@ export async function enableNotificationsForCurrentDevice(
   publicKey: string,
   permission?: NotificationPermission,
 ): Promise<string> {
+  if (!(await areNotificationsAvailable())) {
+    throw new Error(NOTIFICATIONS_PAUSED_CLIENT_MESSAGE);
+  }
   if (isNativeNotificationPlatform()) {
     await enableNativePushNotifications();
     return 'Notifications enabled for this app.';
@@ -376,8 +382,52 @@ export async function enableNotificationsForCurrentDevice(
   return 'Notifications enabled for this browser.';
 }
 
+const NOTIFICATIONS_STATUS_CACHE_KEY = 'ft:notifications-status:v1';
+const NOTIFICATIONS_STATUS_CACHE_MS = 60_000;
+export const NOTIFICATIONS_PAUSED_CLIENT_MESSAGE = 'Notifications are paused right now. Please try again later.';
+let notificationsStatusPromise: Promise<boolean> | null = null;
+
+/**
+ * PR #198: ask the server whether notifications are on (feature switch + subscriptions DB) before
+ * any prompt or device registration. Cached for a minute per tab; any failure counts as "off".
+ */
+export function areNotificationsAvailable(): Promise<boolean> {
+  if (notificationsStatusPromise) return notificationsStatusPromise;
+  notificationsStatusPromise = (async () => {
+    try {
+      const cached = window.sessionStorage.getItem(NOTIFICATIONS_STATUS_CACHE_KEY);
+      if (cached) {
+        const { enabled, at } = JSON.parse(cached) as { enabled: boolean; at: number };
+        if (Date.now() - at < NOTIFICATIONS_STATUS_CACHE_MS) return enabled === true;
+      }
+    } catch {
+      // sessionStorage unavailable: ask the server.
+    }
+    try {
+      const response = await fetch('/api/notifications-status', { credentials: 'same-origin' });
+      const enabled = response.ok && ((await response.json()) as { enabled?: boolean }).enabled === true;
+      try {
+        window.sessionStorage.setItem(NOTIFICATIONS_STATUS_CACHE_KEY, JSON.stringify({ enabled, at: Date.now() }));
+      } catch {
+        // ignore
+      }
+      return enabled;
+    } catch {
+      return false;
+    }
+  })();
+  return notificationsStatusPromise;
+}
+
 export async function initializeNativePushBridge(): Promise<void> {
   if (!isNativeNotificationPlatform() || window.__ftNativePushInitialized || listenersAttached) {
+    return;
+  }
+  // Paused (feature switch off / subscriptions DB down): never prompt or register this device.
+  if (!(await areNotificationsAvailable())) {
+    return;
+  }
+  if (window.__ftNativePushInitialized || listenersAttached) {
     return;
   }
 

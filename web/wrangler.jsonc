@@ -74,6 +74,18 @@
 					"bucket_name": "freedomtimes-media-production"
 				}
 			],
+			// Temporary D1 content backend (23 Nov 2026 Turso sync-quota outage). Binding name EMDASH
+			// must match d1({ binding: "EMDASH" }) in astro.config.ts when FT_CONTENT_BACKEND=d1.
+			// Swap back to Turso: set FT_CONTENT_BACKEND=turso, rebuild + deploy (or wrangler rollback
+			// to 6926c482-02f8-4cdb-a379-e8de04f5c6c1). Terraform keeps it (modules/cloudflare_holding_page
+			// keep_bindings includes d1) and can adopt the DB itself (environments/<env>/d1.tf).
+			"d1_databases": [
+				{
+					"binding": "EMDASH",
+					"database_name": "freedomtimes-emdash-production-fallback-20261123",
+					"database_id": "ece69b46-eacd-4ce5-9923-68185cfcfb48"
+				}
+			],
 			"analytics_engine_datasets": [
 				{
 					"binding": "PAGE_VIEWS",
@@ -82,7 +94,11 @@
 				}
 			],
 			"vars": {
+				// Single source of truth for the content backend (web/scripts/resolve-content-backend.mjs exports it for the build; d1 also bypasses Turso deploy steps with a WARNING). Default turso.
+				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "public",
+				// Reader notifications feature switch (web/docs/FEATURE_SWITCHES.md): off while the Turso subscriptions DB is blocked; set "on" after 1 Dec. Admins can override at /admin/feature-switches.
+				"NOTIFICATIONS_ENABLED": "off",
 				"API_BASE_URL": "https://api.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",
@@ -131,6 +147,18 @@
 					"bucket_name": "freedomtimes-media-staging"
 				}
 			],
+			// Temporary D1 content backend (23 Nov 2026 Turso sync-quota outage). Binding name EMDASH
+			// must match d1({ binding: "EMDASH" }) in astro.config.ts when FT_CONTENT_BACKEND=d1.
+			// Swap back to Turso: set FT_CONTENT_BACKEND=turso, rebuild + deploy (or wrangler rollback
+			// to cb64d297-b665-4bce-8d30-bacd0d87b596). Terraform keeps it (modules/cloudflare_holding_page
+			// keep_bindings includes d1) and can adopt the DB itself (environments/<env>/d1.tf).
+			"d1_databases": [
+				{
+					"binding": "EMDASH",
+					"database_name": "freedomtimes-emdash-staging-fallback-20261123",
+					"database_id": "ba03720b-f6f8-4ab1-b3cf-c2809b4bb0bf"
+				}
+			],
 			"analytics_engine_datasets": [
 				{
 					"binding": "PAGE_VIEWS",
@@ -139,7 +167,13 @@
 				}
 			],
 			"vars": {
+				// Single source of truth for the content backend (web/scripts/resolve-content-backend.mjs exports it for the build; d1 also bypasses Turso deploy steps with a WARNING). Default turso.
+				"FT_CONTENT_BACKEND": "d1",
 				"SITE_ACCESS_MODE": "locked",
+				// Reader notifications feature switch (web/docs/FEATURE_SWITCHES.md): off while the Turso subscriptions DB is blocked; set "on" after 1 Dec. Admins can override at /admin/feature-switches.
+				"NOTIFICATIONS_ENABLED": "off",
+				// 5xx outage alert email (web/docs/OUTAGE_ALERTS.md). Production alerts by default; staging opts in.
+				"OUTAGE_ALERTS": "on",
 				"API_BASE_URL": "https://api-staging.freedomtimes.news/editorial",
 				"AUTH0_API_AUDIENCE": "https://api.freedomtimes.news",
 				"COOKIE_BASE_DOMAIN": "freedomtimes.news",

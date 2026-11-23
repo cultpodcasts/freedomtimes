@@ -78,6 +78,7 @@ describe('component frontmatter database calls degrade, never throw mid-stream (
 			{ call: 'enrichHeroImageAlt', why: 'never rejects: empty hero alt falls back to media.alt, else keeps the generic (#133, test-hero-image-alt.mts)' },
 			{ call: 'resolveSocialImage', why: 'never rejects: client creation and every lookup are caught, then fall back to the hero image (#125, #132, test-social-image.mts)' },
 			{ call: 'getWeeklySummaries', why: 'weekly prev/next is wrapped in try/catch' },
+			{ call: 'notificationsEnabled', why: 'never rejects: config + KV override only (no Turso on render); any failure hides the callout (PR #198, test-feature-switches.mts)' },
 		],
 	};
 	const webRoot = fileURLToPath(new URL('../', import.meta.url));

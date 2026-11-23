@@ -191,7 +191,12 @@ describe('error routes', () => {
 		assert.match(page, /if \(storeUnavailable\) \{\s*Astro\.response\.headers\.set\('Retry-After', String\(CONTENT_STORE_RETRY_AFTER_SECONDS\)\);\s*markContentStoreUnavailable\(Astro\.locals\);/);
 		assert.match(page, /<Layout\s[^>]*canonicalUrl=\{null\}[^>]*noindex=\{!storeUnavailable\}[^>]*omitRobotsMeta=\{storeUnavailable\}/);
 		const imports = [...page.matchAll(/^import [^;]*? from '([^']+)';$/gm)].map((m) => m[1]);
-		assert.deepEqual(imports, ['../layouts/Layout.astro', '../lib/content-store-guard']);
+		assert.deepEqual(imports, ['../components/Header.astro', '../layouts/Layout.astro', '../lib/content-store-guard']);
+		// PR #198 branding: the masthead only reads the home path from env, never a session or DB.
+		const headerFrontmatter = read('src/components/Header.astro').split('---')[1] ?? '';
+		const headerImports = [...headerFrontmatter.matchAll(/^import (.*) from '([^']+)';$/gm)].map((m) => `${m[1]} from ${m[2]}`);
+		assert.deepEqual(headerImports, ['{ getHomePath } from ../lib/auth', '{ SITE_DISPLAY_NAME } from ../lib/site-brand']);
+		assert.match(page, /<Header \/>/, 'no session props: the error page never reads cookies');
 		// The guard module 500.astro imports is pure: no EmDash, database or session imports.
 		const guardImports = [...read('src/lib/content-store-guard.ts').matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
 		assert.deepEqual(guardImports, ['./not-found']);

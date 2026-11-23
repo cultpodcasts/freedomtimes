@@ -7,6 +7,11 @@ name: CI Guards
 #   - scripts/test-deploy-cloud-agent-guards.ps1: deploy/backup guard unit tests (incl. #142).
 #   - scripts/test-path-entry.ps1: native-Turso ~/.turso fallback sets $env:PATH on Linux (#114).
 # deploy-worker.yml repeats both before its first secret-bearing step.
+#
+# content-export-restore (PR #198 merge gate): the /admin/content-export dump format restores from
+# scratch into a LOCAL Turso (`turso dev`, pinned turso CLI + sqld) and a LOCAL D1 (`wrangler d1
+# execute --local`), .sql and .sql.gz. Synthetic fixture only; no secrets, no Turso Cloud, no
+# --remote, nothing uploaded. FT_REQUIRE_RESTORE_TARGETS=1 turns a missing tool into a failure.
 
 on:
   pull_request:
@@ -47,3 +52,34 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Deploy guard tests failed." }
           pwsh -NoProfile -File ./scripts/test-path-entry.ps1
           if ($LASTEXITCODE -ne 0) { throw "PATH entry tests (#114) failed." }
+
+  content-export-restore:
+    name: Content export restores into local Turso + local D1
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.23.5"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install pinned Turso CLI + sqld (sha256-verified, local turso dev only, no secrets)
+        run: bash ./scripts/ci-install-turso-cli.sh --with-sqld
+
+      - name: Install web dependencies (wrangler for local D1)
+        working-directory: web
+        run: npm ci
+
+      - name: Restore gate (turso dev + wrangler d1 --local; .sql and .sql.gz)
+        working-directory: web
+        env:
+          FT_REQUIRE_RESTORE_TARGETS: "1"
+          WRANGLER_SEND_METRICS: "false"
+        run: npm run test:content-export-restore
