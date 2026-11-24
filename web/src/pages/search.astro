@@ -83,7 +83,7 @@ const description = normalized.ok
 			<p class="kicker">Search</p>
 			<h1>{heading}</h1>
 			<form class="page-search" action="/search" method="get" role="search">
-				<label for="page-search-q">Search</label>
+				<label class="sr-only" for="page-search-q">Search</label>
 				<div class="page-search-row">
 					<input
 						id="page-search-q"
@@ -154,12 +154,16 @@ const description = normalized.ok
 		letter-spacing: -0.02em;
 	}
 
-	.page-search label {
-		display: block;
-		margin: 0 0 0.4rem;
-		font-family: 'Inter', sans-serif;
-		font-size: 0.85rem;
-		font-weight: 700;
+	.page-search .sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 
 	.page-search-row {

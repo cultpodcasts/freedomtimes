@@ -85,7 +85,6 @@ const homePath = getHomePath();
 				type="search"
 				name="q"
 				maxlength="200"
-				placeholder="Search"
 				enterkeyhint="search"
 				autocomplete="off"
 				value={Astro.url.pathname === '/search' ? (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 200) : ''}
