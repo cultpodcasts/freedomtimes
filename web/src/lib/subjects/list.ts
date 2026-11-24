@@ -4,21 +4,26 @@
  * Matching is exact membership of the `subjects` JSON array (after trim),
  * compared case-insensitively. "France" does not match "Frances".
  *
- * Two different labels that fold to the same slug share one URL. The label
- * that sorts first in English (case-insensitive) is the page heading, and
- * only posts carrying that label are listed. The other label has no page.
- * Case variants of the same label ("France" / "france") are one label; the
+ * Two different labels that fold to the same slug share one URL. The page
+ * lists every post carrying any of those labels, once per post id. The
+ * heading is `chooseDisplayLabel` across every label on the slug. Case
+ * variants of the same label ("France" / "france") are one label; the
  * heading prefers the variant that uses capitals.
  *
  * Pure: the database read is in `load.ts`. Rows are already published.
+ * Title and excerpt are filled afterwards for the one page being rendered.
  */
 import { subjectSlug } from './slug';
 
 /**
- * Columns read from `ec_posts` for a subject page. `content` is not one of
- * them. `seo_no_index` comes from the SEO join, not this list.
+ * Columns read while scanning every published post for the directory and
+ * the sitemap. No title, excerpt, or body. `seo_no_index` comes from the
+ * SEO join, not this list.
  */
-export const SUBJECT_POST_COLUMNS = ['id', 'slug', 'title', 'excerpt', 'subjects', 'published_at', 'updated_at'] as const;
+export const SUBJECT_DIRECTORY_COLUMNS = ['id', 'slug', 'subjects', 'published_at', 'updated_at'] as const;
+
+/** Columns loaded for the posts on one subject page, after that page is chosen. */
+export const SUBJECT_DISPLAY_COLUMNS = ['id', 'title', 'excerpt'] as const;
 
 export type SubjectPostRow = {
 	id: string;
@@ -41,6 +46,13 @@ export type SubjectPage = {
 	indexable: boolean;
 	/** Newest `updatedAt` among the listed posts (sitemap lastmod). */
 	updatedAt: string | null;
+};
+
+/** Title and excerpt for one post, loaded only after the page's ids are known. */
+export type SubjectDisplayFields = {
+	id: string;
+	title: string;
+	excerpt: string | null;
 };
 
 export function parseSubjects(value: unknown): string[] {
@@ -91,6 +103,31 @@ export function mapSubjectPostRow(row: Record<string, unknown>): SubjectPostRow 
 	};
 }
 
+/** Display row for one subject-page post. Ignores any body column. Drops a row with no id. */
+export function mapSubjectDisplayRow(row: Record<string, unknown>): SubjectDisplayFields | null {
+	const id = typeof row.id === 'string' ? row.id : '';
+	if (!id) return null;
+	const title = typeof row.title === 'string' && row.title.trim() ? row.title.trim() : 'Untitled post';
+	const excerpt = typeof row.excerpt === 'string' && row.excerpt.trim() ? row.excerpt.trim() : null;
+	return { id, title, excerpt };
+}
+
+/** Replace title and excerpt on the posts whose ids came back from the display query. */
+export function applySubjectDisplay(page: SubjectPage, displays: readonly SubjectDisplayFields[]): SubjectPage {
+	const byId = new Map<string, SubjectDisplayFields>();
+	for (const display of displays) {
+		if (!byId.has(display.id)) byId.set(display.id, display);
+	}
+	return {
+		...page,
+		posts: page.posts.map((post) => {
+			const display = byId.get(post.id);
+			if (!display) return post;
+			return { ...post, title: display.title, excerpt: display.excerpt };
+		}),
+	};
+}
+
 function labelKey(label: string): string {
 	return label.trim().toLowerCase();
 }
@@ -123,8 +160,9 @@ function newestUpdated(posts: readonly SubjectPostRow[]): string | null {
 }
 
 /**
- * One page per slug, sorted by slug. Posts on a page are newest first.
- * A post is listed once even if the label is repeated on it.
+ * One page per slug, sorted by slug. Every label that folds to the slug
+ * contributes its posts. Posts on a page are newest first, and a post is
+ * listed once even when it carries more than one of those labels.
  */
 export function buildSubjectDirectory(rows: readonly SubjectPostRow[]): SubjectPage[] {
 	type Bucket = { labels: string[]; posts: SubjectPostRow[] };
@@ -157,15 +195,19 @@ export function buildSubjectDirectory(rows: readonly SubjectPostRow[]): SubjectP
 
 	const pages: SubjectPage[] = [];
 	for (const [slug, groups] of bySlug) {
-		const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b, 'en'));
-		const winner = keys[0];
-		if (!winner) continue;
-		const bucket = groups.get(winner);
-		if (!bucket) continue;
-		const posts = [...bucket.posts].sort(comparePosts);
+		const labels: string[] = [];
+		const postsById = new Map<string, SubjectPostRow>();
+		for (const bucket of groups.values()) {
+			labels.push(...bucket.labels);
+			for (const post of bucket.posts) {
+				if (!postsById.has(post.id)) postsById.set(post.id, post);
+			}
+		}
+		if (labels.length === 0) continue;
+		const posts = [...postsById.values()].sort(comparePosts);
 		pages.push({
 			slug,
-			label: chooseDisplayLabel(bucket.labels),
+			label: chooseDisplayLabel(labels),
 			posts,
 			indexable: posts.some((post) => !post.noindex),
 			updatedAt: newestUpdated(posts),

@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
-	SUBJECT_POST_COLUMNS,
+	SUBJECT_DIRECTORY_COLUMNS,
+	SUBJECT_DISPLAY_COLUMNS,
+	applySubjectDisplay,
 	buildSubjectDirectory,
 	indexableSubjectSitemapEntries,
 	mapSubjectPostRow,
@@ -11,6 +13,7 @@ import {
 	subjectPageForSlug,
 	type SubjectPostRow,
 } from '../src/lib/subjects/list.ts';
+import { readSubjectDirectoryPages } from '../src/lib/subjects/load.ts';
 import { isSubjectSlug, subjectPath, subjectSlug } from '../src/lib/subjects/slug.ts';
 
 function row(partial: Partial<SubjectPostRow> & Pick<SubjectPostRow, 'id' | 'subjects'>): SubjectPostRow {
@@ -58,16 +61,40 @@ describe('subject directory (synthetic posts)', () => {
 		assert.deepEqual(frances?.posts.map((post) => post.id), ['other']);
 	});
 
-	it('keeps one url when two labels share a slug, and lists only the winning label', () => {
+	it('keeps one url when two labels share a slug, and lists both posts', () => {
 		const page = subjectPageForSlug(
 			[
-				row({ id: 'accent', subjects: ['Libération'], title: 'Accent' }),
-				row({ id: 'plain', subjects: ['Liberation'], title: 'Plain' }),
+				row({
+					id: 'accent',
+					subjects: ['Libération'],
+					title: 'Accent',
+					publishedAt: '2026-02-01T00:00:00.000Z',
+					updatedAt: '2026-02-02T00:00:00.000Z',
+					noindex: false,
+				}),
+				row({
+					id: 'plain',
+					subjects: ['Liberation'],
+					title: 'Plain',
+					publishedAt: '2026-06-01T00:00:00.000Z',
+					updatedAt: '2026-06-02T00:00:00.000Z',
+					noindex: true,
+				}),
 			],
 			'liberation',
 		);
 		assert.equal(page?.label, 'Liberation');
-		assert.deepEqual(page?.posts.map((post) => post.id), ['plain']);
+		assert.deepEqual(page?.posts.map((post) => post.id), ['plain', 'accent']);
+		assert.equal(page?.indexable, true);
+		assert.equal(page?.updatedAt, '2026-06-02T00:00:00.000Z');
+	});
+
+	it('lists a post once when it carries both spellings of one slug', () => {
+		const page = subjectPageForSlug(
+			[row({ id: 'both', subjects: ['Libération', 'Liberation', 'Liberation'] })],
+			'liberation',
+		);
+		assert.deepEqual(page?.posts.map((post) => post.id), ['both']);
 	});
 
 	it('treats case variants as one label and prefers the capitalised spelling', () => {
@@ -118,13 +145,73 @@ describe('subject directory (synthetic posts)', () => {
 	});
 });
 
+describe('subject display fields', () => {
+	it('fills title and excerpt only for posts already on the page', () => {
+		const page = subjectPageForSlug(
+			[row({ id: 'older', subjects: ['France'], title: 'Untitled post', excerpt: null })],
+			'france',
+		);
+		assert.ok(page);
+		const filled = applySubjectDisplay(page, [
+			{ id: 'older', title: 'The France piece', excerpt: 'Standfirst' },
+			{ id: 'someone-else', title: 'Not on this page', excerpt: 'Skip' },
+		]);
+		assert.equal(filled.posts[0]?.title, 'The France piece');
+		assert.equal(filled.posts[0]?.excerpt, 'Standfirst');
+		assert.equal(filled.posts.length, 1);
+	});
+});
+
+describe('subject directory scan', () => {
+	it('keeps a subject that only appears past the old 500-row cap', async () => {
+		const total = 501;
+		const pageSize = 200;
+		const rows = Array.from({ length: total }, (_, index) => ({
+			id: `p${String(index).padStart(4, '0')}`,
+			slug: `post-${index}`,
+			subjects: index === total - 1 ? '["Older subject"]' : '["Recent"]',
+			published_at: '2026-01-01T00:00:00.000Z',
+			updated_at: '2026-01-02T00:00:00.000Z',
+			seo_no_index: 0,
+			content: 'body must not be required',
+		}));
+		let calls = 0;
+		const loaded = await readSubjectDirectoryPages(async (afterId, limit) => {
+			calls += 1;
+			assert.equal(limit, pageSize);
+			const start = afterId ? rows.findIndex((row) => row.id === afterId) + 1 : 0;
+			return rows.slice(start, start + limit);
+		}, pageSize);
+		assert.equal(calls, 3);
+		assert.equal(loaded.length, total);
+		const page = subjectPageForSlug(loaded, 'older-subject');
+		assert.equal(page?.posts[0]?.id, 'p0500');
+		assert.equal(page?.indexable, true);
+		const recent = subjectPageForSlug(loaded, 'recent');
+		assert.equal(recent?.posts.length, 500);
+	});
+
+	it('throws when a full page does not advance, instead of dropping the tail', async () => {
+		await assert.rejects(
+			() => readSubjectDirectoryPages(async () => [{ id: 'same', slug: 's', subjects: '["France"]' }], 1),
+			/did not advance/,
+		);
+	});
+});
+
 describe('subject query shape', () => {
-	it('selects the narrow columns and never the post body', () => {
-		assert.deepEqual([...SUBJECT_POST_COLUMNS], ['id', 'slug', 'title', 'excerpt', 'subjects', 'published_at', 'updated_at']);
-		assert.ok(!SUBJECT_POST_COLUMNS.includes('content' as 'id'));
+	it('scans directory columns only, then loads title and excerpt for one page', () => {
+		assert.deepEqual([...SUBJECT_DIRECTORY_COLUMNS], ['id', 'slug', 'subjects', 'published_at', 'updated_at']);
+		assert.deepEqual([...SUBJECT_DISPLAY_COLUMNS], ['id', 'title', 'excerpt']);
 		const source = readFileSync(new URL('../src/lib/subjects/load.ts', import.meta.url), 'utf8');
-		assert.match(source, /c\.status = \$\{'published'\}/);
-		assert.match(source, /c\.deleted_at IS NULL/);
-		assert.doesNotMatch(source, /SELECT \*|c\.content|c\."content"/);
+		assert.match(source, /sql\.ref\('c\.status'\)\} = \$\{'published'\}/);
+		assert.match(source, /sql\.ref\('c\.deleted_at'\)\} IS NULL/);
+		assert.match(source, /readSubjectDirectoryPages/);
+		assert.doesNotMatch(source, /sql\.raw|SUBJECT_LIST_LIMIT|LIMIT 500|SELECT \*|c\.content|c\."content"/);
+		const page = readFileSync(new URL('../src/pages/subjects/[slug].astro', import.meta.url), 'utf8');
+		const directoryCall = page.indexOf('await loadPublishedSubjectRows');
+		const choose = page.indexOf('subjectPageForSlug(rows');
+		const displayCall = page.indexOf('await loadSubjectPagePosts');
+		assert.ok(directoryCall >= 0 && choose > directoryCall && displayCall > choose);
 	});
 });

@@ -111,7 +111,9 @@ const description = normalized.ok
 			)}
 			{hits.length > 0 && (
 				<>
-					<p class="count">{hits.length === 1 ? '1 result' : `${hits.length} results`}</p>
+					<p class="count">{nextHref
+						? (hits.length === 1 ? '1 result on this page' : `${hits.length} results on this page`)
+						: (hits.length === 1 ? '1 result' : `${hits.length} results`)}</p>
 					<PostSummaryList posts={hits} />
 				</>
 			)}

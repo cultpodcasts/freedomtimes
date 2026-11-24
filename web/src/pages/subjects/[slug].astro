@@ -7,7 +7,7 @@ import { rethrowLookupFailure } from '../../lib/content-store-guard';
 import { assertContentStoreReady } from '../../lib/content-store-guard-db';
 import { getOptionalEditorialSession, requireEditorialSession } from '../../lib/editorial-session';
 import { SITE_DISPLAY_NAME } from '../../lib/site-brand';
-import { loadPublishedSubjectRows } from '../../lib/subjects/load';
+import { loadPublishedSubjectRows, loadSubjectPagePosts } from '../../lib/subjects/load';
 import { subjectPageForSlug, type SubjectPage } from '../../lib/subjects/list';
 import { isSubjectSlug } from '../../lib/subjects/slug';
 
@@ -49,7 +49,8 @@ if (!isSubjectSlug(slug)) {
 	try {
 		const rows = await loadPublishedSubjectRows();
 		if (rows.length === 0) await assertContentStoreReady();
-		page = subjectPageForSlug(rows, slug);
+		const found = subjectPageForSlug(rows, slug);
+		page = found ? await loadSubjectPagePosts(found) : null;
 	} catch (error) {
 		await rethrowLookupFailure(error, assertContentStoreReady);
 	}
