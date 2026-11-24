@@ -1,5 +1,6 @@
 ---
 import { subjectChipStyle } from '../../lib/subjects/chip';
+import { subjectPath } from '../../lib/subjects/slug';
 
 interface Props {
 	subjects: string[];
@@ -8,6 +9,7 @@ interface Props {
 const { subjects } = Astro.props;
 const chips = subjects.map((label) => ({
 	label,
+	href: subjectPath(label),
 	style: subjectChipStyle(label),
 }));
 ---
@@ -15,7 +17,13 @@ const chips = subjects.map((label) => ({
 {chips.length > 0 && (
 	<ul class="subject-list" aria-label="Subjects">
 		{chips.map((chip) => (
-			<li><span style={chip.style}>{chip.label}</span></li>
+			<li>
+				{chip.href ? (
+					<a href={chip.href} rel="tag" style={chip.style}>{chip.label}</a>
+				) : (
+					<span style={chip.style}>{chip.label}</span>
+				)}
+			</li>
 		))}
 	</ul>
 )}
@@ -30,6 +38,7 @@ const chips = subjects.map((label) => ({
 		margin: 0.75rem 0 0;
 	}
 
+	.subject-list a,
 	.subject-list span {
 		display: inline-block;
 		font-family: 'Inter', sans-serif;
@@ -41,5 +50,15 @@ const chips = subjects.map((label) => ({
 		border: 1px solid var(--subject-chip-border, #dddddd);
 		background: var(--subject-chip-bg, #fafafa);
 		color: var(--subject-chip-text, #333333);
+		text-decoration: none;
+	}
+
+	.subject-list a:hover {
+		text-decoration: underline;
+	}
+
+	.subject-list a:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 2px;
 	}
 </style>

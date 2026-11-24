@@ -3,6 +3,7 @@ import type { HomepageEntry } from '../lib/content/homepage-entries';
 
 import Layout from '../layouts/Layout.astro';
 import Header from './Header.astro';
+import SubjectList from './content/SubjectList.astro';
 import { SITE_DISPLAY_NAME } from '../lib/site-brand';
 import { getHomeCanonicalPath } from '../lib/homepage-host';
 import { readOptionalEnv } from '../lib/auth';
@@ -109,29 +110,6 @@ function readSubjects(value: unknown): string[] {
   return [];
 }
 
-function hashString(input: string): number {
-  let hash = 2166136261;
-  for (const char of input) {
-    hash ^= char.charCodeAt(0);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function subjectColorTokens(subject: string): { bg: string; border: string; text: string } {
-  const hash = hashString(subject.toLowerCase().trim());
-  const hue = hash % 360;
-  const saturation = 62 + (hash % 14);
-  const lightness = 90 - (hash % 8);
-  const borderLightness = 46 - (hash % 8);
-  const textLightness = 28 - (hash % 6);
-  return {
-    bg: `hsl(${hue} ${saturation}% ${lightness}%)`,
-    border: `hsl(${hue} ${Math.max(45, saturation - 12)}% ${borderLightness}%)`,
-    text: `hsl(${hue} ${Math.max(40, saturation - 18)}% ${textLightness}%)`,
-  };
-}
-
 /**
  * Prepare homepage dek text for CSS line-clamp.
  * Typographic apostrophes (U+2019 / U+02BC) are break opportunities in Chromium,
@@ -236,22 +214,15 @@ const homeCanonicalPath = getHomeCanonicalPath({
               )}
               {formatPublicationDate(lead.publishDate) && <p class="kicker">{formatPublicationDate(lead.publishDate)}</p>}
               <h2>{lead.title}</h2>
-              {lead.subjects.length > 0 && (
-                <ul class="subject-list" aria-label="Subjects">
-                  {lead.subjects.map((subject) => {
-                    const colors = subjectColorTokens(subject);
-                    const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
-                    return <li style={style}>{subject}</li>;
-                  })}
-                </ul>
-              )}
-              {lead.dek && <p class="story-dek">{lead.dek}</p>}
-              {lead.updatedAt && <p class="meta">Updated {new Date(lead.updatedAt).toLocaleString()}</p>}
             </a>
+            <SubjectList subjects={lead.subjects} />
+            {lead.dek && <p class="story-dek"><a href={`/posts/${lead.slug}`}>{lead.dek}</a></p>}
+            {lead.updatedAt && <p class="meta">Updated {new Date(lead.updatedAt).toLocaleString()}</p>}
           </article>
 
           <article class="secondary story-card">
             {secondLead ? (
+              <>
               <a class="story-card-link" href={`/posts/${secondLead.slug}`} aria-label={`Read: ${secondLead.title}`}>
                 {secondLead.imageSrc && (
                   <div class="story-image-wrap secondary-ratio">
@@ -260,18 +231,11 @@ const homeCanonicalPath = getHomeCanonicalPath({
                 )}
                 {formatPublicationDate(secondLead.publishDate) && <p class="kicker">{formatPublicationDate(secondLead.publishDate)}</p>}
                 <h3>{secondLead.title}</h3>
-                {secondLead.subjects.length > 0 && (
-                  <ul class="subject-list" aria-label="Subjects">
-                    {secondLead.subjects.map((subject) => {
-                      const colors = subjectColorTokens(subject);
-                      const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
-                      return <li style={style}>{subject}</li>;
-                    })}
-                  </ul>
-                )}
-                {secondLead.dek && <p class="story-dek">{secondLead.dek}</p>}
-                {secondLead.updatedAt && <p class="meta">Updated {new Date(secondLead.updatedAt).toLocaleString()}</p>}
               </a>
+              <SubjectList subjects={secondLead.subjects} />
+              {secondLead.dek && <p class="story-dek"><a href={`/posts/${secondLead.slug}`}>{secondLead.dek}</a></p>}
+              {secondLead.updatedAt && <p class="meta">Updated {new Date(secondLead.updatedAt).toLocaleString()}</p>}
+              </>
             ) : (
               <>
                 <p class="kicker">Newsroom</p>
@@ -293,17 +257,9 @@ const homeCanonicalPath = getHomeCanonicalPath({
                     )}
                     {formatPublicationDate(story.publishDate) && <p class="kicker">{formatPublicationDate(story.publishDate)}</p>}
                     <h4>{story.title}</h4>
-                    {story.subjects.length > 0 && (
-                      <ul class="subject-list" aria-label="Subjects">
-                        {story.subjects.map((subject) => {
-                          const colors = subjectColorTokens(subject);
-                          const style = `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`;
-                          return <li style={style}>{subject}</li>;
-                        })}
-                      </ul>
-                    )}
-                    {story.dek && <p class="story-dek">{story.dek}</p>}
                   </a>
+                  <SubjectList subjects={story.subjects} />
+                  {story.dek && <p class="story-dek"><a href={`/posts/${story.slug}`}>{story.dek}</a></p>}
                 </article>
               ))
             ) : (
@@ -375,7 +331,7 @@ const homeCanonicalPath = getHomeCanonicalPath({
     flex-direction: column;
     color: inherit;
     text-decoration: none;
-    height: 100%;
+    height: auto;
     min-width: 0;
   }
 
@@ -460,6 +416,11 @@ const homeCanonicalPath = getHomeCanonicalPath({
   }
 
   /* LHS (lead + `.rail` stack): 5 lines. RHS (`.secondary`): 6. Ellipsis from line-clamp only. */
+  .story-dek a:focus-visible {
+    outline: 2px solid #0044bb;
+    outline-offset: 2px;
+  }
+
   .story-dek {
     min-width: 0;
     width: 100%;
@@ -487,27 +448,6 @@ const homeCanonicalPath = getHomeCanonicalPath({
     font-size: 0.7rem;
     color: #888888;
     letter-spacing: 0.05em;
-  }
-
-  .subject-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-    list-style: none;
-    padding: 0;
-    margin: 0 0 0.8rem;
-  }
-
-  .subject-list li {
-    font-family: 'Inter', sans-serif;
-    font-size: 0.65rem;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    font-weight: 700;
-    padding: 0.25rem 0.45rem;
-    border: 1px solid var(--subject-chip-border, #dddddd);
-    background: var(--subject-chip-bg, #fafafa);
-    color: var(--subject-chip-text, #333333);
   }
 
   .rail {

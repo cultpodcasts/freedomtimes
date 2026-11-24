@@ -21,6 +21,8 @@ import { sql } from 'kysely';
 
 import { assertContentStoreReady } from './content-store-guard-db';
 import { SITEMAP_PAGE_SLUGS, buildSiteSitemapUrls, renderUrlset, type SitemapContentRow } from './site-sitemap';
+import { indexableSubjectSitemapEntries } from './subjects/list';
+import { loadPublishedSubjectRows } from './subjects/load';
 
 type Collection = 'posts' | 'pages' | 'archives';
 
@@ -84,6 +86,7 @@ export async function generateSiteSitemapXml(origin: string): Promise<string> {
 		postsUpdatedAt: rowString(posts.rows[0]?.updated_at),
 		pages: toRows(pages.rows),
 		archives: toRows(archives.rows),
+		subjects: indexableSubjectSitemapEntries(await loadPublishedSubjectRows()),
 	});
 	return renderUrlset(urls);
 }

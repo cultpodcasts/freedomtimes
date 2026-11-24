@@ -8,6 +8,8 @@
  * A database that was created before that flag was stored still omits them
  * until the manual rebuild in `web/docs/SEARCH.md`.
  */
+import { parseSubjects } from '../subjects/list';
+
 export const POST_SEARCH_FIELDS = ['title', 'content', 'excerpt', 'lede', 'subjects'] as const;
 
 export const SEARCH_QUERY_MAX_LENGTH = 200;
@@ -19,26 +21,6 @@ export const SEARCH_DISPLAY_COLUMNS = ['id', 'slug', 'title', 'excerpt', 'subjec
 export type NormalizedSearchQuery =
 	| { ok: true; query: string }
 	| { ok: false; reason: 'empty' | 'too_long' };
-
-/** `subjects` is a JSON string array on the post row. */
-export function parseSubjects(value: unknown): string[] {
-	if (Array.isArray(value)) {
-		return value.map((item) => (typeof item === 'string' ? item.trim() : '')).filter((item) => item.length > 0);
-	}
-	if (typeof value === 'string') {
-		const trimmed = value.trim();
-		if (!trimmed) return [];
-		if (trimmed.startsWith('[')) {
-			try {
-				return parseSubjects(JSON.parse(trimmed) as unknown);
-			} catch {
-				return [trimmed];
-			}
-		}
-		return [trimmed];
-	}
-	return [];
-}
 
 export function normalizeSearchQuery(raw: string | null | undefined): NormalizedSearchQuery {
 	const query = (raw ?? '').trim();

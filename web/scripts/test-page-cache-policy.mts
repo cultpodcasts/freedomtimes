@@ -73,6 +73,8 @@ describe('page cache: request bypass rules', () => {
 			'/archives',
 			'/archives/2026',
 			'/search',
+			'/subjects/france',
+			'/subjects/child-sexual-abuse',
 		]) {
 			assert.equal(isCacheablePath(p), true, p);
 		}
@@ -104,6 +106,8 @@ describe('page cache: request bypass rules', () => {
 			'/posts/Upper',
 			'/posts/a%20b',
 			'/search/extra',
+			'/subjects/France',
+			'/subjects/child-sexual-abuse/more',
 		]) {
 			assert.equal(isCacheablePath(p), false, p);
 		}

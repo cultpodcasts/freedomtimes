@@ -87,7 +87,6 @@ const {
 	slidePageTotal,
 	pdfLink,
 	sourceAttribution,
-	subjectChips,
 	subjects,
 	issueDate,
 	publishedAt,
@@ -248,7 +247,7 @@ const showNotificationsCallout = await notificationsEnabled();
 				publishedAt={publishedAt}
 				updatedAt={updatedAt}
 				isPreview={isPreview}
-				subjectChips={subjectChips}
+				subjects={subjects}
 			/>
 
 			<section class="content-card">
@@ -429,27 +428,6 @@ const showNotificationsCallout = await notificationsEnabled();
 
 	:global(.article-meta p) {
 		margin: 0;
-	}
-
-	:global(.subject-list) {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		list-style: none;
-		padding: 0;
-		margin: 1rem 0 0;
-	}
-
-	:global(.subject-list li) {
-		font-family: "Inter", sans-serif;
-		font-size: 0.7rem;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		font-weight: 700;
-		padding: 0.3rem 0.5rem;
-		border: 1px solid var(--subject-chip-border, #dddddd);
-		background: var(--subject-chip-bg, #fafafa);
-		color: var(--subject-chip-text, #333333);
 	}
 
 	:global(.preview) {
