@@ -77,6 +77,21 @@ const homePath = getHomePath();
 				<a href={sectionUrl || '#'}>{section}</a>
 			</div>
 		)}
+
+		<form class="site-search" action="/search" method="get" role="search">
+			<label class="sr-only" for="site-search-q">Search posts</label>
+			<input
+				id="site-search-q"
+				type="search"
+				name="q"
+				maxlength="200"
+				placeholder="Search posts"
+				enterkeyhint="search"
+				autocomplete="off"
+				value={Astro.url.pathname === '/search' ? (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 200) : ''}
+			/>
+			<button type="submit">Search</button>
+		</form>
 		</div>
 	</nav>
 </header>
@@ -160,6 +175,54 @@ const homePath = getHomePath();
 	.nav-links a:hover,
 	.nav-links a.active {
 		color: #0044bb;
+	}
+
+	.site-search {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		margin-left: auto;
+		font-family: 'Inter', sans-serif;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	.site-search input {
+		font: inherit;
+		font-weight: 500;
+		font-size: 0.9rem;
+		width: 11rem;
+		padding: 0.35rem 0.55rem;
+		border: 1px solid #111111;
+		background: #ffffff;
+		color: #111111;
+	}
+
+	.site-search button {
+		font: inherit;
+		font-weight: 700;
+		font-size: 0.85rem;
+		padding: 0.35rem 0.7rem;
+		border: 1px solid #111111;
+		background: #111111;
+		color: #ffffff;
+		cursor: pointer;
+	}
+
+	.site-search input:focus-visible,
+	.site-search button:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 2px;
 	}
 
 	.breadcrumbs {
@@ -249,6 +312,17 @@ const homePath = getHomePath();
 			display: grid;
 			gap: 0.45rem;
 			margin-bottom: 0.45rem;
+		}
+
+		.site-search {
+			margin: 0.35rem 0 0;
+			width: 100%;
+		}
+
+		.site-search input {
+			flex: 1;
+			width: auto;
+			min-width: 0;
 		}
 		.breadcrumbs {
 			gap: 0.4rem;

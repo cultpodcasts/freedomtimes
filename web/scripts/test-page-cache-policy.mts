@@ -72,6 +72,7 @@ describe('page cache: request bypass rules', () => {
 			'/robots.txt',
 			'/archives',
 			'/archives/2026',
+			'/search',
 		]) {
 			assert.equal(isCacheablePath(p), true, p);
 		}
@@ -102,6 +103,7 @@ describe('page cache: request bypass rules', () => {
 			'/posts/x/y',
 			'/posts/Upper',
 			'/posts/a%20b',
+			'/search/extra',
 		]) {
 			assert.equal(isCacheablePath(p), false, p);
 		}
@@ -131,6 +133,8 @@ describe('page cache: request bypass rules', () => {
 			assert.deepEqual(decidePageCacheRequest(PROD, req({ pathname: '/archives', search: s })), { cacheable: false, reason: 'query' }, s);
 		}
 		assert.deepEqual(decidePageCacheRequest(PROD, req({ pathname: '/archives', search: '' })), { cacheable: true, keyPath: '/archives' });
+		assert.deepEqual(decidePageCacheRequest(PROD, req({ pathname: '/search', search: '?q=france' })), { cacheable: false, reason: 'query' });
+		assert.deepEqual(decidePageCacheRequest(PROD, req({ pathname: '/search', search: '' })), { cacheable: true, keyPath: '/search' });
 	});
 });
 

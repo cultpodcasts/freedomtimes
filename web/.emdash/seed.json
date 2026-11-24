@@ -53,17 +53,20 @@
         {
           "slug": "excerpt",
           "label": "Excerpt",
-          "type": "text"
+          "type": "text",
+          "searchable": true
         },
         {
           "slug": "subjects",
           "label": "Subjects",
-          "type": "json"
+          "type": "json",
+          "searchable": true
         },
         {
           "slug": "lede",
           "label": "Lede",
-          "type": "text"
+          "type": "text",
+          "searchable": true
         },
         {
           "slug": "coverage_start",
