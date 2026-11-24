@@ -79,13 +79,13 @@ const homePath = getHomePath();
 		)}
 
 		<form class="site-search" action="/search" method="get" role="search">
-			<label class="sr-only" for="site-search-q">Search posts</label>
+			<label class="sr-only" for="site-search-q">Search</label>
 			<input
 				id="site-search-q"
 				type="search"
 				name="q"
 				maxlength="200"
-				placeholder="Search posts"
+				placeholder="Search"
 				enterkeyhint="search"
 				autocomplete="off"
 				value={Astro.url.pathname === '/search' ? (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 200) : ''}
