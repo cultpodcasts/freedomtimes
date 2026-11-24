@@ -1,5 +1,5 @@
 ---
-import type { SubjectChip } from '../../lib/content/contentEntry';
+import SubjectList from './SubjectList.astro';
 
 const {
 	title,
@@ -8,7 +8,7 @@ const {
 	publishedAt,
 	updatedAt,
 	isPreview = false,
-	subjectChips = [],
+	subjects = [],
 } = Astro.props as {
 	title: string;
 	issueDate: string | null;
@@ -16,7 +16,7 @@ const {
 	publishedAt: string | null;
 	updatedAt: string | null;
 	isPreview?: boolean;
-	subjectChips: SubjectChip[];
+	subjects: string[];
 };
 
 function formatShortDate(value: string): string {
@@ -47,9 +47,5 @@ const showUpdatedDate = shouldShowUpdatedDate(publishedAt, updatedAt);
 		{showUpdatedDate && updatedAt && <p>Updated {formatShortDate(updatedAt)}</p>}
 		{isPreview && <p class="preview">Preview mode</p>}
 	</div>
-	{subjectChips.length > 0 && (
-		<ul class="subject-list" aria-label="Subjects">
-			{subjectChips.map((chip) => <li style={chip.style}>{chip.label}</li>)}
-		</ul>
-	)}
+	<SubjectList subjects={subjects} />
 </header>

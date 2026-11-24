@@ -1,0 +1,220 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import PostSummaryList from '../components/content/PostSummaryList.astro';
+import { readOptionalEnv } from '../lib/auth';
+import { rethrowLookupFailure } from '../lib/content-store-guard';
+import { assertContentStoreReady } from '../lib/content-store-guard-db';
+import { getOptionalEditorialSession, requireEditorialSession } from '../lib/editorial-session';
+import { searchPublishedPosts } from '../lib/search/post-search';
+import { isSafeSearchCursor, normalizeSearchQuery, SEARCH_QUERY_MAX_LENGTH } from '../lib/search/query';
+
+const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const isLocked = siteAccessMode !== 'public';
+
+let isAdmin = false;
+let isEditor = false;
+let isSignedIn = false;
+
+const sessionContext = {
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+};
+
+if (isLocked) {
+	const session = await requireEditorialSession(sessionContext);
+	if (session instanceof Response) return session;
+	isAdmin = session.isAdmin;
+	isEditor = session.isEditor;
+	isSignedIn = true;
+} else {
+	const session = await getOptionalEditorialSession(sessionContext);
+	if (session) {
+		isAdmin = session.isAdmin;
+		isEditor = session.isEditor;
+		isSignedIn = true;
+	}
+}
+
+const rawQuery = (Astro.url.searchParams.get('q') ?? '').trim();
+const normalized = normalizeSearchQuery(rawQuery);
+const cursorRaw = Astro.url.searchParams.get('cursor');
+const cursor = isSafeSearchCursor(cursorRaw) ? cursorRaw : undefined;
+const cursorRejected = Boolean(cursorRaw) && !cursor;
+
+let hits: Awaited<ReturnType<typeof searchPublishedPosts>>['hits'] = [];
+let nextCursor: string | undefined;
+let unavailable = false;
+let invalidCursor = cursorRejected;
+
+if (normalized.ok && !cursorRejected) {
+	try {
+		const result = await searchPublishedPosts(normalized.query, cursor);
+		hits = result.hits;
+		nextCursor = result.nextCursor;
+		unavailable = Boolean(result.unavailable);
+		invalidCursor = Boolean(result.invalidCursor);
+	} catch (error) {
+		await rethrowLookupFailure(error, assertContentStoreReady);
+	}
+}
+
+if (unavailable) Astro.response.status = 503;
+else if (invalidCursor) Astro.response.status = 400;
+if (unavailable || invalidCursor) Astro.response.headers.set('Cache-Control', 'no-store');
+
+const query = normalized.ok ? normalized.query : rawQuery.slice(0, SEARCH_QUERY_MAX_LENGTH);
+const nextHref = normalized.ok && nextCursor
+	? `/search?q=${encodeURIComponent(normalized.query)}&cursor=${encodeURIComponent(nextCursor)}`
+	: null;
+const canonical = normalized.ok ? `/search?q=${encodeURIComponent(normalized.query)}` : '/search';
+const heading = normalized.ok ? `Results for “${normalized.query}”` : 'Search';
+const description = normalized.ok
+	? `Search results for “${normalized.query}” on Freedom Times.`
+	: 'Search published Freedom Times posts.';
+---
+
+<Layout title={heading} description={description} canonicalUrl={canonical} noindex>
+	<div class="search-page">
+		<Header isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} />
+		<div class="search-body">
+			<p class="kicker">Search</p>
+			<h1>{heading}</h1>
+			<form class="page-search" action="/search" method="get" role="search">
+				<label for="page-search-q">Search posts</label>
+				<div class="page-search-row">
+					<input
+						id="page-search-q"
+						type="search"
+						name="q"
+						maxlength={SEARCH_QUERY_MAX_LENGTH}
+						value={query}
+						enterkeyhint="search"
+						autocomplete="off"
+					/>
+					<button type="submit">Search</button>
+				</div>
+			</form>
+
+			{unavailable && <p class="notice" role="status">Search is unavailable right now. Try again in a few minutes.</p>}
+			{invalidCursor && <p class="notice" role="status">That results page is not valid. Search again to start from the first page.</p>}
+			{normalized.ok === false && normalized.reason === 'empty' && (
+				<p class="notice">Search titles, standfirsts, and article text.</p>
+			)}
+			{normalized.ok === false && normalized.reason === 'too_long' && (
+				<p class="notice" role="status">Search is limited to {SEARCH_QUERY_MAX_LENGTH} characters.</p>
+			)}
+			{normalized.ok && !unavailable && !invalidCursor && hits.length === 0 && (
+				<p class="notice" role="status">No published posts matched that search.</p>
+			)}
+			{hits.length > 0 && (
+				<>
+					<p class="count">{hits.length === 1 ? '1 result' : `${hits.length} results`}</p>
+					<PostSummaryList posts={hits} />
+				</>
+			)}
+			{nextHref && (
+				<nav class="more" aria-label="More results">
+					<a href={nextHref} rel="next">Next results</a>
+				</nav>
+			)}
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.search-page {
+		max-width: var(--max-width-main);
+		margin: 0 auto;
+	}
+
+	.search-body {
+		padding: 0 var(--page-padding-side) 4rem;
+		max-width: var(--max-width-article);
+	}
+
+	.kicker {
+		margin: 0 0 0.4rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: #555555;
+	}
+
+	h1 {
+		margin: 0 0 1.25rem;
+		font-family: 'Playfair Display', serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1.05;
+		letter-spacing: -0.02em;
+	}
+
+	.page-search label {
+		display: block;
+		margin: 0 0 0.4rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		font-weight: 700;
+	}
+
+	.page-search-row {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.page-search input {
+		flex: 1;
+		min-width: 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 1rem;
+		padding: 0.55rem 0.7rem;
+		border: 1px solid #111111;
+		background: #ffffff;
+		color: #111111;
+	}
+
+	.page-search button {
+		font-family: 'Inter', sans-serif;
+		font-weight: 700;
+		font-size: 0.9rem;
+		padding: 0.55rem 0.9rem;
+		border: 1px solid #111111;
+		background: #111111;
+		color: #ffffff;
+		cursor: pointer;
+	}
+
+	.page-search input:focus-visible,
+	.page-search button:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 2px;
+	}
+
+	.notice,
+	.count {
+		font-family: 'Source Serif 4', serif;
+		font-size: 1.1rem;
+		color: #333333;
+	}
+
+	.more {
+		margin-top: 1.5rem;
+		font-family: 'Inter', sans-serif;
+		font-weight: 700;
+	}
+
+	.more a {
+		color: #0044bb;
+	}
+
+	.more a:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 2px;
+	}
+</style>

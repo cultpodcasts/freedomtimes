@@ -8,6 +8,8 @@
  * - `/about-us`, `/contact-us`, `/privacy-policy` (the `pages` entries in SITEMAP_PAGE_SLUGS)
  * - each `/archives/<slug>`, and `/archives` when at least one archive is listed (lastmod =
  *   newest update among the listed archives)
+ * - each `/subjects/<slug>` that has at least one indexable published post (lastmod =
+ *   newest update among the posts listed on that subject page). `/search` is not listed.
  *
  * Rows follow the same rule as EmDash's own sitemap query: published, not deleted, a
  * non-empty slug, and not `seo_no_index`. A row whose SEO canonical points at another URL is
@@ -37,6 +39,11 @@ export interface SitemapContentRow {
 	seoCanonical?: string | null;
 }
 
+export interface SubjectSitemapEntry {
+	slug: string;
+	updatedAt: string | null;
+}
+
 export interface SiteSitemapInput {
 	/**
 	 * Newest `updated_at` over published, non-deleted posts (the homepage's set, noindex
@@ -45,6 +52,8 @@ export interface SiteSitemapInput {
 	postsUpdatedAt: string | null;
 	pages: SitemapContentRow[];
 	archives: SitemapContentRow[];
+	/** Indexable subject pages only. Omitted means none. */
+	subjects?: SubjectSitemapEntry[];
 }
 
 export interface SiteSitemapUrl {
@@ -94,7 +103,7 @@ function url(origin: string, path: string, lastmod: string | null): SiteSitemapU
 	return lastmod ? { loc, lastmod } : { loc };
 }
 
-/** Sitemap URLs, in a stable order: `/`, pages (SITEMAP_PAGE_SLUGS order), `/archives`, archives by slug. */
+/** Sitemap URLs, in a stable order: `/`, pages (SITEMAP_PAGE_SLUGS order), `/archives`, archives by slug, then `/subjects/<slug>`. */
 export function buildSiteSitemapUrls(originInput: string, input: SiteSitemapInput): SiteSitemapUrl[] {
 	const origin = originInput.replace(/\/+$/, '');
 	const urls: SiteSitemapUrl[] = [url(origin, HOME_PATH, toW3CDate(input.postsUpdatedAt))];
@@ -123,6 +132,17 @@ export function buildSiteSitemapUrls(originInput: string, input: SiteSitemapInpu
 		urls.push(url(origin, ARCHIVES_INDEX_PATH, newest(listed.map((row) => row.updatedAt))));
 	}
 	for (const row of listed) urls.push(url(origin, row.path, toW3CDate(row.updatedAt)));
+
+	const subjects = (input.subjects ?? [])
+		.map((row) => ({ slug: row.slug.trim(), updatedAt: row.updatedAt }))
+		.filter((row) => /^[a-z0-9][a-z0-9-]*$/.test(row.slug))
+		.sort((a, b) => a.slug.localeCompare(b.slug, 'en'));
+	const seenSubjects = new Set<string>();
+	for (const row of subjects) {
+		if (seenSubjects.has(row.slug)) continue;
+		seenSubjects.add(row.slug);
+		urls.push(url(origin, `/subjects/${row.slug}`, toW3CDate(row.updatedAt)));
+	}
 	return urls;
 }
 
