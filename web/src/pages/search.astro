@@ -82,21 +82,6 @@ const description = normalized.ok
 		<div class="search-body">
 			<p class="kicker">Search</p>
 			<h1>{heading}</h1>
-			<form class="page-search" action="/search" method="get" role="search">
-				<label class="sr-only" for="page-search-q">Search</label>
-				<div class="page-search-row">
-					<input
-						id="page-search-q"
-						type="search"
-						name="q"
-						maxlength={SEARCH_QUERY_MAX_LENGTH}
-						value={query}
-						enterkeyhint="search"
-						autocomplete="off"
-					/>
-					<button type="submit">Search</button>
-				</div>
-			</form>
 
 			{unavailable && <p class="notice" role="status">Search is unavailable right now. Try again in a few minutes.</p>}
 			{invalidCursor && <p class="notice" role="status">That results page is not valid. Search again to start from the first page.</p>}
@@ -153,52 +138,6 @@ const description = normalized.ok
 		font-size: clamp(2rem, 4vw, 3rem);
 		line-height: 1.05;
 		letter-spacing: -0.02em;
-	}
-
-	.page-search .sr-only {
-		position: absolute;
-		width: 1px;
-		height: 1px;
-		padding: 0;
-		margin: -1px;
-		overflow: hidden;
-		clip: rect(0, 0, 0, 0);
-		white-space: nowrap;
-		border: 0;
-	}
-
-	.page-search-row {
-		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.page-search input {
-		flex: 1;
-		min-width: 0;
-		font-family: 'Inter', sans-serif;
-		font-size: 1rem;
-		padding: 0.55rem 0.7rem;
-		border: 1px solid #111111;
-		background: #ffffff;
-		color: #111111;
-	}
-
-	.page-search button {
-		font-family: 'Inter', sans-serif;
-		font-weight: 700;
-		font-size: 0.9rem;
-		padding: 0.55rem 0.9rem;
-		border: 1px solid #111111;
-		background: #111111;
-		color: #ffffff;
-		cursor: pointer;
-	}
-
-	.page-search input:focus-visible,
-	.page-search button:focus-visible {
-		outline: 2px solid #0044bb;
-		outline-offset: 2px;
 	}
 
 	.notice,
