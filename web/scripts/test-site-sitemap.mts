@@ -131,6 +131,25 @@ describe('site sitemap (#34): /, reader pages and archives', () => {
 		assert.match(xml, /<\/urlset>$/);
 	});
 
+	it('lists indexable subject pages and never lists /search', () => {
+		const urls = buildSiteSitemapUrls(ORIGIN, {
+			...FULL,
+			subjects: [
+				{ slug: 'france', updatedAt: '2026-06-01T00:00:00.000Z' },
+				{ slug: 'liberation', updatedAt: '2026-07-02 08:00:00' },
+				{ slug: 'France', updatedAt: '2026-08-01T00:00:00.000Z' },
+				{ slug: 'not a slug', updatedAt: '2026-08-01T00:00:00.000Z' },
+				{ slug: 'france', updatedAt: '2026-01-01T00:00:00.000Z' },
+			],
+		});
+		const locs = urls.map((u) => u.loc);
+		assert.ok(!locs.some((loc) => loc.includes('/search')));
+		assert.deepEqual(urls.slice(-2), [
+			{ loc: 'https://freedomtimes.news/subjects/france', lastmod: '2026-06-01T00:00:00.000Z' },
+			{ loc: 'https://freedomtimes.news/subjects/liberation', lastmod: '2026-07-02T08:00:00.000Z' },
+		]);
+	});
+
 	it('is not an EmDash collection sitemap name and not one of the EmDash sitemap paths', () => {
 		assert.equal(SITE_SITEMAP_PATH, '/sitemap-site-pages.xml');
 		// EmDash's /sitemap-{collection}(-n).xml parser rejects "site-pages", so no collection can collide.

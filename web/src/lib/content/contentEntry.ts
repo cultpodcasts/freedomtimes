@@ -31,11 +31,6 @@ export type { ResolveSocialImageSrcOptions } from './socialImage';
 
 export type SlideImage = { src: string; pageNumber: number | null };
 
-export type SubjectChip = {
-	label: string;
-	style: string;
-};
-
 export type ContentEntryViewModel = {
 	title: string;
 	summaryParagraphs: string[];
@@ -54,7 +49,6 @@ export type ContentEntryViewModel = {
 	/** Optional provenance credit for the archive PDF/issue (#169). */
 	sourceAttribution: string | null;
 	subjects: string[];
-	subjectChips: SubjectChip[];
 	issueDate: string | null;
 	publishedAt: string | null;
 	updatedAt: string | null;
@@ -200,29 +194,6 @@ function readSubjects(value: unknown): string[] {
 	}
 
 	return [];
-}
-
-function hashString(input: string): number {
-	let hash = 2166136261;
-	for (const char of input) {
-		hash ^= char.charCodeAt(0);
-		hash = Math.imul(hash, 16777619);
-	}
-	return hash >>> 0;
-}
-
-function subjectColorTokens(subject: string): { bg: string; border: string; text: string } {
-	const hash = hashString(subject.toLowerCase().trim());
-	const hue = hash % 360;
-	const saturation = 62 + (hash % 14);
-	const lightness = 90 - (hash % 8);
-	const borderLightness = 46 - (hash % 8);
-	const textLightness = 28 - (hash % 6);
-	return {
-		bg: `hsl(${hue} ${saturation}% ${lightness}%)`,
-		border: `hsl(${hue} ${Math.max(45, saturation - 12)}% ${borderLightness}%)`,
-		text: `hsl(${hue} ${Math.max(40, saturation - 18)}% ${textLightness}%)`,
-	};
 }
 
 function readPrimaryBylineRecord(entryMeta: Record<string, unknown>, data: Record<string, unknown>): Record<string, unknown> | null {
@@ -479,13 +450,6 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 	const updatedAt = readEmDashUpdatedAt(entry);
 	const primaryByline = readPrimaryByline(entryMeta, data);
 	const primaryBylineUrl = readPrimaryBylineUrl(entryMeta, data);
-	const subjectChips = subjects.map((subject) => {
-		const colors = subjectColorTokens(subject);
-		return {
-			label: subject,
-			style: `--subject-chip-bg: ${colors.bg}; --subject-chip-border: ${colors.border}; --subject-chip-text: ${colors.text};`,
-		};
-	});
 
 	return {
 		title,
@@ -504,7 +468,6 @@ export function buildContentEntryViewModel(entry: { slug?: string; data: Record<
 		pdfLink,
 		sourceAttribution,
 		subjects,
-		subjectChips,
 		issueDate,
 		publishedAt,
 		updatedAt,

@@ -1,0 +1,159 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import PostSummaryList from '../../components/content/PostSummaryList.astro';
+import { readOptionalEnv } from '../../lib/auth';
+import { rethrowLookupFailure } from '../../lib/content-store-guard';
+import { assertContentStoreReady } from '../../lib/content-store-guard-db';
+import { getOptionalEditorialSession, requireEditorialSession } from '../../lib/editorial-session';
+import { SITE_DISPLAY_NAME } from '../../lib/site-brand';
+import { loadPublishedSubjectRows, loadSubjectPagePosts } from '../../lib/subjects/load';
+import { subjectPageForSlug, type SubjectPage } from '../../lib/subjects/list';
+import { isSubjectSlug } from '../../lib/subjects/slug';
+
+const siteAccessMode = readOptionalEnv('SITE_ACCESS_MODE').trim().toLowerCase();
+const isLocked = siteAccessMode !== 'public';
+
+let isAdmin = false;
+let isEditor = false;
+let isSignedIn = false;
+
+const sessionContext = {
+	cookies: Astro.cookies,
+	url: Astro.url,
+	request: Astro.request,
+	redirect: Astro.redirect,
+};
+
+if (isLocked) {
+	const session = await requireEditorialSession(sessionContext);
+	if (session instanceof Response) return session;
+	isAdmin = session.isAdmin;
+	isEditor = session.isEditor;
+	isSignedIn = true;
+} else {
+	const session = await getOptionalEditorialSession(sessionContext);
+	if (session) {
+		isAdmin = session.isAdmin;
+		isEditor = session.isEditor;
+		isSignedIn = true;
+	}
+}
+
+const slug = Astro.params.slug ?? '';
+let page: SubjectPage | null = null;
+
+if (!isSubjectSlug(slug)) {
+	await assertContentStoreReady();
+} else {
+	try {
+		const rows = await loadPublishedSubjectRows();
+		if (rows.length === 0) await assertContentStoreReady();
+		const found = subjectPageForSlug(rows, slug);
+		page = found ? await loadSubjectPagePosts(found) : null;
+	} catch (error) {
+		await rethrowLookupFailure(error, assertContentStoreReady);
+	}
+}
+
+if (!page) Astro.response.status = 404;
+
+const description = page
+	? `Published Freedom Times reporting filed under ${page.label}.`
+	: 'No published post is filed under that subject.';
+const jsonLd = page
+	? [{
+			'@context': 'https://schema.org',
+			'@type': 'CollectionPage',
+			name: page.label,
+			description,
+			isPartOf: { '@type': 'WebSite', name: SITE_DISPLAY_NAME },
+			mainEntity: {
+				'@type': 'ItemList',
+				numberOfItems: page.posts.length,
+				itemListElement: page.posts.map((post, index) => ({
+					'@type': 'ListItem',
+					position: index + 1,
+					name: post.title,
+					url: new URL(`/posts/${post.slug}`, Astro.url.origin).toString(),
+				})),
+			},
+		}]
+	: [];
+---
+
+<Layout
+	title={page ? page.label : 'Subject not found'}
+	description={description}
+	canonicalUrl={page ? `/subjects/${page.slug}` : null}
+	noindex={!page || !page.indexable}
+	jsonLd={jsonLd}
+>
+	<div class="subject-page">
+		<Header isAdmin={isAdmin} isSignedIn={isSignedIn} isEditor={isEditor} />
+		<div class="subject-body">
+			<p class="kicker">Subjects</p>
+			{page ? (
+				<>
+					<h1>{page.label}</h1>
+					<p class="count">{page.posts.length === 1 ? '1 post' : `${page.posts.length} posts`}</p>
+					<PostSummaryList posts={page.posts} />
+				</>
+			) : (
+				<>
+					<h1>Subject not found</h1>
+					<p class="count">No published post is filed under that subject.</p>
+					<p class="count"><a href="/search">Search</a></p>
+				</>
+			)}
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.subject-page {
+		max-width: var(--max-width-main);
+		margin: 0 auto;
+	}
+
+	.subject-body {
+		padding: 0 var(--page-padding-side) 4rem;
+		max-width: var(--max-width-article);
+	}
+
+	.kicker {
+		margin: 0 0 0.4rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: #555555;
+	}
+
+	h1 {
+		margin: 0 0 0.5rem;
+		font-family: 'Playfair Display', serif;
+		font-weight: 900;
+		font-size: clamp(2rem, 4vw, 3rem);
+		line-height: 1.05;
+		letter-spacing: -0.02em;
+	}
+
+	.count {
+		margin: 0 0 1.5rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: #555555;
+	}
+
+	.count a {
+		color: #0044bb;
+	}
+
+	.count a:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 2px;
+	}
+</style>

@@ -99,7 +99,7 @@ and the retired `/weekly-summaries` URL 301s to `/`.
 |---|---|---|
 | `/sitemap.xml` | index: `/sitemap-posts(-n).xml`, plus `/sitemap-site-pages.xml` on the public site | EmDash; the middleware adds the site-pages entry |
 | `/sitemap-posts(-n).xml` | every indexable post at `/posts/<slug>` | EmDash (`posts` is the only collection with SEO + a URL pattern) |
-| `/sitemap-site-pages.xml` | `/`, `/about-us`, `/contact-us`, `/privacy-policy`, `/archives`, each `/archives/<slug>` | middleware (`site-sitemap.ts`, #34) |
+| `/sitemap-site-pages.xml` | `/`, `/about-us`, `/contact-us`, `/privacy-policy`, `/archives`, each `/archives/<slug>`, each indexable `/subjects/<slug>`. `/search` is not listed. | middleware (`site-sitemap.ts`, #34) |
 
 `/sitemap-site-pages.xml` uses the same row rule as EmDash's sitemaps: published, not deleted,
 non-empty slug, not `seo_no_index`; drafts and unpublished items are never listed. Pages are
@@ -108,7 +108,12 @@ elsewhere is left out, so every `<loc>` equals the page's `<link rel="canonical"
 the row's `updated_at`. `/` uses the newest update over published, non-deleted posts, the
 set the homepage lists (`loadHomepageEntries()`, noindex posts included), so it moves when `/`
 changes. `/archives` is listed only when at least one archive is listed, and dated from the
-newest listed archive, so every `lastmod` reflects a URL in this sitemap.
+newest listed archive, so every `lastmod` reflects a URL in this sitemap. Each
+`/subjects/<slug>` is listed when at least one post on that page is indexable, and its
+`lastmod` is the newest update among the posts listed there. Those URLs come from an extra
+published-post read in `site-sitemap-db.ts` (`loadPublishedSubjectRows()`), which pages
+through every published post and does not stop at a fixed cap. `/search` is a reader page
+and is absent from this sitemap.
 
 ```mermaid
 flowchart LR
@@ -116,7 +121,7 @@ flowchart LR
   L -- "yes (staging)" --> E["EmDash 404 (unchanged)"]
   L -- "no (production)" --> W["serveSitemapResiliently"]
   W -- "fresh cache" --> C["200 cached"]
-  W -- "miss" --> G["site-sitemap-db.ts: 3 reads, build urlset"]
+  W -- "miss" --> G["site-sitemap-db.ts: pages, archives, homepage lastmod, plus every published post for /subjects"]
   G -- "ok" --> S["200 + store"]
   G -- "throw" --> F["last-known-good, else 503 + Retry-After"]
 ```

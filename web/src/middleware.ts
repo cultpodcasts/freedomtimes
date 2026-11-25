@@ -275,7 +275,8 @@ async function handleSiteRequest(context: APIContext, next: MiddlewareNext): Pro
 
   // Sitemaps: edge-cached, never 404 on a generation failure (last-known-good, else 503 + Retry-After).
   // Locked staging: cache bypassed, downstream access control unchanged. HEAD → headers only.
-  // Public site only (#34): `/sitemap-site-pages.xml` (/, about/contact/privacy pages, archives) is
+  // Public site only (#34): `/sitemap-site-pages.xml` (/, about/contact/privacy pages, archives,
+  // and indexable `/subjects/<slug>`; not `/search`) is
   // built here and listed in `/sitemap.xml`. Locked staging never takes this branch, so EmDash
   // answers that path (404) and its index is passed through exactly as before.
   const sitemapLocked = isLockedSiteAccess();

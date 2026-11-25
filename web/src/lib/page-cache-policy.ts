@@ -64,7 +64,7 @@ export const DENY_TOP_LEVEL: ReadonlySet<string> = new Set([
  * Top-level `src/pages/*` routes that are deliberately cacheable reader
  * routes (index = `/`). Everything else must be in DENY_TOP_LEVEL.
  */
-export const CACHEABLE_STATIC_ROUTES: ReadonlySet<string> = new Set(['index', 'posts', 'archives']);
+export const CACHEABLE_STATIC_ROUTES: ReadonlySet<string> = new Set(['index', 'posts', 'archives', 'search', 'subjects']);
 
 const SLUG = '[a-z0-9][a-z0-9-]*';
 const CACHEABLE_PATH_PATTERNS: readonly RegExp[] = [
@@ -73,6 +73,8 @@ const CACHEABLE_PATH_PATTERNS: readonly RegExp[] = [
   new RegExp(`^/posts/${SLUG}$`),
   new RegExp(`^/archives$`),
   new RegExp(`^/archives/${SLUG}$`),
+  new RegExp(`^/search$`),
+  new RegExp(`^/subjects/${SLUG}$`),
   new RegExp(`^/(${SLUG})$`),
 ];
 

@@ -1,10 +1,15 @@
 /**
  * Database read for `/sitemap-site-pages.xml` (see `site-sitemap.ts`).
  *
- * Reads only slug / updated_at / SEO columns. Listed rows use the same WHERE as EmDash's own
- * sitemap query (`emdash` seo handler `indexableRows`): published, not deleted, non-empty slug,
- * not `seo_no_index`. Drafts and unpublished items are never listed, and draft revisions are
- * never overlaid (an editor in edit mode fetching the sitemap cannot put draft data in the cache).
+ * Pages and archives read slug, updated_at, and SEO columns. Listed rows use the same WHERE as
+ * EmDash's own sitemap query (`emdash` seo handler `indexableRows`): published, not deleted,
+ * non-empty slug, not `seo_no_index`. Drafts and unpublished items are never listed, and draft
+ * revisions are never overlaid (an editor in edit mode fetching the sitemap cannot put draft
+ * data in the cache).
+ *
+ * Subject URLs are a further read: `loadPublishedSubjectRows()` pages through every published
+ * post (id, slug, subjects, dates, `seo_no_index`) and does not stop at a fixed cap. It does
+ * not select excerpt or the post body. `/search` is not a URL in this sitemap.
  *
  * `/`'s lastmod uses the homepage's own set instead (`loadHomepageEntries()`: published, not
  * deleted, noindex posts included), so it moves when what `/` renders changes.
@@ -21,6 +26,8 @@ import { sql } from 'kysely';
 
 import { assertContentStoreReady } from './content-store-guard-db';
 import { SITEMAP_PAGE_SLUGS, buildSiteSitemapUrls, renderUrlset, type SitemapContentRow } from './site-sitemap';
+import { indexableSubjectSitemapEntries } from './subjects/list';
+import { loadPublishedSubjectRows } from './subjects/load';
 
 type Collection = 'posts' | 'pages' | 'archives';
 
@@ -84,6 +91,7 @@ export async function generateSiteSitemapXml(origin: string): Promise<string> {
 		postsUpdatedAt: rowString(posts.rows[0]?.updated_at),
 		pages: toRows(pages.rows),
 		archives: toRows(archives.rows),
+		subjects: indexableSubjectSitemapEntries(await loadPublishedSubjectRows()),
 	});
 	return renderUrlset(urls);
 }
