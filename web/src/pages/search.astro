@@ -114,7 +114,7 @@ const description = normalized.ok
 					<p class="count">{nextHref
 						? (hits.length === 1 ? '1 result on this page' : `${hits.length} results on this page`)
 						: (hits.length === 1 ? '1 result' : `${hits.length} results`)}</p>
-					<SearchHitList posts={hits} query={normalized.query} />
+					<SearchHitList posts={hits} query={query} />
 				</>
 			)}
 			{nextHref && (
