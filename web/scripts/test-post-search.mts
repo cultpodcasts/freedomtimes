@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+import { excerptRuns } from '../src/lib/search/excerpt.ts';
 import {
 	POST_SEARCH_FIELDS,
 	SEARCH_DISPLAY_COLUMNS,
@@ -66,6 +67,25 @@ describe('search display rows (synthetic)', () => {
 		assert.deepEqual(mapped?.subjects, ['France', 'Paris']);
 		assert.equal(mapped?.title, 'A post');
 		assert.equal(mapSearchDisplayRow({ id: 'p1', slug: '  ', content: 'body' }), null);
+	});
+});
+
+describe('search standfirst italics', () => {
+	it('turns outlet emphasis into italics and leaves a token underscore alone', () => {
+		const runs = excerptRuns('_Politiken_ published Noah Rosendal. Emily Watson told _Variety_ the rest. some_word_more stays.');
+		assert.deepEqual(runs, [
+			{ text: 'Politiken', emphasis: true },
+			{ text: ' published Noah Rosendal. Emily Watson told ', emphasis: false },
+			{ text: 'Variety', emphasis: true },
+			{ text: ' the rest. some_word_more stays.', emphasis: false },
+		]);
+		assert.deepEqual(excerptRuns('part in _Breaking the Waves_. RTBF and _La Libre_ reported.'), [
+			{ text: 'part in ', emphasis: false },
+			{ text: 'Breaking the Waves', emphasis: true },
+			{ text: '. RTBF and ', emphasis: false },
+			{ text: 'La Libre', emphasis: true },
+			{ text: ' reported.', emphasis: false },
+		]);
 	});
 });
 
