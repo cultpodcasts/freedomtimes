@@ -43,18 +43,15 @@ export function queryTokens(query: string): string[] {
 	return tokens.sort((a, b) => b.length - a.length);
 }
 
-/** Standfirst window around the first query match, with italics and marks. */
+/** Standfirst window around the first whole-word query match, with italics and marks. */
 export function searchSnippet(value: string, query: string, maxChars = SNIPPET_CHARS): SnippetRun[] {
 	const runs = excerptRuns(value);
 	if (runs.length === 0) return [];
 	const plain = runs.map((run) => run.text).join('');
 	const tokens = queryTokens(query);
-	const lower = plain.toLocaleLowerCase();
-	let matchAt = -1;
-	for (const token of tokens) {
-		const at = lower.indexOf(token.toLocaleLowerCase());
-		if (at >= 0 && (matchAt < 0 || at < matchAt)) matchAt = at;
-	}
+	const found = firstWholeToken(plain, tokens);
+	const matchAt = found?.start ?? -1;
+	const matchEnd = found?.end ?? -1;
 
 	let start = 0;
 	let end = plain.length;
@@ -73,7 +70,8 @@ export function searchSnippet(value: string, query: string, maxChars = SNIPPET_C
 		}
 		if (end < plain.length) {
 			const space = plain.lastIndexOf(' ', end);
-			if (space > start + 40) end = space;
+			// A long token can put the previous space before the match. Snapping there drops it.
+			if (space > start + 40 && (matchEnd < 0 || space >= matchEnd)) end = space;
 		}
 	}
 
@@ -122,9 +120,24 @@ function sliceRuns(runs: readonly ExcerptRun[], start: number, end: number): Exc
 	return out;
 }
 
+function firstWholeToken(plain: string, tokens: readonly string[]): { start: number; end: number } | null {
+	const pattern = wholeTokenPattern(tokens);
+	if (!pattern) return null;
+	const match = pattern.exec(plain);
+	if (!match?.[0] || match.index === undefined) return null;
+	return { start: match.index, end: match.index + match[0].length };
+}
+
+/** Longest token first. A hit must not sit in the middle of a letter or number. */
+function wholeTokenPattern(tokens: readonly string[]): RegExp | null {
+	if (tokens.length === 0) return null;
+	const body = tokens.map(escapeRegExp).join('|');
+	return new RegExp(`(?<![\\p{L}\\p{N}])(?:${body})(?![\\p{L}\\p{N}])`, 'giu');
+}
+
 function markRuns(runs: readonly ExcerptRun[], tokens: readonly string[]): SnippetRun[] {
-	if (tokens.length === 0) return runs.map((run) => ({ ...run, mark: false }));
-	const pattern = new RegExp(tokens.map(escapeRegExp).join('|'), 'giu');
+	const pattern = wholeTokenPattern(tokens);
+	if (!pattern) return runs.map((run) => ({ ...run, mark: false }));
 	const out: SnippetRun[] = [];
 	for (const run of runs) {
 		let last = 0;

@@ -125,6 +125,22 @@ describe('search hit display', () => {
 		assert.equal(subjects.shown.length, 4);
 		assert.equal(subjects.more, 3);
 	});
+
+	it('windows a later whole-word Lee instead of an earlier Leeds', () => {
+		const snippet = searchSnippet(`${'Leeds '.repeat(40)}Lee spoke at the hearing.`, 'Lee');
+		const text = snippet.map((run) => run.text).join('');
+		const marked = snippet.filter((run) => run.mark).map((run) => run.text);
+		assert.match(text, /Leeds/);
+		assert.match(text, /Lee spoke/);
+		assert.deepEqual(marked, ['Lee']);
+	});
+
+	it('does not snap the window end to a space before the match', () => {
+		const snippet = searchSnippet(`${'word '.repeat(20)}zz-Lee-${'y'.repeat(150)} tail`, 'Lee');
+		const text = snippet.map((run) => run.text).join('');
+		assert.match(text, /zz-Lee-/);
+		assert.equal(snippet.some((run) => run.mark && run.text === 'Lee'), true);
+	});
 });
 
 describe('search fields and query shape', () => {
