@@ -1,0 +1,236 @@
+---
+import { subjectPath } from '../../lib/subjects/slug';
+import { markQuery, searchSnippet, subjectsForSearch, type SnippetRun } from '../../lib/search/result';
+import type { SearchDisplayRow } from '../../lib/search/query';
+
+interface Props {
+	posts: SearchDisplayRow[];
+	query: string;
+}
+
+const { posts, query } = Astro.props;
+
+function formatShortDate(value: string | null): string | null {
+	if (!value) return null;
+	const parsed = new Date(value);
+	if (Number.isNaN(parsed.getTime())) return value;
+	return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+---
+
+<ul class="hits">
+	{posts.map((post) => {
+		const date = formatShortDate(post.publishedAt);
+		const title = markQuery(post.title, query);
+		const snippet = post.excerpt ? searchSnippet(post.excerpt, query) : [];
+		const subjects = subjectsForSearch(post.subjects, query);
+		return (
+			<li>
+				<article class:list={['hit', { 'has-image': Boolean(post.imageSrc) }]}>
+					<a class="hit-link" href={`/posts/${post.slug}`}>
+						{post.imageSrc && (
+							<span class="thumb">
+								<img
+									src={post.imageSrc}
+									alt=""
+									width="320"
+									height="180"
+									loading="lazy"
+									decoding="async"
+								/>
+							</span>
+						)}
+						<span class="copy">
+							{date && <span class="date">{date}</span>}
+							<h2>
+								{title.map((run) => (run.mark ? <mark>{run.text}</mark> : run.text))}
+							</h2>
+							{snippet.length > 0 && (
+								<p class="dek">
+									{snippet.map((run: SnippetRun) =>
+										run.mark ? (
+											run.emphasis ? <mark><em>{run.text}</em></mark> : <mark>{run.text}</mark>
+										) : run.emphasis ? (
+											<em>{run.text}</em>
+										) : (
+											run.text
+										),
+									)}
+								</p>
+							)}
+						</span>
+					</a>
+					{subjects.shown.length > 0 && (
+						<p class="subjects">
+							{subjects.shown.map((label) => {
+								const href = subjectPath(label);
+								return href ? (
+									<a href={href} rel="tag">{label}</a>
+								) : (
+									<span>{label}</span>
+								);
+							})}
+							{subjects.more > 0 && <span class="more">+{subjects.more}</span>}
+						</p>
+					)}
+				</article>
+			</li>
+		);
+	})}
+</ul>
+
+<style>
+	.hits {
+		list-style: none;
+		padding: 0;
+		margin: 0.5rem 0 0;
+	}
+
+	.hit {
+		padding: 1.15rem 0;
+		border-top: 1px solid #e6e6e6;
+	}
+
+	.hit-link {
+		display: block;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.hit.has-image .hit-link {
+		display: grid;
+		grid-template-columns: 9.5rem minmax(0, 1fr);
+		gap: 0.85rem 1rem;
+		align-items: start;
+	}
+
+	.thumb {
+		display: block;
+		aspect-ratio: 16 / 9;
+		background: #f2f2f2;
+		overflow: hidden;
+	}
+
+	.thumb img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.copy {
+		display: block;
+		min-width: 0;
+	}
+
+	.date {
+		display: block;
+		margin: 0 0 0.2rem;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: #0044bb;
+	}
+
+	h2 {
+		margin: 0;
+		font-family: 'Playfair Display', serif;
+		font-weight: 900;
+		font-size: clamp(1.25rem, 2.4vw, 1.7rem);
+		line-height: 1.15;
+		letter-spacing: -0.015em;
+		color: #111111;
+	}
+
+	.hit-link:hover h2 {
+		color: #0044bb;
+	}
+
+	.hit-link:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 3px;
+	}
+
+	.dek {
+		margin: 0.4rem 0 0;
+		font-family: 'Source Serif 4', serif;
+		font-size: 1.02rem;
+		line-height: 1.45;
+		color: #333333;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
+		overflow: hidden;
+	}
+
+	.dek em {
+		font-style: italic;
+	}
+
+	mark {
+		background: #fff3a1;
+		color: inherit;
+		padding: 0 0.05em;
+	}
+
+	.subjects {
+		margin: 0.45rem 0 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		line-height: 1.5;
+	}
+
+	.has-image .subjects {
+		margin-left: calc(9.5rem + 1rem);
+	}
+
+	.subjects a,
+	.subjects > span {
+		color: #333333;
+	}
+
+	.subjects a + a,
+	.subjects a + span,
+	.subjects span + a,
+	.subjects > span + span {
+		margin-left: 0.7rem;
+	}
+
+	.subjects a {
+		text-decoration: none;
+	}
+
+	.subjects a:hover {
+		text-decoration: underline;
+	}
+
+	.subjects a:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 2px;
+	}
+
+	.more {
+		margin-left: 0.45rem;
+		color: #888888;
+		font-weight: 600;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+
+	@media (max-width: 640px) {
+		.hit.has-image .hit-link {
+			grid-template-columns: 5.25rem minmax(0, 1fr);
+			gap: 0.65rem 0.75rem;
+		}
+
+		.has-image .subjects {
+			margin-left: calc(5.25rem + 0.75rem);
+		}
+	}
+</style>

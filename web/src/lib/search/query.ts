@@ -8,6 +8,7 @@
  * A database that was created before that flag was stored still omits them
  * until the manual rebuild in `web/docs/SEARCH.md`.
  */
+import { readSearchImage } from './result';
 import { parseSubjects } from '../subjects/list';
 
 export const POST_SEARCH_FIELDS = ['title', 'content', 'excerpt', 'lede', 'subjects'] as const;
@@ -16,7 +17,7 @@ export const SEARCH_QUERY_MAX_LENGTH = 200;
 export const SEARCH_PAGE_SIZE = 20;
 
 /** Columns hydrated after FTS. The body is not one of them. */
-export const SEARCH_DISPLAY_COLUMNS = ['id', 'slug', 'title', 'excerpt', 'subjects', 'published_at'] as const;
+export const SEARCH_DISPLAY_COLUMNS = ['id', 'slug', 'title', 'excerpt', 'subjects', 'featured_image', 'published_at'] as const;
 
 export type NormalizedSearchQuery =
 	| { ok: true; query: string }
@@ -41,6 +42,8 @@ export type SearchDisplayRow = {
 	title: string;
 	excerpt: string | null;
 	subjects: string[];
+	imageSrc: string | null;
+	imageAlt: string | null;
 	publishedAt: string | null;
 };
 
@@ -57,12 +60,15 @@ export function mapSearchDisplayRow(row: Record<string, unknown>): SearchDisplay
 	if (!id || !slug) return null;
 	const title = typeof row.title === 'string' && row.title.trim() ? row.title.trim() : 'Untitled post';
 	const excerpt = typeof row.excerpt === 'string' && row.excerpt.trim() ? row.excerpt.trim() : null;
+	const image = readSearchImage(row.featured_image);
 	return {
 		id,
 		slug,
 		title,
 		excerpt,
 		subjects: parseSubjects(row.subjects),
+		imageSrc: image.src,
+		imageAlt: image.alt,
 		publishedAt: dateString(row.published_at ?? row.publishedAt),
 	};
 }

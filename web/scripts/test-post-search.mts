@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { excerptRuns } from '../src/lib/search/excerpt.ts';
+import { readSearchImage, searchSnippet, subjectsForSearch } from '../src/lib/search/result.ts';
 import {
 	POST_SEARCH_FIELDS,
 	SEARCH_DISPLAY_COLUMNS,
@@ -20,6 +21,8 @@ function hit(partial: Partial<SearchDisplayRow> & Pick<SearchDisplayRow, 'id'>):
 		title: partial.title ?? partial.id,
 		excerpt: partial.excerpt ?? null,
 		subjects: partial.subjects ?? [],
+		imageSrc: partial.imageSrc ?? null,
+		imageAlt: partial.imageAlt ?? null,
 		publishedAt: partial.publishedAt ?? null,
 		...partial,
 	};
@@ -64,6 +67,20 @@ describe('search display rows (synthetic)', () => {
 			content: 'body text that must not be copied onto the card',
 		});
 		assert.equal(mapped?.excerpt, 'The standfirst');
+		assert.equal(mapped?.imageSrc, null);
+		const withImage = mapSearchDisplayRow({
+			id: 'p1',
+			slug: 'a-post',
+			title: 'A post',
+			featured_image: JSON.stringify({
+				provider: 'local',
+				meta: { storageKey: 'photo-key' },
+				alt: 'A hall',
+			}),
+		});
+		assert.equal(withImage?.imageSrc, '/_emdash/api/media/file/photo-key');
+		assert.equal(withImage?.imageAlt, 'A hall');
+		assert.equal(readSearchImage({ id: '01ARZ3NDEKTSV4RRFFQ69G5FAV' })?.src, '/_emdash/api/media/file/01ARZ3NDEKTSV4RRFFQ69G5FAV');
 		assert.deepEqual(mapped?.subjects, ['France', 'Paris']);
 		assert.equal(mapped?.title, 'A post');
 		assert.equal(mapSearchDisplayRow({ id: 'p1', slug: '  ', content: 'body' }), null);
@@ -89,6 +106,27 @@ describe('search standfirst italics', () => {
 	});
 });
 
+describe('search hit display', () => {
+	it('windows the standfirst on the match and keeps four subjects, match first', () => {
+		const snippet = searchSnippet(
+			`${'In Scotland the court sat. '.repeat(12)}Emily Watson told _Variety_ the School of Economic Science in London tried to stop the film.`,
+			'london',
+		);
+		const text = snippet.map((run) => run.text).join('');
+		assert.match(text, /^…/);
+		assert.equal(snippet.some((run) => run.mark && run.text.toLowerCase() === 'london'), true);
+		assert.equal(snippet.some((run) => run.emphasis && run.text === 'Variety'), true);
+		assert.ok(text.length < 260);
+		const subjects = subjectsForSearch(
+			['Europe & UK cult news', 'UK', 'Europe', 'Switzerland', 'Scotland', 'Malta', 'London'],
+			'london',
+		);
+		assert.equal(subjects.shown[0], 'London');
+		assert.equal(subjects.shown.length, 4);
+		assert.equal(subjects.more, 3);
+	});
+});
+
 describe('search fields and query shape', () => {
 	it('seed.json marks excerpt, lede, and subjects searchable, with title and content', () => {
 		const seed = JSON.parse(readFileSync(new URL('../.emdash/seed.json', import.meta.url), 'utf8')) as {
@@ -105,7 +143,7 @@ describe('search fields and query shape', () => {
 	});
 
 	it('hydrates published posts without selecting the body, and forces published status', () => {
-		assert.deepEqual([...SEARCH_DISPLAY_COLUMNS], ['id', 'slug', 'title', 'excerpt', 'subjects', 'published_at']);
+		assert.deepEqual([...SEARCH_DISPLAY_COLUMNS], ['id', 'slug', 'title', 'excerpt', 'subjects', 'featured_image', 'published_at']);
 		const source = readFileSync(new URL('../src/lib/search/post-search.ts', import.meta.url), 'utf8');
 		assert.match(source, /collections: \['posts'\]/);
 		assert.match(source, /status: 'published'/);

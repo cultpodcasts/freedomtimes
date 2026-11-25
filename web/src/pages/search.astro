@@ -1,7 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
-import PostSummaryList from '../components/content/PostSummaryList.astro';
+import SearchHitList from '../components/content/SearchHitList.astro';
 import { readOptionalEnv } from '../lib/auth';
 import { rethrowLookupFailure } from '../lib/content-store-guard';
 import { assertContentStoreReady } from '../lib/content-store-guard-db';
@@ -114,7 +114,7 @@ const description = normalized.ok
 					<p class="count">{nextHref
 						? (hits.length === 1 ? '1 result on this page' : `${hits.length} results on this page`)
 						: (hits.length === 1 ? '1 result' : `${hits.length} results`)}</p>
-					<PostSummaryList posts={hits} />
+					<SearchHitList posts={hits} query={normalized.query} />
 				</>
 			)}
 			{nextHref && (
@@ -134,7 +134,6 @@ const description = normalized.ok
 
 	.search-body {
 		padding: 0 var(--page-padding-side) 4rem;
-		max-width: var(--max-width-article);
 	}
 
 	.kicker {
