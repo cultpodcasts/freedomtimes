@@ -1,41 +1,80 @@
 ---
+/**
+ * Subject-page post list. Own template (not SearchHitList) so subjects can
+ * change without affecting search — same card form: thumb, date, title,
+ * standfirst, short subject row.
+ */
 import { excerptRuns } from '../../lib/search/excerpt';
-import SubjectList from './SubjectList.astro';
+import { subjectsForSubjectPage } from '../../lib/subjects/list';
+import { subjectPath } from '../../lib/subjects/slug';
 
 export type PostSummary = {
 	slug: string;
 	title: string;
 	excerpt: string | null;
 	subjects: string[];
+	imageSrc?: string | null;
 	publishedAt: string | null;
 };
 
 interface Props {
 	posts: PostSummary[];
+	/** Page slug — pins every label that folds to this slug on the chip row. */
+	pageSlug: string;
 }
 
-const { posts } = Astro.props;
+const { posts, pageSlug } = Astro.props;
 
 function formatShortDate(value: string | null): string | null {
 	if (!value) return null;
 	const parsed = new Date(value);
 	if (Number.isNaN(parsed.getTime())) return value;
-	return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+	return parsed.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 ---
 
-<ul class="post-summaries">
+<ul class="summaries">
 	{posts.map((post) => {
 		const date = formatShortDate(post.publishedAt);
+		const dek = post.excerpt ? excerptRuns(post.excerpt) : [];
+		const subjects = subjectsForSubjectPage(post.subjects, pageSlug);
 		return (
 			<li>
-				<article class="post-summary">
-					{date && <p class="date">{date}</p>}
-					<h2><a href={`/posts/${post.slug}`}>{post.title}</a></h2>
-					<SubjectList subjects={post.subjects} />
-					{post.excerpt && (
-						<p class="dek">
-							{excerptRuns(post.excerpt).map((run) => (run.emphasis ? <em>{run.text}</em> : run.text))}
+				<article class:list={['summary', { 'has-image': Boolean(post.imageSrc) }]}>
+					<a class="summary-link" href={`/posts/${post.slug}`}>
+						{post.imageSrc && (
+							<span class="thumb">
+								<img
+									src={post.imageSrc}
+									alt=""
+									width="320"
+									height="180"
+									loading="lazy"
+									decoding="async"
+								/>
+							</span>
+						)}
+						<span class="copy">
+							{date && <span class="date">{date}</span>}
+							<h2>{post.title}</h2>
+							{dek.length > 0 && (
+								<p class="dek">
+									{dek.map((run) => (run.emphasis ? <em>{run.text}</em> : run.text))}
+								</p>
+							)}
+						</span>
+					</a>
+					{subjects.shown.length > 0 && (
+						<p class="subjects">
+							{subjects.shown.map((label) => {
+								const href = subjectPath(label);
+								return href ? (
+									<a href={href} rel="tag">{label}</a>
+								) : (
+									<span>{label}</span>
+								);
+							})}
+							{subjects.more > 0 && <span class="more">+{subjects.more}</span>}
 						</p>
 					)}
 				</article>
@@ -45,25 +84,57 @@ function formatShortDate(value: string | null): string | null {
 </ul>
 
 <style>
-	.post-summaries {
+	.summaries {
 		list-style: none;
 		padding: 0;
-		margin: 0;
-		display: grid;
-		gap: 2rem;
+		margin: 0.5rem 0 0;
 	}
 
-	.post-summary {
-		padding-bottom: 1.5rem;
-		border-bottom: 1px solid #eeeeee;
+	.summary {
+		padding: 1.15rem 0;
+		border-top: 1px solid #e6e6e6;
+	}
+
+	.summary-link {
+		display: block;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	.summary.has-image .summary-link {
+		display: grid;
+		grid-template-columns: 9.5rem minmax(0, 1fr);
+		gap: 0.85rem 1rem;
+		align-items: start;
+	}
+
+	.thumb {
+		display: block;
+		aspect-ratio: 16 / 9;
+		background: #f2f2f2;
+		overflow: hidden;
+	}
+
+	.thumb img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.copy {
+		display: block;
+		min-width: 0;
 	}
 
 	.date {
-		margin: 0 0 0.35rem;
+		display: block;
+		margin: 0 0 0.2rem;
 		font-family: 'Inter', sans-serif;
 		font-size: 0.75rem;
 		font-weight: 700;
-		letter-spacing: 0.08em;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
 		color: #0044bb;
 	}
 
@@ -71,39 +142,93 @@ function formatShortDate(value: string | null): string | null {
 		margin: 0;
 		font-family: 'Playfair Display', serif;
 		font-weight: 900;
-		font-size: clamp(1.4rem, 3vw, 2rem);
+		font-size: clamp(1.25rem, 2.4vw, 1.7rem);
 		line-height: 1.15;
 		letter-spacing: -0.015em;
-	}
-
-	h2 a {
 		color: #111111;
-		text-decoration: none;
 	}
 
-	h2 a:hover {
+	.summary-link:hover h2 {
 		color: #0044bb;
 	}
 
-	h2 a:focus-visible {
+	.summary-link:focus-visible {
 		outline: 2px solid #0044bb;
-		outline-offset: 2px;
+		outline-offset: 3px;
 	}
 
 	.dek {
-		margin: 0.75rem 0 0;
+		margin: 0.4rem 0 0;
 		font-family: 'Source Serif 4', serif;
-		font-size: 1.05rem;
-		line-height: 1.5;
+		font-size: 1.02rem;
+		line-height: 1.45;
 		color: #333333;
 		display: -webkit-box;
 		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 5;
-		line-clamp: 5;
+		-webkit-line-clamp: 3;
+		line-clamp: 3;
 		overflow: hidden;
 	}
 
 	.dek em {
 		font-style: italic;
+	}
+
+	.subjects {
+		margin: 0.45rem 0 0;
+		font-family: 'Inter', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		line-height: 1.5;
+	}
+
+	.has-image .subjects {
+		margin-left: calc(9.5rem + 1rem);
+	}
+
+	.subjects a,
+	.subjects > span {
+		color: #333333;
+	}
+
+	.subjects a + a,
+	.subjects a + span,
+	.subjects span + a,
+	.subjects > span + span {
+		margin-left: 0.7rem;
+	}
+
+	.subjects a {
+		text-decoration: none;
+	}
+
+	.subjects a:hover {
+		text-decoration: underline;
+	}
+
+	.subjects a:focus-visible {
+		outline: 2px solid #0044bb;
+		outline-offset: 2px;
+	}
+
+	.more {
+		margin-left: 0.45rem;
+		color: #888888;
+		font-weight: 600;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+
+	@media (max-width: 640px) {
+		.summary.has-image .summary-link {
+			grid-template-columns: 5.25rem minmax(0, 1fr);
+			gap: 0.65rem 0.75rem;
+		}
+
+		.has-image .subjects {
+			margin-left: calc(5.25rem + 0.75rem);
+		}
 	}
 </style>

@@ -97,13 +97,15 @@ const jsonLd = page
 				<>
 					<h1>{page.label}</h1>
 					<p class="count">{page.posts.length === 1 ? '1 post' : `${page.posts.length} posts`}</p>
-					<PostSummaryList posts={page.posts} />
+					{page.posts.length > 0 && (
+						<PostSummaryList posts={page.posts} pageSlug={page.slug} />
+					)}
 				</>
 			) : (
 				<>
 					<h1>Subject not found</h1>
-					<p class="count">No published post is filed under that subject.</p>
-					<p class="count"><a href="/search">Search</a></p>
+					<p class="notice">No published post is filed under that subject.</p>
+					<p class="notice"><a href="/search">Search</a></p>
 				</>
 			)}
 		</div>
@@ -118,7 +120,6 @@ const jsonLd = page
 
 	.subject-body {
 		padding: 0 var(--page-padding-side) 4rem;
-		max-width: var(--max-width-article);
 	}
 
 	.kicker {
@@ -132,7 +133,7 @@ const jsonLd = page
 	}
 
 	h1 {
-		margin: 0 0 0.5rem;
+		margin: 0 0 1.25rem;
 		font-family: 'Playfair Display', serif;
 		font-weight: 900;
 		font-size: clamp(2rem, 4vw, 3rem);
@@ -140,19 +141,22 @@ const jsonLd = page
 		letter-spacing: -0.02em;
 	}
 
+	.notice,
 	.count {
-		margin: 0 0 1.5rem;
-		font-family: 'Inter', sans-serif;
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: #555555;
+		font-family: 'Source Serif 4', serif;
+		font-size: 1.1rem;
+		color: #333333;
 	}
 
-	.count a {
+	.count {
+		margin: 0 0 0.25rem;
+	}
+
+	.notice a {
 		color: #0044bb;
 	}
 
-	.count a:focus-visible {
+	.notice a:focus-visible {
 		outline: 2px solid #0044bb;
 		outline-offset: 2px;
 	}
