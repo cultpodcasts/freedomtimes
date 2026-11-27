@@ -21,8 +21,6 @@ function row(partial: Partial<SubjectPostRow> & Pick<SubjectPostRow, 'id' | 'sub
 		slug: partial.slug ?? partial.id,
 		title: partial.title ?? partial.id,
 		excerpt: partial.excerpt ?? null,
-		imageSrc: partial.imageSrc ?? null,
-		imageAlt: partial.imageAlt ?? null,
 		publishedAt: partial.publishedAt ?? '2026-01-01T00:00:00.000Z',
 		updatedAt: partial.updatedAt ?? '2026-01-02T00:00:00.000Z',
 		noindex: partial.noindex ?? false,
@@ -148,26 +146,18 @@ describe('subject directory (synthetic posts)', () => {
 });
 
 describe('subject display fields', () => {
-	it('fills title, excerpt, and image only for posts already on the page', () => {
+	it('fills title and excerpt only for posts already on the page', () => {
 		const page = subjectPageForSlug(
 			[row({ id: 'older', subjects: ['France'], title: 'Untitled post', excerpt: null })],
 			'france',
 		);
 		assert.ok(page);
 		const filled = applySubjectDisplay(page, [
-			{
-				id: 'older',
-				title: 'The France piece',
-				excerpt: 'Standfirst',
-				imageSrc: '/_emdash/api/media/file/photo',
-				imageAlt: 'Court steps',
-			},
-			{ id: 'someone-else', title: 'Not on this page', excerpt: 'Skip', imageSrc: null, imageAlt: null },
+			{ id: 'older', title: 'The France piece', excerpt: 'Standfirst' },
+			{ id: 'someone-else', title: 'Not on this page', excerpt: 'Skip' },
 		]);
 		assert.equal(filled.posts[0]?.title, 'The France piece');
 		assert.equal(filled.posts[0]?.excerpt, 'Standfirst');
-		assert.equal(filled.posts[0]?.imageSrc, '/_emdash/api/media/file/photo');
-		assert.equal(filled.posts[0]?.imageAlt, 'Court steps');
 		assert.equal(filled.posts.length, 1);
 	});
 });
@@ -210,9 +200,9 @@ describe('subject directory scan', () => {
 });
 
 describe('subject query shape', () => {
-	it('scans directory columns only, then loads title, excerpt, and image for one page', () => {
+	it('scans directory columns only, then loads title and excerpt for one page', () => {
 		assert.deepEqual([...SUBJECT_DIRECTORY_COLUMNS], ['id', 'slug', 'subjects', 'published_at', 'updated_at']);
-		assert.deepEqual([...SUBJECT_DISPLAY_COLUMNS], ['id', 'title', 'excerpt', 'featured_image']);
+		assert.deepEqual([...SUBJECT_DISPLAY_COLUMNS], ['id', 'title', 'excerpt']);
 		const source = readFileSync(new URL('../src/lib/subjects/load.ts', import.meta.url), 'utf8');
 		assert.match(source, /sql\.ref\('c\.status'\)\} = \$\{'published'\}/);
 		assert.match(source, /sql\.ref\('c\.deleted_at'\)\} IS NULL/);
@@ -223,7 +213,5 @@ describe('subject query shape', () => {
 		const choose = page.indexOf('subjectPageForSlug(rows');
 		const displayCall = page.indexOf('await loadSubjectPagePosts');
 		assert.ok(directoryCall >= 0 && choose > directoryCall && displayCall > choose);
-		assert.match(page, /SearchHitList/);
-		assert.doesNotMatch(page, /PostSummaryList/);
 	});
 });

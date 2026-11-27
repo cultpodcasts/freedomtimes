@@ -5,13 +5,10 @@ import type { SearchDisplayRow } from '../../lib/search/query';
 
 interface Props {
 	posts: SearchDisplayRow[];
-	/** When set, marks matches in titles/snippets and prefers matching subject chips. */
-	query?: string;
-	/** Pin this subject chip first (subject pages). Does not mark title/snippet text. */
-	preferSubject?: string;
+	query: string;
 }
 
-const { posts, query = '', preferSubject } = Astro.props;
+const { posts, query } = Astro.props;
 
 function formatShortDate(value: string | null): string | null {
 	if (!value) return null;
@@ -26,7 +23,7 @@ function formatShortDate(value: string | null): string | null {
 		const date = formatShortDate(post.publishedAt);
 		const title = markQuery(post.title, query);
 		const snippet = post.excerpt ? searchSnippet(post.excerpt, query) : [];
-		const subjects = subjectsForSearch(post.subjects, query, undefined, preferSubject);
+		const subjects = subjectsForSearch(post.subjects, query);
 		return (
 			<li>
 				<article class:list={['hit', { 'has-image': Boolean(post.imageSrc) }]}>

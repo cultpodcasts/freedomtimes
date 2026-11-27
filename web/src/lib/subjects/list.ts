@@ -11,21 +11,19 @@
  * heading prefers the variant that uses capitals.
  *
  * Pure: the database read is in `load.ts`. Rows are already published.
- * Title, excerpt, and featured image are filled afterwards for the one
- * page being rendered — the same display shape as search hits.
+ * Title and excerpt are filled afterwards for the one page being rendered.
  */
-import { readSearchImage } from '../search/result';
 import { subjectSlug } from './slug';
 
 /**
  * Columns read while scanning every published post for the directory and
- * the sitemap. No title, excerpt, image, or body. `seo_no_index` comes from
- * the SEO join, not this list.
+ * the sitemap. No title, excerpt, or body. `seo_no_index` comes from the
+ * SEO join, not this list.
  */
 export const SUBJECT_DIRECTORY_COLUMNS = ['id', 'slug', 'subjects', 'published_at', 'updated_at'] as const;
 
 /** Columns loaded for the posts on one subject page, after that page is chosen. */
-export const SUBJECT_DISPLAY_COLUMNS = ['id', 'title', 'excerpt', 'featured_image'] as const;
+export const SUBJECT_DISPLAY_COLUMNS = ['id', 'title', 'excerpt'] as const;
 
 export type SubjectPostRow = {
 	id: string;
@@ -33,8 +31,6 @@ export type SubjectPostRow = {
 	title: string;
 	excerpt: string | null;
 	subjects: string[];
-	imageSrc: string | null;
-	imageAlt: string | null;
 	publishedAt: string | null;
 	updatedAt: string | null;
 	/** True when the post's SEO record sets `seo_no_index`. */
@@ -52,13 +48,11 @@ export type SubjectPage = {
 	updatedAt: string | null;
 };
 
-/** Display fields for one post, loaded only after the page's ids are known. */
+/** Title and excerpt for one post, loaded only after the page's ids are known. */
 export type SubjectDisplayFields = {
 	id: string;
 	title: string;
 	excerpt: string | null;
-	imageSrc: string | null;
-	imageAlt: string | null;
 };
 
 export function parseSubjects(value: unknown): string[] {
@@ -103,8 +97,6 @@ export function mapSubjectPostRow(row: Record<string, unknown>): SubjectPostRow 
 		title,
 		excerpt,
 		subjects: parseSubjects(row.subjects),
-		imageSrc: null,
-		imageAlt: null,
 		publishedAt: dateString(row.published_at ?? row.publishedAt),
 		updatedAt: dateString(row.updated_at ?? row.updatedAt),
 		noindex: isNoindex(row.seo_no_index ?? row.noindex),
@@ -117,11 +109,10 @@ export function mapSubjectDisplayRow(row: Record<string, unknown>): SubjectDispl
 	if (!id) return null;
 	const title = typeof row.title === 'string' && row.title.trim() ? row.title.trim() : 'Untitled post';
 	const excerpt = typeof row.excerpt === 'string' && row.excerpt.trim() ? row.excerpt.trim() : null;
-	const image = readSearchImage(row.featured_image);
-	return { id, title, excerpt, imageSrc: image.src, imageAlt: image.alt };
+	return { id, title, excerpt };
 }
 
-/** Replace title, excerpt, and image on the posts whose ids came back from the display query. */
+/** Replace title and excerpt on the posts whose ids came back from the display query. */
 export function applySubjectDisplay(page: SubjectPage, displays: readonly SubjectDisplayFields[]): SubjectPage {
 	const byId = new Map<string, SubjectDisplayFields>();
 	for (const display of displays) {
@@ -132,13 +123,7 @@ export function applySubjectDisplay(page: SubjectPage, displays: readonly Subjec
 		posts: page.posts.map((post) => {
 			const display = byId.get(post.id);
 			if (!display) return post;
-			return {
-				...post,
-				title: display.title,
-				excerpt: display.excerpt,
-				imageSrc: display.imageSrc,
-				imageAlt: display.imageAlt,
-			};
+			return { ...post, title: display.title, excerpt: display.excerpt };
 		}),
 	};
 }

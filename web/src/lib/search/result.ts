@@ -93,27 +93,15 @@ export function markQuery(value: string, query: string): SnippetRun[] {
 	return markRuns(runs, queryTokens(query));
 }
 
-/**
- * Subjects that match the query come first. `prefer` (exact, case
- * insensitive) beats a partial token hit, so a subject page can pin its
- * own label on the card without marking every word of that label in the
- * standfirst. The rest of a long chip row stays off the card.
- */
-export function subjectsForSearch(
-	subjects: readonly string[],
-	query: string,
-	limit = SUBJECTS_SHOWN,
-	prefer?: string,
-): { shown: string[]; more: number } {
-	const preferred = (prefer ?? '').trim().toLocaleLowerCase();
+/** Subjects that contain the query come first. The rest of a long chip row stays off the card. */
+export function subjectsForSearch(subjects: readonly string[], query: string, limit = SUBJECTS_SHOWN): { shown: string[]; more: number } {
 	const tokens = queryTokens(query).map((token) => token.toLocaleLowerCase());
-	const ranked = subjects.map((label, index) => {
-		const lower = label.toLocaleLowerCase();
-		const exact = Boolean(preferred) && lower === preferred;
-		const hit = exact || tokens.some((token) => lower.includes(token));
-		return { label, index, exact, hit };
-	});
-	ranked.sort((a, b) => Number(b.exact) - Number(a.exact) || Number(b.hit) - Number(a.hit) || a.index - b.index);
+	const ranked = subjects.map((label, index) => ({
+		label,
+		index,
+		hit: tokens.some((token) => label.toLocaleLowerCase().includes(token)),
+	}));
+	ranked.sort((a, b) => Number(b.hit) - Number(a.hit) || a.index - b.index);
 	const shown = ranked.slice(0, limit).map((item) => item.label);
 	return { shown, more: Math.max(0, subjects.length - shown.length) };
 }
