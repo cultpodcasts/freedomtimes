@@ -124,6 +124,15 @@ describe('search hit display', () => {
 		assert.equal(subjects.shown[0], 'London');
 		assert.equal(subjects.shown.length, 4);
 		assert.equal(subjects.more, 3);
+		const pinned = subjectsForSearch(
+			['Europe & UK Cult News', 'UK', 'Ahmadi Religion of Peace and Light', 'AROPL', 'Peace'],
+			'',
+			undefined,
+			'Ahmadi Religion of Peace and Light',
+		);
+		assert.equal(pinned.shown[0], 'Ahmadi Religion of Peace and Light');
+		assert.deepEqual(pinned.shown.slice(1), ['Europe & UK Cult News', 'UK', 'AROPL']);
+		assert.equal(pinned.more, 1);
 	});
 
 	it('windows a later whole-word Lee instead of an earlier Leeds', () => {

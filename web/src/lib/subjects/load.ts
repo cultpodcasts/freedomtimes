@@ -6,9 +6,9 @@
  * id, slug, subjects, dates, and `seo_no_index`. A short page ends the scan.
  * Newest-first order is applied in `buildSubjectDirectory`, not in SQL.
  *
- * Title and excerpt are a second query, and only for the ids on the subject
- * page being rendered — the same shape as `searchPublishedPosts`. The body
- * (`content`) is never selected.
+ * Title, excerpt, and featured image are a second query, and only for the
+ * ids on the subject page being rendered — the same shape as
+ * `searchPublishedPosts`. The body (`content`) is never selected.
  *
  * `getDb()` follows `FT_CONTENT_BACKEND`, so this is D1 or Turso with the
  * Worker that is deployed.
@@ -110,8 +110,9 @@ async function querySubjectDisplayRows(ids: readonly string[]): Promise<Record<s
 }
 
 /**
- * Title and excerpt for the posts already chosen for one subject page.
- * Other published posts are not read. An empty page does not query.
+ * Title, excerpt, and featured image for the posts already chosen for one
+ * subject page. Other published posts are not read. An empty page does not
+ * query.
  */
 export async function loadSubjectPagePosts(page: SubjectPage): Promise<SubjectPage> {
 	const ids = page.posts.map((post) => post.id);
